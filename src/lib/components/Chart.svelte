@@ -111,10 +111,22 @@
     ensurePineEngine();
 
     try {
-      // Inisialisasi Vela Workspace dengan WebGL2 renderer
+      const velaSym = symbol.includes(':') ? symbol : `binance:${symbol}`;
+
+      // Inisialisasi Vela Workspace dengan WebGL2 renderer dan provider resmi Binance
       workspace = new VelaWorkspace(chartContainer, {
         layout: layout as any,
-        drawingToolbar: true,
+        symbol: velaSym,
+        timeframe: timeframe,
+        drawingToolbar: false, // Gunakan toolbar kustom Trawangan agar tidak tumpang tindih
+        live: true,
+        theme: 'dark',
+        providers: {
+          binance: () => new BinanceProvider(),
+        },
+        engines: {
+          pine: () => new PineWorkerEngine(),
+        },
         maxWebglCells: 8,
         sync: {
           crosshair: syncConfig.crosshair,
@@ -123,15 +135,9 @@
         },
       });
 
-      // Daftarkan provider Binance resmi bawaan Vela
-      const binance = new BinanceProvider();
-      workspace.chart.data.registerProvider('binance', binance);
-
-      // Atur simbol dan timeframe awal
+      // Atur listener drawing untuk cell aktif awal
       const activeCell = workspace.active;
       if (activeCell) {
-        activeCell.setSymbol(symbol);
-        activeCell.setTimeframe(timeframe);
         attachDrawingListeners(activeCell.chart);
       }
 
@@ -139,9 +145,10 @@
       (workspace as any).on?.('cell:active', (ev: any) => {
         const cur = workspace?.active;
         if (cur && onActiveCellChange) {
-          const s = (cur as any).symbol || symbol;
-          const t = (cur as any).timeframe || timeframe;
-          onActiveCellChange({ symbol: s, timeframe: t });
+          const rawSym = (cur as any).symbol || symbol;
+          const cleanSym = rawSym.includes(':') ? rawSym.split(':')[1] : rawSym;
+          const curTf = (cur as any).timeframe || timeframe;
+          onActiveCellChange({ symbol: cleanSym, timeframe: curTf });
           attachDrawingListeners(cur.chart);
         }
       });
@@ -164,7 +171,8 @@
     if (isMounted && workspace && symbol) {
       try {
         if (workspace.active) {
-          workspace.active.setSymbol(symbol);
+          const targetSym = symbol.includes(':') ? symbol : `binance:${symbol}`;
+          workspace.active.setSymbol(targetSym);
           restoreDrawingsForCurrentChart();
         }
       } catch (e) {

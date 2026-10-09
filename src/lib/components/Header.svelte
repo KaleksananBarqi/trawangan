@@ -12,30 +12,36 @@
     Crosshair,
     PenTool,
     Flame,
-    Share2
+    Share2,
+    History,
+    Settings,
+    Search
   } from '@lucide/svelte';
-  import type { TickerInfo, Timeframe, MultiChartSyncConfig } from '../types/market';
+  import type { TickerInfo, Timeframe, MultiChartSyncConfig, WorkspaceMode } from '../types/market';
 
   interface Props {
     activeSymbol: string;
     activeTimeframe: Timeframe;
     ticker: TickerInfo | null;
     currentLayout: string;
+    workspaceMode?: WorkspaceMode;
     syncConfig?: MultiChartSyncConfig;
     activeIndicatorCount?: number;
-    isPineEditorOpen?: boolean;
     isDrawingToolbarVisible?: boolean;
     isWatchlistOpen?: boolean;
+    isReplayActive?: boolean;
     onSymbolChange: (sym: string) => void;
     onTimeframeChange: (tf: Timeframe) => void;
     onLayoutChange: (layout: string) => void;
+    onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
     onToggleSyncCrosshair?: () => void;
     onToggleSyncDrawings?: () => void;
     onToggleDrawingToolbar?: () => void;
     onToggleWatchlist?: () => void;
+    onToggleReplay?: () => void;
     onOpenProviderModal: () => void;
     onOpenIndicatorModal: () => void;
-    onTogglePineEditor: () => void;
+    onOpenSettingsModal?: () => void;
   }
 
   let {
@@ -43,21 +49,24 @@
     activeTimeframe,
     ticker,
     currentLayout,
+    workspaceMode = 'terminal',
     syncConfig = { crosshair: true, symbol: false, drawings: true },
     activeIndicatorCount = 0,
-    isPineEditorOpen = false,
     isDrawingToolbarVisible = true,
     isWatchlistOpen = true,
+    isReplayActive = false,
     onSymbolChange,
     onTimeframeChange,
     onLayoutChange,
+    onWorkspaceModeChange,
     onToggleSyncCrosshair,
     onToggleSyncDrawings,
     onToggleDrawingToolbar,
     onToggleWatchlist,
+    onToggleReplay,
     onOpenProviderModal,
     onOpenIndicatorModal,
-    onTogglePineEditor,
+    onOpenSettingsModal,
   }: Props = $props();
 
   const quickSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT'];
@@ -90,14 +99,36 @@
   }
 </script>
 
-<header class="header glass-panel">
+<header class="header">
   <!-- Brand & Logo -->
   <div class="brand-section">
     <div class="brand-badge">
-      <Zap size={16} class="brand-icon" />
+      <Zap size={15} class="brand-icon" />
       <span class="brand-title">TRAWANGAN</span>
     </div>
     <span class="version-tag">PRO</span>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Workspace Mode Switcher (Dual Mode Switcher) -->
+  <div class="mode-switcher">
+    <button
+      class="mode-btn {workspaceMode === 'terminal' ? 'active' : ''}"
+      title="Mode Trading Terminal (Chart, Watchlist, Orderflow)"
+      onclick={() => onWorkspaceModeChange?.('terminal')}
+    >
+      <Activity size={13} />
+      <span>Terminal</span>
+    </button>
+    <button
+      class="mode-btn {workspaceMode === 'pine' ? 'active' : ''}"
+      title="Mode Pine Script v6 IDE & Backtester"
+      onclick={() => onWorkspaceModeChange?.('pine')}
+    >
+      <Code size={13} />
+      <span>Pine IDE</span>
+    </button>
   </div>
 
   <div class="divider"></div>
@@ -120,18 +151,19 @@
       title="Cari atau masukkan simbol kustom"
       onclick={() => (showSymbolPicker = !showSymbolPicker)}
     >
+      <Search size={12} class="search-icon" />
       <span class="active-sym-label">{activeSymbol}</span>
       <span class="dropdown-arrow">▾</span>
     </button>
 
     {#if showSymbolPicker}
-      <div class="symbol-dropdown glass-panel">
+      <div class="symbol-dropdown obsidian-panel">
         <form onsubmit={handleCustomSymbolSubmit}>
           <input
             type="text"
             placeholder="Ketik simbol (e.g. BTCUSDT)..."
             bind:value={customSymbolInput}
-            class="symbol-input"
+            class="symbol-input mono-nums"
           />
         </form>
       </div>
@@ -145,21 +177,21 @@
     <div class="ticker-stats mono-nums">
       <div class="price-box">
         <span class="price-value {ticker.change24h >= 0 ? 'bull' : 'bear'}">
-          ${ticker.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+          ${ticker.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
         <span class="change-badge {ticker.change24h >= 0 ? 'bg-bull' : 'bg-bear'}">
           {#if ticker.change24h >= 0}
-            <TrendingUp size={12} />
+            <TrendingUp size={11} />
           {:else}
-            <TrendingDown size={12} />
+            <TrendingDown size={11} />
           {/if}
           {ticker.change24h >= 0 ? '+' : ''}{ticker.change24h.toFixed(2)}%
         </span>
       </div>
 
       <div class="hl-stats">
-        <span class="stat-item"><small>24h H:</small> ${ticker.high24h.toLocaleString()}</span>
-        <span class="stat-item"><small>24h L:</small> ${ticker.low24h.toLocaleString()}</span>
+        <span class="stat-item"><small>H:</small> ${ticker.high24h.toLocaleString()}</span>
+        <span class="stat-item"><small>L:</small> ${ticker.low24h.toLocaleString()}</span>
       </div>
     </div>
   {/if}
@@ -170,7 +202,7 @@
   <div class="timeframe-bar">
     {#each timeframes as tf}
       <button
-        class="tf-btn {activeTimeframe === tf ? 'active' : ''}"
+        class="tf-btn mono-nums {activeTimeframe === tf ? 'active' : ''}"
         onclick={() => onTimeframeChange(tf)}
       >
         {tf}
@@ -180,7 +212,7 @@
 
   <div class="divider"></div>
 
-  <!-- Layout & Multi-Chart Bar -->
+  <!-- Multi-Chart Layouts -->
   <div class="layout-bar">
     {#each layouts as l}
       <button
@@ -188,8 +220,8 @@
         title="Ganti tata letak {l.label}"
         onclick={() => onLayoutChange(l.id)}
       >
-        <LayoutGrid size={13} />
-        <span>{l.id}</span>
+        <LayoutGrid size={12} />
+        <span class="mono-nums">{l.id}</span>
       </button>
     {/each}
 
@@ -197,17 +229,17 @@
       <div class="sync-group">
         <button
           class="sync-toggle-btn {syncConfig.crosshair ? 'active' : ''}"
-          title="Sinkronisasi Kursor Crosshair antar Chart ({syncConfig.crosshair ? 'ON' : 'OFF'})"
+          title="Sinkronisasi Kursor Crosshair ({syncConfig.crosshair ? 'ON' : 'OFF'})"
           onclick={onToggleSyncCrosshair}
         >
-          <Crosshair size={13} />
+          <Crosshair size={12} />
         </button>
         <button
           class="sync-toggle-btn {syncConfig.drawings ? 'active' : ''}"
-          title="Sinkronisasi Gambar Analisis antar Chart ({syncConfig.drawings ? 'ON' : 'OFF'})"
+          title="Sinkronisasi Gambar Analisis ({syncConfig.drawings ? 'ON' : 'OFF'})"
           onclick={onToggleSyncDrawings}
         >
-          <Share2 size={13} />
+          <Share2 size={12} />
         </button>
       </div>
     {/if}
@@ -217,74 +249,88 @@
 
   <!-- Action Controls -->
   <div class="actions-section">
+    <!-- Replay Controller Toggle -->
+    <button
+      class="action-btn {isReplayActive ? 'active' : ''}"
+      title="Toggle Bar Replay Mode"
+      onclick={onToggleReplay}
+    >
+      <History size={13} />
+      <span>Replay</span>
+    </button>
+
     <!-- Toggle Drawing Tools -->
     <button
       class="action-btn {isDrawingToolbarVisible ? 'active' : ''}"
       title="Tampilkan / Sembunyikan Toolbar Alat Gambar"
       onclick={onToggleDrawingToolbar}
     >
-      <PenTool size={14} />
+      <PenTool size={13} />
       <span>Draw</span>
     </button>
 
+    <!-- Indicators Modal -->
     <button
       class="action-btn {activeIndicatorCount > 0 ? 'active' : ''}"
       title="Buka library indikator teknikal"
       onclick={onOpenIndicatorModal}
     >
-      <Layers size={14} />
-      <span>Indicators</span>
+      <Layers size={13} />
+      <span>Indikator</span>
       {#if activeIndicatorCount > 0}
         <span class="count-badge">{activeIndicatorCount}</span>
       {/if}
     </button>
 
-    <button
-      class="action-btn {isPineEditorOpen ? 'active' : ''}"
-      title="Toggle in-app Pine Script Editor"
-      onclick={onTogglePineEditor}
-    >
-      <Code size={14} />
-      <span>Pine Editor</span>
-    </button>
-
     <!-- Toggle Watchlist Panel -->
     <button
       class="action-btn {isWatchlistOpen ? 'active' : ''}"
-      title="Tampilkan / Sembunyikan Daftar Pantau Koin (Watchlist)"
+      title="Tampilkan / Sembunyikan Panel Kanan"
       onclick={onToggleWatchlist}
     >
-      <Flame size={14} />
-      <span>Watchlist</span>
+      <Flame size={13} />
+      <span>Panel</span>
     </button>
 
+    <!-- Provider Configuration -->
     <button
       class="action-btn"
       title="Pengaturan Data Provider"
       onclick={onOpenProviderModal}
     >
-      <SlidersHorizontal size={14} />
-      <span>Provider</span>
+      <SlidersHorizontal size={13} />
+      <span>Feed</span>
     </button>
 
+    <!-- Settings & Telemetry Modal -->
+    <button
+      class="action-btn"
+      title="Buka Pengaturan & Telemetri Sistem"
+      onclick={onOpenSettingsModal}
+    >
+      <Settings size={13} />
+    </button>
+
+    <!-- Fullscreen Toggle -->
     <button
       class="action-btn icon-only"
       title="Toggle Layar Penuh"
       onclick={toggleFullscreen}
     >
-      <Maximize2 size={15} />
+      <Maximize2 size={13} />
     </button>
   </div>
 </header>
 
 <style>
   .header {
-    height: 48px;
+    height: 40px;
+    background-color: var(--bg-surface);
     display: flex;
     align-items: center;
-    padding: 0 12px;
-    gap: 10px;
-    border-bottom: 1px solid var(--border-subtle);
+    padding: 0 10px;
+    gap: 8px;
+    border-bottom: 1px solid var(--border-hairline);
     z-index: 100;
   }
 
@@ -292,131 +338,185 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    flex-shrink: 0;
   }
 
   .brand-badge {
     display: flex;
     align-items: center;
-    gap: 6px;
-    color: var(--brand-cyan);
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    gap: 5px;
+    background-color: var(--bg-container);
+    border: 1px solid var(--border-hairline);
+    padding: 3px 7px;
+    border-radius: var(--radius-xs);
   }
 
-  :global(.brand-icon) {
-    color: var(--brand-cyan);
-    filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.6));
+  .brand-icon {
+    color: var(--brand-primary);
   }
 
   .brand-title {
-    font-size: 13px;
-    background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
-    background-clip: text;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--text-main);
   }
 
   .version-tag {
     font-size: 9px;
     font-weight: 700;
-    padding: 2px 5px;
-    background: rgba(0, 242, 254, 0.12);
-    color: var(--brand-cyan);
-    border-radius: 4px;
-    border: 1px solid rgba(0, 242, 254, 0.3);
+    background-color: rgba(0, 240, 144, 0.12);
+    color: var(--brand-primary);
+    padding: 2px 4px;
+    border-radius: var(--radius-xs);
+    border: 1px solid rgba(0, 240, 144, 0.25);
   }
 
   .divider {
     width: 1px;
-    height: 20px;
-    background: var(--border-subtle);
+    height: 18px;
+    background-color: var(--border-hairline);
+    flex-shrink: 0;
   }
 
-  .spacer {
-    flex: 1;
+  /* Mode Switcher */
+  .mode-switcher {
+    display: flex;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    padding: 1px;
+    gap: 1px;
+    flex-shrink: 0;
   }
 
-  /* Symbol styles */
-  .symbol-section {
-    position: relative;
+  .mode-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
-  }
-
-  .quick-symbols {
-    display: flex;
-    gap: 4px;
-  }
-
-  .symbol-chip {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
+    gap: 5px;
+    padding: 3px 8px;
+    border: none;
+    background: transparent;
     color: var(--text-muted);
     font-size: 11px;
-    font-weight: 600;
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
+    font-weight: 500;
+    border-radius: var(--radius-xs);
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
+  .mode-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .mode-btn.active {
+    color: var(--brand-primary);
+    background-color: var(--bg-surface);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Symbols */
+  .symbol-section {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .quick-symbols {
+    display: flex;
+    gap: 2px;
+  }
+
+  .symbol-chip {
+    padding: 3px 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
   .symbol-chip:hover {
-    background: var(--bg-hover);
+    background-color: var(--bg-hover);
     color: var(--text-main);
   }
 
   .symbol-chip.active {
-    background: var(--brand-blue);
-    border-color: var(--brand-cyan);
-    color: #fff;
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+    color: var(--brand-primary);
+    background-color: var(--bg-panel);
+    border-color: var(--border-hairline);
+    font-weight: 700;
   }
 
   .custom-symbol-btn {
     display: flex;
     align-items: center;
-    gap: 5px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-medium);
+    gap: 4px;
+    padding: 3px 7px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
     color: var(--text-main);
-    font-size: 12px;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
     cursor: pointer;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 600;
   }
 
   .custom-symbol-btn:hover {
-    border-color: var(--brand-cyan);
+    background-color: var(--bg-hover);
+  }
+
+  .search-icon {
+    color: var(--text-dim);
+  }
+
+  .dropdown-arrow {
+    font-size: 8px;
+    color: var(--text-dim);
   }
 
   .symbol-dropdown {
     position: absolute;
-    top: 38px;
+    top: calc(100% + 4px);
     left: 0;
-    padding: 8px;
-    border-radius: var(--radius-md);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+    padding: 4px;
     z-index: 200;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5);
   }
 
   .symbol-input {
-    background: var(--bg-darkest);
-    border: 1px solid var(--border-bright);
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
     color: var(--text-main);
-    padding: 6px 10px;
-    font-size: 12px;
-    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    border-radius: var(--radius-xs);
+    font-size: 11px;
+    width: 170px;
     outline: none;
-    width: 200px;
   }
 
-  /* Ticker stats */
+  .symbol-input:focus {
+    border-color: var(--border-focus);
+  }
+
+  /* Ticker Stats */
   .ticker-stats {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    flex-shrink: 0;
   }
 
   .price-box {
@@ -426,165 +526,180 @@
   }
 
   .price-value {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .price-value.bull {
+    color: var(--bull-color);
+  }
+
+  .price-value.bear {
+    color: var(--bear-color);
   }
 
   .change-badge {
     display: flex;
     align-items: center;
-    gap: 3px;
-    font-size: 11px;
+    gap: 2px;
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+    font-size: 10px;
     font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 4px;
   }
 
-  .bull { color: var(--bull-color); }
-  .bear { color: var(--bear-color); }
-  .bg-bull { background: rgba(14, 203, 129, 0.15); color: var(--bull-color); }
-  .bg-bear { background: rgba(246, 70, 93, 0.15); color: var(--bear-color); }
+  .change-badge.bg-bull {
+    background-color: rgba(0, 240, 144, 0.12);
+    color: var(--bull-color);
+  }
+
+  .change-badge.bg-bear {
+    background-color: rgba(255, 59, 105, 0.12);
+    color: var(--bear-color);
+  }
 
   .hl-stats {
     display: flex;
-    gap: 8px;
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-
-  .hl-stats small {
+    gap: 6px;
+    font-size: 10px;
     color: var(--text-dim);
   }
 
-  /* Timeframe bar */
+  .spacer {
+    flex: 1;
+  }
+
+  /* Timeframes */
   .timeframe-bar {
     display: flex;
-    gap: 2px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    padding: 1px;
+    gap: 1px;
+    flex-shrink: 0;
   }
 
   .tf-btn {
-    background: transparent;
     border: none;
+    background: transparent;
     color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 4px 7px;
-    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 3px 6px;
+    border-radius: var(--radius-xs);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.12s ease;
   }
 
   .tf-btn:hover {
-    background: var(--bg-hover);
     color: var(--text-main);
+    background-color: var(--bg-hover);
   }
 
   .tf-btn.active {
-    background: var(--bg-active);
-    color: var(--brand-cyan);
+    color: var(--brand-primary);
+    background-color: var(--bg-panel);
     font-weight: 700;
   }
 
-  /* Layout buttons */
+  /* Layouts */
   .layout-bar {
     display: flex;
-    gap: 3px;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
   }
 
   .layout-btn {
     display: flex;
     align-items: center;
     gap: 3px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
+    padding: 3px 5px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
     color: var(--text-muted);
-    font-size: 11px;
-    padding: 3px 6px;
-    border-radius: 4px;
+    font-size: 10px;
     cursor: pointer;
   }
 
   .layout-btn:hover {
-    background: var(--bg-hover);
+    background-color: var(--bg-hover);
     color: var(--text-main);
   }
 
   .layout-btn.active {
-    background: var(--bg-active);
-    border-color: var(--brand-cyan);
-    color: var(--brand-cyan);
+    color: var(--brand-primary);
+    border-color: var(--brand-primary);
+    background-color: rgba(0, 240, 144, 0.08);
   }
 
   .sync-group {
     display: flex;
     gap: 2px;
-    margin-left: 2px;
-    padding-left: 4px;
-    border-left: 1px solid var(--border-subtle);
   }
 
   .sync-toggle-btn {
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
+    padding: 3px 5px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
     color: var(--text-dim);
     cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .sync-toggle-btn:hover {
-    color: var(--text-main);
-    background: var(--bg-hover);
   }
 
   .sync-toggle-btn.active {
     color: var(--brand-cyan);
-    border-color: rgba(0, 242, 254, 0.4);
-    background: rgba(0, 242, 254, 0.12);
+    border-color: var(--brand-cyan);
+    background-color: rgba(56, 189, 248, 0.1);
   }
 
   /* Actions */
   .actions-section {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    flex-shrink: 0;
   }
 
   .action-btn {
     display: flex;
     align-items: center;
-    gap: 5px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-medium);
-    color: var(--text-main);
+    gap: 4px;
+    padding: 4px 7px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
     font-size: 11px;
-    padding: 5px 8px;
-    border-radius: var(--radius-sm);
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.15s ease;
   }
 
   .action-btn:hover {
-    background: var(--bg-hover);
-    border-color: var(--brand-cyan);
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  .action-btn.active {
+    color: var(--brand-primary);
+    border-color: var(--brand-primary);
+    background-color: rgba(0, 240, 144, 0.08);
   }
 
   .action-btn.icon-only {
-    padding: 5px 6px;
+    padding: 5px;
   }
 
   .count-badge {
-    background: var(--brand-cyan);
+    background-color: var(--brand-primary);
     color: var(--bg-darkest);
     font-size: 9px;
-    font-weight: 800;
-    padding: 1px 4px;
-    border-radius: 8px;
-    margin-left: 2px;
+    font-weight: 700;
+    padding: 0 4px;
+    border-radius: var(--radius-xs);
   }
 </style>

@@ -294,17 +294,19 @@
   .drawing-toolbar {
     position: absolute;
     left: 8px;
-    top: 38px;
-    z-index: 35;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 30;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 6px 4px;
-    border-radius: var(--radius-md);
-    gap: 4px;
-    width: 38px;
-    border: 1px solid var(--border-subtle);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    padding: 6px 3px;
+    border-radius: var(--radius-sm);
+    gap: 3px;
+    width: 36px;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   }
 
   .tool-item {
@@ -315,17 +317,17 @@
   }
 
   .tool-btn {
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     color: var(--text-muted);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.12s ease;
     position: relative;
   }
 
@@ -335,22 +337,22 @@
   }
 
   .tool-btn.active {
-    background: rgba(0, 242, 254, 0.15);
-    color: var(--brand-cyan);
-    border-color: rgba(0, 242, 254, 0.4);
-    box-shadow: 0 0 10px rgba(0, 242, 254, 0.25);
+    background: rgba(0, 240, 144, 0.15);
+    color: var(--brand-primary);
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 8px var(--bull-glow);
   }
 
   .tool-btn.snap-weak {
     color: var(--bull-color);
-    border-color: rgba(14, 203, 129, 0.4);
-    background: rgba(14, 203, 129, 0.12);
+    border-color: rgba(0, 240, 144, 0.4);
+    background: rgba(0, 240, 144, 0.12);
   }
 
   .tool-btn.snap-strong {
     color: var(--brand-purple);
-    border-color: rgba(139, 92, 246, 0.4);
-    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(129, 140, 248, 0.4);
+    background: rgba(129, 140, 248, 0.15);
   }
 
   .snap-badge {
@@ -372,19 +374,19 @@
   }
 
   .tool-divider {
-    width: 20px;
+    width: 18px;
     height: 1px;
-    background: var(--border-subtle);
-    margin: 3px 0;
+    background: var(--border-hairline);
+    margin: 2px 0;
   }
 
   .action-btn:hover {
-    color: var(--brand-cyan);
+    color: var(--brand-primary);
   }
 
   .delete-btn:hover {
     color: var(--bear-color);
-    background: rgba(246, 70, 93, 0.15);
+    background: rgba(255, 59, 105, 0.15);
   }
 
   .text-warn {
@@ -397,25 +399,26 @@
   }
 
   .glow-cyan {
-    border-color: rgba(0, 242, 254, 0.4);
-    background: rgba(0, 242, 254, 0.12);
+    border-color: rgba(56, 189, 248, 0.4);
+    background: rgba(56, 189, 248, 0.12);
   }
 
   /* Flyout Menu Styling */
   .flyout-menu {
     position: absolute;
-    left: 42px;
+    left: 40px;
     top: 0;
-    min-width: 190px;
-    padding: 6px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-medium);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    min-width: 180px;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
     z-index: 60;
-    animation: fadeIn 0.15s ease-out;
+    animation: fadeIn 0.12s ease-out;
   }
 
   .flyout-header {
@@ -423,20 +426,20 @@
     font-weight: 700;
     text-transform: uppercase;
     color: var(--text-dim);
-    padding: 4px 8px;
+    padding: 3px 6px;
     letter-spacing: 0.5px;
   }
 
   .flyout-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 6px 10px;
+    gap: 8px;
+    padding: 5px 8px;
     background: transparent;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 11px;
     text-align: left;
     cursor: pointer;
     transition: all 0.12s ease;
@@ -448,8 +451,8 @@
   }
 
   .flyout-item.active {
-    background: rgba(0, 242, 254, 0.15);
-    color: var(--brand-cyan);
+    background: rgba(0, 240, 144, 0.12);
+    color: var(--brand-primary);
     font-weight: 600;
   }
 

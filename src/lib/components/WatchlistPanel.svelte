@@ -8,27 +8,41 @@
     TrendingDown,
     ChevronRight,
     ChevronLeft,
-    ListFilter,
-    Flame
+    Flame,
+    Bell,
+    Layers,
+    Eye,
+    EyeOff,
+    Trash2,
+    CheckCircle2
   } from '@lucide/svelte';
   import { fetchWatchlist, persistWatchlist } from '../services/drawingStorage';
   import { fetchWatchlistTickers } from '../services/marketProvider';
-  import type { WatchlistItem } from '../types/market';
+  import type { PriceAlert, ObjectTreeItem } from '../types/market';
 
   interface Props {
     isOpen: boolean;
     activeSymbol: string;
+    activeIndicators?: { id: string; title: string; visible: boolean }[];
     onSelectSymbol: (symbol: string) => void;
     onToggleCollapse: () => void;
+    onToggleIndicatorVisibility?: (id: string) => void;
+    onRemoveIndicator?: (id: string) => void;
   }
 
   let {
     isOpen,
     activeSymbol,
+    activeIndicators = [],
     onSelectSymbol,
     onToggleCollapse,
+    onToggleIndicatorVisibility,
+    onRemoveIndicator,
   }: Props = $props();
 
+  let activeTab = $state<'watchlist' | 'alerts' | 'objects'>('watchlist');
+
+  // Watchlist state
   let symbols = $state<string[]>([
     'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
     'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
@@ -38,6 +52,43 @@
   let newSymbolInput = $state('');
   let showAddInput = $state(false);
   let pollInterval: any = null;
+
+  // Alerts state
+  let alerts = $state<PriceAlert[]>([
+    {
+      id: 'a1',
+      symbol: 'BTCUSDT',
+      targetPrice: 68900,
+      condition: 'above',
+      label: 'Resistance Breakout (H)',
+      active: true,
+      triggered: false,
+      createdAt: Date.now() - 3600000,
+    },
+    {
+      id: 'a2',
+      symbol: 'BTCUSDT',
+      targetPrice: 67800,
+      condition: 'below',
+      label: 'EMA 50 Invalidation',
+      active: false,
+      triggered: true,
+      createdAt: Date.now() - 7200000,
+    },
+    {
+      id: 'a3',
+      symbol: 'ETHUSDT',
+      targetPrice: 3600,
+      condition: 'above',
+      label: 'Target Take Profit',
+      active: true,
+      triggered: false,
+      createdAt: Date.now() - 1800000,
+    }
+  ]);
+  let newAlertPrice = $state('');
+  let newAlertLabel = $state('');
+  let showAddAlert = $state(false);
 
   async function loadInitialWatchlist() {
     try {
@@ -91,6 +142,32 @@
     await persistWatchlist(symbols);
   }
 
+  function handleCreateAlert(e: Event) {
+    e.preventDefault();
+    const p = parseFloat(newAlertPrice);
+    if (!p) return;
+
+    const newA: PriceAlert = {
+      id: 'a_' + Date.now(),
+      symbol: activeSymbol,
+      targetPrice: p,
+      condition: p > (tickerMap[activeSymbol]?.price || 0) ? 'above' : 'below',
+      label: newAlertLabel.trim() || `Target ${activeSymbol}`,
+      active: true,
+      triggered: false,
+      createdAt: Date.now(),
+    };
+
+    alerts = [newA, ...alerts];
+    newAlertPrice = '';
+    newAlertLabel = '';
+    showAddAlert = false;
+  }
+
+  function handleRemoveAlert(id: string) {
+    alerts = alerts.filter(a => a.id !== id);
+  }
+
   const filteredSymbols = $derived(
     symbols.filter((s) => s.toLowerCase().includes(searchQuery.toLowerCase()))
   );
@@ -106,128 +183,269 @@
 <!-- Collapsed Tab Toggle Button -->
 {#if !isOpen}
   <button
-    class="collapsed-toggle-btn glass-panel"
-    title="Buka Watchlist Panel"
+    class="collapsed-toggle-btn obsidian-panel"
+    title="Buka Panel Kanan"
     onclick={onToggleCollapse}
   >
-    <ChevronLeft size={16} />
-    <span class="vertical-label">WATCHLIST</span>
+    <ChevronLeft size={14} />
+    <span class="vertical-label">PANEL</span>
   </button>
 {/if}
 
-<!-- Watchlist Drawer Panel -->
+<!-- Watchlist & Telemetry Right Drawer Panel -->
 {#if isOpen}
-  <aside class="watchlist-panel glass-panel">
-    <!-- Panel Header -->
+  <aside class="right-panel obsidian-panel">
+    <!-- Panel Header: Tab Switching -->
     <div class="panel-header">
-      <div class="header-title">
-        <Flame size={16} class="title-icon" />
-        <span>WATCHLIST</span>
-        <span class="badge-count mono-nums">{symbols.length}</span>
-      </div>
-
-      <div class="header-actions">
+      <nav class="panel-tabs">
         <button
-          class="action-icon-btn {showAddInput ? 'active' : ''}"
-          title="Tambah Pasangan Koin"
+          class="tab-btn {activeTab === 'watchlist' ? 'active' : ''}"
+          onclick={() => (activeTab = 'watchlist')}
+        >
+          <Flame size={13} />
+          <span>Watchlist</span>
+          <span class="count-pill mono-nums">{symbols.length}</span>
+        </button>
+
+        <button
+          class="tab-btn {activeTab === 'alerts' ? 'active' : ''}"
+          onclick={() => (activeTab = 'alerts')}
+        >
+          <Bell size={13} />
+          <span>Alerts</span>
+          <span class="count-pill mono-nums">{alerts.length}</span>
+        </button>
+
+        <button
+          class="tab-btn {activeTab === 'objects' ? 'active' : ''}"
+          onclick={() => (activeTab = 'objects')}
+        >
+          <Layers size={13} />
+          <span>Layers</span>
+          {#if activeIndicators.length > 0}
+            <span class="count-pill mono-nums">{activeIndicators.length}</span>
+          {/if}
+        </button>
+      </nav>
+
+      <button
+        class="collapse-action-btn"
+        title="Tutup Panel"
+        onclick={onToggleCollapse}
+      >
+        <ChevronRight size={15} />
+      </button>
+    </div>
+
+    <!-- TAB 1: WATCHLIST -->
+    {#if activeTab === 'watchlist'}
+      <!-- Watchlist Toolbar: Add & Search -->
+      <div class="sub-toolbar">
+        <div class="search-box">
+          <span class="search-icon"><Search size={12} /></span>
+          <input
+            type="text"
+            placeholder="Filter pair..."
+            bind:value={searchQuery}
+            class="search-input"
+          />
+          {#if searchQuery}
+            <button type="button" class="clear-search-btn" onclick={() => (searchQuery = '')}>
+              <X size={11} />
+            </button>
+          {/if}
+        </div>
+
+        <button
+          class="add-symbol-btn {showAddInput ? 'active' : ''}"
+          title="Tambah Simbol"
           onclick={() => (showAddInput = !showAddInput)}
         >
-          <Plus size={15} />
-        </button>
-        <button
-          class="action-icon-btn"
-          title="Tutup Watchlist"
-          onclick={onToggleCollapse}
-        >
-          <ChevronRight size={16} />
+          <Plus size={14} />
         </button>
       </div>
-    </div>
 
-    <!-- Quick Add Input Form -->
-    {#if showAddInput}
-      <form class="add-form" onsubmit={handleAddSymbol}>
-        <input
-          type="text"
-          placeholder="E.g. NEAR atau PEPEUSDT..."
-          bind:value={newSymbolInput}
-          class="add-input"
-        />
-        <button type="submit" class="add-btn">Add</button>
-      </form>
-    {/if}
+      {#if showAddInput}
+        <form class="add-form" onsubmit={handleAddSymbol}>
+          <input
+            type="text"
+            placeholder="Simbol (e.g. SUI atau PEPE)..."
+            bind:value={newSymbolInput}
+            class="add-input mono-nums"
+          />
+          <button type="submit" class="submit-add-btn">Add</button>
+        </form>
+      {/if}
 
-    <!-- Search Input Filter -->
-    <div class="search-box">
-      <Search size={13} class="search-icon-svg" />
-      <input
-        type="text"
-        placeholder="Cari di watchlist..."
-        bind:value={searchQuery}
-        class="search-input"
-      />
-      {#if searchQuery}
-        <button type="button" class="clear-search-btn" onclick={() => (searchQuery = '')}>
-          <X size={12} />
+      <!-- Column Headers -->
+      <div class="table-head mono-nums">
+        <span class="col-symbol">Symbol</span>
+        <span class="col-price">Last Price</span>
+        <span class="col-change">24h %</span>
+      </div>
+
+      <!-- Watchlist Items List -->
+      <div class="items-list">
+        {#each filteredSymbols as sym (sym)}
+          {@const ticker = tickerMap[sym]}
+          {@const isBull = (ticker?.change24h ?? 0) >= 0}
+          <div class="watchlist-row {activeSymbol === sym ? 'active-row' : ''}">
+            <button
+              type="button"
+              class="row-select-btn"
+              onclick={() => onSelectSymbol(sym)}
+            >
+              <div class="row-symbol">
+                <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
+                <span class="symbol-name">{sym.replace('USDT', '')}</span>
+                <span class="quote-asset">.P</span>
+              </div>
+
+              <div class="row-price mono-nums">
+                {formatPrice(ticker?.price)}
+              </div>
+
+              <div class="row-change mono-nums">
+                {#if ticker?.change24h !== undefined}
+                  <span class="change-pill {isBull ? 'pill-bull' : 'pill-bear'}">
+                    {#if isBull}+{/if}{ticker.change24h.toFixed(2)}%
+                  </span>
+                {:else}
+                  <span class="change-placeholder">--</span>
+                {/if}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              class="delete-item-btn"
+              title="Hapus dari watchlist"
+              onclick={(e) => handleRemoveSymbol(e, sym)}
+            >
+              <X size={11} />
+            </button>
+          </div>
+        {/each}
+
+        {#if filteredSymbols.length === 0}
+          <div class="empty-state">
+            <span>Tidak ada koin yang sesuai pencarian.</span>
+          </div>
+        {/if}
+      </div>
+
+    <!-- TAB 2: PRICE ALERTS -->
+    {:else if activeTab === 'alerts'}
+      <div class="sub-toolbar">
+        <span class="sub-title">Price Alerts</span>
+        <button
+          class="add-symbol-btn {showAddAlert ? 'active' : ''}"
+          title="Buat Alert Baru"
+          onclick={() => (showAddAlert = !showAddAlert)}
+        >
+          <Plus size={14} /> Alert
         </button>
+      </div>
+
+      {#if showAddAlert}
+        <form class="alert-form" onsubmit={handleCreateAlert}>
+          <div class="alert-input-group">
+            <input
+              type="number"
+              step="any"
+              placeholder="Target harga (e.g. 69500)..."
+              bind:value={newAlertPrice}
+              class="add-input mono-nums"
+              required
+            />
+            <input
+              type="text"
+              placeholder="Catatan / Label..."
+              bind:value={newAlertLabel}
+              class="add-input"
+            />
+          </div>
+          <button type="submit" class="submit-add-btn">Set Alert</button>
+        </form>
       {/if}
-    </div>
 
-    <!-- Column Headers -->
-    <div class="table-head">
-      <span class="col-symbol">Simbol</span>
-      <span class="col-price">Harga</span>
-      <span class="col-change">24h %</span>
-    </div>
+      <div class="items-list alerts-list">
+        {#each alerts as a (a.id)}
+          <div class="alert-card {a.triggered ? 'triggered' : ''}">
+            <div class="alert-main">
+              <div class="alert-top">
+                <span class="alert-sym mono-nums">{a.symbol} {a.condition === 'above' ? '≥' : '≤'} ${a.targetPrice.toLocaleString()}</span>
+                {#if a.triggered}
+                  <span class="badge-alert triggered">TRIGGERED</span>
+                {:else}
+                  <span class="badge-alert active">ACTIVE</span>
+                {/if}
+              </div>
+              <span class="alert-label">{a.label}</span>
+            </div>
+            <button
+              class="delete-item-btn"
+              title="Hapus Alert"
+              onclick={() => handleRemoveAlert(a.id)}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        {/each}
 
-    <!-- Watchlist Items List -->
-    <div class="items-list">
-      {#each filteredSymbols as sym (sym)}
-        {@const ticker = tickerMap[sym]}
-        {@const isBull = (ticker?.change24h ?? 0) >= 0}
-        <div class="watchlist-row {activeSymbol === sym ? 'active-row' : ''}">
-          <button
-            type="button"
-            class="row-select-btn"
-            onclick={() => onSelectSymbol(sym)}
-          >
-            <div class="row-symbol">
-              <span class="symbol-name">{sym.replace('USDT', '')}</span>
-              <span class="quote-asset">/USDT</span>
+        {#if alerts.length === 0}
+          <div class="empty-state">
+            <span>Belum ada price alert yang diset.</span>
+          </div>
+        {/if}
+      </div>
+
+    <!-- TAB 3: OBJECT TREE & INDICATOR LAYERS -->
+    {:else if activeTab === 'objects'}
+      <div class="sub-toolbar">
+        <span class="sub-title">Layer Objek & Indikator</span>
+        <span class="layer-count mono-nums">{activeIndicators.length} Aktif</span>
+      </div>
+
+      <div class="items-list objects-list">
+        {#each activeIndicators as ind (ind.id)}
+          <div class="layer-item">
+            <div class="layer-info">
+              <span class="layer-icon"><Layers size={13} /></span>
+              <span class="layer-name">{ind.title}</span>
             </div>
 
-            <div class="row-price mono-nums">
-              {formatPrice(ticker?.price)}
+            <div class="layer-actions">
+              <button
+                class="icon-action-btn {ind.visible ? 'visible' : 'hidden'}"
+                title={ind.visible ? 'Sembunyikan' : 'Tampilkan'}
+                onclick={() => onToggleIndicatorVisibility?.(ind.id)}
+              >
+                {#if ind.visible}
+                  <Eye size={13} />
+                {:else}
+                  <EyeOff size={13} />
+                {/if}
+              </button>
+
+              <button
+                class="icon-action-btn delete"
+                title="Hapus Indikator"
+                onclick={() => onRemoveIndicator?.(ind.id)}
+              >
+                <Trash2 size={13} />
+              </button>
             </div>
+          </div>
+        {/each}
 
-            <div class="row-change {isBull ? 'bull' : 'bear'} mono-nums">
-              {#if ticker?.change24h !== undefined}
-                <span class="change-badge">
-                  {#if isBull}+{/if}{ticker.change24h.toFixed(2)}%
-                </span>
-              {:else}
-                <span class="change-placeholder">--</span>
-              {/if}
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="delete-item-btn"
-            title="Hapus dari watchlist"
-            onclick={(e) => handleRemoveSymbol(e, sym)}
-          >
-            <X size={12} />
-          </button>
-        </div>
-      {/each}
-
-      {#if filteredSymbols.length === 0}
-        <div class="empty-state">
-          <span>Tidak ada koin yang sesuai pencarian.</span>
-        </div>
-      {/if}
-    </div>
+        {#if activeIndicators.length === 0}
+          <div class="empty-state">
+            <span>Tidak ada indikator kustom aktif di chart.</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </aside>
 {/if}
 
@@ -238,245 +456,314 @@
     top: 50%;
     transform: translateY(-50%);
     z-index: 35;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    border-right: none;
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    padding: 10px 4px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    padding: 10px 4px;
-    border-radius: var(--radius-md) 0 0 var(--radius-md);
     cursor: pointer;
     color: var(--text-muted);
-    border: 1px solid var(--border-subtle);
-    border-right: none;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
   }
 
   .collapsed-toggle-btn:hover {
-    color: var(--brand-cyan);
-    background: var(--bg-hover);
+    color: var(--brand-primary);
+    background-color: var(--bg-hover);
   }
 
   .vertical-label {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    font-size: 10px;
+    writing-mode: vertical-lr;
+    transform: rotate(180deg);
+    font-size: 9px;
     font-weight: 700;
-    letter-spacing: 1.5px;
-    color: var(--text-dim);
+    letter-spacing: 0.1em;
   }
 
-  .watchlist-panel {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 275px;
-    z-index: 40;
+  .right-panel {
+    width: 300px;
+    height: 100%;
+    background-color: var(--bg-surface);
+    border-left: 1px solid var(--border-hairline);
     display: flex;
     flex-direction: column;
-    border-left: 1px solid var(--border-subtle);
-    box-shadow: -6px 0 24px rgba(0, 0, 0, 0.4);
-    animation: slideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 30;
+    flex-shrink: 0;
+    overflow: hidden;
   }
 
+  /* Header & Tabs */
   .panel-header {
-    height: 40px;
+    height: 38px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 12px;
-    border-bottom: 1px solid var(--border-subtle);
+    padding: 0 6px;
+    background-color: var(--bg-panel);
+    border-bottom: 1px solid var(--border-hairline);
+    flex-shrink: 0;
   }
 
-  .header-title {
+  .panel-tabs {
+    display: flex;
+    gap: 2px;
+  }
+
+  .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 7px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .tab-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .tab-btn.active {
+    color: var(--brand-primary);
+    background-color: var(--bg-base);
+    font-weight: 600;
+  }
+
+  .count-pill {
+    font-size: 9px;
+    background-color: var(--bg-container);
+    color: var(--text-dim);
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+  }
+
+  .tab-btn.active .count-pill {
+    background-color: rgba(0, 240, 144, 0.15);
+    color: var(--brand-primary);
+  }
+
+  .collapse-action-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 4px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .collapse-action-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  /* Sub Toolbar */
+  .sub-toolbar {
+    padding: 6px 8px;
+    background-color: var(--bg-base);
+    border-bottom: 1px solid var(--border-hairline);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .sub-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .layer-count {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .search-box {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.8px;
+    background-color: var(--bg-container);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    padding: 3px 6px;
+    flex: 1;
+  }
+
+  .search-icon {
+    color: var(--text-dim);
+  }
+
+  .search-input {
+    background: none;
+    border: none;
     color: var(--text-main);
+    font-size: 11px;
+    width: 100%;
+    outline: none;
   }
 
-  :global(.title-icon) {
-    color: #f59e0b;
+  .clear-search-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0;
   }
 
-  .badge-count {
-    background: rgba(255, 255, 255, 0.08);
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 9px;
-    color: var(--text-muted);
+  .add-symbol-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background-color: var(--bg-container);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--brand-primary);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 6px;
+    cursor: pointer;
   }
 
-  .header-actions {
+  .add-symbol-btn:hover,
+  .add-symbol-btn.active {
+    background-color: rgba(0, 240, 144, 0.12);
+    border-color: var(--brand-primary);
+  }
+
+  .add-form, .alert-form {
+    padding: 6px 8px;
+    background-color: var(--bg-panel);
+    border-bottom: 1px solid var(--border-hairline);
+    display: flex;
+    gap: 6px;
+  }
+
+  .alert-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+  }
+
+  .add-input {
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 4px 6px;
+    outline: none;
+  }
+
+  .add-input:focus {
+    border-color: var(--border-focus);
+  }
+
+  .submit-add-btn {
+    background-color: var(--brand-primary);
+    color: var(--bg-darkest);
+    border: none;
+    border-radius: var(--radius-xs);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 0 8px;
+    cursor: pointer;
+  }
+
+  /* Table Head */
+  .table-head {
+    display: grid;
+    grid-template-columns: 85px 1fr 65px;
+    padding: 4px 8px;
+    background-color: var(--bg-container);
+    border-bottom: 1px solid var(--border-hairline);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .col-price {
+    text-align: right;
+    padding-right: 8px;
+  }
+
+  .col-change {
+    text-align: right;
+  }
+
+  /* Items List */
+  .items-list {
+    flex: 1;
+    overflow-y: auto;
+    background-color: var(--bg-surface);
+  }
+
+  .watchlist-row {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid rgba(30, 41, 59, 0.4);
+    position: relative;
+  }
+
+  .watchlist-row:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .watchlist-row.active-row {
+    background-color: rgba(59, 130, 246, 0.08);
+    border-left: 2px solid var(--brand-blue);
+  }
+
+  .row-select-btn {
+    display: grid;
+    grid-template-columns: 85px 1fr 65px;
+    align-items: center;
+    padding: 5px 8px;
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .row-symbol {
     display: flex;
     align-items: center;
     gap: 4px;
   }
 
-  .action-icon-btn {
-    width: 26px;
-    height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.15s ease;
+  .status-pip {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
   }
 
-  .action-icon-btn:hover,
-  .action-icon-btn.active {
-    background: var(--bg-hover);
-    color: var(--brand-cyan);
+  .pip-bull {
+    background-color: var(--bull-color);
   }
 
-  .add-form {
-    display: flex;
-    padding: 8px 10px;
-    gap: 6px;
-    background: rgba(0, 0, 0, 0.25);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .add-input {
-    flex: 1;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-sm);
-    padding: 4px 8px;
-    color: var(--text-main);
-    font-size: 11px;
-    outline: none;
-  }
-
-  .add-input:focus {
-    border-color: var(--brand-cyan);
-  }
-
-  .add-btn {
-    background: var(--brand-cyan);
-    color: #000;
-    border: none;
-    border-radius: var(--radius-sm);
-    padding: 0 10px;
-    font-size: 10px;
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .search-box {
-    position: relative;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border-subtle);
-    display: flex;
-    align-items: center;
-  }
-
-  :global(.search-icon-svg) {
-    position: absolute;
-    left: 18px;
-    color: var(--text-dim);
-  }
-
-  .search-input {
-    width: 100%;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    padding: 4px 24px 4px 26px;
-    color: var(--text-main);
-    font-size: 11px;
-    outline: none;
-  }
-
-  .search-input:focus {
-    border-color: var(--border-bright);
-  }
-
-  .clear-search-btn {
-    position: absolute;
-    right: 18px;
-    background: transparent;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-  }
-
-  .table-head {
-    display: flex;
-    justify-content: space-between;
-    padding: 6px 12px;
-    font-size: 10px;
-    color: var(--text-dim);
-    font-weight: 600;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .col-symbol {
-    flex: 1.2;
-  }
-  .col-price {
-    flex: 1.1;
-    text-align: right;
-  }
-  .col-change {
-    flex: 1;
-    text-align: right;
-  }
-
-  .items-list {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .watchlist-row {
-    position: relative;
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
-    transition: background 0.12s ease;
-  }
-
-  .watchlist-row:hover {
-    background: var(--bg-hover);
-  }
-
-  .watchlist-row.active-row {
-    background: rgba(0, 242, 254, 0.08);
-    border-left: 3px solid var(--brand-cyan);
-  }
-
-  .row-select-btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    padding: 8px 12px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-    font-family: inherit;
-    color: inherit;
-  }
-
-  .row-symbol {
-    flex: 1.2;
-    display: flex;
-    align-items: baseline;
-    gap: 2px;
+  .pip-bear {
+    background-color: var(--bear-color);
   }
 
   .symbol-name {
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 11px;
+    font-weight: 600;
     color: var(--text-main);
   }
 
@@ -486,75 +773,178 @@
   }
 
   .row-price {
-    flex: 1.1;
-    text-align: right;
     font-size: 11px;
-    font-weight: 600;
     color: var(--text-main);
+    text-align: right;
+    padding-right: 8px;
   }
 
   .row-change {
-    flex: 1;
     text-align: right;
-    font-size: 11px;
+  }
+
+  .change-pill {
+    display: inline-block;
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+    font-size: 10px;
     font-weight: 600;
   }
 
-  .row-change.bull {
+  .pill-bull {
     color: var(--bull-color);
+    background-color: rgba(0, 240, 144, 0.1);
   }
 
-  .row-change.bear {
+  .pill-bear {
     color: var(--bear-color);
-  }
-
-  .change-badge {
-    padding: 2px 4px;
-    border-radius: 3px;
-  }
-
-  .row-change.bull .change-badge {
-    background: var(--bull-glow);
-  }
-
-  .row-change.bear .change-badge {
-    background: var(--bear-glow);
+    background-color: rgba(255, 59, 105, 0.1);
   }
 
   .delete-item-btn {
-    position: absolute;
-    right: 4px;
     opacity: 0;
-    background: rgba(246, 70, 93, 0.2);
+    position: absolute;
+    right: 2px;
+    background: none;
     border: none;
-    border-radius: 3px;
-    color: var(--bear-color);
-    width: 18px;
-    height: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    color: var(--text-dim);
     cursor: pointer;
-    transition: all 0.15s ease;
+    padding: 4px;
+    transition: opacity 0.15s ease;
   }
 
   .watchlist-row:hover .delete-item-btn {
     opacity: 1;
   }
 
+  .delete-item-btn:hover {
+    color: var(--bear-color);
+  }
+
+  /* Alerts List */
+  .alerts-list {
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .alert-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+  }
+
+  .alert-card.triggered {
+    border-color: rgba(255, 59, 105, 0.4);
+    background-color: rgba(255, 59, 105, 0.05);
+  }
+
+  .alert-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .alert-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .alert-sym {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .badge-alert {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 0 4px;
+    border-radius: var(--radius-xs);
+  }
+
+  .badge-alert.active {
+    background-color: rgba(0, 240, 144, 0.15);
+    color: var(--brand-primary);
+  }
+
+  .badge-alert.triggered {
+    background-color: rgba(255, 59, 105, 0.15);
+    color: var(--bear-color);
+  }
+
+  .alert-label {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* Layer Objects */
+  .objects-list {
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .layer-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 8px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+  }
+
+  .layer-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .layer-icon {
+    color: var(--brand-primary);
+  }
+
+  .layer-name {
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 500;
+  }
+
+  .layer-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .icon-action-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 3px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+  }
+
+  .icon-action-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .icon-action-btn.delete:hover {
+    color: var(--bear-color);
+  }
+
   .empty-state {
     padding: 24px 12px;
     text-align: center;
-    color: var(--text-dim);
     font-size: 11px;
-  }
-
-  @keyframes slideIn {
-    from {
-      transform: translateX(100%);
-    }
-    to {
-      transform: translateX(0);
-    }
+    color: var(--text-dim);
   }
 </style>

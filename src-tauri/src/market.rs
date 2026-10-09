@@ -24,10 +24,33 @@ impl MarketService {
         interval: &str,
         limit: u32,
     ) -> Result<Vec<Candle>, String> {
-        let clean_symbol = symbol.replace('/', "").replace('-', "").to_uppercase();
+        let clean_symbol = symbol
+            .split(':')
+            .last()
+            .unwrap_or(symbol)
+            .replace('/', "")
+            .replace('-', "")
+            .to_uppercase();
+
+        let lower_interval = interval.to_lowercase();
+        let clean_interval: &str = match lower_interval.as_str() {
+            "1" => "1m",
+            "3" => "3m",
+            "5" => "5m",
+            "15" => "15m",
+            "30" => "30m",
+            "60" => "1h",
+            "120" => "2h",
+            "240" => "4h",
+            "d" => "1d",
+            "w" => "1w",
+            "m" => "1M",
+            _ => interval,
+        };
+
         let url = format!(
             "https://api.binance.com/api/v3/klines?symbol={}&interval={}&limit={}",
-            clean_symbol, interval, limit
+            clean_symbol, clean_interval, limit
         );
 
         let res = self

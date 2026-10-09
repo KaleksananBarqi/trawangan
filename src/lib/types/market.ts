@@ -84,4 +84,45 @@ export interface MultiChartSyncConfig {
   drawings: boolean;
 }
 
+export type WorkspaceMode = 'terminal' | 'pine';
+
+export interface PriceAlert {
+  id: string;
+  symbol: string;
+  targetPrice: number;
+  condition: 'above' | 'below';
+  label: string;
+  active: boolean;
+  triggered: boolean;
+  createdAt: number;
+}
+
+export interface ObjectTreeItem {
+  id: string;
+  type: 'indicator' | 'drawing';
+  label: string;
+  visible: boolean;
+  locked?: boolean;
+}
+
+export interface AppSettings {
+  timezone: string;
+  soundEnabled: boolean;
+  showWatermark: boolean;
+  showGrid: boolean;
+  showReplayBar: boolean;
+  theme: 'obsidian';
+}
+
+export interface StrategyPerformanceSummary {
+  netProfit: number;
+  netProfitPercent: number;
+  winRate: number;
+  totalTrades: number;
+  profitFactor: number;
+  maxDrawdown: number;
+  maxDrawdownPercent: number;
+}
+
+
 

@@ -1,37 +1,53 @@
-/* Modern Fintech Glow Theme untuk Trawangan */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+/* Obsidian Precision Terminal Theme untuk Trawangan */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg-darkest: #07090e;
-  --bg-base: #0b0f19;
-  --bg-surface: #111726;
-  --bg-panel: #161e31;
-  --bg-hover: #1f2a44;
-  --bg-active: #283759;
+  /* Canvas Base & Stacking Tiers (Neutral Obsidian) */
+  --bg-darkest: #0B0E14;        /* Deep Obsidian Canvas Foundation */
+  --bg-base: #10131A;           /* Surface Container Lowest */
+  --bg-surface: #121721;        /* Primary Working Panel / Chart Surface */
+  --bg-container: #191C22;      /* Surface Container Low */
+  --bg-panel: #1D2026;          /* Structural Cards & Menus */
+  --bg-elevated: #18202F;       /* Hover / Floating Action Strips */
+  --bg-hover: #222938;          /* Interactive Item Hover */
+  --bg-active: #272A31;         /* Selected Tab / Depressed Element */
   
-  --border-subtle: #1c263c;
-  --border-medium: #2a3857;
-  --border-bright: #3d507a;
+  /* Hairline Borders (1px Precision Division) */
+  --border-hairline: #1E293B;   /* 1px Structural Divider */
+  --border-subtle: #1E293B;     /* Default Pane Separation */
+  --border-medium: #2A3857;     /* Secondary Outlines */
+  --border-bright: #334155;     /* Hovered Dividers / Drag Handles */
+  --border-focus: #3B82F6;      /* Active Element Glow / Focus */
   
-  --text-main: #f1f5f9;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
+  /* Typography Text Colors */
+  --text-main: #F1F5F9;         /* High-contrast Slate White */
+  --text-muted: #94A3B8;        /* Standard Labels & Inactive Tabs */
+  --text-dim: #64748B;          /* Muted Telemetry / Units / Captions */
+  --text-disabled: #475569;     /* Disabled / Comments */
   
-  --bull-color: #0ecb81;
-  --bull-glow: rgba(14, 203, 129, 0.25);
-  --bear-color: #f6465d;
-  --bear-glow: rgba(246, 70, 93, 0.25);
+  /* Precision Semantic Signals */
+  --bull-color: #00F090;        /* Vibrant Emerald Bull / Gain */
+  --bull-fill: #10B981;         /* Deep Bull Pill Background */
+  --bull-glow: rgba(0, 240, 144, 0.22);
+  --bear-color: #FF3B69;        /* High-Vis Crimson Bear / Loss */
+  --bear-fill: #CB0247;         /* Deep Bear Pill Background */
+  --bear-glow: rgba(255, 59, 105, 0.22);
   
-  --brand-cyan: #00f2fe;
-  --brand-blue: #3b82f6;
-  --brand-purple: #8b5cf6;
+  /* Brand & System Action Accents */
+  --brand-primary: #00F090;     /* Primary Emerald Accent */
+  --brand-cyan: #38BDF8;        /* Electric Cyan */
+  --brand-blue: #3B82F6;        /* Tertiary System Focus */
+  --brand-purple: #818CF8;      /* Algo Execution Indicator */
   
+  /* Fonts */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  /* Micro-Mechanical Radii (Max 4px) */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
 }
 
 * {
@@ -52,39 +68,44 @@ html, body {
   user-select: none;
 }
 
-/* Scrollbar Modern */
+/* Scrollbar Presisi Terminal */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-base);
+  background: var(--bg-darkest);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-medium);
-  border-radius: 4px;
+  background: var(--border-hairline);
+  border-radius: var(--radius-xs);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-bright);
 }
 
-/* Utilities Glassmorphism */
-.glass-panel {
-  background: rgba(17, 23, 38, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle);
+/* Utilitas Tonal Stacking */
+.obsidian-panel {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+}
+
+.obsidian-card {
+  background-color: var(--bg-base);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
 }
 
 .glow-bull {
-  box-shadow: 0 0 16px var(--bull-glow);
+  box-shadow: 0 0 12px var(--bull-glow);
 }
 
 .glow-bear {
-  box-shadow: 0 0 16px var(--bear-glow);
+  box-shadow: 0 0 12px var(--bear-glow);
 }
 
 .mono-nums {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }

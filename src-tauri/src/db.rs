@@ -160,6 +160,12 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, Box<dyn std:
 
 /// Simpan batch candle ke dalam database SQLite
 pub fn cache_candles(conn: &Connection, symbol: &str, timeframe: &str, candles: &[Candle]) -> Result<()> {
+    if candles.is_empty() {
+        return Ok(());
+    }
+
+    conn.execute_batch("BEGIN TRANSACTION;")?;
+
     let mut stmt = conn.prepare_cached(
         "INSERT OR REPLACE INTO candles (symbol, timeframe, timestamp, open, high, low, close, volume)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
@@ -177,6 +183,8 @@ pub fn cache_candles(conn: &Connection, symbol: &str, timeframe: &str, candles: 
             c.volume
         ])?;
     }
+
+    conn.execute_batch("COMMIT;")?;
 
     Ok(())
 }

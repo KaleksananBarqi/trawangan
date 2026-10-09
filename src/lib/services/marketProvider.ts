@@ -7,6 +7,16 @@ export function isTauri(): boolean {
 }
 
 /**
+ * Normalisasi simbol agar aman dari prefix exchange/provider (misal binance:BTCUSDT -> BTCUSDT)
+ */
+export function normalizeTicker(sym: string): string {
+  if (!sym) return '';
+  const parts = sym.split(':');
+  const raw = parts[parts.length - 1];
+  return raw.replace(/[\/\-_]/g, '').toUpperCase();
+}
+
+/**
  * Mengambil candle historis via Tauri Rust Command atau REST fallback
  */
 export async function getHistoricalCandles(
@@ -15,11 +25,13 @@ export async function getHistoricalCandles(
   limit = 500,
   providerId?: string
 ): Promise<Candle[]> {
+  const cleanSymbol = normalizeTicker(symbol);
+
   if (isTauri()) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const data = await invoke<Candle[]>('fetch_candles', {
-        symbol,
+        symbol: cleanSymbol,
         interval,
         limit,
         providerId: providerId || null,
@@ -31,7 +43,6 @@ export async function getHistoricalCandles(
   }
 
   // Fallback direct Binance REST API di browser
-  const cleanSymbol = symbol.replace('/', '').replace('-', '').toUpperCase();
   const res = await fetch(
     `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
   );
@@ -88,7 +99,7 @@ export async function saveProviderConfig(provider: ProviderConfig): Promise<void
  * Mengambil 24hr ticker summary untuk simbol utama
  */
 export async function fetch24hTicker(symbol: string): Promise<TickerInfo> {
-  const clean = symbol.replace('/', '').replace('-', '').toUpperCase();
+  const clean = normalizeTicker(symbol);
   try {
     const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${clean}`);
     if (res.ok) {
@@ -200,7 +211,7 @@ export async function fetchWatchlistTickers(
 ): Promise<Record<string, { price: number; change24h: number; high24h: number; low24h: number; volume24h: number }>> {
   if (!symbols || symbols.length === 0) return {};
 
-  const cleanSymbols = symbols.map((s) => s.replace('/', '').replace('-', '').toUpperCase());
+  const cleanSymbols = symbols.map((s) => normalizeTicker(s));
   const encoded = encodeURIComponent(JSON.stringify(cleanSymbols));
 
   try {
