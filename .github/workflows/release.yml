@@ -34,6 +34,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Determine release tag
+        id: tag_info
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          if [ -z "$TAG" ]; then
+            TAG="v0.1.0"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building release for tag: $TAG"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -46,7 +61,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: 'src-tauri'
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -62,8 +77,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
-          releaseName: 'Trawangan ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}'
+          tagName: ${{ steps.tag_info.outputs.tag }}
+          releaseName: 'Trawangan ${{ steps.tag_info.outputs.tag }}'
           releaseBody: |
             Trawangan - Native Crypto Charting Desktop Application.
             
