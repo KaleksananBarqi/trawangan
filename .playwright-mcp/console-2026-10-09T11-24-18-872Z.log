@@ -1,0 +1,338 @@
+[     812ms] [WARNING] [vela] crosshair sync: no cell renderer supports an external crosshair — nothing will show. @ http://127.0.0.1:1420/@vite/client:356
+[     932ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at http://127.0.0.1:1420/src/lib/components/Chart.svelte:146:4
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[     932ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:167:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[     933ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:181:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[     934ms] [WARNING] Gagal memuat watchlist: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchWatchlist (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:62:22)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:193:49)
+    at http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:224:3
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[     936ms] [WARNING] Gagal memuat alerts dari SQLite: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchAlerts (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:100:21)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:199:55) @ http://127.0.0.1:1420/@vite/client:356
+[   11201ms] [WARNING] [vela] crosshair sync: no cell renderer supports an external crosshair — nothing will show. @ http://127.0.0.1:1420/@vite/client:356
+[   11304ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at http://127.0.0.1:1420/src/lib/components/Chart.svelte:146:4
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[   11305ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:167:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[   11305ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:181:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[   11306ms] [WARNING] Gagal memuat watchlist: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchWatchlist (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:62:22)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:193:49)
+    at http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:224:3
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[   11308ms] [WARNING] Gagal memuat alerts dari SQLite: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchAlerts (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:100:21)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:199:55) @ http://127.0.0.1:1420/@vite/client:356
+[   75767ms] [WARNING] [vela] crosshair sync: no cell renderer supports an external crosshair — nothing will show. @ http://127.0.0.1:1420/@vite/client:356
+[   76052ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at http://127.0.0.1:1420/src/lib/components/Chart.svelte:146:4
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[   76054ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:167:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[   76054ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:181:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[   76055ms] [WARNING] Gagal memuat watchlist: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchWatchlist (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:62:22)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:193:49)
+    at http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:224:3
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[   76060ms] [WARNING] Gagal memuat alerts dari SQLite: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchAlerts (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:100:21)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:199:55) @ http://127.0.0.1:1420/@vite/client:356
+[  751582ms] [WARNING] [vela] crosshair sync: no cell renderer supports an external crosshair — nothing will show. @ http://127.0.0.1:1420/@vite/client:356
+[  751696ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at http://127.0.0.1:1420/src/lib/components/Chart.svelte:146:4
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[  751696ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:167:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[  751696ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:181:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[  751697ms] [WARNING] Gagal memuat watchlist: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchWatchlist (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:62:22)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:193:49)
+    at http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:224:3
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[  751707ms] [WARNING] Gagal memuat alerts dari SQLite: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchAlerts (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:100:21)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:199:55) @ http://127.0.0.1:1420/@vite/client:356
+[  996923ms] [WARNING] [vela] crosshair sync: no cell renderer supports an external crosshair — nothing will show. @ http://127.0.0.1:1420/@vite/client:356
+[  997064ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte?t=1791546055541:54:47)
+    at http://127.0.0.1:1420/src/lib/components/Chart.svelte?t=1791546055541:149:4
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[  997064ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte?t=1791546055541:54:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte?t=1791546055541:170:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[  997065ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte?t=1791546055541:54:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte?t=1791546055541:184:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[ 1108896ms] ReferenceError: activeIndicatorCount is not defined
+
+	in <unknown>
+	in +page.svelte
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at Header (http://127.0.0.1:1420/src/lib/components/Header.svelte?t=1791546167462:705:42)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:704:62
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+    at branch (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3839:9)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:701:13
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at #traverse (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2155:6)
+[ 1131321ms] ReferenceError: handleSaveWorkspace is not defined
+
+	in <unknown>
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at $.add_svelte_meta.componentTag (http://127.0.0.1:1420/src/routes/+page.svelte?t=1791546190043:624:21)
+    at Module.add_svelte_meta (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1019:10)
+    at _page (http://127.0.0.1:1420/src/routes/+page.svelte?t=1791546190043:579:4)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:704:62
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+    at branch (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3839:9)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:701:13
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+[ 1148656ms] ReferenceError: activeIndicatorCount is not defined
+
+	in <unknown>
+	in +page.svelte
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at Header (http://127.0.0.1:1420/src/lib/components/Header.svelte?t=1791546167462:705:42)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:704:62
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+    at branch (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3839:9)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:701:13
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+[ 1671299ms] ReferenceError: activeIndicatorCount is not defined
+
+	in <unknown>
+	in +page.svelte
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at Header (http://127.0.0.1:1420/src/lib/components/Header.svelte?t=1791546167462:705:42)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:704:62
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+    at branch (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3839:9)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:701:13
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+[ 1752913ms] ReferenceError: activeIndicatorCount is not defined
+
+	in <unknown>
+	in +page.svelte
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at Header (http://127.0.0.1:1420/src/lib/components/Header.svelte?t=1791546755808:705:42)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:704:62
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+    at branch (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3839:9)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:701:13
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+[ 1787933ms] ReferenceError: activeIndicatorCount is not defined
+
+	in <unknown>
+	in +page.svelte
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at Header (http://127.0.0.1:1420/src/lib/components/Header.svelte?t=1791546755808:705:42)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:704:62
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+    at branch (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3839:9)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:701:13
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+[ 1816133ms] [LOG] [vite] server connection lost. Polling for restart... @ http://127.0.0.1:1420/@vite/client:1082

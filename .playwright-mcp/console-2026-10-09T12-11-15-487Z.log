@@ -1,0 +1,11 @@
+[     556ms] ReferenceError: activeIndicatorCount is not defined
+    at Mn (http://127.0.0.1:4173/_app/immutable/nodes/2.DphaHjJ8.js:1:31981)
+    at Eve (http://127.0.0.1:4173/_app/immutable/nodes/2.DphaHjJ8.js:2885:12712)
+    at http://127.0.0.1:4173/_app/immutable/entry/app.sBVUKD1C.js:2:1201
+    at http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:2:7156
+    at http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:2:2263
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at z (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:18689)
+    at B (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:19636)
+    at pi.ensure (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:2:2257)

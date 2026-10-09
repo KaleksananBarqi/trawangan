@@ -22,6 +22,7 @@
     timeframe: Timeframe;
     layout: string;
     syncConfig?: MultiChartSyncConfig;
+    showWatermark?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
   }
@@ -31,6 +32,7 @@
     timeframe,
     layout,
     syncConfig = { crosshair: true, symbol: false, drawings: true },
+    showWatermark = true,
     onActiveIndicatorsChange,
     onActiveCellChange,
   }: Props = $props();
@@ -119,6 +121,7 @@
         symbol: velaSym,
         timeframe: timeframe,
         drawingToolbar: false, // Gunakan toolbar kustom Trawangan agar tidak tumpang tindih
+        topbar: { left: [], right: [] }, // Sembunyikan topbar bawaan Vela agar tidak tumpang tindih dengan header kustom
         live: true,
         theme: 'dark',
         providers: {
@@ -218,18 +221,39 @@
     }
   });
 
-  function notifyActiveIndicators() {
-    if (!onActiveIndicatorsChange) return;
+  // Reaktif terhadap watermark (Bug 5)
+  $effect(() => {
+    if (isMounted && workspace) {
+      try {
+        const cellMap = (workspace as any).cellsById;
+        const cells = cellMap ? Array.from(cellMap.values()) : [workspace.active];
+        for (const cell of cells as any[]) {
+          if (cell && typeof cell.setWatermarkVisible === 'function') {
+            cell.setWatermarkVisible(showWatermark);
+          }
+        }
+      } catch (e) {
+        console.warn('setWatermarkVisible error:', e);
+      }
+    }
+  });
+
+  export function getActiveIndicators(): ActiveIndicatorInfo[] {
     const list: ActiveIndicatorInfo[] = [];
-    for (const [id, handle] of indicatorHandles.entries()) {
+    for (const [id, item] of indicatorHandles.entries()) {
       list.push({
         id,
-        title: handle.title || 'Indicator',
-        source: handle.source,
-        visible: handle.visible,
+        title: item.title || item.handle?.title || 'Indicator',
+        source: item.source || item.handle?.source,
+        visible: item.visible ?? item.handle?.visible ?? true,
       });
     }
-    onActiveIndicatorsChange(list);
+    return list;
+  }
+
+  function notifyActiveIndicators() {
+    if (!onActiveIndicatorsChange) return;
+    onActiveIndicatorsChange(getActiveIndicators());
   }
 
   // ─── Drawing Suite Public Methods ───
@@ -360,13 +384,26 @@
     if (!workspace || !workspace.active) return false;
 
     try {
-      const activeChart = workspace.active.chart;
-      const handle = activeChart.addIndicator(source, {
-        language: 'pine',
-      });
+      const cellMap = (workspace as any).cellsById;
+      const cells = cellMap ? Array.from(cellMap.values()) : [workspace.active];
+      let firstHandle = null;
 
-      if (handle) {
-        indicatorHandles.set(handle.id, handle);
+      for (const cell of cells as any[]) {
+        if (!cell || !cell.chart) continue;
+        const handle = cell.chart.addIndicator(source, {
+          language: 'pine',
+          title: customTitle,
+        });
+        if (!firstHandle && handle) firstHandle = handle;
+      }
+
+      if (firstHandle) {
+        indicatorHandles.set(firstHandle.id, {
+          handle: firstHandle,
+          title: customTitle || firstHandle.title || 'Custom Indicator',
+          source,
+          visible: firstHandle.visible ?? true,
+        });
         notifyActiveIndicators();
         return true;
       }
@@ -377,9 +414,13 @@
     }
   }
 
+  // Alias agar pemanggilan via applyPineScript tetap kompatibel
+  export const applyPineScript = addPineIndicator;
+
   export function removeIndicator(id: string): void {
-    const handle = indicatorHandles.get(id);
-    if (handle) {
+    const item = indicatorHandles.get(id);
+    if (item) {
+      const handle = item.handle || item;
       try {
         if (typeof handle.remove === 'function') {
           handle.remove();
@@ -393,10 +434,12 @@
   }
 
   export function toggleIndicatorVisibility(id: string): void {
-    const handle = indicatorHandles.get(id);
-    if (handle) {
+    const item = indicatorHandles.get(id);
+    if (item) {
+      const handle = item.handle || item;
+      const nextVisible = !(item.visible ?? handle.visible ?? true);
+      item.visible = nextVisible;
       try {
-        const nextVisible = !handle.visible;
         if (typeof handle.setVisible === 'function') {
           handle.setVisible(nextVisible);
         }
@@ -408,8 +451,69 @@
   }
 
   export function getIndicatorSource(id: string): string | undefined {
-    const handle = indicatorHandles.get(id);
-    return handle ? handle.source : undefined;
+    const item = indicatorHandles.get(id);
+    return item ? (item.source || item.handle?.source) : undefined;
+  }
+
+  // ─── Bar Replay Public Methods ───
+
+  export async function startReplay(fromTimestamp?: number): Promise<boolean> {
+    if (!workspace || !workspace.replay) return false;
+    try {
+      let targetTime = fromTimestamp;
+      if (!targetTime) {
+        const bounds = workspace.replay.bounds;
+        if (bounds && bounds.first && bounds.last) {
+          const span = bounds.last - bounds.first;
+          targetTime = Math.max(bounds.first, bounds.last - Math.min(span * 0.25, 100 * 60 * 1000));
+        } else {
+          targetTime = Date.now() - 3 * 3600 * 1000;
+        }
+      }
+      await workspace.replay.start({ from: targetTime });
+      return true;
+    } catch (err) {
+      console.warn('Gagal memulai Bar Replay:', err);
+      return false;
+    }
+  }
+
+  export function playReplay(speed = 1): void {
+    if (!workspace || !workspace.replay) return;
+    const intervalMs = Math.round(1000 / Math.max(0.2, speed));
+    workspace.replay.play(intervalMs);
+  }
+
+  export function pauseReplay(): void {
+    if (!workspace || !workspace.replay) return;
+    workspace.replay.pause();
+  }
+
+  export function stepReplay(): void {
+    if (!workspace || !workspace.replay) return;
+    workspace.replay.step();
+  }
+
+  export function stopReplay(): void {
+    if (!workspace || !workspace.replay) return;
+    try {
+      workspace.replay.stop();
+    } catch (e) {
+      console.warn('stopReplay error:', e);
+    }
+  }
+
+  export function isReplaying(): boolean {
+    return Boolean(workspace?.replay?.state?.active);
+  }
+
+  export function fitChart(): void {
+    if (!workspace || !workspace.active) return;
+    try {
+      const c = workspace.active.chart as any;
+      if (typeof c.fit === 'function') c.fit();
+      else if (typeof c.resetScale === 'function') c.resetScale();
+    } catch (_) {}
   }
 
   onDestroy(() => {

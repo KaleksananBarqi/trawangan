@@ -10,7 +10,6 @@
   import SettingsModal from '../lib/components/SettingsModal.svelte';
   import ProviderModal from '../lib/components/ProviderModal.svelte';
   import IndicatorModal from '../lib/components/IndicatorModal.svelte';
-  import ActiveIndicatorsBar from '../lib/components/ActiveIndicatorsBar.svelte';
   import { fetch24hTicker } from '../lib/services/marketProvider';
   import type {
     TickerInfo,
@@ -22,6 +21,7 @@
     WorkspaceMode,
     AppSettings
   } from '../lib/types/market';
+  import { saveWorkspace, type SavedWorkspace } from '../lib/services/workspaceStorage';
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
 
   // ─── Core Market & Navigation State ───
@@ -74,12 +74,24 @@
   let editorInitialCode = $state('');
   let editorInitialTitle = $state('Trawangan_Alpha_v6.pine');
 
-  // Active Indicators State
-  let activeIndicators = $state<ActiveIndicatorInfo[]>([
-    { id: 'ind_vpvr', title: 'VPVR High Volume Profile', visible: true },
-    { id: 'ind_ema', title: 'EMA Ribbon (20/50/200)', visible: true },
-    { id: 'ind_macd', title: 'MACD Oscillator (12, 26, 9)', visible: true },
-  ]);
+  // Active Indicators State (bersih tanpa dummy)
+  let activeIndicators = $state<ActiveIndicatorInfo[]>([]);
+
+  const defaultWatchlistSymbols = [
+    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
+    'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
+  ];
+
+  function handleNavigateWatchlist(direction: number) {
+    const idx = defaultWatchlistSymbols.indexOf(activeSymbol);
+    if (idx === -1) {
+      handleSymbolChange(defaultWatchlistSymbols[0]);
+    } else {
+      let nextIdx = (idx + direction) % defaultWatchlistSymbols.length;
+      if (nextIdx < 0) nextIdx += defaultWatchlistSymbols.length;
+      handleSymbolChange(defaultWatchlistSymbols[nextIdx]);
+    }
+  }
 
   let chartComponent: any = $state(null);
   let tickerInterval: any = null;
@@ -110,13 +122,92 @@
     updateTicker();
     tickerInterval = setInterval(updateTicker, 4000);
 
-    // Global keyboard shortcuts
+    // Global keyboard shortcuts (TradingView Standard Suite)
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Toggle Console Logs: Ctrl + ` or Cmd + `
+      // Abaikan shortcut jika sedang fokus mengetik di input, textarea, contenteditable, atau CodeMirror
+      const target = e.target as HTMLElement | null;
+      const isInput = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        Boolean(target.closest('.cm-editor'))
+      );
+
+      // Toggle Console Logs: Ctrl + ` or Cmd + ` (selalu aktif)
       if ((e.ctrlKey || e.metaKey) && (e.key === '`' || e.code === 'Backquote')) {
         e.preventDefault();
         isConsoleDrawerOpen = !isConsoleDrawerOpen;
         return;
+      }
+
+      if (isInput) return;
+
+      // Watchlist Navigation: Space (koin berikutnya), Shift + Space (koin sebelumnya)
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleNavigateWatchlist(e.shiftKey ? -1 : 1);
+        return;
+      }
+
+      // Drawing Tool Shortcuts (Alt + T, Alt + H, Alt + F, Alt + M, Alt + Z)
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        const k = e.key.toLowerCase();
+        if (k === 't') {
+          e.preventDefault();
+          handleSelectTool('trendline');
+          addSystemLog('Shortcut: Tool Trendline dipilih (Alt+T)', 'info');
+          return;
+        }
+        if (k === 'h') {
+          e.preventDefault();
+          handleSelectTool('hline');
+          addSystemLog('Shortcut: Tool Horizontal Line dipilih (Alt+H)', 'info');
+          return;
+        }
+        if (k === 'f') {
+          e.preventDefault();
+          handleSelectTool('fibretracement');
+          addSystemLog('Shortcut: Tool Fibonacci Retracement dipilih (Alt+F)', 'info');
+          return;
+        }
+        if (k === 'm') {
+          e.preventDefault();
+          handleSelectTool('measure');
+          addSystemLog('Shortcut: Tool Penggaris/Measure dipilih (Alt+M)', 'info');
+          return;
+        }
+        if (k === 'z') {
+          e.preventDefault();
+          if (chartComponent?.fitChart) chartComponent.fitChart();
+          addSystemLog('Shortcut: Reset skala/fit grafik (Alt+Z)', 'info');
+          return;
+        }
+      }
+
+      // Toggle Bar Replay: Shift + R
+      if (e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        handleToggleReplay();
+        return;
+      }
+
+      // Quick Timeframe Shortcuts & Esc
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '1') { handleTimeframeChange('1m'); return; }
+        if (e.key === '5') { handleTimeframeChange('5m'); return; }
+        if (e.key === '0') { handleTimeframeChange('15m'); return; }
+        if (e.key.toLowerCase() === 'f') {
+          if (chartComponent?.fitChart) chartComponent.fitChart();
+          return;
+        }
+        if (e.key === 'Escape') {
+          handleSelectTool('cursor');
+          return;
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          handleUndo();
+          return;
+        }
       }
 
       // Undo / Redo
@@ -131,8 +222,6 @@
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
         e.preventDefault();
         handleRedo();
-      } else if (e.key === 'Escape') {
-        handleSelectTool('cursor');
       }
     };
 
@@ -188,6 +277,44 @@
     addSystemLog(`Pengaturan aplikasi diperbarui.`, 'info');
   }
 
+  function handleSaveWorkspace(name: string) {
+    saveWorkspace({
+      name,
+      symbol: activeSymbol,
+      timeframe: activeTimeframe,
+      layout: currentLayout,
+      indicators: activeIndicators.map(i => ({ title: i.title, source: i.source, visible: i.visible }))
+    });
+    addSystemLog(`Workspace "${name}" disimpan`, 'success');
+  }
+
+  async function handleLoadWorkspace(w: SavedWorkspace) {
+    handleSymbolChange(w.symbol);
+    handleTimeframeChange(w.timeframe as Timeframe);
+    handleLayoutChange(w.layout);
+    
+    // Tunggu komponen chart selesai re-render dengan layout baru
+    setTimeout(async () => {
+      if (chartComponent) {
+        // Hapus indikator lama
+        const oldIndicators = chartComponent.getActiveIndicators();
+        for (const ind of oldIndicators) {
+          chartComponent.removeIndicator(ind.id);
+        }
+        
+        // Muat indikator dari workspace
+        if (w.indicators && w.indicators.length > 0) {
+          for (const ind of w.indicators) {
+            if (ind.source) {
+              await chartComponent.addPineIndicator(ind.source, ind.title);
+            }
+          }
+        }
+      }
+      addSystemLog(`Workspace "${w.name}" dimuat`, 'success');
+    }, 200);
+  }
+
   // ─── Drawing Tools Handlers ───
   function handleSelectTool(tool: DrawingToolType | null) {
     activeDrawingTool = tool;
@@ -240,10 +367,74 @@
     }
   }
 
+  // ─── Bar Replay Handlers ───
+  async function handleToggleReplay() {
+    isReplayActive = !isReplayActive;
+    if (isReplayActive) {
+      isReplayPlaying = false;
+      if (chartComponent) {
+        await chartComponent.startReplay();
+        addSystemLog('Bar Replay mode aktif. Menampilkan candle masa lalu.', 'info');
+      }
+    } else {
+      isReplayPlaying = false;
+      if (chartComponent) {
+        chartComponent.stopReplay();
+        addSystemLog('Bar Replay dinonaktifkan. Kembali ke streaming live.', 'info');
+      }
+    }
+  }
+
+  function handleReplayTogglePlay() {
+    isReplayPlaying = !isReplayPlaying;
+    if (chartComponent) {
+      if (isReplayPlaying) {
+        chartComponent.playReplay(replayPlaybackSpeed);
+        addSystemLog(`Replay memutar candle (${replayPlaybackSpeed}x).`, 'info');
+      } else {
+        chartComponent.pauseReplay();
+        addSystemLog('Replay dijeda.', 'info');
+      }
+    }
+  }
+
+  function handleReplayStepForward() {
+    if (chartComponent) {
+      chartComponent.stepReplay();
+      addSystemLog('Replay step +1 bar ke depan.', 'info');
+    }
+  }
+
+  function handleReplaySpeedChange(speed: number) {
+    replayPlaybackSpeed = speed;
+    if (chartComponent && isReplayPlaying) {
+      chartComponent.playReplay(speed);
+    }
+    addSystemLog(`Kecepatan replay diatur ke ${speed}x.`, 'info');
+  }
+
+  async function handleReplayRewind() {
+    if (chartComponent) {
+      isReplayPlaying = false;
+      chartComponent.pauseReplay();
+      await chartComponent.startReplay();
+      addSystemLog('Replay di-rewind kembali ke titik cut-off.', 'info');
+    }
+  }
+
+  function handleCloseReplay() {
+    isReplayActive = false;
+    isReplayPlaying = false;
+    if (chartComponent) {
+      chartComponent.stopReplay();
+    }
+    addSystemLog('Bar Replay ditutup. Kembali ke data pasar live.', 'info');
+  }
+
   // ─── Indicators & Pine Script Handlers ───
   async function handleAddIndicator(code: string, title: string): Promise<boolean> {
     if (chartComponent) {
-      const ok = await chartComponent.applyPineScript(code, title);
+      const ok = await chartComponent.addPineIndicator(code, title);
       if (ok) {
         syncActiveIndicators();
         addSystemLog(`Indikator "${title}" berhasil diterapkan ke grafik.`, 'success');
@@ -254,24 +445,25 @@
   }
 
   function syncActiveIndicators() {
-    if (chartComponent) {
+    if (chartComponent && typeof chartComponent.getActiveIndicators === 'function') {
       activeIndicators = chartComponent.getActiveIndicators();
     }
   }
 
   function handleRemoveIndicator(id: string) {
-    if (chartComponent) {
+    if (chartComponent && typeof chartComponent.removeIndicator === 'function') {
       chartComponent.removeIndicator(id);
-      syncActiveIndicators();
-      addSystemLog(`Indikator dihapus: ${id}`, 'info');
     }
+    activeIndicators = activeIndicators.filter(i => i.id !== id);
+    syncActiveIndicators();
+    addSystemLog(`Indikator dihapus: ${id}`, 'info');
   }
 
   function handleToggleIndicatorVisibility(id: string) {
-    if (chartComponent) {
+    if (chartComponent && typeof chartComponent.toggleIndicatorVisibility === 'function') {
       chartComponent.toggleIndicatorVisibility(id);
-      syncActiveIndicators();
     }
+    syncActiveIndicators();
   }
 
   function handleOpenInEditor(code: string, title: string) {
@@ -295,7 +487,7 @@
     {currentLayout}
     {workspaceMode}
     {syncConfig}
-    activeIndicatorCount={activeIndicators.length}
+    {activeIndicators}
     {isDrawingToolbarVisible}
     {isWatchlistOpen}
     {isReplayActive}
@@ -303,11 +495,13 @@
     onTimeframeChange={handleTimeframeChange}
     onLayoutChange={handleLayoutChange}
     onWorkspaceModeChange={handleWorkspaceModeChange}
+    onSaveWorkspace={handleSaveWorkspace}
+    onLoadWorkspace={handleLoadWorkspace}
     onToggleSyncCrosshair={handleToggleSyncCrosshair}
     onToggleSyncDrawings={handleToggleSyncDrawings}
     onToggleDrawingToolbar={() => (isDrawingToolbarVisible = !isDrawingToolbarVisible)}
     onToggleWatchlist={() => (isWatchlistOpen = !isWatchlistOpen)}
-    onToggleReplay={() => (isReplayActive = !isReplayActive)}
+    onToggleReplay={handleToggleReplay}
     onOpenProviderModal={() => (isProviderModalOpen = true)}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
     onOpenSettingsModal={() => (isSettingsModalOpen = true)}
@@ -320,10 +514,11 @@
       <ReplayBar
         isPlaying={isReplayPlaying}
         playbackSpeed={replayPlaybackSpeed}
-        onTogglePlay={() => (isReplayPlaying = !isReplayPlaying)}
-        onStepForward={() => addSystemLog('Replay step +1 bar maju.', 'info')}
-        onSelectSpeed={(s) => (replayPlaybackSpeed = s)}
-        onClose={() => (isReplayActive = false)}
+        onTogglePlay={handleReplayTogglePlay}
+        onStepForward={handleReplayStepForward}
+        onSelectSpeed={handleReplaySpeedChange}
+        onRewind={handleReplayRewind}
+        onClose={handleCloseReplay}
       />
     {/if}
 
@@ -332,18 +527,7 @@
       <div class="terminal-workspace">
         <!-- Chart Canvas Container -->
         <div class="chart-canvas-area {isWatchlistOpen ? 'with-watchlist' : ''}">
-          <!-- Active Indicators Pill Bar -->
-          <ActiveIndicatorsBar
-            indicators={activeIndicators}
-            onToggleVisibility={handleToggleIndicatorVisibility}
-            onEditIndicator={(id) => {
-              const ind = activeIndicators.find(i => i.id === id);
-              if (ind && ind.source) {
-                handleOpenInEditor(ind.source, ind.title);
-              }
-            }}
-            onRemoveIndicator={handleRemoveIndicator}
-          />
+
 
           <!-- WebGL2 Vela Chart Core -->
           <Chart
@@ -352,6 +536,8 @@
             timeframe={activeTimeframe}
             layout={currentLayout}
             {syncConfig}
+            showWatermark={appSettings.showWatermark}
+            onActiveIndicatorsChange={(list) => (activeIndicators = list)}
             onActiveCellChange={handleActiveCellChange}
           />
 
@@ -417,6 +603,7 @@
             timeframe={activeTimeframe}
             layout="1"
             {syncConfig}
+            onActiveIndicatorsChange={(list) => (activeIndicators = list)}
             onActiveCellChange={handleActiveCellChange}
           />
         </div>
@@ -539,11 +726,10 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    transition: padding-right 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .chart-canvas-area.with-watchlist {
-    padding-right: 300px;
+    /* Watchlist panel uses flex flow, no padding needed here */
   }
 
   /* MODE 2: PINE SCRIPT IDE STYLING */

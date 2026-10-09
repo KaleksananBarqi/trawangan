@@ -15,9 +15,15 @@
     Share2,
     History,
     Settings,
-    Search
+    Search,
+    Save,
+    FolderOpen,
+    Plus,
+    X,
+    MoreVertical
   } from '@lucide/svelte';
   import type { TickerInfo, Timeframe, MultiChartSyncConfig, WorkspaceMode } from '../types/market';
+  import { saveWorkspace, getWorkspaces, deleteWorkspace, type SavedWorkspace } from '../services/workspaceStorage';
 
   interface Props {
     activeSymbol: string;
@@ -26,7 +32,7 @@
     currentLayout: string;
     workspaceMode?: WorkspaceMode;
     syncConfig?: MultiChartSyncConfig;
-    activeIndicatorCount?: number;
+    activeIndicators?: { title: string; source?: string; visible: boolean }[];
     isDrawingToolbarVisible?: boolean;
     isWatchlistOpen?: boolean;
     isReplayActive?: boolean;
@@ -34,6 +40,8 @@
     onTimeframeChange: (tf: Timeframe) => void;
     onLayoutChange: (layout: string) => void;
     onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
+    onSaveWorkspace?: (name: string) => void;
+    onLoadWorkspace?: (w: SavedWorkspace) => void;
     onToggleSyncCrosshair?: () => void;
     onToggleSyncDrawings?: () => void;
     onToggleDrawingToolbar?: () => void;
@@ -51,7 +59,7 @@
     currentLayout,
     workspaceMode = 'terminal',
     syncConfig = { crosshair: true, symbol: false, drawings: true },
-    activeIndicatorCount = 0,
+    activeIndicators = [],
     isDrawingToolbarVisible = true,
     isWatchlistOpen = true,
     isReplayActive = false,
@@ -59,6 +67,8 @@
     onTimeframeChange,
     onLayoutChange,
     onWorkspaceModeChange,
+    onSaveWorkspace,
+    onLoadWorkspace,
     onToggleSyncCrosshair,
     onToggleSyncDrawings,
     onToggleDrawingToolbar,
@@ -69,8 +79,10 @@
     onOpenSettingsModal,
   }: Props = $props();
 
+  let activeIndicatorCount = $derived(activeIndicators.length);
+
   const quickSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT'];
-  const timeframes: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
+  let timeframes = $state<Timeframe[]>(['1m', '5m', '15m', '1h', '4h', '1D']);
   const layouts = [
     { id: '1', label: '1 Chart' },
     { id: '2h', label: '2 Hori' },
@@ -80,6 +92,15 @@
 
   let showSymbolPicker = $state(false);
   let customSymbolInput = $state('');
+  
+  // Workspace State
+  let showWorkspaceMenu = $state(false);
+  let savedWorkspaces = $state<SavedWorkspace[]>([]);
+  let workspaceNameInput = $state('');
+
+  // Timeframe Editor State
+  let showTimeframeEditor = $state(false);
+  let newTimeframeInput = $state('');
 
   function handleCustomSymbolSubmit(e: Event) {
     e.preventDefault();
@@ -95,6 +116,41 @@
       document.documentElement.requestFullscreen().catch(() => {});
     } else {
       document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  function loadWorkspacesList() {
+    savedWorkspaces = getWorkspaces();
+  }
+
+  function handleSaveWorkspace() {
+    if (workspaceNameInput.trim() && onSaveWorkspace) {
+      onSaveWorkspace(workspaceNameInput.trim());
+      workspaceNameInput = '';
+      setTimeout(loadWorkspacesList, 100); // Give time for parent to save
+    }
+  }
+
+  function handleLoadWorkspace(w: SavedWorkspace) {
+    if (onLoadWorkspace) {
+      onLoadWorkspace(w);
+    }
+    showWorkspaceMenu = false;
+  }
+  
+  function handleDeleteWorkspace(id: string) {
+    deleteWorkspace(id);
+    loadWorkspacesList();
+  }
+
+  function handleAddTimeframe(e: Event) {
+    e.preventDefault();
+    if (newTimeframeInput.trim()) {
+      const tf = newTimeframeInput.trim() as Timeframe;
+      if (!timeframes.includes(tf)) {
+        timeframes = [...timeframes, tf];
+      }
+      newTimeframeInput = '';
     }
   }
 </script>
@@ -208,12 +264,69 @@
         {tf}
       </button>
     {/each}
+    <button class="tf-add-btn" title="Edit Timeframes" onclick={() => showTimeframeEditor = !showTimeframeEditor}>
+      <Plus size={12} />
+    </button>
+    
+    {#if showTimeframeEditor}
+      <div class="tf-dropdown obsidian-panel">
+        <div class="tf-dropdown-header">Manage Timeframes</div>
+        <form class="tf-form" onsubmit={handleAddTimeframe}>
+          <input type="text" placeholder="Add (e.g. 2h)" bind:value={newTimeframeInput} class="tf-input mono-nums" />
+          <button type="submit" class="tf-submit-btn"><Plus size={12} /></button>
+        </form>
+        <div class="tf-list">
+          {#each timeframes as tf}
+            <div class="tf-list-item">
+              <span class="mono-nums">{tf}</span>
+              <button class="tf-remove-btn" onclick={() => timeframes = timeframes.filter(t => t !== tf)}><X size={12} /></button>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
   </div>
 
   <div class="divider"></div>
 
-  <!-- Multi-Chart Layouts -->
+  <!-- Multi-Chart Layouts & Workspace -->
   <div class="layout-bar">
+    <div class="workspace-btn-group">
+      <button
+        class="workspace-toggle-btn"
+        title="Manage Workspaces"
+        onclick={() => { showWorkspaceMenu = !showWorkspaceMenu; if(showWorkspaceMenu) loadWorkspacesList(); }}
+      >
+        <FolderOpen size={12} />
+        <span>Workspaces</span>
+      </button>
+      
+      {#if showWorkspaceMenu}
+        <div class="workspace-dropdown obsidian-panel">
+          <div class="workspace-save-form">
+            <input type="text" placeholder="Save current as..." bind:value={workspaceNameInput} class="workspace-input" />
+            <button onclick={handleSaveWorkspace} class="workspace-save-submit"><Save size={12} /></button>
+          </div>
+          <div class="workspace-list">
+            {#if savedWorkspaces.length === 0}
+              <div class="workspace-empty">No saved workspaces</div>
+            {/if}
+            {#each savedWorkspaces as w}
+              <div class="workspace-item">
+                <button class="workspace-load-btn" onclick={() => handleLoadWorkspace(w)}>
+                  <Layers size={12} class="workspace-icon" />
+                  <span class="workspace-name">{w.name}</span>
+                </button>
+                <button class="workspace-del-btn" onclick={() => handleDeleteWorkspace(w.id)}><X size={12} /></button>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="divider-vertical"></div>
+
     {#each layouts as l}
       <button
         class="layout-btn {currentLayout === l.id ? 'active' : ''}"
@@ -602,6 +715,234 @@
     color: var(--brand-primary);
     background-color: var(--bg-panel);
     font-weight: 700;
+  }
+
+  .tf-add-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-xs);
+  }
+
+  .tf-add-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .tf-dropdown {
+    position: absolute;
+    top: 100%;
+    margin-top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    gap: 8px;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+  }
+
+  .tf-dropdown-header {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+
+  .tf-form {
+    display: flex;
+    gap: 4px;
+  }
+
+  .tf-input {
+    flex: 1;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: var(--radius-xs);
+  }
+
+  .tf-submit-btn {
+    background-color: rgba(0, 240, 144, 0.1);
+    color: var(--brand-primary);
+    border: 1px solid var(--brand-primary);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+  }
+
+  .tf-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 150px;
+    overflow-y: auto;
+  }
+
+  .tf-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 6px;
+    font-size: 11px;
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+  }
+
+  .tf-list-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  .tf-remove-btn {
+    background: transparent;
+    border: none;
+    color: var(--alert-color);
+    cursor: pointer;
+    opacity: 0.5;
+    padding: 2px;
+  }
+
+  .tf-remove-btn:hover {
+    opacity: 1;
+  }
+
+  /* Workspace */
+  .workspace-btn-group {
+    position: relative;
+    display: flex;
+  }
+
+  .workspace-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .workspace-toggle-btn:hover {
+    color: var(--brand-cyan);
+    background-color: rgba(56, 189, 248, 0.1);
+    border-color: var(--brand-cyan);
+  }
+
+  .workspace-dropdown {
+    position: absolute;
+    top: 100%;
+    margin-top: 4px;
+    left: 0;
+    width: 240px;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    gap: 8px;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+  }
+
+  .workspace-save-form {
+    display: flex;
+    gap: 4px;
+  }
+
+  .workspace-input {
+    flex: 1;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: var(--radius-xs);
+  }
+
+  .workspace-save-submit {
+    background-color: rgba(56, 189, 248, 0.1);
+    color: var(--brand-cyan);
+    border: 1px solid var(--brand-cyan);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+  }
+
+  .workspace-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .workspace-empty {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 10px 0;
+  }
+
+  .workspace-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px;
+    border-radius: var(--radius-xs);
+  }
+
+  .workspace-item:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .workspace-load-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    flex: 1;
+    text-align: left;
+  }
+
+  .workspace-load-btn:hover {
+    color: var(--text-main);
+  }
+
+  .workspace-del-btn {
+    background: transparent;
+    border: none;
+    color: var(--alert-color);
+    cursor: pointer;
+    opacity: 0.5;
+    padding: 2px;
+  }
+
+  .workspace-del-btn:hover {
+    opacity: 1;
   }
 
   /* Layouts */

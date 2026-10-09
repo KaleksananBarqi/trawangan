@@ -24,6 +24,7 @@
     Sparkles
   } from '@lucide/svelte';
   import { savePineScript } from '../services/marketProvider';
+  import { Indicator } from 'pinets';
   import type { PineScriptRecord, StrategyPerformanceSummary } from '../types/market';
 
   interface Props {
@@ -196,20 +197,37 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
     const start = performance.now();
     addLog(`Mengompilasi "${scriptTitle}" via PineTS Worker...`, 'info');
 
+    // Tahap 1: Validasi sintaks Pine Script dengan parser resmi PineTS
+    try {
+      const validator = new Indicator(code);
+      await validator.prepare();
+      addLog(`Sintaks Pine Script valid (${validator.getDeclarationType?.() || 'script'}).`, 'info');
+    } catch (parseErr: any) {
+      compileStatus = 'error';
+      rightTab = 'console';
+      const errMsg = parseErr?.message || String(parseErr);
+      addLog(`Error sintaks Pine Script: ${errMsg}`, 'error');
+      isCompiling = false;
+      return;
+    }
+
+    // Tahap 2: Terapkan ke chart engine Vela WebGL2
     try {
       const ok = await onAddToChart(code, scriptTitle);
       compileDurationMs = Math.round(performance.now() - start) || 12;
 
       if (ok) {
         compileStatus = 'success';
-        addLog(`Kompilasi selesai dalam ${compileDurationMs}ms. Sinyal berhasil dipasang ke chart.`, 'success');
+        addLog(`Kompilasi selesai dalam ${compileDurationMs}ms. Indikator/strategi berhasil aktif di chart.`, 'success');
       } else {
         compileStatus = 'error';
-        addLog(`Gagal mengeksekusi script. Periksa sintaks Pine Script.`, 'error');
+        rightTab = 'console';
+        addLog(`Gagal mengeksekusi script ke chart. Periksa kompatibilitas fungsi.`, 'error');
       }
     } catch (err: any) {
       compileStatus = 'error';
-      addLog(`Error kompilasi: ${err.message || err}`, 'error');
+      rightTab = 'console';
+      addLog(`Error eksekusi runtime: ${err.message || err}`, 'error');
     } finally {
       isCompiling = false;
     }

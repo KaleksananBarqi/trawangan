@@ -1,0 +1,117 @@
+[     224ms] [WARNING] [vela] crosshair sync: no cell renderer supports an external crosshair — nothing will show. @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2646
+[     381ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at wfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898670)
+    at g (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:900377)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:901529
+    at Er (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:24458)
+    at http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:3:11806
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[     382ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at wfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898670)
+    at g (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:900377)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:901818
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470)
+    at e.flush (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:10988)
+    at Array.<anonymous> (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:11748) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[     382ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at wfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898670)
+    at g (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:900377)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:901948
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470)
+    at e.flush (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:10988)
+    at Array.<anonymous> (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:11748) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[     383ms] [WARNING] Gagal memuat watchlist: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at Efe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:899013)
+    at k (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:920863)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:921163
+    at Er (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:24458)
+    at http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:3:11806
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[     385ms] [WARNING] Gagal memuat alerts dari SQLite: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at Dfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:899429)
+    at k (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:920906) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[   55660ms] [WARNING] Gagal memuat drawings untuk binance:ETHUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at wfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898670)
+    at g (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:900377)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:901818
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470)
+    at e.flush (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:10988)
+    at Array.<anonymous> (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:11748) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[   68490ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at wfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898670)
+    at g (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:900377)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:901818
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470)
+    at e.flush (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:10988)
+    at Array.<anonymous> (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:11748) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[   69012ms] [WARNING] Gagal memuat drawings untuk binance:ETHUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at wfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898670)
+    at g (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:900377)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:901818
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470)
+    at e.flush (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:10988)
+    at Array.<anonymous> (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:11748) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[   69291ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at wfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898670)
+    at g (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:900377)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:901818
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470)
+    at e.flush (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:10988)
+    at Array.<anonymous> (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:11748) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[   70232ms] [WARNING] Gagal memuat drawings untuk binance:SOLUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at wfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898670)
+    at g (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:900377)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:901818
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470)
+    at e.flush (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:10988)
+    at Array.<anonymous> (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:11748) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776
+[   70346ms] [WARNING] [vela] indicator "ind-2" starts before the first bar with no series to align on — rendering unanchored @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:1211
+[   71445ms] [ERROR] WebSocket connection to 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m' failed: Ping received after close @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2646
+[   77147ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Y0 (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898292)
+    at wfe (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:898670)
+    at g (http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:900377)
+    at http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2777:901818
+    at _r (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:22203)
+    at xr (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:23340)
+    at en (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:12274)
+    at #_ (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:9470)
+    at e.flush (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:10988)
+    at Array.<anonymous> (http://127.0.0.1:4173/_app/immutable/chunks/CIHIRjnk.js:1:11748) @ http://127.0.0.1:4173/_app/immutable/nodes/2.DaADjfFL.js:2776

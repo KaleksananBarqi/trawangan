@@ -4,6 +4,7 @@
     Play,
     Pause,
     SkipForward,
+    RotateCcw,
     LocateFixed,
     X,
     TrendingUp,
@@ -17,6 +18,7 @@
     onStepForward: () => void;
     onSelectSpeed: (speed: number) => void;
     onClose: () => void;
+    onRewind?: () => void;
   }
 
   let {
@@ -26,6 +28,7 @@
     onStepForward,
     onSelectSpeed,
     onClose,
+    onRewind,
   }: Props = $props();
 
   const speeds = [0.5, 1, 3, 10];
@@ -42,6 +45,16 @@
     <div class="divider"></div>
 
     <div class="playback-buttons">
+      {#if onRewind}
+        <button
+          class="step-btn"
+          title="Kembali ke titik awal cut-off (Rewind)"
+          onclick={onRewind}
+        >
+          <RotateCcw size={12} />
+        </button>
+      {/if}
+
       <button
         class="play-btn {isPlaying ? 'playing' : ''}"
         title={isPlaying ? 'Jeda Replay' : 'Mulai Replay'}

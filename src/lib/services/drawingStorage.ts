@@ -97,3 +97,45 @@ export async function persistWatchlist(symbols: string[]): Promise<void> {
     console.error('Gagal menyimpan watchlist:', err);
   }
 }
+
+/**
+ * Ambil daftar price alerts dari SQLite (dengan fallback ke localStorage)
+ */
+export async function fetchAlerts(): Promise<any[]> {
+  try {
+    const raw = await invoke<string | null>('load_workspace_layout', { id: 'user_price_alerts' });
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (err) {
+    console.warn('Gagal memuat alerts dari SQLite:', err);
+  }
+
+  try {
+    const local = localStorage.getItem('trawangan_user_alerts');
+    if (local) return JSON.parse(local);
+  } catch (_) {}
+
+  return [];
+}
+
+/**
+ * Simpan daftar price alerts ke SQLite dan localStorage
+ */
+export async function persistAlerts(alerts: any[]): Promise<void> {
+  const json = JSON.stringify(alerts);
+  try {
+    localStorage.setItem('trawangan_user_alerts', json);
+  } catch (_) {}
+
+  try {
+    await invoke('save_workspace_layout', {
+      id: 'user_price_alerts',
+      name: 'User Price Alerts',
+      layoutJson: json,
+    });
+  } catch (err) {
+    console.warn('Gagal menyimpan alerts ke SQLite:', err);
+  }
+}
+

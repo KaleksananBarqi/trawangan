@@ -1,0 +1,996 @@
+[    6149ms] [WARNING] [vela] crosshair sync: no cell renderer supports an external crosshair — nothing will show. @ http://127.0.0.1:1420/@vite/client:356
+[    6469ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at http://127.0.0.1:1420/src/lib/components/Chart.svelte:146:4
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[    6470ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:167:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[    6471ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:181:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[    6472ms] [WARNING] Gagal memuat watchlist: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchWatchlist (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:62:22)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:193:49)
+    at http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:224:3
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[    6476ms] [WARNING] Gagal memuat alerts dari SQLite: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchAlerts (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:100:21)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:199:55) @ http://127.0.0.1:1420/@vite/client:356
+[   31072ms] [ERROR] WebSocket connection to 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED @ http://127.0.0.1:1420/node_modules/.vite/deps/@luxalgo_vela_providers_binance.js?v=9a371303:282
+[   31073ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   31073ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   31076ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   31076ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   31077ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   31077ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   31079ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   31079ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   31081ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   31081ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   31082ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   31082ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   31082ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   31082ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   31083ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   31083ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   31083ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   31083ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   31084ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   31084ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   31084ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   31084ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   31084ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   31084ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   31085ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   31085ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   33086ms] [ERROR] WebSocket connection to 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED @ http://127.0.0.1:1420/node_modules/.vite/deps/@luxalgo_vela_providers_binance.js?v=9a371303:282
+[   34463ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   34463ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   34467ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   34467ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   34467ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   34468ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   34468ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   34468ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   34468ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   34468ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   34481ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   34481ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   35096ms] [ERROR] WebSocket connection to 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED @ http://127.0.0.1:1420/node_modules/.vite/deps/@luxalgo_vela_providers_binance.js?v=9a371303:282
+[   37101ms] [ERROR] WebSocket connection to 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED @ http://127.0.0.1:1420/node_modules/.vite/deps/@luxalgo_vela_providers_binance.js?v=9a371303:282
+[   38464ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   38464ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   38466ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   38466ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   38467ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   38467ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   38467ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   38467ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   38468ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   38468ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   38468ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   38468ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   39110ms] [ERROR] WebSocket connection to 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED @ http://127.0.0.1:1420/node_modules/.vite/deps/@luxalgo_vela_providers_binance.js?v=9a371303:282
+[   41116ms] [ERROR] WebSocket connection to 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED @ http://127.0.0.1:1420/node_modules/.vite/deps/@luxalgo_vela_providers_binance.js?v=9a371303:282
+[   42477ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   42477ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   42478ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   42478ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   42480ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   42481ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   42481ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   42481ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   42481ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   42481ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   42482ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   42482ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   43126ms] [ERROR] WebSocket connection to 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED @ http://127.0.0.1:1420/node_modules/.vite/deps/@luxalgo_vela_providers_binance.js?v=9a371303:282
+[   45138ms] [ERROR] WebSocket connection to 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED @ http://127.0.0.1:1420/node_modules/.vite/deps/@luxalgo_vela_providers_binance.js?v=9a371303:282
+[   46008ms] [WARNING] [vela] Binance: BTCUSDT 1m stream delivered no data; falling back to polling. @ http://127.0.0.1:1420/@vite/client:356
+[   46478ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   46478ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   46480ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   46480ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   46481ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   46481ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   46482ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   46482ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   46483ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   46483ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   46483ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   46483ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   49028ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   49028ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   50468ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   50468ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   50469ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   50469ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   50471ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   50471ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   50471ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   50471ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   50472ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   50472ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   50472ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   50472ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   52045ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   52045ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   54465ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   54465ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   54468ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   54468ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   54469ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   54469ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   54471ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   54471ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   54471ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   54471ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   54472ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   54472ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   55055ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   55055ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   58061ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   58062ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   58472ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   58472ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   58473ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   58473ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   58477ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   58477ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   58478ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   58478ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   58478ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   58478ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   58479ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   58479ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   61078ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   61078ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   62480ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   62480ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   62482ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   62482ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   62483ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   62483ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   62483ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   62483ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   62484ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   62484ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   62485ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   62485ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   69448ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   69448ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   72951ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   72951ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   72952ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   72952ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   79402ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   79402ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   79904ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   79904ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   79911ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   79911ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   79911ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   79912ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   79912ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   79912ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   79913ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   79913ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81403ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   81403ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81404ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   81404ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81404ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   81404ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81405ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   81405ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   81407ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   81407ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   81407ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   81407ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   81409ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   81409ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   81412ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   81412ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   81413ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   81413ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81417ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   81418ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81418ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   81418ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81419ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   81419ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81420ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   81420ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81421ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   81421ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81422ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   81422ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81423ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   81423ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   81423ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   81423ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   82473ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   82473ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   82476ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   82476ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   82479ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   82479ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   82479ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   82479ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   82480ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   82480ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   82481ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   82481ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   82922ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   82922ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   85968ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   85969ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   94809ms] [ERROR] Failed to load resource: net::ERR_CERT_COMMON_NAME_INVALID @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   94809ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   94812ms] [ERROR] Failed to load resource: net::ERR_CERT_COMMON_NAME_INVALID @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   94812ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   94814ms] [ERROR] Failed to load resource: net::ERR_CERT_COMMON_NAME_INVALID @ https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=2:0
+[   94814ms] [WARNING] [vela] Binance: failed to fetch BTCUSDT 1m — Failed to fetch @ http://127.0.0.1:1420/@vite/client:356
+[   95002ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   95002ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   95009ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   95009ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95010ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   95010ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   95011ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   95011ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95011ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   95011ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95012ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%2C%22SOLUSDT%22%2C%22BNBUSDT%22%5D:0
+[   95012ms] [WARNING] Gagal fetch batch watchlist tickers, fallback single queries: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:186:21)
+    at refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:48) @ http://127.0.0.1:1420/@vite/client:356
+[   95014ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   95014ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at updateTicker (http://127.0.0.1:1420/src/routes/+page.svelte:189:49) @ http://127.0.0.1:1420/@vite/client:356
+[   95015ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   95015ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95016ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   95016ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95017ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   95017ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95018ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   95018ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95018ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   95018ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95019ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT:0
+[   95019ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95020ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT:0
+[   95020ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95020ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT:0
+[   95020ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[   95021ms] [ERROR] Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED @ https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT:0
+[   95021ms] [ERROR] Error fetch 24h ticker: TypeError: Failed to fetch
+    at window.fetch (http://127.0.0.1:1420/node_modules/@sveltejs/kit/src/runtime/client/fetcher.js?v=9a371303:67:10)
+    at fetch24hTicker (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:84:21)
+    at http://127.0.0.1:1420/src/lib/services/marketProvider.ts:208:20
+    at Array.map (<anonymous>)
+    at fetchWatchlistTickers (http://127.0.0.1:1420/src/lib/services/marketProvider.ts:206:46)
+    at async Module.track_reactivity_loss (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1445:14)
+    at async refreshTickers (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:215:18) @ http://127.0.0.1:1420/@vite/client:356
+[  435959ms] ReferenceError: ActiveIndicatorsBar is not defined
+
+	in <unknown>
+	in +page.svelte
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at $.add_svelte_meta.componentTag (http://127.0.0.1:1420/src/routes/+page.svelte?t=1791545023181:690:11)
+    at Module.add_svelte_meta (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1019:10)
+    at consequent_2 (http://127.0.0.1:1420/src/routes/+page.svelte?t=1791545023181:689:6)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:190:48
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+    at branch (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3839:9)
+    at BranchManager.ensure (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:190:35)
+    at update_branch (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:1017:12)
+[  453860ms] ReferenceError: ActiveIndicatorsBar is not defined
+
+	in <unknown>
+	in +page.svelte
+	in +layout.svelte
+	in root.svelte
+	in undefined
+
+    at $.add_svelte_meta.componentTag (http://127.0.0.1:1420/src/routes/+page.svelte?t=1791545041183:692:11)
+    at Module.add_svelte_meta (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:1019:10)
+    at consequent_2 (http://127.0.0.1:1420/src/routes/+page.svelte?t=1791545041183:691:6)
+    at http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:190:48
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at create_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3630:4)
+    at branch (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:3839:9)
+    at BranchManager.ensure (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:190:35)
+    at update_branch (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:1017:12)
+[  465536ms] [WARNING] [vela] crosshair sync: no cell renderer supports an external crosshair — nothing will show. @ http://127.0.0.1:1420/@vite/client:356
+[  465650ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at http://127.0.0.1:1420/src/lib/components/Chart.svelte:146:4
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[  465652ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:167:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[  465653ms] [WARNING] Gagal memuat drawings untuk binance:BTCUSDT 1m: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at loadDrawings (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:33:21)
+    at restoreDrawingsForCurrentChart (http://127.0.0.1:1420/src/lib/components/Chart.svelte:52:47)
+    at $effect (http://127.0.0.1:1420/src/lib/components/Chart.svelte:181:6)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3)
+    at Batch.flush (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2261:17)
+    at Array.<anonymous> (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2397:32) @ http://127.0.0.1:1420/@vite/client:356
+[  465653ms] [WARNING] Gagal memuat watchlist: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchWatchlist (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:62:22)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:193:49)
+    at http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:224:3
+    at untrack (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4485:10)
+    at $effect (http://127.0.0.1:1420/node_modules/.vite/deps/client-D1Ji4KxU.js?v=9a371303:346:19)
+    at update_reaction (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4209:16)
+    at update_effect (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:4319:18)
+    at flush_queued_effects (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2510:4)
+    at #process (http://127.0.0.1:1420/node_modules/.vite/deps/runtime-Cm3LfyDj.js?v=9a371303:2114:3) @ http://127.0.0.1:1420/@vite/client:356
+[  465656ms] [WARNING] Gagal memuat alerts dari SQLite: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://127.0.0.1:1420/node_modules/.vite/deps/@tauri-apps_api_core.js?v=9a371303:334:36)
+    at fetchAlerts (http://127.0.0.1:1420/src/lib/services/drawingStorage.ts:100:21)
+    at loadInitialWatchlist (http://127.0.0.1:1420/src/lib/components/WatchlistPanel.svelte:199:55) @ http://127.0.0.1:1420/@vite/client:356

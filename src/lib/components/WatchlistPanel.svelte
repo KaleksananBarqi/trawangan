@@ -16,7 +16,7 @@
     Trash2,
     CheckCircle2
   } from '@lucide/svelte';
-  import { fetchWatchlist, persistWatchlist } from '../services/drawingStorage';
+  import { fetchWatchlist, persistWatchlist, fetchAlerts, persistAlerts } from '../services/drawingStorage';
   import { fetchWatchlistTickers } from '../services/marketProvider';
   import type { PriceAlert, ObjectTreeItem } from '../types/market';
 
@@ -96,6 +96,10 @@
       if (saved && saved.length > 0) {
         symbols = saved;
       }
+      const savedAlerts = await fetchAlerts();
+      if (savedAlerts && savedAlerts.length > 0) {
+        alerts = savedAlerts;
+      }
       await refreshTickers();
     } catch (err) {
       console.warn('Gagal memuat awal watchlist:', err);
@@ -142,7 +146,7 @@
     await persistWatchlist(symbols);
   }
 
-  function handleCreateAlert(e: Event) {
+  async function handleCreateAlert(e: Event) {
     e.preventDefault();
     const p = parseFloat(newAlertPrice);
     if (!p) return;
@@ -159,13 +163,15 @@
     };
 
     alerts = [newA, ...alerts];
+    await persistAlerts(alerts);
     newAlertPrice = '';
     newAlertLabel = '';
     showAddAlert = false;
   }
 
-  function handleRemoveAlert(id: string) {
+  async function handleRemoveAlert(id: string) {
     alerts = alerts.filter(a => a.id !== id);
+    await persistAlerts(alerts);
   }
 
   const filteredSymbols = $derived(
@@ -384,11 +390,11 @@
               <span class="alert-label">{a.label}</span>
             </div>
             <button
-              class="delete-item-btn"
-              title="Hapus Alert"
+              class="delete-alert-btn"
+              title="Hapus Price Alert ini"
               onclick={() => handleRemoveAlert(a.id)}
             >
-              <X size={12} />
+              <Trash2 size={13} />
             </button>
           </div>
         {/each}
@@ -837,6 +843,34 @@
     background-color: var(--bg-base);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
+    position: relative;
+    transition: all 0.15s ease;
+  }
+
+  .alert-card:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--border-medium);
+  }
+
+  .delete-alert-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.75;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .delete-alert-btn:hover {
+    opacity: 1;
+    color: var(--bear-color);
+    background-color: rgba(255, 59, 105, 0.15);
   }
 
   .alert-card.triggered {
