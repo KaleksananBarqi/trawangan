@@ -14,7 +14,7 @@
   import AlertNotificationToast from '../lib/components/AlertNotificationToast.svelte';
   import { alertService } from '../lib/services/alertService';
   import { ensureNotificationPermission } from '../lib/services/systemNotificationService';
-  import { fetch24hTicker, getActiveProviderId } from '../lib/services/marketProvider';
+  import { marketFeed } from '../lib/services/market';
   import type {
     TickerInfo,
     Timeframe,
@@ -147,7 +147,7 @@
   }
 
   let chartComponent: any = $state(null);
-  let tickerInterval: any = null;
+  let unsubTicker: (() => void) | null = null;
 
   // Terminal Diagnostics Logs
   let systemLogs = $state<{ time: string; msg: string; level: 'info' | 'success' | 'warn' }[]>([
@@ -159,20 +159,12 @@
 
   let unsubAlertTrigger: (() => void) | null = null;
 
-  async function updateTicker() {
-    try {
-      ticker = await fetch24hTicker(activeSymbol);
-      if (ticker && ticker.price > 0) {
-        alertService.evaluateAlerts(activeSymbol, ticker.price);
-      }
-    } catch (e) {
-      console.warn('Ticker update failed:', e);
-    }
-  }
-
   $effect(() => {
     if (activeSymbol) {
-      updateTicker();
+      if (unsubTicker) unsubTicker();
+      unsubTicker = marketFeed.subscribeActiveTicker(activeSymbol, (newTicker) => {
+        ticker = newTicker;
+      });
     }
   });
 
@@ -211,7 +203,7 @@
       }, 12000);
     });
 
-    getActiveProviderId().then((pId) => {
+    marketFeed.getActiveProviderId().then((pId) => {
       if (pId) activeProviderId = pId;
     });
 
@@ -222,9 +214,6 @@
     loadQuickSymbolsConfig().then((cfg) => {
       if (cfg) quickSymbolsConfig = cfg;
     });
-
-    updateTicker();
-    tickerInterval = setInterval(updateTicker, 4000);
 
     // Global keyboard shortcuts (TradingView Standard Suite)
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -363,7 +352,7 @@
   });
 
   onDestroy(() => {
-    if (tickerInterval) clearInterval(tickerInterval);
+    if (unsubTicker) unsubTicker();
     if (unsubAlertTrigger) unsubAlertTrigger();
   });
 
@@ -431,6 +420,7 @@
 
   function handleProviderChange(newProviderId: string) {
     activeProviderId = newProviderId;
+    marketFeed.setActiveProvider(newProviderId);
     addSystemLog(`Data provider beralih ke: ${newProviderId.toUpperCase()}`, 'success');
   }
 

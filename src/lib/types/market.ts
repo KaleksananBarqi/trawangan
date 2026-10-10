@@ -207,3 +207,14 @@ export interface SavedWorkspace {
   indicators: { title: string; source?: string; visible: boolean }[];
   timestamp: number;
 }
+
+export interface MarketSearchResult {
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  displayName: string;
+  type: 'spot' | 'perp';
+  provider: string;
+  price?: number;
+  change24h?: number;
+}

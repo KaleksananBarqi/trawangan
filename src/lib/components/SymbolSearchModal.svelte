@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { Search, X, Check, Plus, ArrowRight, CornerDownLeft, Sparkles, TrendingUp, Layers } from '@lucide/svelte';
-  import { searchMarketSymbols, type MarketSearchResult } from '../services/marketProvider';
+  import { marketFeed } from '../services/market';
+  import type { MarketSearchResult } from '../types/market';
 
   interface Props {
     isOpen: boolean;
@@ -32,7 +33,7 @@
   // Perbarui hasil pencarian saat query, filter, atau provider berubah
   $effect(() => {
     if (isOpen) {
-      searchMarketSymbols(query, filterType, activeProviderId).then((res) => {
+      marketFeed.searchSymbols(query, filterType).then((res) => {
         searchResults = res;
         selectedIndex = 0;
       });

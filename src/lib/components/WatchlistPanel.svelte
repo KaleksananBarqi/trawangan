@@ -24,7 +24,7 @@
     SlidersHorizontal
   } from '@lucide/svelte';
   import { loadWatchlist, saveWatchlist } from '../services/persistence';
-  import { fetchWatchlistTickers } from '../services/marketProvider';
+  import { marketFeed } from '../services/market';
   import { alertService } from '../services/alertService';
   import SymbolSearchModal from './SymbolSearchModal.svelte';
   import type { PriceAlert, ObjectTreeItem } from '../types/market';
@@ -75,7 +75,7 @@
   let newAlertLabel = $state('');
   let showAddInput = $state(false);
   let showAddAlert = $state(false);
-  let pollInterval: any = null;
+  let unsubWatchlistFeed: (() => void) | null = null;
   let unsubAlerts: (() => void) | null = null;
 
   const displayAlerts = $derived.by(() => {
@@ -97,7 +97,6 @@
       if (h !== lastSyncedHash && h !== JSON.stringify(symbols)) {
         lastSyncedHash = h;
         symbols = [...propSymbols];
-        refreshTickers();
       }
     }
   });
@@ -107,7 +106,6 @@
     lastSyncedHash = JSON.stringify(newSymbols);
     onWatchlistChange?.(newSymbols);
     await saveWatchlist(newSymbols);
-    await refreshTickers();
   }
 
   async function loadInitialWatchlist() {
@@ -123,45 +121,29 @@
           onWatchlistChange?.(symbols);
         }
       }
-      await refreshTickers();
     } catch (err) {
       console.warn('Gagal memuat awal watchlist:', err);
     }
   }
 
   $effect(() => {
-    if (activeProviderId) {
-      refreshTickers();
+    if (symbols && symbols.length > 0) {
+      if (unsubWatchlistFeed) unsubWatchlistFeed();
+      unsubWatchlistFeed = marketFeed.subscribeWatchlistTickers(symbols, (newMap) => {
+        tickerMap = { ...tickerMap, ...newMap };
+      });
     }
   });
-
-  async function refreshTickers() {
-    if (symbols.length === 0) return;
-    try {
-      const data = await fetchWatchlistTickers(symbols, activeProviderId);
-      tickerMap = { ...tickerMap, ...data };
-
-      // Evaluasi real-time alert dengan harga terkini
-      for (const [sym, t] of Object.entries(data)) {
-        if (t && t.price > 0) {
-          alertService.evaluateAlerts(sym, t.price);
-        }
-      }
-    } catch (err) {
-      console.warn('Refresh watchlist tickers error:', err);
-    }
-  }
 
   onMount(() => {
     loadInitialWatchlist();
     unsubAlerts = alertService.subscribe((list) => {
       alerts = list;
     });
-    pollInterval = setInterval(refreshTickers, 4000);
   });
 
   onDestroy(() => {
-    if (pollInterval) clearInterval(pollInterval);
+    if (unsubWatchlistFeed) unsubWatchlistFeed();
     if (unsubAlerts) unsubAlerts();
   });
 

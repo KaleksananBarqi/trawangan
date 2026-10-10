@@ -40,6 +40,7 @@ function getConditionText(cond: string): string {
  * Pastikan izin notifikasi sistem telah diberikan oleh pengguna
  */
 export async function ensureNotificationPermission(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
   try {
     let granted = await isPermissionGranted();
     if (!granted) {

@@ -26,12 +26,7 @@
   } from '@lucide/svelte';
   import { sendTestNotification } from '../services/systemNotificationService';
   import type { AppSettings, ProviderConfig } from '../types/market';
-  import {
-    getSavedProviders,
-    setActiveProvider,
-    saveProviderConfig,
-    deleteProvider
-  } from '../services/marketProvider';
+  import { marketFeed } from '../services/market';
 
   const ALL_AVAILABLE_TIMEFRAMES = [
     { id: '1m', label: '1m' },
@@ -126,7 +121,7 @@
 
   async function loadProviders() {
     try {
-      providersList = await getSavedProviders();
+      providersList = await marketFeed.getSavedProviders();
       const active = providersList.find((p) => p.is_active);
       if (active) {
         selectedProviderId = active.id;
@@ -153,7 +148,7 @@
 
   async function handleSwitchProvider(providerId: string) {
     selectedProviderId = providerId;
-    await setActiveProvider(providerId);
+    await marketFeed.setActiveProvider(providerId);
     await loadProviders();
     onProviderChange?.(providerId);
   }
@@ -203,7 +198,7 @@
       ws_url: customWsUrl.trim(),
       is_active: true
     };
-    await saveProviderConfig(newConfig);
+    await marketFeed.saveProviderConfig(newConfig);
     await loadProviders();
     selectedProviderId = newConfig.id;
     onProviderChange?.(newConfig.id);
@@ -215,7 +210,7 @@
   }
 
   async function handleDeleteCustomProvider(id: string) {
-    await deleteProvider(id);
+    await marketFeed.deleteProvider(id);
     await loadProviders();
     if (selectedProviderId === id) {
       handleSwitchProvider('binance');
