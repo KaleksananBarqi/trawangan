@@ -26,8 +26,11 @@
     Candle,
     StrategyPerformanceSummary,
     StrategyTradeRecord,
-    PriceAlert
+    PriceAlert,
+    ThemePresetId
   } from '../types/market';
+  import { THEME_PRESETS } from '../constants/themes';
+
 
   export interface ReplayStateInfo {
     active: boolean;
@@ -51,6 +54,8 @@
     onCutoffCancelled?: () => void;
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
     onRequestCreateAlert?: (symbol: string, price: number) => void;
+    themePreset?: ThemePresetId;
+    fontSize?: number;
   }
 
   let {
@@ -58,6 +63,8 @@
     timeframe,
     layout,
     providerId = 'binance',
+    themePreset = 'signature',
+    fontSize = 12,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true },
     showWatermark = true,
     onActiveIndicatorsChange,
@@ -581,12 +588,46 @@
     return `binance:${clean}`;
   }
 
+  // Reaktif sinkronisasi tema workspace Vela saat preset atau ukuran font berganti
+  $effect(() => {
+    if (workspace && (themePreset || fontSize)) {
+      const cfg = THEME_PRESETS[themePreset || 'signature'] || THEME_PRESETS.signature;
+      const t = {
+        background: cfg.chart.background,
+        textColor: cfg.chart.textColor,
+        gridColor: cfg.chart.gridColor,
+        borderColor: cfg.chart.borderColor,
+        upColor: cfg.chart.upColor,
+        downColor: cfg.chart.downColor,
+        fontSize: Math.max(9, Math.min(32, Math.round(fontSize))),
+        fontFamily: "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+      };
+      try {
+        workspace.setTheme(t as any);
+      } catch (err) {
+        console.warn('Gagal memperbarui tema workspace Vela:', err);
+      }
+    }
+  });
+
   onMount(() => {
     if (!chartContainer) return;
     ensurePineEngine();
 
     try {
       const velaSym = resolveVelaSymbol(symbol, providerId);
+
+      const themeConfig = THEME_PRESETS[themePreset || 'signature'] || THEME_PRESETS.signature;
+      const velaTheme = {
+        background: themeConfig.chart.background,
+        textColor: themeConfig.chart.textColor,
+        gridColor: themeConfig.chart.gridColor,
+        borderColor: themeConfig.chart.borderColor,
+        upColor: themeConfig.chart.upColor,
+        downColor: themeConfig.chart.downColor,
+        fontSize: Math.max(9, Math.min(32, Math.round(fontSize))),
+        fontFamily: "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+      };
 
       // Inisialisasi Vela Workspace dengan WebGL2 renderer dan multi-providers resmi
       workspace = new VelaWorkspace(chartContainer, {
@@ -596,7 +637,7 @@
         drawingToolbar: false, // Gunakan toolbar kustom Trawangan agar tidak tumpang tindih
         topbar: { left: [], right: [] }, // Sembunyikan topbar bawaan Vela agar tidak tumpang tindih dengan header kustom
         live: true,
-        theme: 'dark',
+        theme: velaTheme as any,
         providers: {
           binance: () => new BinanceProvider(),
           hyperliquid: () => new HyperliquidProvider(),

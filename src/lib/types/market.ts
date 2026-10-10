@@ -137,6 +137,9 @@ export interface ObjectTreeItem {
   locked?: boolean;
 }
 
+export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass';
+export type UiDensity = 'compact' | 'regular' | 'comfortable';
+
 export interface AppSettings {
   timezone: string;
   soundEnabled: boolean;
@@ -144,11 +147,17 @@ export interface AppSettings {
   showWatermark: boolean;
   showGrid: boolean;
   showReplayBar: boolean;
-  theme: 'obsidian';
+  theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'obsidian';
+  themePreset?: ThemePresetId;
+  fontFamilyUi?: string;
+  fontFamilyMono?: string;
+  uiDensity?: UiDensity;
+  fontSize?: number;
   defaultTimeframe?: Timeframe;
   favoriteTimeframes?: Timeframe[];
   customTimeframes?: string[];
 }
+
 
 export interface StrategyTradeRecord {
   id: string;

@@ -137,12 +137,13 @@
 <header class="header">
   <!-- Brand & Logo -->
   <div class="brand-section">
-    <div class="brand-badge">
-      <Zap size={15} class="brand-icon" />
-      <span class="brand-title">TRAWANGAN</span>
+    <div class="brand-badge" title="trawangan · Professional Crypto Charting Terminal">
+      <img src="/no background.svg" alt="trawangan logo" class="brand-logo-img" />
+      <span class="brand-title">trawangan</span>
     </div>
-    <span class="version-tag">PRO</span>
+    <span class="version-tag">terminal</span>
   </div>
+
 
   <div class="divider"></div>
 
@@ -389,26 +390,36 @@
     border-radius: var(--radius-xs);
   }
 
-  :global(.brand-icon) {
-    color: var(--brand-primary);
+  .brand-logo-img {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    display: block;
+    filter: drop-shadow(0 0 6px rgba(255, 105, 180, 0.4));
   }
 
   .brand-title {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    font-family: var(--font-brand);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
     color: var(--text-main);
+    text-transform: lowercase;
   }
 
   .version-tag {
+    font-family: var(--font-mono);
     font-size: 9px;
-    font-weight: 700;
-    background-color: rgba(0, 240, 144, 0.12);
+    font-weight: 600;
+    background-color: rgba(255, 105, 180, 0.12);
     color: var(--brand-primary);
-    padding: 2px 4px;
+    padding: 2px 5px;
     border-radius: var(--radius-xs);
-    border: 1px solid rgba(0, 240, 144, 0.25);
+    border: 1px solid rgba(255, 105, 180, 0.28);
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
   }
+
 
   .divider {
     width: 1px;

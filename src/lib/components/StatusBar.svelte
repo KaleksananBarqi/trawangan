@@ -10,9 +10,11 @@
     ChevronDown,
     Activity,
     Wifi,
-    Zap
+    Zap,
+    Coffee
   } from '@lucide/svelte';
   import { telemetryService, type TelemetryData } from '../services/telemetryService';
+  import { openExternalUrl } from '../services/urlService';
 
   interface Props {
     isConsoleOpen: boolean;
@@ -116,6 +118,17 @@
       <span class="icon-dim"><Clock size={11} /></span>
       <span class="pill-text">{currentTime} WIB</span>
     </div>
+
+    <!-- Buy Me Coffee Button -->
+    <button
+      type="button"
+      class="coffee-btn"
+      title="Dukung pengembang: Belikan saya kopi di Saweria (https://saweria.co/arthex1204)"
+      onclick={() => openExternalUrl('https://saweria.co/arthex1204')}
+    >
+      <Coffee size={11} class="coffee-icon" />
+      <span>Buy Me Coffee</span>
+    </button>
 
     <div class="divider"></div>
 
@@ -272,5 +285,36 @@
     background-color: rgba(0, 240, 144, 0.12);
     border-color: var(--brand-primary);
     color: var(--brand-primary);
+  }
+
+  .coffee-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    color: #f59e0b;
+    padding: 2px 7px;
+    border-radius: var(--radius-xs);
+    font-size: 10px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .coffee-btn:hover {
+    color: #fbbf24;
+    background-color: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.4);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+  }
+
+  :global(.coffee-icon) {
+    color: #f59e0b;
+    transition: transform 0.2s ease;
+  }
+
+  .coffee-btn:hover :global(.coffee-icon) {
+    transform: rotate(-10deg) scale(1.1);
   }
 </style>

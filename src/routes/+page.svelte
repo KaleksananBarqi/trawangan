@@ -38,6 +38,13 @@
     saveWorkspace,
     DEFAULT_QUICK_SYMBOLS_CONFIG
   } from '../lib/services/persistence';
+  import {
+    THEME_PRESETS,
+    UI_FONT_OPTIONS,
+    MONO_FONT_OPTIONS,
+    DENSITY_OPTIONS
+  } from '../lib/constants/themes';
+
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
 
   // ─── Core Market & Navigation State ───
@@ -66,11 +73,36 @@
     showWatermark: true,
     showGrid: true,
     showReplayBar: false,
-    theme: 'obsidian',
+    theme: 'signature',
+    themePreset: 'signature',
+    fontFamilyUi: 'Plus Jakarta Sans',
+    fontFamilyMono: 'JetBrains Mono',
+    uiDensity: 'regular',
+    fontSize: 12,
     defaultTimeframe: '15m',
     favoriteTimeframes: ['1m', '5m', '15m', '1h', '4h', '1D'],
     customTimeframes: [],
   });
+
+  // Reaktif Sinkronisasi Tema & Tipografi ke Elemen Root DOM
+  $effect(() => {
+    if (typeof document !== 'undefined') {
+      const preset = appSettings.themePreset || 'signature';
+      document.documentElement.setAttribute('data-theme', preset);
+
+      const uiOpt = UI_FONT_OPTIONS.find((f) => f.id === appSettings.fontFamilyUi);
+      const monoOpt = MONO_FONT_OPTIONS.find((f) => f.id === appSettings.fontFamilyMono);
+      
+      const currentFontSize = appSettings.fontSize ?? (appSettings.uiDensity === 'compact' ? 11 : appSettings.uiDensity === 'comfortable' ? 13.5 : 12);
+      const fontScale = currentFontSize / 12;
+
+      document.documentElement.style.setProperty('--font-ui', uiOpt ? uiOpt.css : "'Plus Jakarta Sans', sans-serif");
+      document.documentElement.style.setProperty('--font-code', monoOpt ? monoOpt.css : "'JetBrains Mono', monospace");
+      document.documentElement.style.setProperty('--base-font-size', `${currentFontSize}px`);
+      document.documentElement.style.setProperty('--font-scale', `${fontScale}`);
+    }
+  });
+
 
   // Panels & Modals Visibility State
   let isSettingsModalOpen = $state(false);
@@ -667,6 +699,8 @@
             timeframe={activeTimeframe}
             layout={currentLayout}
             providerId={activeProviderId}
+            themePreset={appSettings.themePreset || 'signature'}
+            fontSize={appSettings.fontSize || 12}
             {syncConfig}
             showWatermark={appSettings.showWatermark}
             onActiveIndicatorsChange={(list) => (activeIndicators = list)}
@@ -765,6 +799,8 @@
             timeframe={activeTimeframe}
             layout="1"
             providerId={activeProviderId}
+            themePreset={appSettings.themePreset || 'signature'}
+            fontSize={appSettings.fontSize || 12}
             {syncConfig}
             onActiveIndicatorsChange={(list) => (activeIndicators = list)}
             onActiveCellChange={handleActiveCellChange}

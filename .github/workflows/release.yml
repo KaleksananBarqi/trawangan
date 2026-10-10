@@ -1,4 +1,4 @@
-name: Release Trawangan
+name: release trawangan
 
 on:
   push:
@@ -78,14 +78,28 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ steps.tag_info.outputs.tag }}
-          releaseName: 'Trawangan ${{ steps.tag_info.outputs.tag }}'
+          releaseName: 'trawangan ${{ steps.tag_info.outputs.tag }}'
           releaseBody: |
-            Trawangan - Native Crypto Charting Desktop Application.
+            ## ꦠꦿꦮꦔꦤ꧀ · trawangan ${{ steps.tag_info.outputs.tag }}
             
-            ### Package Downloads:
-            - **Windows**: `.exe` (NSIS Installer) / `.msi`
-            - **Linux**: `.deb` / `.AppImage`
-            - **macOS**: `.dmg` / `.app`
+            > **Professional Desktop Crypto Charting Terminal — Zero Paywall**
+            
+            Aplikasi desktop native ultra-ringan untuk analisis teknikal, charting WebGL2 berkecepatan tinggi, dan eksekusi Pine Script v6 tanpa paywall.
+            
+            ### ⚖️ Keunggulan Zero-Paywall Parity:
+            - **Indikator Simultan:** Bebas pasang indikator tanpa batas kuota.
+            - **Kapasitas Watchlist:** Simpan simbol tanpa batas.
+            - **Pine Script v6:** Dijalankan secara lokal via PineTS Web Worker.
+            - **Privasi:** 100% Offline SQLite lokal, tanpa pelacak atau telemetri.
+            - **Engine:** LuxAlgo Vela WebGL2 akselerasi GPU (60-120 FPS).
+            
+            ### 📦 Paket Installer Biner Resmi:
+            - **Windows**: `.exe` (NSIS Setup) & `.msi`
+            - **Linux**: `.AppImage` (Universal Linux) & `.deb` (Debian/Ubuntu)
+            - **macOS**: `.dmg` & `.app` (Apple Silicon & Intel)
+            
+            ---
+            *Filosofi: Penerawangan (ꦠꦿꦮꦔꦤ꧀) — Visi menembus kabut manipulasi pasar.*
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

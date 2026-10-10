@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>trawangan — Professional Native Crypto Charting Terminal | Zero Paywall</title>
+  
+  <meta name="description" content="trawangan adalah aplikasi desktop native ultra-ringan untuk analisis teknikal kripto, charting berkecepatan tinggi WebGL2, dan eksekusi Pine Script v6 tanpa paywall.">
+  <meta name="keywords" content="trawangan, crypto charting, tradingview alternative, free pine script, zero paywall, tauri v2, luxalgo vela, pinets">
+  <meta name="author" content="KaleksananBarqi">
+
+  <!-- OpenGraph / Social Meta Tags -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="trawangan — Professional Native Crypto Charting Terminal | Zero Paywall">
+  <meta property="og:description" content="Terminal charting kripto native berkinerja tinggi. Indikator tanpa batas, watchlist tanpa kuota, dan eksekusi Pine Script v6 gratis.">
+  <meta property="og:image" content="assets/banner.png">
+  <meta property="og:url" content="https://kaleksananbarqi.github.io/trawangan/">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="trawangan — Zero-Paywall Crypto Charting Terminal">
+  <meta name="twitter:description" content="Visualisasi data teknikal tajam dan eksekusi Pine Script v6 tanpa batasan paywall.">
+  <meta name="twitter:image" content="assets/banner.png">
+
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient Gradient Background Glow -->
+  <div class="ambient-glow top-left"></div>
+  <div class="ambient-glow bottom-right"></div>
+
+  <!-- Header / Navigation -->
+  <header class="site-header">
+    <div class="header-inner container">
+      <a href="#" class="brand-logo" id="nav-brand">
+        <img src="assets/logo-icon.svg" alt="trawangan monogram" class="brand-icon" width="28" height="28">
+        <span class="brand-name">trawangan</span>
+      </a>
+
+      <nav class="nav-menu" id="nav-menu">
+        <a href="#filosofi" class="nav-link">Filosofi</a>
+        <a href="#komparasi" class="nav-link">Komparasi</a>
+        <a href="#fitur" class="nav-link">Fitur Utama</a>
+        <a href="#galeri" class="nav-link">Galeri</a>
+      </nav>
+
+      <div class="header-actions">
+        <a href="https://github.com/KaleksananBarqi/trawangan" target="_blank" rel="noopener noreferrer" class="btn-github" id="header-github-btn">
+          <svg class="svg-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+        <a href="#download" class="btn-primary" id="header-download-btn">Unduh v0.1.0</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <main>
+    <section class="hero-section container">
+      <div class="hero-badge">
+        <span class="javanese-accent">ꦠꦿꦮꦔꦤ꧀</span>
+        <span class="badge-dot"></span>
+        <span>Zero-Paywall Native Desktop Charting</span>
+      </div>
+
+      <h1 class="hero-title">
+        Melihat Menembus Kabut <br>
+        <span class="highlight-gradient">Manipulasi Pasar.</span>
+      </h1>
+
+      <p class="hero-subtitle">
+        Terminal analisis teknikal desktop native ultra-ringan berbasis <strong>Tauri v2 & Rust</strong>. Nikmati rendering grafik <strong>WebGL2 120 FPS</strong>, eksekusi <strong>Pine Script v6</strong> lokal, indikator tanpa batas, dan privasi offline penuh tanpa biaya langganan.
+      </p>
+
+      <div class="hero-cta-wrapper">
+        <div class="download-dynamic-group">
+          <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="btn-cta-main" id="dynamic-download-cta">
+            <svg class="cta-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <div class="cta-text">
+              <span class="cta-label" id="cta-target-os">Unduh untuk Windows (.exe)</span>
+              <span class="cta-sub">v0.1.0 · Installer Bebas Paywall</span>
+            </div>
+          </a>
+        </div>
+
+        <div class="platform-selector">
+          <span class="selector-label">Tersedia juga untuk:</span>
+          <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="platform-link" id="platform-win">Windows (.exe/.msi)</a>
+          <span class="separator">·</span>
+          <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="platform-link" id="platform-mac">macOS (.dmg)</a>
+          <span class="separator">·</span>
+          <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="platform-link" id="platform-linux">Linux (.AppImage/.deb)</a>
+        </div>
+      </div>
+
+      <!-- Hero Visual Showcase -->
+      <div class="hero-visual-frame">
+        <div class="window-header">
+          <div class="window-dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <div class="window-title">trawangan — BTCUSDT.P · Binance · 15m · Pure Charting Scope</div>
+          <div class="window-badge">60-120 FPS</div>
+        </div>
+        <div class="visual-canvas">
+          <img src="assets/banner.png" alt="trawangan Desktop Terminal Interface" class="hero-image" width="1280" height="720">
+        </div>
+      </div>
+
+      <!-- Quick Highlights Grid -->
+      <div class="stats-ribbon">
+        <div class="stat-card">
+          <div class="stat-number">Rp 0</div>
+          <div class="stat-label">Zero Paywall Selamanya</div>
+          <div class="stat-desc">Tanpa tier pro, bebas batasan fitur</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">∞</div >
+          <div class="stat-label">Indikator Simultan</div>
+          <div class="stat-desc">Pasang indikator sebanyak kebutuhanmu</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">120 FPS</div>
+          <div class="stat-label">Canvas WebGL2</div>
+          <div class="stat-desc">Akselerasi GPU LuxAlgo Vela Engine</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">&lt; 50 MB</div>
+          <div class="stat-label">RAM Footprint</div>
+          <div class="stat-desc">Native Tauri v2 + Rust, tanpa Electron bloat</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Philosophy Section -->
+    <section class="section philosophy-section" id="filosofi">
+      <div class="container">
+        <div class="philosophy-box glassmorphism">
+          <div class="philosophy-content">
+            <div class="javanese-title-pill">
+              <span class="javanese-script">ꦠꦿꦮꦔꦤ꧀</span>
+              <span class="pill-divider">/</span>
+              <span class="latin-script">penerawangan</span>
+            </div>
+            
+            <h2 class="section-title">
+              Filosofi di Balik <span class="highlight-pink">trawangan</span>
+            </h2>
+            
+            <p class="philosophy-body">
+              Diambil dari etimologi bahasa Jawa kuno <strong>penerawangan</strong> (ꦠꦿꦮꦔꦤ꧀), yang merepresentasikan <em>kemampuan mata batin untuk melihat menembus kabut manipulasi, ilusi kasat mata, dan kekacauan duniawi</em>.
+            </p>
+            
+            <p class="philosophy-body">
+              Di tengah ekosistem pasar kripto modern yang bising—di mana pergerakan harga sering kali dikaburkan oleh manipulasi likuidasi tersembunyi dan platform komersial mengunci alat analisis dasar di balik *paywall* langganan mahal—<strong>trawangan</strong> diciptakan. Kami mendedikasikan aplikasi ini murni untuk <strong>Pure Charting Scope</strong>: perangkat analisis grafis objektif, jernih, dan tajam yang mengembalikan kedaulatan data sepenuhnya ke tangan trader.
+            </p>
+
+            <div class="philosophy-quote">
+              "Bukan sekadar menggambar garis pada grafik, melainkan menajamkan visi untuk membaca jejak likuidasi yang tersembunyi di balik kabut pasar."
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison Table Section -->
+    <section class="section comparison-section" id="komparasi">
+      <div class="container">
+        <div class="section-heading text-center">
+          <span class="badge-tag">Zero-Paywall Parity</span>
+          <h2 class="section-title">Mengapa Berlangganan jika Analisis Bisa Bebas?</h2>
+          <p class="section-subtitle">
+            Bandingkan kebebasan analisis teknikal di trawangan dengan platform charting komersial berbayar.
+          </p>
+        </div>
+
+        <div class="table-responsive glassmorphism">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th class="col-feature">Fitur & Kapabilitas</th>
+                <th class="col-trawangan">
+                  <div class="trawangan-header">
+                    <img src="assets/logo-icon.svg" alt="logo" width="20" height="20">
+                    <span>trawangan</span>
+                  </div>
+                </th>
+                <th class="col-competitor">Platform Komersial Gratis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="feature-name">
+                  <strong>Indikator per Kanvas</strong>
+                  <span>Kombinasi indikator teknikal simultan</span>
+                </td>
+                <td class="status-trawangan">
+                  <span class="pill-success">Tanpa Batas (Unlimited)</span>
+                </td>
+                <td class="status-competitor">
+                  <span class="pill-limited">Terbatas (Maks. 2 - 3 indikator)</span>
+                </td>
+              </tr>
+              <tr>
+                <td class="feature-name">
+                  <strong>Kapasitas Watchlist</strong>
+                  <span>Jumlah aset & simbol yang bisa dipantau</span>
+                </td>
+                <td class="status-trawangan">
+                  <span class="pill-success">Tanpa Kuota (Unlimited)</span>
+                </td>
+                <td class="status-competitor">
+                  <span class="pill-limited">Dibatasi kuota ketat</span>
+                </td>
+              </tr>
+              <tr>
+                <td class="feature-name">
+                  <strong>Eksekusi Pine Script v6</strong>
+                  <span>Menjalankan indikator & strategi kustom</span>
+                </td>
+                <td class="status-trawangan">
+                  <span class="pill-success">Penuh (Worker Lokal PineTS)</span>
+                </td>
+                <td class="status-competitor">
+                  <span class="pill-limited">Dibatasi kuota server & paywall</span>
+                </td>
+              </tr>
+              <tr>
+                <td class="feature-name">
+                  <strong>Data Feed Multi-Exchange</strong>
+                  <span>Binance, Bitunix, Hyperliquid, Coinbase</span>
+                </td>
+                <td class="status-trawangan">
+                  <span class="pill-success">Real-time WebSocket Langsung</span>
+                </td>
+                <td class="status-competitor">
+                  <span class="pill-limited">Data sering tertunda / Berbayar</span>
+                </td>
+              </tr>
+              <tr>
+                <td class="feature-name">
+                  <strong>Privasi & Penyimpanan Data</strong>
+                  <span>Alat gambar, indikator, dan riwayat analisis</span>
+                </td>
+                <td class="status-trawangan">
+                  <span class="pill-success">100% Offline Lokal (SQLite)</span>
+                </td>
+                <td class="status-competitor">
+                  <span class="pill-limited">Pelacak cloud, telemetri, & iklan</span>
+                </td>
+              </tr>
+              <tr>
+                <td class="feature-name">
+                  <strong>Konsumsi Memori RAM</strong>
+                  <span>Beban sistem saat dijalankan berjam-jam</span>
+                </td>
+                <td class="status-trawangan">
+                  <span class="pill-success">Ultra-Ringan (~30-50 MB)</span>
+                </td>
+                <td class="status-competitor">
+                  <span class="pill-limited">Boros RAM (500 MB - 1.5 GB Electron)</span>
+                </td>
+              </tr>
+              <tr class="highlight-row">
+                <td class="feature-name">
+                  <strong>Biaya Langganan</strong>
+                  <span>Biaya penggunaan bulanan atau tahunan</span>
+                </td>
+                <td class="status-trawangan price-free">
+                  <strong>Rp 0 / $0 Selamanya</strong>
+                  <small>Open Source MIT License</small>
+                </td>
+                <td class="status-competitor price-cost">
+                  <span>$14.95 - $59.95 / bulan</span>
+                  <small>Perlu tagihan berulang</small>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Gallery Showcase -->
+    <section class="section gallery-section" id="galeri">
+      <div class="container">
+        <div class="section-heading text-center">
+          <span class="badge-tag">Tampilan Nyata</span>
+          <h2 class="section-title">Dibangun untuk Kecepatan dan Presisi</h2>
+          <p class="section-subtitle">
+            Lihat langsung antarmuka desktop trawangan yang dirancang dengan estetika minimalis dan responsivitas instan.
+          </p>
+        </div>
+
+        <div class="gallery-tabs">
+          <button class="gallery-tab-btn active" data-target="main-chart">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            Terminal Charting Utama
+          </button>
+          <button class="gallery-tab-btn" data-target="pine-editor">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            Pine Script v6 Editor
+          </button>
+          <button class="gallery-tab-btn" data-target="about-themes">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            Filosofi & Preset Tema
+          </button>
+        </div>
+
+        <div class="gallery-viewport glassmorphism">
+          <div class="gallery-panel active" id="panel-main-chart">
+            <img src="assets/screenshots/main.png" alt="Terminal Charting trawangan WebGL2" class="gallery-img">
+            <div class="panel-caption">
+              <strong>Kanvas Charting WebGL2:</strong> Menghadirkan rendering candle mulus hingga 120 FPS ditenagai LuxAlgo Vela, integrasi orderflow multi-exchange, dan tema signature cyberpunk minimalis.
+            </div>
+          </div>
+          <div class="gallery-panel" id="panel-pine-editor">
+            <img src="assets/screenshots/pinescript.png" alt="Pine Script Editor v6 trawangan" class="gallery-img">
+            <div class="panel-caption">
+              <strong>PineTS v6 Scripting Engine:</strong> Tulis, kompilasi, dan jalankan strategi maupun indikator Pine Script v6 langsung di Web Worker lokal tanpa lag antarmuka dan tanpa limitasi kuota.
+            </div>
+          </div>
+          <div class="gallery-panel" id="panel-about-themes">
+            <img src="assets/screenshots/about.png" alt="Preset Multi-Tema dan Modal Filosofi" class="gallery-img">
+            <div class="panel-caption">
+              <strong>Preset Multi-Tema & Kustomisasi:</strong> Mendukung Signature Dark Palette (`#0F0F0F` + `#FF69B4`), Binance Classic, TradingView Pro, Bitunix Neon, serta kustomisasi densitas font antarmuka.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Core Features Grid -->
+    <section class="section features-section" id="fitur">
+      <div class="container">
+        <div class="section-heading text-center">
+          <span class="badge-tag">Spesifikasi Arsitektur</span>
+          <h2 class="section-title">Direkayasa untuk Kinerja Native Sejati</h2>
+          <p class="section-subtitle">
+            Fondasi teknologi modern yang menjamin kecepatan, keamanan, dan kebebasan analisis Anda.
+          </p>
+        </div>
+
+        <div class="features-grid">
+          <div class="feature-card glassmorphism">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <h3 class="feature-title">Native Desktop Tauri v2</h3>
+            <p class="feature-desc">
+              Dibangun dengan arsitektur native Rust dan WebView2 sistem. RAM hanya ~30-50 MB, tanpa bloat Chromium yang membuat laptop Anda panas.
+            </p>
+          </div>
+
+          <div class="feature-card glassmorphism">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <h3 class="feature-title">WebGL2 Charting Engine</h3>
+            <p class="feature-desc">
+              Grafik candlestick akselerasi hardware menggunakan LuxAlgo Vela Engine. Scroll, pan, dan zoom instan dengan frame-rate hingga 120 FPS.
+            </p>
+          </div>
+
+          <div class="feature-card glassmorphism">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            </div>
+            <h3 class="feature-title">Pine Script v6 Worker</h3>
+            <p class="feature-desc">
+              Eksekusi skrip PineTS v6 terisolasi pada Web Worker terpisah. UI tetap responsif mulus saat melakukan kalkulasi indikator matematis berat.
+            </p>
+          </div>
+
+          <div class="feature-card glassmorphism">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+            </div>
+            <h3 class="feature-title">Penyimpanan Offline SQLite</h3>
+            <p class="feature-desc">
+              Garis gambar (drawings), layout chart, dan watchlist tersimpan secara aman di database SQLite lokal di layer Rust. Tanpa akun, tanpa cloud leak.
+            </p>
+          </div>
+
+          <div class="feature-card glassmorphism">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+            </div>
+            <h3 class="feature-title">Multi-Exchange Real-Time</h3>
+            <p class="feature-desc">
+              Dukungan data live WebSocket dan REST fallback langsung ke Binance, Bitunix, Hyperliquid, dan Coinbase tanpa perantara API pihak ketiga.
+            </p>
+          </div>
+
+          <div class="feature-card glassmorphism">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <h3 class="feature-title">Pure Charting Scope</h3>
+            <p class="feature-desc">
+              Bebas godaan tombol order dan koneksi modal berisiko. Dedikasi 100% pada ketajaman visualisasi analisis teknikal dan pengujian strategi.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download Section -->
+    <section class="section download-section" id="download">
+      <div class="container text-center">
+        <div class="download-box glassmorphism">
+          <div class="download-badge">Rilis Perdana v0.1.0</div>
+          <h2 class="section-title">Mulai Menerawang Pasar Sekarang</h2>
+          <p class="section-subtitle">
+            Dapatkan installer biner resmi bebas paywall untuk sistem operasi Anda.
+          </p>
+
+          <div class="os-cards-grid">
+            <!-- Windows Card -->
+            <div class="os-card">
+              <div class="os-icon">🪟</div>
+              <h3 class="os-name">Windows</h3>
+              <p class="os-req">Windows 10 / 11 (64-bit)</p>
+              <div class="os-actions">
+                <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="btn-download-os">Unduh .exe (NSIS)</a>
+                <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="btn-sub-download">Installer .msi</a>
+              </div>
+            </div>
+
+            <!-- macOS Card -->
+            <div class="os-card">
+              <div class="os-icon">🍎</div>
+              <h3 class="os-name">macOS</h3>
+              <p class="os-req">macOS 12+ (Apple Silicon & Intel)</p>
+              <div class="os-actions">
+                <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="btn-download-os">Unduh .dmg</a>
+                <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="btn-sub-download">Paket .app</a>
+              </div>
+            </div>
+
+            <!-- Linux Card -->
+            <div class="os-card">
+              <div class="os-icon">🐧</div>
+              <h3 class="os-name">Linux</h3>
+              <p class="os-req">Ubuntu, Debian, Arch, Fedora</p>
+              <div class="os-actions">
+                <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="btn-download-os">Unduh .AppImage</a>
+                <a href="https://github.com/KaleksananBarqi/trawangan/releases/latest" class="btn-sub-download">Paket .deb</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="download-footer">
+            <p>Atau kompilasi langsung dari kode sumber:</p>
+            <div class="code-pill">
+              <code>git clone https://github.com/KaleksananBarqi/trawangan.git && cd trawangan && npm install && npm run tauri build</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <div class="brand-line">
+          <img src="assets/logo-icon.svg" alt="trawangan" width="22" height="22">
+          <span class="brand-name">trawangan</span>
+          <span class="javanese-sub">ꦠꦿꦮꦔꦤ꧀</span>
+        </div>
+        <p class="footer-desc">
+          Professional Native Desktop Crypto Charting Terminal. Ditenagai oleh filosofi Jawa untuk visi pasar yang tajam, jernih, dan bebas paywall.
+        </p>
+      </div>
+
+      <div class="footer-links">
+        <div class="links-col">
+          <h4>Navigasi</h4>
+          <a href="#filosofi">Filosofi</a>
+          <a href="#komparasi">Komparasi Fitur</a>
+          <a href="#fitur">Arsitektur</a>
+          <a href="#download">Unduh Rilis</a>
+        </div>
+        <div class="links-col">
+          <h4>Komunitas & Kode</h4>
+          <a href="https://github.com/KaleksananBarqi/trawangan" target="_blank" rel="noopener noreferrer">Repositori GitHub</a>
+          <a href="https://github.com/KaleksananBarqi/trawangan/issues" target="_blank" rel="noopener noreferrer">Laporkan Isu</a>
+          <a href="https://github.com/KaleksananBarqi/trawangan/releases" target="_blank" rel="noopener noreferrer">Catatan Rilis</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="container footer-bottom">
+      <p>&copy; 2026 trawangan. Dirilis di bawah lisensi terbuka <strong>MIT License</strong>.</p>
+      <p class="disclaimer">Pure Charting Scope · Bukan penasihat finansial atau perantara perdagangan kripto.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

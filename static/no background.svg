@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1080 1080" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:affinity="https://www.affinity.studio/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g transform="matrix(1,0,0,1,0,-2677.041953)">
+        <g id="transparan-warna" affinity:id="transparan warna" transform="matrix(1,0,0,0.8,0,2677.041953)">
+            <rect x="0" y="0" width="1080" height="1350" style="fill:none;"/>
+            <g transform="matrix(5.638802,0,0,5.638802,-2481.43489,-2495.755554)">
+                <g transform="matrix(0.796954,0,0,0.967515,108.789999,-1105.279581)">
+                    <rect x="447.197" y="1632.506" width="88.593" height="28.102" style="fill:rgb(255,105,180);"/>
+                </g>
+                <g transform="matrix(0,1.989247,-1,0,2168.295548,-415.391198)">
+                    <rect x="447.197" y="1632.506" width="88.593" height="28.102" style="fill:rgb(255,105,180);"/>
+                </g>
+                <g transform="matrix(-0.471405,0.589256,0.707107,0.883883,-356.943372,-1214.700872)">
+                    <rect x="447.197" y="1632.506" width="88.593" height="28.102" style="fill:rgb(255,105,180);"/>
+                </g>
+                <g transform="matrix(0,1.254391,1,0,-1087.666904,-21.662923)">
+                    <path d="M535.789,1632.506L535.789,1660.608L447.197,1660.608L450.915,1632.506L535.789,1632.506Z" style="fill:rgb(255,105,180);"/>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>
