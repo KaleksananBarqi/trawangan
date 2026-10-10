@@ -107,12 +107,33 @@
   }
 
   /**
+   * Helper internal untuk mengambil seluruh cell yang aktif di workspace secara tangguh
+   */
+  function getAllWorkspaceCells(): any[] {
+    if (!workspace) return [];
+    try {
+      if (typeof (workspace as any).cells === 'function') {
+        const list = Array.from((workspace as any).cells());
+        if (list.length > 0) return list;
+      }
+    } catch (_) {}
+    try {
+      const cellMap = (workspace as any).cellsById;
+      if (cellMap && typeof cellMap.values === 'function') {
+        const list = Array.from(cellMap.values());
+        if (list.length > 0) return list;
+      }
+    } catch (_) {}
+    return workspace.active ? [workspace.active] : [];
+  }
+
+  /**
    * Terapkan konfigurasi default chart ke seluruh cell atau cell tertentu
    */
   function applySavedChartDefaultConfig(targetCell?: any) {
     if (!activeChartDefaultConfig || !workspace) return;
     try {
-      const cells = targetCell ? [targetCell] : Array.from(workspace.cells());
+      const cells = targetCell ? [targetCell] : getAllWorkspaceCells();
       for (const cell of cells) {
         const renderer = (cell as any)?.chart?.renderer;
         if (renderer && typeof renderer.applyConfig === 'function') {
@@ -326,6 +347,7 @@
 
   /**
    * Muat dan pasang gambar yang tersimpan dari SQLite untuk chart aktif
+   * Prioritaskan slot 'GLOBAL' agar key levels terlihat lintas seluruh timeframe (standar TradingView)
    */
   async function restoreDrawingsForCurrentChart() {
     if (!workspace || !workspace.active) return;
@@ -333,7 +355,12 @@
       const activeChart = workspace.active.chart;
       const curSym = (workspace.active as any).symbol || symbol;
       const curTf = (workspace.active as any).timeframe || timeframe;
-      const doc = await loadDrawings(curSym, curTf);
+      // 1. Coba muat drawing global lintas timeframe
+      let doc = await loadDrawings(curSym, 'GLOBAL');
+      // 2. Fallback jika belum ada data global: muat drawing lama per timeframe spesifik
+      if (!doc) {
+        doc = await loadDrawings(curSym, curTf);
+      }
       if (doc && activeChart?.drawings) {
         activeChart.drawings.fromJSON(doc);
       }
@@ -344,6 +371,7 @@
 
   /**
    * Simpan dokumen gambar ke SQLite saat ada perubahan gambar
+   * Selalu simpan ke slot 'GLOBAL' per simbol agar tersinkronisasi di seluruh timeframe
    */
   function handleDrawingMutated() {
     if (!workspace || !workspace.active) return;
@@ -352,8 +380,7 @@
       if (activeChart?.drawings) {
         const doc = activeChart.drawings.toJSON();
         const curSym = (workspace.active as any).symbol || symbol;
-        const curTf = (workspace.active as any).timeframe || timeframe;
-        saveDrawingsDebounced(curSym, curTf, doc);
+        saveDrawingsDebounced(curSym, 'GLOBAL', doc);
       }
     } catch (err) {
       console.warn('Gagal memproses auto-save drawing:', err);
@@ -763,11 +790,35 @@
   }
 
   /**
-   * Pasang listeners interaksi gambar dan klik seleksi replay
+   * Pasang event listeners untuk mendeteksi perubahan parameter, visibilitas, dan status indikator
+   */
+  function attachIndicatorListeners(chart: any) {
+    if (!chart || !chart.on) return;
+    try {
+      chart.on('indicator:inputs', () => {
+        notifyActiveIndicators();
+      });
+      chart.on('indicator:props', () => {
+        notifyActiveIndicators();
+      });
+      chart.on('indicator:visibility', () => {
+        notifyActiveIndicators();
+      });
+      chart.on('indicator:removed', () => {
+        notifyActiveIndicators();
+      });
+    } catch (e) {
+      console.warn('Error saat attach indicator listeners:', e);
+    }
+  }
+
+  /**
+   * Pasang listeners interaksi gambar, indikator, dan klik seleksi replay
    */
   function attachCellListeners(cell: any) {
     if (!cell || !cell.chart) return;
     attachDrawingListeners(cell.chart);
+    attachIndicatorListeners(cell.chart);
     try {
       const renderer = cell.chart.renderer;
       if (renderer) {
@@ -1240,8 +1291,7 @@
   $effect(() => {
     if (isMounted && workspace) {
       try {
-        const cellMap = (workspace as any).cellsById;
-        const cells = cellMap ? Array.from(cellMap.values()) : [workspace.active];
+        const cells = getAllWorkspaceCells();
         for (const cell of cells as any[]) {
           if (cell && typeof cell.setWatermarkVisible === 'function') {
             cell.setWatermarkVisible(showWatermark);
@@ -1255,12 +1305,55 @@
 
   export function getActiveIndicators(): ActiveIndicatorInfo[] {
     const list: ActiveIndicatorInfo[] = [];
+
+    // Ambil live indicators dari cell chart aktif jika tersedia
+    const activeChart = workspace?.active?.chart;
+    const nativeIndicators = (activeChart && typeof activeChart.indicators === 'function')
+      ? activeChart.indicators()
+      : [];
+    const liveMap = new Map<string, any>();
+    for (const ind of nativeIndicators) {
+      if (ind && ind.id) liveMap.set(ind.id, ind);
+    }
+
     for (const [id, item] of indicatorHandles.entries()) {
+      const liveHandle = liveMap.get(id) || item.handle;
+      let inputs: Record<string, any> | undefined = undefined;
+      let props: Record<string, any> | undefined = undefined;
+
+      try {
+        if (liveHandle && typeof liveHandle.inputValues === 'function') {
+          const vals = liveHandle.inputValues();
+          if (vals && Object.keys(vals).length > 0) {
+            inputs = vals;
+          }
+        }
+      } catch (_) {}
+
+      try {
+        if (liveHandle && typeof liveHandle.propValues === 'function') {
+          const pvals = liveHandle.propValues();
+          if (pvals && Object.keys(pvals).length > 0) {
+            props = pvals;
+          }
+        }
+      } catch (_) {}
+
+      // Fallback ke nilai yang tersimpan sebelumnya jika handle belum siap
+      if (!inputs && item.inputs) inputs = item.inputs;
+      if (!props && item.props) props = item.props;
+
+      // Perbarui cache internal
+      if (inputs) item.inputs = inputs;
+      if (props) item.props = props;
+
       list.push({
         id,
-        title: item.title || item.handle?.title || 'Indicator',
-        source: item.source || item.handle?.source,
-        visible: item.visible ?? item.handle?.visible ?? true,
+        title: item.title || liveHandle?.title || 'Indicator',
+        source: item.source || liveHandle?.source,
+        visible: item.visible ?? liveHandle?.visible ?? true,
+        inputs: inputs || item.inputs,
+        props: props || item.props,
       });
     }
     return list;
@@ -1395,7 +1488,12 @@
 
   // ─── Indicator Public Methods ───
 
-  export async function addPineIndicator(source: string, customTitle?: string): Promise<boolean> {
+  export async function addPineIndicator(
+    source: string,
+    customTitle?: string,
+    savedInputs?: Record<string, any>,
+    savedProps?: Record<string, any>
+  ): Promise<boolean> {
     if (!workspace || !workspace.active) return false;
 
     try {
@@ -1417,31 +1515,49 @@
       }
 
       // 2. Bersihkan juga secara native di seluruh cell chart jika ada indicator dengan title yang sama
-      const cellMap = (workspace as any).cellsById;
-      const cells = cellMap ? Array.from(cellMap.values()) : [workspace.active];
+      const cells = getAllWorkspaceCells();
       for (const cell of cells as any[]) {
-        if (!cell || !cell.chart || typeof cell.chart.indicators !== 'function') continue;
+        const chart = cell?.chart || cell?.inner;
+        if (!cell || !chart || typeof chart.indicators !== 'function') continue;
         try {
-          const nativeList = cell.chart.indicators();
+          const nativeList = chart.indicators();
           for (const ind of nativeList) {
-            if (ind && ind.title === cleanTitle) {
+            if (ind && (ind.title === cleanTitle || ind.title === customTitle)) {
               if (typeof ind.remove === 'function') ind.remove();
             }
           }
         } catch (_) {}
       }
 
-      // 3. Tambahkan indikator ke seluruh cell dan lacak semua handles (mencegah zombie worker pada multi-cell)
+      // 3. Tambahkan indikator ke seluruh cell dengan opsi inputs & props
       const createdHandles: any[] = [];
       let firstHandle = null;
 
       for (const cell of cells as any[]) {
         if (!cell || !cell.chart) continue;
-        const handle = cell.chart.addIndicator(source, {
+        const addOptions: any = {
           language: 'pine',
           title: cleanTitle,
-        });
+        };
+        if (savedInputs && Object.keys(savedInputs).length > 0) {
+          addOptions.inputs = savedInputs;
+        }
+        if (savedProps && Object.keys(savedProps).length > 0) {
+          addOptions.props = savedProps;
+        }
+
+        const handle = cell.chart.addIndicator(source, addOptions);
         if (handle) {
+          if (savedInputs && typeof handle.setInputs === 'function') {
+            try {
+              handle.setInputs(savedInputs);
+            } catch (_) {}
+          }
+          if (savedProps && typeof handle.setProps === 'function') {
+            try {
+              handle.setProps(savedProps);
+            } catch (_) {}
+          }
           createdHandles.push(handle);
           if (!firstHandle) firstHandle = handle;
         }
@@ -1455,7 +1571,37 @@
           title: cleanTitle,
           source,
           visible: firstHandle.visible ?? true,
+          inputs: savedInputs,
+          props: savedProps,
         });
+
+        // Pastikan savedInputs teraplikasi kuat ke runtime engine setelah worker selesai prepare secara asinkron
+        if (savedInputs && Object.keys(savedInputs).length > 0) {
+          setTimeout(() => {
+            for (const h of createdHandles) {
+              try {
+                if (typeof h?.setInputs === 'function') {
+                  h.setInputs(savedInputs);
+                }
+              } catch (_) {}
+            }
+            notifyActiveIndicators();
+          }, 250);
+        }
+
+        if (savedProps && Object.keys(savedProps).length > 0) {
+          setTimeout(() => {
+            for (const h of createdHandles) {
+              try {
+                if (typeof h?.setProps === 'function') {
+                  h.setProps(savedProps);
+                }
+              } catch (_) {}
+            }
+            notifyActiveIndicators();
+          }, 250);
+        }
+
         notifyActiveIndicators();
         return true;
       }
@@ -1492,6 +1638,7 @@
   }
 
   export function clearAllIndicators(): void {
+    // 1. Bersihkan seluruh handle di Map internal indicatorHandles
     for (const [id, item] of indicatorHandles.entries()) {
       const list = item.handles || (item.handle ? [item.handle] : [item]);
       for (const h of list) {
@@ -1502,18 +1649,40 @@
     }
     indicatorHandles.clear();
 
+    // 2. Bersihkan seluruh indikator di seluruh cell workspace secara menyeluruh
     if (workspace) {
       try {
-        const cellMap = (workspace as any).cellsById;
-        const cells = cellMap ? Array.from(cellMap.values()) : [workspace.active];
+        const cells = getAllWorkspaceCells();
         for (const cell of cells as any[]) {
-          if (cell?.chart && typeof cell.chart.indicators === 'function') {
-            for (const h of cell.chart.indicators()) {
-              if (typeof h?.remove === 'function') h.remove();
+          // Bersihkan cell.instances jika ada agar tidak ter-rehydrate saat ganti simbol
+          if (Array.isArray(cell?.instances)) {
+            for (const it of [...cell.instances]) {
+              try {
+                if (typeof cell.dropInstance === 'function') {
+                  cell.dropInstance(it);
+                } else if (it?.handle && typeof it.handle.remove === 'function') {
+                  it.handle.remove();
+                }
+              } catch (_) {}
+            }
+            cell.instances.length = 0;
+          }
+
+          // Bersihkan seluruh handle indikator di engine chart (lewati volume native bawaan)
+          const chart = cell?.chart || cell?.inner;
+          if (chart && typeof chart.indicators === 'function') {
+            const list = Array.from(chart.indicators() || []);
+            for (const h of list as any[]) {
+              if (h?.nativeType === 'volume') continue;
+              try {
+                if (typeof h?.remove === 'function') h.remove();
+              } catch (_) {}
             }
           }
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn('Error saat membersihkan cell indicators di workspace:', err);
+      }
     }
 
     notifyActiveIndicators();

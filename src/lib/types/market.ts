@@ -66,6 +66,8 @@ export interface ActiveIndicatorInfo {
   title: string;
   source?: string;
   visible: boolean;
+  inputs?: Record<string, any>;
+  props?: Record<string, any>;
 }
 
 export type DrawingToolType =
@@ -215,7 +217,13 @@ export interface SavedWorkspace {
   symbol: string;
   timeframe: string;
   layout: string;
-  indicators: { title: string; source?: string; visible: boolean }[];
+  indicators: {
+    title: string;
+    source?: string;
+    visible: boolean;
+    inputs?: Record<string, any>;
+    props?: Record<string, any>;
+  }[];
   timestamp: number;
 }
 

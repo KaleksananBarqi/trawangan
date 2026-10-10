@@ -55,7 +55,8 @@ export interface IPersistenceService {
 
   // Workspaces
   loadWorkspaces(): Promise<SavedWorkspace[]>;
-  saveWorkspace(workspace: Omit<SavedWorkspace, 'id' | 'timestamp'>): Promise<SavedWorkspace>;
+  saveWorkspace(workspace: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string }): Promise<SavedWorkspace>;
+  updateWorkspace(workspace: SavedWorkspace): Promise<void>;
   deleteWorkspace(id: string): Promise<void>;
 
   // Pine Scripts

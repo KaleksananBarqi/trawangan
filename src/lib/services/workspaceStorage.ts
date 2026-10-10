@@ -2,6 +2,7 @@
 export type { SavedWorkspace } from '../types/market';
 export {
   saveWorkspace,
+  updateWorkspace,
   loadWorkspaces as getWorkspaces,
   deleteWorkspace,
 } from './persistence';

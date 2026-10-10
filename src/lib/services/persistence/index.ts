@@ -151,8 +151,40 @@ export class PersistenceService implements IPersistenceService {
     }
   }
 
-  async saveWorkspace(workspace: Omit<SavedWorkspace, 'id' | 'timestamp'>): Promise<SavedWorkspace> {
+  async saveWorkspace(workspace: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string }): Promise<SavedWorkspace> {
     const list = await this.loadWorkspaces();
+    
+    // 1. Jika ada ID yang ditentukan, timpa workspace dengan ID tersebut
+    if (workspace.id) {
+      const idx = list.findIndex((w) => w.id === workspace.id);
+      if (idx !== -1) {
+        const updated: SavedWorkspace = {
+          ...list[idx],
+          ...workspace,
+          id: workspace.id,
+          timestamp: Date.now(),
+        };
+        list[idx] = updated;
+        await this.adapter.saveLayoutSlot('user_workspaces_list', 'User Saved Workspaces', JSON.stringify(list));
+        return updated;
+      }
+    }
+
+    // 2. Jika nama sama persis sudah ada di daftar, timpa entri tersebut
+    const existingIndex = list.findIndex((w) => w.name.trim().toLowerCase() === workspace.name.trim().toLowerCase());
+    if (existingIndex !== -1) {
+      const updated: SavedWorkspace = {
+        ...list[existingIndex],
+        ...workspace,
+        id: list[existingIndex].id,
+        timestamp: Date.now(),
+      };
+      list[existingIndex] = updated;
+      await this.adapter.saveLayoutSlot('user_workspaces_list', 'User Saved Workspaces', JSON.stringify(list));
+      return updated;
+    }
+
+    // 3. Simpan sebagai workspace baru
     const newWorkspace: SavedWorkspace = {
       ...workspace,
       id: Date.now().toString(),
@@ -161,6 +193,17 @@ export class PersistenceService implements IPersistenceService {
     list.push(newWorkspace);
     await this.adapter.saveLayoutSlot('user_workspaces_list', 'User Saved Workspaces', JSON.stringify(list));
     return newWorkspace;
+  }
+
+  async updateWorkspace(workspace: SavedWorkspace): Promise<void> {
+    const list = await this.loadWorkspaces();
+    const idx = list.findIndex((w) => w.id === workspace.id);
+    if (idx !== -1) {
+      list[idx] = { ...workspace, timestamp: Date.now() };
+    } else {
+      list.push({ ...workspace, timestamp: Date.now() });
+    }
+    await this.adapter.saveLayoutSlot('user_workspaces_list', 'User Saved Workspaces', JSON.stringify(list));
   }
 
   async deleteWorkspace(id: string): Promise<void> {
@@ -262,7 +305,8 @@ export const loadQuickSymbolsConfig = () => storage.loadQuickSymbolsConfig();
 export const saveQuickSymbolsConfig = (cfg: QuickSymbolsConfig) => storage.saveQuickSymbolsConfig(cfg);
 
 export const loadWorkspaces = () => storage.loadWorkspaces();
-export const saveWorkspace = (w: Omit<SavedWorkspace, 'id' | 'timestamp'>) => storage.saveWorkspace(w);
+export const saveWorkspace = (w: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string }) => storage.saveWorkspace(w);
+export const updateWorkspace = (w: SavedWorkspace) => storage.updateWorkspace(w);
 export const deleteWorkspace = (id: string) => storage.deleteWorkspace(id);
 
 export const loadScripts = () => storage.loadScripts();

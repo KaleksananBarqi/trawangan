@@ -56,6 +56,10 @@
 
   // Dual Workspace Mode: 'terminal' vs 'pine'
   let workspaceMode = $state<WorkspaceMode>('terminal');
+  let activeWorkspace = $state<SavedWorkspace | null>(null);
+  let isAutoSaveWorkspace = $state<boolean>(true);
+  let isPageMounted = false;
+  let isLoadingWorkspace = false;
 
   // Multi-Chart Sync State
   let syncConfig = $state<MultiChartSyncConfig>({
@@ -223,6 +227,12 @@
           pinePanelWidth = parsed;
         }
       }
+
+      const savedAutoSave = localStorage.getItem('trawangan_autosave_workspace');
+      if (savedAutoSave !== null) {
+        isAutoSaveWorkspace = savedAutoSave === 'true';
+      }
+      isPageMounted = true;
     } catch (e) {
       console.warn('Gagal memuat pengaturan tersimpan:', e);
     }
@@ -514,43 +524,154 @@
     addSystemLog(`Data provider beralih ke: ${newProviderId.toUpperCase()}`, 'success');
   }
 
-  function handleSaveWorkspace(name: string) {
-    saveWorkspace({
+  async function handleSaveWorkspace(name: string, overwriteId?: string) {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+
+    // Ambil data indikator teranyar langsung dari chartComponent untuk memastikan inputValues modal tersimpan
+    const freshIndicators = chartComponent?.getActiveIndicators?.() || activeIndicators;
+    const indicatorsData = freshIndicators.map((i: ActiveIndicatorInfo) => ({
+      title: i.title,
+      source: i.source,
+      visible: i.visible,
+      inputs: i.inputs,
+      props: i.props,
+    }));
+
+    const targetId = overwriteId || (activeWorkspace?.name.trim().toLowerCase() === name.trim().toLowerCase() ? activeWorkspace.id : undefined);
+
+    const saved = await saveWorkspace({
+      id: targetId,
       name,
       symbol: activeSymbol,
       timeframe: activeTimeframe,
       layout: currentLayout,
-      indicators: activeIndicators.map(i => ({ title: i.title, source: i.source, visible: i.visible }))
+      indicators: indicatorsData,
     });
+    activeWorkspace = saved;
     addSystemLog(`Workspace "${name}" disimpan`, 'success');
   }
 
+  function handleNewWorkspace() {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    activeWorkspace = null;
+    addSystemLog('Workspace aktif dilepas. Siap menyetel tata letak atau indikator untuk workspace baru.', 'info');
+  }
+
   async function handleLoadWorkspace(w: SavedWorkspace) {
-    handleSymbolChange(w.symbol);
-    handleTimeframeChange(w.timeframe as Timeframe);
-    handleLayoutChange(w.layout);
-    
-    // Tunggu komponen chart selesai re-render dengan layout baru
-    setTimeout(async () => {
-      if (chartComponent) {
-        // Hapus indikator lama
-        const oldIndicators = chartComponent.getActiveIndicators();
-        for (const ind of oldIndicators) {
-          chartComponent.removeIndicator(ind.id);
-        }
-        
-        // Muat indikator dari workspace
-        if (w.indicators && w.indicators.length > 0) {
-          for (const ind of w.indicators) {
-            if (ind.source) {
-              await chartComponent.addPineIndicator(ind.source, ind.title);
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    isLoadingWorkspace = true;
+    try {
+      activeWorkspace = w;
+
+      // 1. FRESH CLEAN SLATE TAHAP 1: Reset activeIndicators state Svelte & bersihkan chart lama
+      activeIndicators = [];
+      if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
+        chartComponent.clearAllIndicators();
+      }
+
+      // 2. Terapkan konfigurasi simbol, timeframe, dan layout baru
+      handleSymbolChange(w.symbol);
+      handleTimeframeChange(w.timeframe as Timeframe);
+      handleLayoutChange(w.layout);
+
+      // Tunggu layout grid dan WebGL render settle secara penuh
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // 3. FRESH CLEAN SLATE TAHAP 2 (Double-Barrier): Pastikan chart BENAR-BENAR bersih sebelum memuat indikator workspace baru
+      if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
+        chartComponent.clearAllIndicators();
+      }
+      activeIndicators = [];
+
+      // 4. Muat indikator dari workspace secara deterministik dengan inputs & props lengkap
+      if (w.indicators && w.indicators.length > 0 && chartComponent) {
+        for (const ind of w.indicators) {
+          if (ind.source) {
+            try {
+              await chartComponent.addPineIndicator(ind.source, ind.title, ind.inputs, ind.props);
+              if (ind.visible === false) {
+                const active = chartComponent.getActiveIndicators();
+                const target = active.find((a: any) => a.title === ind.title);
+                if (target && target.visible) {
+                  chartComponent.toggleIndicatorVisibility(target.id);
+                }
+              }
+            } catch (e) {
+              console.warn(`Gagal memuat indikator ${ind.title}:`, e);
             }
           }
         }
       }
-      addSystemLog(`Workspace "${w.name}" dimuat`, 'success');
-    }, 200);
+
+      // 5. Sinkronkan state indikator akhir ke Svelte UI
+      syncActiveIndicators();
+
+      const indCount = w.indicators?.length || 0;
+      const indTitles = w.indicators && w.indicators.length > 0
+        ? w.indicators.map((i: any) => i.title).join(', ')
+        : 'tanpa indikator';
+      addSystemLog(`Workspace "${w.name}" dimuat (${indCount} indikator: ${indTitles})`, 'success');
+    } finally {
+      setTimeout(() => {
+        isLoadingWorkspace = false;
+      }, 600);
+    }
   }
+
+  function handleToggleAutoSaveWorkspace() {
+    isAutoSaveWorkspace = !isAutoSaveWorkspace;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('trawangan_autosave_workspace', isAutoSaveWorkspace.toString());
+    }
+    addSystemLog(`Auto-save workspace: ${isAutoSaveWorkspace ? 'AKTIF' : 'NONAKTIF'}`, 'info');
+  }
+
+  let autoSaveTimer: any = null;
+  function triggerWorkspaceAutoSave() {
+    // KUNCI PENTING: Hanya jalankan auto-save jika ada activeWorkspace yang sedang dimuat!
+    // Jika activeWorkspace === null (sedang membuat workspace baru/lepas), jangan auto-save untuk mencegah tabrakan/overwrite!
+    if (!isAutoSaveWorkspace || !isPageMounted || isLoadingWorkspace || !chartComponent || !activeWorkspace) return;
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(async () => {
+      if (!isAutoSaveWorkspace || isLoadingWorkspace || !activeWorkspace) return;
+      const targetName = activeWorkspace.name;
+      const targetId = activeWorkspace.id;
+      const freshIndicators = chartComponent?.getActiveIndicators?.() || activeIndicators;
+      const indicatorsData = freshIndicators.map((i: ActiveIndicatorInfo) => ({
+        title: i.title,
+        source: i.source,
+        visible: i.visible,
+        inputs: i.inputs,
+        props: i.props,
+      }));
+
+      try {
+        const saved = await saveWorkspace({
+          id: targetId,
+          name: targetName,
+          symbol: activeSymbol,
+          timeframe: activeTimeframe,
+          layout: currentLayout,
+          indicators: indicatorsData,
+        });
+        activeWorkspace = saved;
+        addSystemLog(`Auto-save: "${targetName}" tersimpan otomatis`, 'info');
+      } catch (err) {
+        console.warn('Auto-save workspace gagal:', err);
+      }
+    }, 1500);
+  }
+
+  // Pantau perubahan parameter untuk auto-save workspace ber-debounce
+  $effect(() => {
+    const _s = activeSymbol;
+    const _t = activeTimeframe;
+    const _l = currentLayout;
+    const _i = activeIndicators;
+    if (isPageMounted && !isLoadingWorkspace) {
+      triggerWorkspaceAutoSave();
+    }
+  });
 
   // ─── Drawing Tools Handlers ───
   function handleSelectTool(tool: DrawingToolType | null) {
@@ -700,8 +821,12 @@
     onTimeframeChange={handleTimeframeChange}
     onLayoutChange={handleLayoutChange}
     onWorkspaceModeChange={handleWorkspaceModeChange}
+    {activeWorkspace}
+    {isAutoSaveWorkspace}
+    onToggleAutoSaveWorkspace={handleToggleAutoSaveWorkspace}
     onSaveWorkspace={handleSaveWorkspace}
     onLoadWorkspace={handleLoadWorkspace}
+    onNewWorkspace={handleNewWorkspace}
     onToggleSyncCrosshair={handleToggleSyncCrosshair}
     onToggleSyncViewport={handleToggleSyncViewport}
     onToggleSyncSymbol={handleToggleSyncSymbol}

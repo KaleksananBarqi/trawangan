@@ -52,8 +52,12 @@
     onTimeframeChange: (tf: Timeframe) => void;
     onLayoutChange: (layout: string) => void;
     onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
-    onSaveWorkspace?: (name: string) => void;
+    activeWorkspace?: SavedWorkspace | null;
+    isAutoSaveWorkspace?: boolean;
+    onToggleAutoSaveWorkspace?: () => void;
+    onSaveWorkspace?: (name: string, overwriteId?: string) => void;
     onLoadWorkspace?: (w: SavedWorkspace) => void;
+    onNewWorkspace?: () => void;
     onToggleSyncCrosshair?: () => void;
     onToggleSyncViewport?: () => void;
     onToggleSyncSymbol?: () => void;
@@ -96,8 +100,12 @@
     onTimeframeChange,
     onLayoutChange,
     onWorkspaceModeChange,
+    activeWorkspace = null,
+    isAutoSaveWorkspace = true,
+    onToggleAutoSaveWorkspace,
     onSaveWorkspace,
     onLoadWorkspace,
+    onNewWorkspace,
     onToggleSyncCrosshair,
     onToggleSyncViewport,
     onToggleSyncSymbol,
@@ -253,8 +261,12 @@
   <!-- Multi-Chart Layouts & Workspace -->
   <div class="workspace-layout-group">
     <WorkspaceMenu
+      {activeWorkspace}
+      {isAutoSaveWorkspace}
+      {onToggleAutoSaveWorkspace}
       {onSaveWorkspace}
       {onLoadWorkspace}
+      {onNewWorkspace}
     />
     <div class="divider-vertical"></div>
     <LayoutGridSelector
