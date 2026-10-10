@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LayoutGrid, Crosshair, Share2 } from '@lucide/svelte';
+  import { LayoutGrid, Crosshair, Share2, Move, Coins } from '@lucide/svelte';
   import type { MultiChartSyncConfig } from '../../types/market';
 
   interface Props {
@@ -7,14 +7,18 @@
     syncConfig?: MultiChartSyncConfig;
     onLayoutChange: (layout: string) => void;
     onToggleSyncCrosshair?: () => void;
+    onToggleSyncViewport?: () => void;
+    onToggleSyncSymbol?: () => void;
     onToggleSyncDrawings?: () => void;
   }
 
   let {
     currentLayout,
-    syncConfig = { crosshair: true, symbol: false, drawings: true },
+    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true },
     onLayoutChange,
     onToggleSyncCrosshair,
+    onToggleSyncViewport,
+    onToggleSyncSymbol,
     onToggleSyncDrawings
   }: Props = $props();
 
@@ -48,8 +52,22 @@
         <Crosshair size={12} />
       </button>
       <button
+        class="sync-toggle-btn {syncConfig.viewport ? 'active' : ''}"
+        title="Sinkronisasi Gerakan & Rentang Waktu Viewport ({syncConfig.viewport ? 'ON' : 'OFF'})"
+        onclick={onToggleSyncViewport}
+      >
+        <Move size={12} />
+      </button>
+      <button
+        class="sync-toggle-btn {syncConfig.symbol ? 'active' : ''}"
+        title="Sinkronisasi Simbol/Ticker Pasangan ({syncConfig.symbol ? 'ON' : 'OFF'})"
+        onclick={onToggleSyncSymbol}
+      >
+        <Coins size={12} />
+      </button>
+      <button
         class="sync-toggle-btn {syncConfig.drawings ? 'active' : ''}"
-        title="Sinkronisasi Gambar Analisis ({syncConfig.drawings ? 'ON' : 'OFF'})"
+        title="Sinkronisasi Objek Gambar Analisis ({syncConfig.drawings ? 'ON' : 'OFF'})"
         onclick={onToggleSyncDrawings}
       >
         <Share2 size={12} />

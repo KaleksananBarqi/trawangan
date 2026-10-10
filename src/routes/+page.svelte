@@ -53,6 +53,7 @@
   // Multi-Chart Sync State
   let syncConfig = $state<MultiChartSyncConfig>({
     crosshair: true,
+    viewport: true,
     symbol: false,
     drawings: true,
   });
@@ -385,10 +386,22 @@
 
   function handleToggleSyncCrosshair() {
     syncConfig.crosshair = !syncConfig.crosshair;
+    addSystemLog(`Sinkronisasi kursor crosshair: ${syncConfig.crosshair ? 'AKTIF' : 'NONAKTIF'}`, 'info');
+  }
+
+  function handleToggleSyncViewport() {
+    syncConfig.viewport = !syncConfig.viewport;
+    addSystemLog(`Sinkronisasi gerakan viewport: ${syncConfig.viewport ? 'AKTIF' : 'NONAKTIF'}`, 'info');
+  }
+
+  function handleToggleSyncSymbol() {
+    syncConfig.symbol = !syncConfig.symbol;
+    addSystemLog(`Sinkronisasi simbol market: ${syncConfig.symbol ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
   function handleToggleSyncDrawings() {
     syncConfig.drawings = !syncConfig.drawings;
+    addSystemLog(`Sinkronisasi objek gambar: ${syncConfig.drawings ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
   function handleWorkspaceModeChange(mode: WorkspaceMode) {
@@ -612,6 +625,8 @@
     onSaveWorkspace={handleSaveWorkspace}
     onLoadWorkspace={handleLoadWorkspace}
     onToggleSyncCrosshair={handleToggleSyncCrosshair}
+    onToggleSyncViewport={handleToggleSyncViewport}
+    onToggleSyncSymbol={handleToggleSyncSymbol}
     onToggleSyncDrawings={handleToggleSyncDrawings}
     onToggleDrawingToolbar={() => (isDrawingToolbarVisible = !isDrawingToolbarVisible)}
     onToggleWatchlist={() => (isWatchlistOpen = !isWatchlistOpen)}

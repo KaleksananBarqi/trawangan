@@ -96,8 +96,10 @@ export interface WatchlistItem {
 
 export interface MultiChartSyncConfig {
   crosshair: boolean;
+  viewport: boolean;
   symbol: boolean;
   drawings: boolean;
+  timeframe?: boolean;
 }
 
 export type WorkspaceMode = 'terminal' | 'pine';

@@ -58,7 +58,7 @@
     timeframe,
     layout,
     providerId = 'binance',
-    syncConfig = { crosshair: true, symbol: false, drawings: true },
+    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true },
     showWatermark = true,
     onActiveIndicatorsChange,
     onActiveCellChange,
@@ -609,16 +609,25 @@
         maxWebglCells: 8,
         sync: {
           crosshair: syncConfig.crosshair,
+          viewport: syncConfig.viewport ?? true,
           style: true,
           drawings: syncConfig.drawings,
+          symbol: syncConfig.symbol,
         },
       });
 
-      // Atur listener drawing & interaksi untuk cell aktif awal
-      const activeCell = workspace.active;
-      if (activeCell) {
-        attachCellListeners(activeCell);
+      // Atur listener drawing & interaksi untuk seluruh cell di workspace
+      for (const cell of workspace.cells()) {
+        attachCellListeners(cell);
       }
+
+      // Dengarkan pembuatan cell baru di workspace (saat berganti layout)
+      (workspace as any).on?.('cell:created', ({ id }: { id: string }) => {
+        const cell = workspace?.cell(id);
+        if (cell) {
+          attachCellListeners(cell);
+        }
+      });
 
       // Pasang listener status replay & kaitkan driver ke session
       attachReplayListeners();
@@ -750,11 +759,17 @@
   $effect(() => {
     if (isMounted && workspace && symbol) {
       try {
-        if (workspace.active) {
-          const targetSym = resolveVelaSymbol(symbol, providerId);
+        const targetSym = resolveVelaSymbol(symbol, providerId);
+        if (syncConfig.symbol) {
+          for (const cell of workspace.cells()) {
+            if (cell.symbol !== targetSym) {
+              cell.setSymbol(targetSym);
+            }
+          }
+        } else if (workspace.active) {
           workspace.active.setSymbol(targetSym);
-          restoreDrawingsForCurrentChart();
         }
+        restoreDrawingsForCurrentChart();
       } catch (e) {
         console.warn('setSymbol error:', e);
       }
@@ -765,10 +780,16 @@
   $effect(() => {
     if (isMounted && workspace && timeframe) {
       try {
-        if (workspace.active) {
+        if (syncConfig.timeframe) {
+          for (const cell of workspace.cells()) {
+            if (cell.timeframe !== timeframe) {
+              cell.setTimeframe(timeframe);
+            }
+          }
+        } else if (workspace.active) {
           workspace.active.setTimeframe(timeframe);
-          restoreDrawingsForCurrentChart();
         }
+        restoreDrawingsForCurrentChart();
       } catch (e) {
         console.warn('setTimeframe error:', e);
       }
@@ -780,6 +801,31 @@
     if (isMounted && workspace && layout) {
       try {
         workspace.setLayout(layout as any);
+
+        // Selaraskan cell baru dan pasangkan listener interaksi
+        const activeCell = workspace.active;
+        const curRange = activeCell?.chart?.getVisibleRange();
+        const targetSym = resolveVelaSymbol(symbol, providerId);
+
+        for (const cell of workspace.cells()) {
+          attachCellListeners(cell);
+          if (cell !== activeCell) {
+            // Jika sync symbol aktif, sesuaikan simbol cell baru
+            if (syncConfig.symbol && cell.symbol !== targetSym) {
+              cell.setSymbol(targetSym);
+            }
+            // Jika sync viewport aktif, selaraskan rentang waktu terlihat
+            if (syncConfig.viewport && curRange) {
+              cell.chart?.setVisibleRange(curRange);
+            }
+          }
+        }
+
+        // Tegaskan kembali konfigurasi sinkronisasi pada layout baru
+        workspace.sync.set('crosshair', syncConfig.crosshair);
+        workspace.sync.set('viewport', syncConfig.viewport ?? true);
+        workspace.sync.set('drawings', syncConfig.drawings);
+        workspace.sync.set('symbol', syncConfig.symbol);
       } catch (e) {
         console.warn('setLayout error:', e);
       }
@@ -791,7 +837,31 @@
     if (isMounted && workspace && syncConfig) {
       try {
         workspace.sync.set('crosshair', syncConfig.crosshair);
+        workspace.sync.set('viewport', syncConfig.viewport ?? true);
         workspace.sync.set('drawings', syncConfig.drawings);
+        workspace.sync.set('symbol', syncConfig.symbol);
+
+        // Jika sync symbol baru saja diaktifkan, samakan simbol seluruh cell
+        if (syncConfig.symbol && symbol) {
+          const targetSym = resolveVelaSymbol(symbol, providerId);
+          for (const cell of workspace.cells()) {
+            if (cell.symbol !== targetSym) {
+              cell.setSymbol(targetSym);
+            }
+          }
+        }
+
+        // Jika sync viewport baru saja diaktifkan, samakan rentang terlihat
+        if (syncConfig.viewport) {
+          const curRange = workspace.active?.chart?.getVisibleRange();
+          if (curRange) {
+            for (const cell of workspace.cells()) {
+              if (cell !== workspace.active) {
+                cell.chart?.setVisibleRange(curRange);
+              }
+            }
+          }
+        }
       } catch (e) {
         console.warn('sync.set error:', e);
       }

@@ -55,6 +55,8 @@
     onSaveWorkspace?: (name: string) => void;
     onLoadWorkspace?: (w: SavedWorkspace) => void;
     onToggleSyncCrosshair?: () => void;
+    onToggleSyncViewport?: () => void;
+    onToggleSyncSymbol?: () => void;
     onToggleSyncDrawings?: () => void;
     onToggleDrawingToolbar?: () => void;
     onToggleWatchlist?: () => void;
@@ -71,7 +73,7 @@
     currentLayout,
     activeProviderId = 'binance',
     workspaceMode = 'terminal',
-    syncConfig = { crosshair: true, symbol: false, drawings: true },
+    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true },
     activeIndicators = [],
     isDrawingToolbarVisible = true,
     isWatchlistOpen = true,
@@ -97,6 +99,8 @@
     onSaveWorkspace,
     onLoadWorkspace,
     onToggleSyncCrosshair,
+    onToggleSyncViewport,
+    onToggleSyncSymbol,
     onToggleSyncDrawings,
     onToggleDrawingToolbar,
     onToggleWatchlist,
@@ -257,6 +261,8 @@
       {syncConfig}
       {onLayoutChange}
       {onToggleSyncCrosshair}
+      {onToggleSyncViewport}
+      {onToggleSyncSymbol}
       {onToggleSyncDrawings}
     />
   </div>
