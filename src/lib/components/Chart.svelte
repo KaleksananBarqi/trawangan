@@ -1,7 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { Scissors } from '@lucide/svelte';
   import { VelaWorkspace } from '@luxalgo/vela/workspace';
   import { BinanceProvider } from '@luxalgo/vela/providers/binance';
+  import { HyperliquidProvider } from '@luxalgo/vela/providers/hyperliquid';
+  import { CoinbaseProvider } from '@luxalgo/vela/providers/coinbase';
+  import { BitunixProvider } from '../services/bitunixProvider';
   import { registerDefaultEngine } from '@luxalgo/vela';
   import { PineWorkerEngine } from '@luxalgo/vela-pinets';
   import {
@@ -17,24 +21,40 @@
     MultiChartSyncConfig
   } from '../types/market';
 
+  export interface ReplayStateInfo {
+    active: boolean;
+    playing: boolean;
+    cursorTime: number | null;
+    remaining: number;
+    bounds: { first: number; last: number } | null;
+  }
+
   interface Props {
     symbol: string;
     timeframe: Timeframe;
     layout: string;
+    providerId?: string;
     syncConfig?: MultiChartSyncConfig;
     showWatermark?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
+    onReplayStateChange?: (state: ReplayStateInfo) => void;
+    onCutoffSelected?: (timestamp: number) => void;
+    onCutoffCancelled?: () => void;
   }
 
   let {
     symbol,
     timeframe,
     layout,
+    providerId = 'binance',
     syncConfig = { crosshair: true, symbol: false, drawings: true },
     showWatermark = true,
     onActiveIndicatorsChange,
     onActiveCellChange,
+    onReplayStateChange,
+    onCutoffSelected,
+    onCutoffCancelled,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -94,6 +114,197 @@
     }
   }
 
+  let isSelectingCutoff = $state(false);
+  let lastHoveredBarTime = $state<number | null>(null);
+  let cutlineX = $state<number | null>(null);
+  let cutlineY = $state<number | null>(null);
+  let hoveredBarDateText = $state<string>('');
+
+  /**
+   * Format timestamp ke format teks Indonesia yang rapi
+   */
+  function formatBarTime(timestamp: number): string {
+    return new Date(timestamp).toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  /**
+   * Helper untuk mendapatkan instans Coords dari Vela Chart Renderer
+   */
+  function getChartCoords(chart: any): any {
+    if (!chart) return null;
+    return chart.renderer?.renderer?.coords || chart.renderer?.coords || chart.coords || null;
+  }
+
+  /**
+   * Hitung waktu lilin (timestamp) langsung dari koordinat pixel X mouse secara matematis
+   */
+  function getTimeFromClientX(clientX: number): number | null {
+    if (!chartContainer || !workspace) return null;
+    try {
+      const activeChart = workspace.active?.chart as any;
+      const coords = getChartCoords(activeChart);
+      if (coords && typeof coords.xToLogical === 'function') {
+        const rect = chartContainer.getBoundingClientRect();
+        const localX = clientX - rect.left;
+        const logical = Math.round(coords.xToLogical(localX));
+        
+        if (typeof coords.logicalToTime === 'function') {
+          const time = coords.logicalToTime(logical);
+          if (typeof time === 'number' && !isNaN(time) && time > 0) {
+            return time;
+          }
+        }
+        
+        const innerRenderer = activeChart?.renderer?.renderer;
+        if (Array.isArray(innerRenderer?.bars) && logical >= 0 && logical < innerRenderer.bars.length) {
+          return innerRenderer.bars[logical]?.time ?? null;
+        }
+      }
+    } catch (err) {
+      console.warn('Gagal menghitung waktu lilin dari koordinat kursor:', err);
+    }
+    return null;
+  }
+
+  /**
+   * Eksekusi pemotongan lilin (Cutoff Replay) dengan validasi batas aman
+   */
+  async function executeCutoff(rawTime: number) {
+    if (!isSelectingCutoff) return;
+
+    let targetTime = Math.floor(rawTime);
+
+    // Validasi agar titik potong tidak melebihi atau sama dengan lilin terakhir,
+    // karena engine Vela memerlukan minimal 1 lilin di depan untuk dimainkan.
+    try {
+      const bounds = getReplayBounds();
+      const activeChart = workspace?.active?.chart as any;
+      const innerRenderer = activeChart?.renderer?.renderer;
+      const rawBars = activeChart?.rawBars || innerRenderer?.bars || (workspace as any)?.active?.rawBars;
+      
+      if (Array.isArray(rawBars) && rawBars.length >= 2) {
+        const lastBar = rawBars[rawBars.length - 1];
+        const prevBar = rawBars[rawBars.length - 2];
+        if (targetTime >= lastBar.time) {
+          targetTime = prevBar.time;
+        }
+      } else if (bounds && bounds.last && targetTime >= bounds.last) {
+        targetTime = bounds.last - 60000;
+      }
+    } catch (_) {}
+
+    // Selesaikan mode seleksi dan bersihkan garis panduan
+    isSelectingCutoff = false;
+    cutlineX = null;
+    cutlineY = null;
+
+    const success = await startReplay(targetTime);
+    if (success) {
+      onCutoffSelected?.(targetTime);
+    }
+  }
+
+  /**
+   * Handler pergerakan mouse pada container grafik saat mode potong lilin aktif
+   */
+  function handleContainerPointerMove(e: MouseEvent) {
+    if (!isSelectingCutoff || !chartContainer) return;
+    const rect = chartContainer.getBoundingClientRect();
+    cutlineX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    cutlineY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+
+    const timeAtMouse = getTimeFromClientX(e.clientX) || lastHoveredBarTime;
+    if (timeAtMouse) {
+      lastHoveredBarTime = timeAtMouse;
+      hoveredBarDateText = formatBarTime(timeAtMouse);
+    }
+  }
+
+  /**
+   * Bersihkan garis panduan saat kursor meninggalkan grafik
+   */
+  function handleContainerMouseLeave() {
+    if (isSelectingCutoff) {
+      cutlineX = null;
+      cutlineY = null;
+    }
+  }
+
+  /**
+   * Tangkap klik mouse pada container grafik (Capture Phase) secara langsung
+   */
+  function handleContainerClickCapture(e: MouseEvent) {
+    if (!isSelectingCutoff) return;
+
+    // Abaikan jika klik terjadi pada tombol batal di banner petunjuk
+    const targetEl = e.target as HTMLElement | null;
+    if (targetEl?.closest('.cutoff-overlay-hint')) return;
+
+    // Hentikan propagasi agar tidak memicu gesture panning atau seleksi drawing
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Prioritas 1: Waktu lilin langsung dari koordinat X mouse tempat klik terjadi
+    let targetTime = getTimeFromClientX(e.clientX);
+    // Prioritas 2: Waktu lilin dari event crosshair terakhir
+    if (!targetTime) {
+      targetTime = lastHoveredBarTime;
+    }
+    // Prioritas 3: Fallback ke batas bounds
+    if (!targetTime) {
+      const bounds = getReplayBounds();
+      if (bounds?.last) {
+        targetTime = bounds.last;
+      }
+    }
+
+    if (targetTime) {
+      executeCutoff(targetTime);
+    }
+  }
+
+  /**
+   * Mengirim snapshot status Bar Replay ke parent
+   */
+  function emitReplayState() {
+    if (!workspace || !workspace.replay || !onReplayStateChange) return;
+    try {
+      const s = workspace.replay.state;
+      const b = workspace.replay.bounds;
+      onReplayStateChange({
+        active: Boolean(s?.active),
+        playing: Boolean(s?.playing),
+        cursorTime: s?.cursorTime ?? null,
+        remaining: s?.remaining ?? 0,
+        bounds: b ?? null,
+      });
+    } catch (e) {
+      console.warn('emitReplayState error:', e);
+    }
+  }
+
+  /**
+   * Pasang listener event replay pada workspace
+   */
+  function attachReplayListeners() {
+    if (!workspace || !workspace.replay) return;
+    try {
+      workspace.replay.on('replay:start', emitReplayState);
+      workspace.replay.on('replay:step', emitReplayState);
+      workspace.replay.on('replay:play', emitReplayState);
+      workspace.replay.on('replay:pause', emitReplayState);
+      workspace.replay.on('replay:end', emitReplayState);
+    } catch (e) {
+      console.warn('attachReplayListeners error:', e);
+    }
+  }
+
   /**
    * Pasang event listeners untuk mendeteksi perubahan gambar
    */
@@ -108,14 +319,61 @@
     }
   }
 
+  /**
+   * Pasang listeners interaksi gambar dan klik seleksi replay
+   */
+  function attachCellListeners(cell: any) {
+    if (!cell || !cell.chart) return;
+    attachDrawingListeners(cell.chart);
+    try {
+      const renderer = cell.chart.renderer;
+      if (renderer) {
+        // 1. Dengarkan perpindahan kursor crosshair pada renderer
+        renderer.onCrosshairMove?.((ev: any) => {
+          if (ev && typeof ev.time === 'number') {
+            lastHoveredBarTime = ev.time;
+            hoveredBarDateText = formatBarTime(ev.time);
+          }
+        });
+
+        // 2. Dengarkan onClick bawaan renderer sebagai lapis redundan
+        renderer.onClick?.((ev: { time: number | null; price: number | null }) => {
+          if (isSelectingCutoff && ev?.time) {
+            executeCutoff(ev.time);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('attachCellListeners error:', e);
+    }
+  }
+
+  /**
+   * Format simbol agar sesuai dengan konvensi penamaan bursa masing-masing di Vela
+   */
+  function resolveVelaSymbol(sym: string, pId: string): string {
+    const clean = sym.includes(':') ? sym.split(':')[1] : sym;
+    if (pId === 'hyperliquid') {
+      const coin = clean.replace(/USDT$/, '').replace(/\.P$/, '');
+      return `hyperliquid:${coin}`;
+    } else if (pId === 'coinbase') {
+      const base = clean.replace(/USDT$/, '').replace(/\.P$/, '');
+      return `coinbase:${base}-USD`;
+    } else if (pId === 'bitunix') {
+      return `bitunix:${clean}`;
+    }
+    // Default Binance
+    return `binance:${clean}`;
+  }
+
   onMount(() => {
     if (!chartContainer) return;
     ensurePineEngine();
 
     try {
-      const velaSym = symbol.includes(':') ? symbol : `binance:${symbol}`;
+      const velaSym = resolveVelaSymbol(symbol, providerId);
 
-      // Inisialisasi Vela Workspace dengan WebGL2 renderer dan provider resmi Binance
+      // Inisialisasi Vela Workspace dengan WebGL2 renderer dan multi-providers resmi
       workspace = new VelaWorkspace(chartContainer, {
         layout: layout as any,
         symbol: velaSym,
@@ -126,6 +384,9 @@
         theme: 'dark',
         providers: {
           binance: () => new BinanceProvider(),
+          hyperliquid: () => new HyperliquidProvider(),
+          coinbase: () => new CoinbaseProvider(),
+          bitunix: () => new BitunixProvider(),
         },
         engines: {
           pine: () => new PineWorkerEngine(),
@@ -138,11 +399,14 @@
         },
       });
 
-      // Atur listener drawing untuk cell aktif awal
+      // Atur listener drawing & interaksi untuk cell aktif awal
       const activeCell = workspace.active;
       if (activeCell) {
-        attachDrawingListeners(activeCell.chart);
+        attachCellListeners(activeCell);
       }
+
+      // Pasang listener status replay
+      attachReplayListeners();
 
       // Dengarkan pergantian cell aktif (multi-chart grid cell focus)
       (workspace as any).on?.('cell:active', (ev: any) => {
@@ -152,7 +416,7 @@
           const cleanSym = rawSym.includes(':') ? rawSym.split(':')[1] : rawSym;
           const curTf = (cur as any).timeframe || timeframe;
           onActiveCellChange({ symbol: cleanSym, timeframe: curTf });
-          attachDrawingListeners(cur.chart);
+          attachCellListeners(cur);
         }
       });
 
@@ -162,6 +426,12 @@
       console.error('Error saat menginisialisasi Vela Workspace:', err);
     }
 
+    // Pasang listeners interaksi container untuk mode seleksi cut-off replay
+    chartContainer.addEventListener('mousemove', handleContainerPointerMove);
+    chartContainer.addEventListener('mouseleave', handleContainerMouseLeave);
+    chartContainer.addEventListener('click', handleContainerClickCapture, true);
+    chartContainer.addEventListener('pointerup', handleContainerClickCapture, true);
+
     // Pantau perubahan ukuran jendela agar chart responsif
     resizeObserver = new ResizeObserver(() => {
       window.dispatchEvent(new Event('resize'));
@@ -169,12 +439,12 @@
     resizeObserver.observe(chartContainer);
   });
 
-  // Reaktif terhadap perubahan simbol
+  // Reaktif terhadap perubahan simbol atau provider aktif
   $effect(() => {
     if (isMounted && workspace && symbol) {
       try {
         if (workspace.active) {
-          const targetSym = symbol.includes(':') ? symbol : `binance:${symbol}`;
+          const targetSym = resolveVelaSymbol(symbol, providerId);
           workspace.active.setSymbol(targetSym);
           restoreDrawingsForCurrentChart();
         }
@@ -457,6 +727,31 @@
 
   // ─── Bar Replay Public Methods ───
 
+  export function enableCutoffSelection(): void {
+    isSelectingCutoff = true;
+    cutlineX = null;
+    cutlineY = null;
+  }
+
+  export function cancelCutoffSelection(): void {
+    isSelectingCutoff = false;
+    cutlineX = null;
+    cutlineY = null;
+    onCutoffCancelled?.();
+  }
+
+  export function isCutoffSelectionActive(): boolean {
+    return isSelectingCutoff;
+  }
+
+  export function getReplayBounds(): { first: number; last: number } | null {
+    return workspace?.replay?.bounds ?? null;
+  }
+
+  export function getReplayState(): any {
+    return workspace?.replay?.state ?? null;
+  }
+
   export async function startReplay(fromTimestamp?: number): Promise<boolean> {
     if (!workspace || !workspace.replay) return false;
     try {
@@ -471,6 +766,7 @@
         }
       }
       await workspace.replay.start({ from: targetTime });
+      emitReplayState();
       return true;
     } catch (err) {
       console.warn('Gagal memulai Bar Replay:', err);
@@ -497,7 +793,11 @@
   export function stopReplay(): void {
     if (!workspace || !workspace.replay) return;
     try {
+      isSelectingCutoff = false;
+      cutlineX = null;
+      cutlineY = null;
       workspace.replay.stop();
+      emitReplayState();
     } catch (e) {
       console.warn('stopReplay error:', e);
     }
@@ -517,6 +817,14 @@
   }
 
   onDestroy(() => {
+    if (chartContainer) {
+      try {
+        chartContainer.removeEventListener('mousemove', handleContainerPointerMove);
+        chartContainer.removeEventListener('mouseleave', handleContainerMouseLeave);
+        chartContainer.removeEventListener('click', handleContainerClickCapture, true);
+        chartContainer.removeEventListener('pointerup', handleContainerClickCapture, true);
+      } catch (_) {}
+    }
     if (resizeObserver) {
       resizeObserver.disconnect();
     }
@@ -528,8 +836,36 @@
   });
 </script>
 
-<div class="chart-wrapper">
+<div class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''}">
   <div bind:this={chartContainer} class="vela-container"></div>
+
+  {#if isSelectingCutoff}
+    <!-- Panduan Garis Vertikal Pemotong Lilin (Vertical Cutline Guide) -->
+    {#if cutlineX !== null}
+      <div 
+        class="vertical-cutline" 
+        style="left: {cutlineX}px;"
+      >
+        <div 
+          class="cutline-scissors-badge obsidian-card mono-nums" 
+          style="top: {Math.max(48, Math.min((cutlineY ?? 80) - 28, 420))}px;"
+        >
+          <Scissors size={12} class="badge-cut-icon" />
+          <span>{hoveredBarDateText || 'Klik lilin untuk potong'}</span>
+        </div>
+      </div>
+    {/if}
+
+    <div class="cutoff-overlay-hint">
+      <div class="hint-pill obsidian-card">
+        <Scissors size={13} class="hint-icon" />
+        <span class="hint-text mono-nums">KLIK LILIN DI GRAFIK UNTUK MEMULAI REPLAY DARI TITIK TERSEBUT</span>
+        <button type="button" class="cancel-hint-btn" onclick={cancelCutoffSelection}>
+          Batal (Esc)
+        </button>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -541,6 +877,10 @@
     background-color: var(--bg-darkest);
   }
 
+  .chart-wrapper.selecting-cutoff :global(canvas) {
+    cursor: crosshair !important;
+  }
+
   .vela-container {
     width: 100%;
     height: 100%;
@@ -549,5 +889,118 @@
     left: 0;
     right: 0;
     bottom: 0;
+  }
+
+  /* Garis panduan vertikal pemotong lilin presisi */
+  .vertical-cutline {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: repeating-linear-gradient(
+      to bottom,
+      var(--bear-color) 0,
+      var(--bear-color) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+    pointer-events: none;
+    z-index: 25;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+  }
+
+  .cutline-scissors-badge {
+    position: absolute;
+    left: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background-color: rgba(16, 19, 26, 0.95);
+    border: 1px solid var(--bear-color);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7), 0 0 8px var(--bear-glow);
+    padding: 3px 8px;
+    border-radius: var(--radius-xs);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    pointer-events: none;
+    animation: fadeIn 0.15s ease-out;
+  }
+
+  .badge-cut-icon {
+    color: var(--bear-color);
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateX(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .cutoff-overlay-hint {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
+    pointer-events: none;
+    animation: fadeInDown 0.2s ease-out;
+  }
+
+  @keyframes fadeInDown {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -8px);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+
+  .hint-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: rgba(16, 19, 26, 0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--bear-color);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.65), 0 0 10px var(--bear-glow);
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    pointer-events: auto;
+  }
+
+  .hint-icon {
+    color: var(--bear-color);
+  }
+
+  .hint-text {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: 0.02em;
+  }
+
+  .cancel-hint-btn {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-muted);
+    padding: 2px 8px;
+    border-radius: var(--radius-xs);
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .cancel-hint-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
   }
 </style>

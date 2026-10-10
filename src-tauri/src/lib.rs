@@ -29,6 +29,8 @@ pub fn run() {
             commands::load_workspace_layout,
             commands::get_data_providers,
             commands::add_or_update_provider,
+            commands::set_active_data_provider,
+            commands::delete_data_provider,
             commands::get_saved_scripts,
             commands::save_script,
             commands::delete_script,

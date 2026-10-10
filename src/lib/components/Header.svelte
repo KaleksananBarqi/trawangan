@@ -20,9 +20,14 @@
     FolderOpen,
     Plus,
     X,
-    MoreVertical
+    MoreVertical,
+    Pin,
+    Check,
+    RotateCcw,
+    Copy,
+    Sparkles
   } from '@lucide/svelte';
-  import type { TickerInfo, Timeframe, MultiChartSyncConfig, WorkspaceMode } from '../types/market';
+  import type { TickerInfo, Timeframe, MultiChartSyncConfig, WorkspaceMode, QuickSymbolsConfig } from '../types/market';
   import { saveWorkspace, getWorkspaces, deleteWorkspace, type SavedWorkspace } from '../services/workspaceStorage';
 
   interface Props {
@@ -30,12 +35,16 @@
     activeTimeframe: Timeframe;
     ticker: TickerInfo | null;
     currentLayout: string;
+    activeProviderId?: string;
     workspaceMode?: WorkspaceMode;
     syncConfig?: MultiChartSyncConfig;
     activeIndicators?: { title: string; source?: string; visible: boolean }[];
     isDrawingToolbarVisible?: boolean;
     isWatchlistOpen?: boolean;
     isReplayActive?: boolean;
+    watchlistSymbols?: string[];
+    quickSymbolsConfig?: QuickSymbolsConfig;
+    onQuickSymbolsConfigChange?: (config: QuickSymbolsConfig) => void;
     onSymbolChange: (sym: string) => void;
     onTimeframeChange: (tf: Timeframe) => void;
     onLayoutChange: (layout: string) => void;
@@ -47,7 +56,6 @@
     onToggleDrawingToolbar?: () => void;
     onToggleWatchlist?: () => void;
     onToggleReplay?: () => void;
-    onOpenProviderModal: () => void;
     onOpenIndicatorModal: () => void;
     onOpenSettingsModal?: () => void;
   }
@@ -57,12 +65,23 @@
     activeTimeframe,
     ticker,
     currentLayout,
+    activeProviderId = 'binance',
     workspaceMode = 'terminal',
     syncConfig = { crosshair: true, symbol: false, drawings: true },
     activeIndicators = [],
     isDrawingToolbarVisible = true,
     isWatchlistOpen = true,
     isReplayActive = false,
+    watchlistSymbols = [
+      'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
+      'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
+    ],
+    quickSymbolsConfig = {
+      mode: 'watchlist',
+      customSymbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT'],
+      maxDisplayCount: 5
+    },
+    onQuickSymbolsConfigChange,
     onSymbolChange,
     onTimeframeChange,
     onLayoutChange,
@@ -74,14 +93,93 @@
     onToggleDrawingToolbar,
     onToggleWatchlist,
     onToggleReplay,
-    onOpenProviderModal,
     onOpenIndicatorModal,
     onOpenSettingsModal,
   }: Props = $props();
 
   let activeIndicatorCount = $derived(activeIndicators.length);
 
-  const quickSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT'];
+  // Quick Symbols Dynamic State
+  let showQuickSymbolsMenu = $state(false);
+  let newCustomSymbolInput = $state('');
+
+  let activeQuickSymbols = $derived.by(() => {
+    const mode = quickSymbolsConfig?.mode || 'watchlist';
+    const limit = quickSymbolsConfig?.maxDisplayCount ?? 5;
+    const baseList = mode === 'watchlist'
+      ? (watchlistSymbols && watchlistSymbols.length > 0 ? watchlistSymbols : ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT'])
+      : (quickSymbolsConfig?.customSymbols && quickSymbolsConfig.customSymbols.length > 0 ? quickSymbolsConfig.customSymbols : ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT']);
+    
+    return limit === 0 ? baseList : baseList.slice(0, limit);
+  });
+
+  function setQuickMode(mode: 'watchlist' | 'custom') {
+    const updated: QuickSymbolsConfig = {
+      ...quickSymbolsConfig,
+      mode
+    };
+    onQuickSymbolsConfigChange?.(updated);
+  }
+
+  function setQuickLimit(limit: number) {
+    const updated: QuickSymbolsConfig = {
+      ...quickSymbolsConfig,
+      maxDisplayCount: limit
+    };
+    onQuickSymbolsConfigChange?.(updated);
+  }
+
+  function addCustomSymbol(sym: string) {
+    const clean = sym.trim().toUpperCase();
+    if (!clean) return;
+    const formatted = clean.endsWith('USDT') ? clean : `${clean}USDT`;
+    const current = quickSymbolsConfig.customSymbols || [];
+    if (!current.includes(formatted)) {
+      const updated: QuickSymbolsConfig = {
+        ...quickSymbolsConfig,
+        customSymbols: [...current, formatted]
+      };
+      onQuickSymbolsConfigChange?.(updated);
+    }
+    newCustomSymbolInput = '';
+  }
+
+  function removeCustomSymbol(sym: string) {
+    const current = quickSymbolsConfig.customSymbols || [];
+    const updated: QuickSymbolsConfig = {
+      ...quickSymbolsConfig,
+      customSymbols: current.filter(s => s !== sym)
+    };
+    onQuickSymbolsConfigChange?.(updated);
+  }
+
+  function togglePinWatchlistSymbol(sym: string) {
+    const current = quickSymbolsConfig.customSymbols || [];
+    if (current.includes(sym)) {
+      removeCustomSymbol(sym);
+    } else {
+      addCustomSymbol(sym);
+    }
+  }
+
+  function copyAllFromWatchlist() {
+    if (!watchlistSymbols || watchlistSymbols.length === 0) return;
+    const updated: QuickSymbolsConfig = {
+      ...quickSymbolsConfig,
+      customSymbols: [...watchlistSymbols]
+    };
+    onQuickSymbolsConfigChange?.(updated);
+  }
+
+  function resetQuickSymbolsDefault() {
+    const updated: QuickSymbolsConfig = {
+      mode: 'watchlist',
+      customSymbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT'],
+      maxDisplayCount: 5
+    };
+    onQuickSymbolsConfigChange?.(updated);
+  }
+
   let timeframes = $state<Timeframe[]>(['1m', '5m', '15m', '1h', '4h', '1D']);
   const layouts = [
     { id: '1', label: '1 Chart' },
@@ -191,23 +289,42 @@
 
   <!-- Symbol Switcher -->
   <div class="symbol-section">
-    <div class="quick-symbols">
-      {#each quickSymbols as sym}
+    <div class="quick-symbols" title="Bilah Koin Cepat">
+      {#each activeQuickSymbols as sym}
         <button
           class="symbol-chip {activeSymbol === sym ? 'active' : ''}"
+          title="{sym} • Klik untuk tampilkan chart"
           onclick={() => onSymbolChange(sym)}
         >
           {sym.replace('USDT', '')}
         </button>
       {/each}
+
+      <!-- Tombol Atur Koin Cepat -->
+      <button
+        class="quick-config-btn {showQuickSymbolsMenu ? 'active' : ''}"
+        title="Atur Koin Cepat ({quickSymbolsConfig?.mode === 'watchlist' ? 'Mode Watchlist' : 'Mode Kustom'})"
+        onclick={() => {
+          showQuickSymbolsMenu = !showQuickSymbolsMenu;
+          showSymbolPicker = false;
+        }}
+      >
+        <SlidersHorizontal size={11} class="config-icon" />
+      </button>
     </div>
 
     <button
       class="custom-symbol-btn"
-      title="Cari atau masukkan simbol kustom"
-      onclick={() => (showSymbolPicker = !showSymbolPicker)}
+      title="Cari atau masukkan simbol kustom ({activeProviderId.toUpperCase()})"
+      onclick={() => {
+        showSymbolPicker = !showSymbolPicker;
+        showQuickSymbolsMenu = false;
+      }}
     >
       <Search size={12} class="search-icon" />
+      <span class="provider-feed-badge {activeProviderId === 'bitunix' ? 'bitunix' : 'binance'}">
+        {activeProviderId.toUpperCase()}
+      </span>
       <span class="active-sym-label">{activeSymbol}</span>
       <span class="dropdown-arrow">▾</span>
     </button>
@@ -222,6 +339,223 @@
             class="symbol-input mono-nums"
           />
         </form>
+      </div>
+    {/if}
+
+    <!-- Popover Kustomisasi Koin Cepat -->
+    {#if showQuickSymbolsMenu}
+      <div class="quick-config-dropdown obsidian-panel">
+        <div class="quick-menu-header">
+          <div class="header-left">
+            <SlidersHorizontal size={12} class="brand-accent-icon" />
+            <span class="menu-title">Koin Cepat Header</span>
+          </div>
+          <button
+            class="icon-close-btn"
+            title="Tutup"
+            onclick={() => (showQuickSymbolsMenu = false)}
+          >
+            <X size={12} />
+          </button>
+        </div>
+
+        <!-- Mode Switcher Tabs -->
+        <div class="quick-mode-tabs">
+          <button
+            class="mode-tab {quickSymbolsConfig?.mode === 'watchlist' ? 'active' : ''}"
+            onclick={() => setQuickMode('watchlist')}
+          >
+            <Zap size={11} />
+            <span>Ikuti Watchlist</span>
+          </button>
+          <button
+            class="mode-tab {quickSymbolsConfig?.mode === 'custom' ? 'active' : ''}"
+            onclick={() => setQuickMode('custom')}
+          >
+            <Pin size={11} />
+            <span>Pilihan Kustom</span>
+          </button>
+        </div>
+
+        {#if quickSymbolsConfig?.mode === 'watchlist'}
+          <div class="tab-pane">
+            <p class="tab-description">
+              Otomatis menampilkan koin dari daftar Watchlist aktif secara dinamis.
+            </p>
+
+            <div class="limit-selector-group">
+              <span class="sub-label">Batas Tampilan:</span>
+              <div class="pill-buttons">
+                {#each [3, 5, 8, 0] as lim}
+                  <button
+                    class="pill-btn {quickSymbolsConfig?.maxDisplayCount === lim ? 'active' : ''}"
+                    onclick={() => setQuickLimit(lim)}
+                  >
+                    {lim === 0 ? 'Semua' : lim}
+                  </button>
+                {/each}
+              </div>
+            </div>
+
+            <div class="watchlist-preview-section">
+              <span class="sub-label">Koin Watchlist ({watchlistSymbols.length}):</span>
+              <div class="chips-flow mono-nums">
+                {#each watchlistSymbols as sym}
+                  <button
+                    class="preview-chip {activeSymbol === sym ? 'active' : ''}"
+                    title="Buka chart {sym}"
+                    onclick={() => {
+                      onSymbolChange(sym);
+                      showQuickSymbolsMenu = false;
+                    }}
+                  >
+                    {sym.replace('USDT', '')}
+                  </button>
+                {/each}
+              </div>
+            </div>
+
+            <div class="quick-menu-actions">
+              <button
+                class="action-link-btn"
+                onclick={() => {
+                  if (!isWatchlistOpen) onToggleWatchlist?.();
+                  showQuickSymbolsMenu = false;
+                }}
+              >
+                Buka Panel Watchlist →
+              </button>
+            </div>
+          </div>
+        {:else}
+          <div class="tab-pane">
+            <p class="tab-description">
+              Sematkan koin favorit pilihan Anda sendiri untuk navigasi kilat di header.
+            </p>
+
+            <div class="limit-selector-group">
+              <span class="sub-label">Batas Tampilan:</span>
+              <div class="pill-buttons">
+                {#each [3, 5, 8, 0] as lim}
+                  <button
+                    class="pill-btn {quickSymbolsConfig?.maxDisplayCount === lim ? 'active' : ''}"
+                    onclick={() => setQuickLimit(lim)}
+                  >
+                    {lim === 0 ? 'Semua' : lim}
+                  </button>
+                {/each}
+              </div>
+            </div>
+
+            <!-- Koin Disematkan -->
+            <div class="pinned-section">
+              <div class="section-row-header">
+                <span class="sub-label">Disematkan ({(quickSymbolsConfig?.customSymbols || []).length}):</span>
+              </div>
+              <div class="chips-flow mono-nums">
+                {#if (quickSymbolsConfig?.customSymbols || []).length === 0}
+                  <div class="empty-hint">Belum ada koin disematkan. Pilih koin di bawah atau ketik manual.</div>
+                {:else}
+                  {#each (quickSymbolsConfig?.customSymbols || []) as sym}
+                    <div class="pinned-chip {activeSymbol === sym ? 'active' : ''}">
+                      <button
+                        class="chip-sym-btn"
+                        title="Buka chart {sym}"
+                        onclick={() => {
+                          onSymbolChange(sym);
+                          showQuickSymbolsMenu = false;
+                        }}
+                      >
+                        {sym.replace('USDT', '')}
+                      </button>
+                      <button
+                        class="chip-remove-btn"
+                        title="Lepas {sym}"
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          removeCustomSymbol(sym);
+                        }}
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  {/each}
+                {/if}
+              </div>
+            </div>
+
+            <!-- Opsi Sematkan dari Watchlist -->
+            {#if watchlistSymbols && watchlistSymbols.length > 0}
+              <div class="watchlist-pick-section">
+                <span class="sub-label">Pilih dari Watchlist:</span>
+                <div class="chips-flow mono-nums">
+                  {#each watchlistSymbols as sym}
+                    {@const isPinned = (quickSymbolsConfig?.customSymbols || []).includes(sym)}
+                    <button
+                      class="toggle-chip {isPinned ? 'pinned' : ''}"
+                      title="{isPinned ? 'Lepas' : 'Sematkan'} {sym}"
+                      onclick={() => togglePinWatchlistSymbol(sym)}
+                    >
+                      {#if isPinned}
+                        <Check size={9} class="chip-icon" />
+                      {:else}
+                        <Plus size={9} class="chip-icon" />
+                      {/if}
+                      <span>{sym.replace('USDT', '')}</span>
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
+            <!-- Form Tambah Simbol Manual -->
+            <form
+              class="add-custom-form"
+              onsubmit={(e) => {
+                e.preventDefault();
+                addCustomSymbol(newCustomSymbolInput);
+              }}
+            >
+              <input
+                type="text"
+                placeholder="Ketik koin baru (mis: PEPE)..."
+                bind:value={newCustomSymbolInput}
+                class="add-input mono-nums"
+              />
+              <button
+                type="submit"
+                class="add-submit-btn"
+                disabled={!newCustomSymbolInput.trim()}
+              >
+                <Plus size={11} />
+                <span>Sematkan</span>
+              </button>
+            </form>
+
+            <!-- Aksi Bawah: Salin Watchlist & Reset -->
+            <div class="custom-bottom-actions">
+              <button
+                type="button"
+                class="utility-btn"
+                title="Salin semua koin watchlist ke daftar kustom"
+                onclick={copyAllFromWatchlist}
+              >
+                <Copy size={11} />
+                <span>Salin Watchlist</span>
+              </button>
+
+              <button
+                type="button"
+                class="utility-btn"
+                title="Kembalikan ke koin standar"
+                onclick={resetQuickSymbolsDefault}
+              >
+                <RotateCcw size={11} />
+                <span>Reset Default</span>
+              </button>
+            </div>
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -405,23 +739,14 @@
       <span>Panel</span>
     </button>
 
-    <!-- Provider Configuration -->
-    <button
-      class="action-btn"
-      title="Pengaturan Data Provider"
-      onclick={onOpenProviderModal}
-    >
-      <SlidersHorizontal size={13} />
-      <span>Feed</span>
-    </button>
-
     <!-- Settings & Telemetry Modal -->
     <button
       class="action-btn"
-      title="Buka Pengaturan & Telemetri Sistem"
+      title="Buka Pengaturan, Data Feed & Telemetri Sistem"
       onclick={onOpenSettingsModal}
     >
       <Settings size={13} />
+      <span>Setting</span>
     </button>
 
     <!-- Fullscreen Toggle -->
@@ -588,6 +913,27 @@
     background-color: var(--bg-hover);
   }
 
+  .provider-feed-badge {
+    font-size: 8px;
+    font-weight: 800;
+    padding: 1px 3px;
+    border-radius: 2px;
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+
+  .provider-feed-badge.bitunix {
+    background-color: rgba(6, 182, 212, 0.2);
+    color: #22d3ee;
+    border: 1px solid rgba(6, 182, 212, 0.35);
+  }
+
+  .provider-feed-badge.binance {
+    background-color: rgba(245, 158, 11, 0.18);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+
   .search-icon {
     color: var(--text-dim);
   }
@@ -622,6 +968,415 @@
 
   .symbol-input:focus {
     border-color: var(--border-focus);
+  }
+
+  .quick-config-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.12s ease;
+    align-self: center;
+  }
+
+  .quick-config-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--brand-primary);
+  }
+
+  .quick-config-btn.active {
+    background-color: var(--bg-panel);
+    border-color: var(--border-hairline);
+    color: var(--brand-primary);
+  }
+
+  /* Quick Symbols Popover Dropdown */
+  .quick-config-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 320px;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    z-index: 250;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .quick-menu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  :global(.brand-accent-icon) {
+    color: var(--brand-primary);
+  }
+
+  .menu-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--text-main);
+  }
+
+  .icon-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border-radius: var(--radius-xs);
+    transition: all 0.1s ease;
+  }
+
+  .icon-close-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  /* Mode Switcher Tabs */
+  .quick-mode-tabs {
+    display: flex;
+    gap: 4px;
+    background-color: var(--bg-darkest);
+    padding: 2px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+  }
+
+  .mode-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 8px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .mode-tab:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .mode-tab.active {
+    color: var(--brand-primary);
+    background-color: var(--bg-panel);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .tab-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .tab-description {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  .limit-selector-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    background-color: var(--bg-base);
+    padding: 4px 8px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+  }
+
+  .sub-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+  }
+
+  .section-row-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .pill-buttons {
+    display: flex;
+    gap: 2px;
+  }
+
+  .pill-btn {
+    padding: 2px 7px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.1s ease;
+  }
+
+  .pill-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  .pill-btn.active {
+    background-color: var(--bg-panel);
+    border-color: var(--brand-primary);
+    color: var(--brand-primary);
+    font-weight: 700;
+  }
+
+  .chips-flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-height: 110px;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+
+  .preview-chip {
+    padding: 3px 6px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-main);
+    font-size: 10.5px;
+    cursor: pointer;
+    transition: all 0.1s ease;
+  }
+
+  .preview-chip:hover {
+    border-color: var(--brand-primary);
+    color: var(--brand-primary);
+  }
+
+  .preview-chip.active {
+    background-color: var(--bg-panel);
+    border-color: var(--brand-primary);
+    color: var(--brand-primary);
+    font-weight: 700;
+  }
+
+  .pinned-chip {
+    display: inline-flex;
+    align-items: center;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    overflow: hidden;
+    transition: all 0.12s ease;
+  }
+
+  .pinned-chip:hover {
+    border-color: var(--border-bright);
+  }
+
+  .pinned-chip.active {
+    border-color: var(--brand-primary);
+    background-color: rgba(0, 240, 144, 0.06);
+  }
+
+  .chip-sym-btn {
+    padding: 3px 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-main);
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+  }
+
+  .pinned-chip.active .chip-sym-btn {
+    color: var(--brand-primary);
+  }
+
+  .chip-remove-btn {
+    padding: 3px 4px;
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--border-hairline);
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s ease;
+  }
+
+  .chip-remove-btn:hover {
+    background-color: rgba(255, 59, 105, 0.18);
+    color: var(--bear-color);
+  }
+
+  .toggle-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-size: 10.5px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .toggle-chip:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  .toggle-chip.pinned {
+    background-color: rgba(0, 240, 144, 0.08);
+    border-color: var(--brand-primary);
+    color: var(--brand-primary);
+    font-weight: 600;
+  }
+
+  :global(.chip-icon) {
+    flex-shrink: 0;
+  }
+
+  .empty-hint {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-style: italic;
+    padding: 4px 0;
+  }
+
+  .add-custom-form {
+    display: flex;
+    gap: 4px;
+    margin-top: 2px;
+  }
+
+  .add-input {
+    flex: 1;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 5px 8px;
+    outline: none;
+  }
+
+  .add-input:focus {
+    border-color: var(--border-focus);
+  }
+
+  .add-submit-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 9px;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .add-submit-btn:hover:not(:disabled) {
+    background-color: var(--bg-hover);
+    border-color: var(--brand-primary);
+    color: var(--brand-primary);
+  }
+
+  .add-submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .custom-bottom-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-hairline);
+  }
+
+  .utility-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-dim);
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .utility-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+    border-color: var(--border-bright);
+  }
+
+  .action-link-btn {
+    display: inline-flex;
+    align-items: center;
+    background: transparent;
+    border: none;
+    color: var(--brand-cyan);
+    font-size: 10.5px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 2px 0;
+    transition: all 0.1s ease;
+  }
+
+  .action-link-btn:hover {
+    text-decoration: underline;
+    color: var(--text-main);
   }
 
   /* Ticker Stats */

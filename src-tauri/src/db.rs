@@ -135,10 +135,25 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, Box<dyn std:
         [],
     )?;
 
-    // Masukkan default Binance provider jika belum ada
+    // Masukkan preset resmi default jika belum ada
     conn.execute(
         "INSERT OR IGNORE INTO providers (id, name, rest_url, ws_url, is_active)
-         VALUES ('binance-default', 'Binance Official Public', 'https://api.binance.com', 'wss://stream.binance.com:9443', 1)",
+         VALUES ('binance', 'Binance Official Public', 'https://api.binance.com', 'wss://stream.binance.com:9443', 1)",
+        [],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO providers (id, name, rest_url, ws_url, is_active)
+         VALUES ('hyperliquid', 'Hyperliquid DEX Perpetuals', 'https://api.hyperliquid.xyz', 'wss://api.hyperliquid.xyz/ws', 0)",
+        [],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO providers (id, name, rest_url, ws_url, is_active)
+         VALUES ('coinbase', 'Coinbase Exchange Spot', 'https://api.exchange.coinbase.com', 'wss://ws-feed.exchange.coinbase.com', 0)",
+        [],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO providers (id, name, rest_url, ws_url, is_active)
+         VALUES ('bitunix', 'Bitunix Futures', 'https://fapi.bitunix.com', 'wss://fapi.bitunix.com/public/', 0)",
         [],
     )?;
 
@@ -265,11 +280,27 @@ pub fn get_providers(conn: &Connection) -> Result<Vec<ProviderConfig>> {
 /// Simpan custom provider
 pub fn save_provider(conn: &Connection, p: &ProviderConfig) -> Result<()> {
     let is_active_int = if p.is_active { 1 } else { 0 };
+    if p.is_active {
+        let _ = conn.execute("UPDATE providers SET is_active = 0", []);
+    }
     conn.execute(
         "INSERT OR REPLACE INTO providers (id, name, rest_url, ws_url, is_active)
          VALUES (?1, ?2, ?3, ?4, ?5)",
         params![p.id, p.name, p.rest_url, p.ws_url, is_active_int],
     )?;
+    Ok(())
+}
+
+/// Set provider aktif secara eksklusif
+pub fn set_active_provider(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("UPDATE providers SET is_active = 0", [])?;
+    conn.execute("UPDATE providers SET is_active = 1 WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Hapus custom provider berdasarkan ID
+pub fn delete_provider(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM providers WHERE id = ?1", params![id])?;
     Ok(())
 }
 

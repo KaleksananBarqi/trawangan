@@ -72,29 +72,42 @@ export async function clearDrawings(
 }
 
 /**
- * Ambil daftar simbol watchlist pengguna dari SQLite
+ * Ambil daftar simbol watchlist pengguna dari SQLite (dengan fallback localStorage)
  */
 export async function fetchWatchlist(): Promise<string[]> {
   try {
     const list = await invoke<string[]>('get_user_watchlist');
-    return list && list.length > 0 ? list : [
-      'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
-      'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
-    ];
+    if (list && list.length > 0) return list;
   } catch (err) {
-    console.warn('Gagal memuat watchlist:', err);
-    return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
+    console.warn('Gagal memuat watchlist dari SQLite:', err);
   }
+
+  try {
+    const local = localStorage.getItem('trawangan_user_watchlist');
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (_) {}
+
+  return [
+    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
+    'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
+  ];
 }
 
 /**
- * Simpan daftar simbol watchlist pengguna ke SQLite
+ * Simpan daftar simbol watchlist pengguna ke SQLite dan localStorage
  */
 export async function persistWatchlist(symbols: string[]): Promise<void> {
   try {
+    localStorage.setItem('trawangan_user_watchlist', JSON.stringify(symbols));
+  } catch (_) {}
+
+  try {
     await invoke('save_user_watchlist', { symbols });
   } catch (err) {
-    console.error('Gagal menyimpan watchlist:', err);
+    console.warn('Gagal menyimpan watchlist ke SQLite:', err);
   }
 }
 
@@ -139,3 +152,60 @@ export async function persistAlerts(alerts: any[]): Promise<void> {
   }
 }
 
+import type { QuickSymbolsConfig } from '../types/market';
+
+export const DEFAULT_QUICK_SYMBOLS_CONFIG: QuickSymbolsConfig = {
+  mode: 'watchlist',
+  customSymbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT'],
+  maxDisplayCount: 5,
+};
+
+/**
+ * Ambil konfigurasi koin cepat header dari SQLite (fallback localStorage & default)
+ */
+export async function fetchQuickSymbolsConfig(): Promise<QuickSymbolsConfig> {
+  try {
+    const raw = await invoke<string | null>('load_workspace_layout', { id: 'user_quick_symbols_config' });
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        ...DEFAULT_QUICK_SYMBOLS_CONFIG,
+        ...parsed,
+      };
+    }
+  } catch (err) {
+    console.warn('Gagal memuat quick symbols config dari SQLite:', err);
+  }
+
+  try {
+    const local = localStorage.getItem('trawangan_quick_symbols_config');
+    if (local) {
+      return {
+        ...DEFAULT_QUICK_SYMBOLS_CONFIG,
+        ...JSON.parse(local),
+      };
+    }
+  } catch (_) {}
+
+  return DEFAULT_QUICK_SYMBOLS_CONFIG;
+}
+
+/**
+ * Simpan konfigurasi koin cepat header ke SQLite dan localStorage
+ */
+export async function persistQuickSymbolsConfig(config: QuickSymbolsConfig): Promise<void> {
+  const json = JSON.stringify(config);
+  try {
+    localStorage.setItem('trawangan_quick_symbols_config', json);
+  } catch (_) {}
+
+  try {
+    await invoke('save_workspace_layout', {
+      id: 'user_quick_symbols_config',
+      name: 'User Quick Symbols Config',
+      layoutJson: json,
+    });
+  } catch (err) {
+    console.warn('Gagal menyimpan quick symbols config ke SQLite:', err);
+  }
+}

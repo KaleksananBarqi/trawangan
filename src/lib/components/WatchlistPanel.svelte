@@ -18,29 +18,37 @@
   } from '@lucide/svelte';
   import { fetchWatchlist, persistWatchlist, fetchAlerts, persistAlerts } from '../services/drawingStorage';
   import { fetchWatchlistTickers } from '../services/marketProvider';
+  import SymbolSearchModal from './SymbolSearchModal.svelte';
   import type { PriceAlert, ObjectTreeItem } from '../types/market';
 
   interface Props {
     isOpen: boolean;
     activeSymbol: string;
+    activeProviderId?: string;
+    watchlistSymbols?: string[];
     activeIndicators?: { id: string; title: string; visible: boolean }[];
     onSelectSymbol: (symbol: string) => void;
     onToggleCollapse: () => void;
     onToggleIndicatorVisibility?: (id: string) => void;
     onRemoveIndicator?: (id: string) => void;
+    onWatchlistChange?: (symbols: string[]) => void;
   }
 
   let {
     isOpen,
     activeSymbol,
+    activeProviderId = 'binance',
+    watchlistSymbols: propSymbols,
     activeIndicators = [],
     onSelectSymbol,
     onToggleCollapse,
     onToggleIndicatorVisibility,
     onRemoveIndicator,
+    onWatchlistChange,
   }: Props = $props();
 
   let activeTab = $state<'watchlist' | 'alerts' | 'objects'>('watchlist');
+  let isSymbolSearchOpen = $state(false);
 
   // Watchlist state
   let symbols = $state<string[]>([
@@ -90,11 +98,39 @@
   let newAlertLabel = $state('');
   let showAddAlert = $state(false);
 
+  let lastSyncedHash = '';
+
+  $effect(() => {
+    if (propSymbols && propSymbols.length > 0) {
+      const h = JSON.stringify(propSymbols);
+      if (h !== lastSyncedHash && h !== JSON.stringify(symbols)) {
+        lastSyncedHash = h;
+        symbols = [...propSymbols];
+        refreshTickers();
+      }
+    }
+  });
+
+  async function applyWatchlistUpdate(newSymbols: string[]) {
+    symbols = [...newSymbols];
+    lastSyncedHash = JSON.stringify(newSymbols);
+    onWatchlistChange?.(newSymbols);
+    await persistWatchlist(newSymbols);
+    await refreshTickers();
+  }
+
   async function loadInitialWatchlist() {
     try {
-      const saved = await fetchWatchlist();
-      if (saved && saved.length > 0) {
-        symbols = saved;
+      if (propSymbols && propSymbols.length > 0) {
+        symbols = [...propSymbols];
+        lastSyncedHash = JSON.stringify(symbols);
+      } else {
+        const saved = await fetchWatchlist();
+        if (saved && saved.length > 0) {
+          symbols = [...saved];
+          lastSyncedHash = JSON.stringify(symbols);
+          onWatchlistChange?.(symbols);
+        }
       }
       const savedAlerts = await fetchAlerts();
       if (savedAlerts && savedAlerts.length > 0) {
@@ -106,10 +142,16 @@
     }
   }
 
+  $effect(() => {
+    if (activeProviderId) {
+      refreshTickers();
+    }
+  });
+
   async function refreshTickers() {
     if (symbols.length === 0) return;
     try {
-      const data = await fetchWatchlistTickers(symbols);
+      const data = await fetchWatchlistTickers(symbols, activeProviderId);
       tickerMap = { ...tickerMap, ...data };
     } catch (err) {
       console.warn('Refresh watchlist tickers error:', err);
@@ -130,20 +172,36 @@
     const clean = newSymbolInput.trim().toUpperCase();
     if (!clean) return;
 
-    const formatted = clean.endsWith('USDT') ? clean : `${clean}USDT`;
+    let formatted = clean;
+    if (clean.endsWith('.P')) {
+      const base = clean.slice(0, -2);
+      formatted = base.endsWith('USDT') ? clean : `${base}USDT.P`;
+    } else if (!clean.endsWith('USDT')) {
+      formatted = `${clean}USDT`;
+    }
+
     if (!symbols.includes(formatted)) {
-      symbols = [...symbols, formatted];
-      await persistWatchlist(symbols);
-      await refreshTickers();
+      await applyWatchlistUpdate([...symbols, formatted]);
     }
     newSymbolInput = '';
     showAddInput = false;
   }
 
+  async function handleToggleSymbolFromSearch(sym: string) {
+    let next: string[];
+    if (symbols.includes(sym)) {
+      next = symbols.filter((s) => s !== sym);
+    } else {
+      next = [...symbols, sym];
+    }
+    await applyWatchlistUpdate(next);
+  }
+
   async function handleRemoveSymbol(e: MouseEvent, sym: string) {
     e.stopPropagation();
-    symbols = symbols.filter((s) => s !== sym);
-    await persistWatchlist(symbols);
+    e.preventDefault();
+    const next = symbols.filter((s) => s !== sym);
+    await applyWatchlistUpdate(next);
   }
 
   async function handleCreateAlert(e: Event) {
@@ -251,7 +309,7 @@
           <span class="search-icon"><Search size={12} /></span>
           <input
             type="text"
-            placeholder="Filter pair..."
+            placeholder="Filter list..."
             bind:value={searchQuery}
             class="search-input"
           />
@@ -263,32 +321,45 @@
         </div>
 
         <button
+          type="button"
+          class="symbol-search-trigger-btn"
+          title="Buka Pencarian Pair Kripto Valid (Spot / Perpetuals)"
+          onclick={() => (isSymbolSearchOpen = true)}
+        >
+          <Search size={11} />
+          <span>Cari Pair</span>
+        </button>
+
+        <button
           class="add-symbol-btn {showAddInput ? 'active' : ''}"
-          title="Tambah Simbol"
+          title="Input Cepat Simbol"
           onclick={() => (showAddInput = !showAddInput)}
         >
-          <Plus size={14} />
+          <Plus size={13} />
         </button>
+      </div>
+
+      <!-- Feed Status & Column Headers -->
+      <div class="table-head mono-nums">
+        <div class="col-symbol-wrapper">
+          <span class="col-symbol">Symbol</span>
+          <span class="active-feed-pill">{activeProviderId.toUpperCase()}</span>
+        </div>
+        <span class="col-price">Last Price</span>
+        <span class="col-change">24h %</span>
       </div>
 
       {#if showAddInput}
         <form class="add-form" onsubmit={handleAddSymbol}>
           <input
             type="text"
-            placeholder="Simbol (e.g. SUI atau PEPE)..."
+            placeholder="Ketik simbol (e.g. BTCUSDT.P, SUI)..."
             bind:value={newSymbolInput}
             class="add-input mono-nums"
           />
           <button type="submit" class="submit-add-btn">Add</button>
         </form>
       {/if}
-
-      <!-- Column Headers -->
-      <div class="table-head mono-nums">
-        <span class="col-symbol">Symbol</span>
-        <span class="col-price">Last Price</span>
-        <span class="col-change">24h %</span>
-      </div>
 
       <!-- Watchlist Items List -->
       <div class="items-list">
@@ -303,8 +374,12 @@
             >
               <div class="row-symbol">
                 <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                <span class="symbol-name">{sym.replace('USDT', '')}</span>
-                <span class="quote-asset">.P</span>
+                <span class="symbol-name">{sym.replace('USDT.P', '').replace('USDT', '').replace('.P', '')}</span>
+                {#if sym.endsWith('.P')}
+                  <span class="type-tag perp mono-nums">.P</span>
+                {:else}
+                  <span class="type-tag spot mono-nums">SPOT</span>
+                {/if}
               </div>
 
               <div class="row-price mono-nums">
@@ -454,6 +529,16 @@
     {/if}
   </aside>
 {/if}
+
+<SymbolSearchModal
+  isOpen={isSymbolSearchOpen}
+  activeSymbol={activeSymbol}
+  activeProviderId={activeProviderId}
+  watchlistSymbols={symbols}
+  onSelectSymbol={onSelectSymbol}
+  onToggleWatchlistSymbol={handleToggleSymbolFromSearch}
+  onClose={() => (isSymbolSearchOpen = false)}
+/>
 
 <style>
   .collapsed-toggle-btn {
@@ -631,6 +716,28 @@
     padding: 0;
   }
 
+  .symbol-search-trigger-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background-color: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: var(--radius-xs);
+    color: #60a5fa;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .symbol-search-trigger-btn:hover {
+    background-color: rgba(59, 130, 246, 0.22);
+    border-color: #60a5fa;
+    color: #93c5fd;
+  }
+
   .add-symbol-btn {
     display: flex;
     align-items: center;
@@ -694,13 +801,30 @@
   /* Table Head */
   .table-head {
     display: grid;
-    grid-template-columns: 85px 1fr 65px;
+    grid-template-columns: 100px 1fr 65px;
     padding: 4px 8px;
     background-color: var(--bg-container);
     border-bottom: 1px solid var(--border-hairline);
     font-size: 10px;
     color: var(--text-dim);
     flex-shrink: 0;
+  }
+
+  .col-symbol-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .active-feed-pill {
+    font-size: 8px;
+    font-weight: 700;
+    padding: 1px 3px;
+    border-radius: 2px;
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--text-muted);
+    border: 1px solid var(--border-hairline);
+    letter-spacing: 0.05em;
   }
 
   .col-price {
@@ -737,7 +861,7 @@
 
   .row-select-btn {
     display: grid;
-    grid-template-columns: 85px 1fr 65px;
+    grid-template-columns: 100px 1fr 65px;
     align-items: center;
     padding: 5px 8px;
     background: none;
@@ -773,9 +897,25 @@
     color: var(--text-main);
   }
 
-  .quote-asset {
-    font-size: 9px;
-    color: var(--text-dim);
+  .type-tag {
+    font-size: 8px;
+    font-weight: 700;
+    padding: 1px 3px;
+    border-radius: 2px;
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+
+  .type-tag.perp {
+    background-color: rgba(234, 179, 8, 0.15);
+    color: #eab308;
+    border: 1px solid rgba(234, 179, 8, 0.3);
+  }
+
+  .type-tag.spot {
+    background-color: rgba(148, 163, 184, 0.12);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.2);
   }
 
   .row-price {
@@ -810,13 +950,23 @@
   .delete-item-btn {
     opacity: 0;
     position: absolute;
-    right: 2px;
-    background: none;
-    border: none;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
     color: var(--text-dim);
     cursor: pointer;
-    padding: 4px;
-    transition: opacity 0.15s ease;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    transition: all 0.15s ease;
   }
 
   .watchlist-row:hover .delete-item-btn {
@@ -825,6 +975,8 @@
 
   .delete-item-btn:hover {
     color: var(--bear-color);
+    background-color: rgba(255, 59, 105, 0.18);
+    border-color: rgba(255, 59, 105, 0.4);
   }
 
   /* Alerts List */

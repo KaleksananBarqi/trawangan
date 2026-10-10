@@ -5,12 +5,12 @@
   import DrawingToolbar from '../lib/components/DrawingToolbar.svelte';
   import WatchlistPanel from '../lib/components/WatchlistPanel.svelte';
   import ReplayBar from '../lib/components/ReplayBar.svelte';
+  import ReplayDatePickerModal from '../lib/components/ReplayDatePickerModal.svelte';
   import PineEditor from '../lib/components/PineEditor.svelte';
   import StatusBar from '../lib/components/StatusBar.svelte';
   import SettingsModal from '../lib/components/SettingsModal.svelte';
-  import ProviderModal from '../lib/components/ProviderModal.svelte';
   import IndicatorModal from '../lib/components/IndicatorModal.svelte';
-  import { fetch24hTicker } from '../lib/services/marketProvider';
+  import { fetch24hTicker, getActiveProviderId } from '../lib/services/marketProvider';
   import type {
     TickerInfo,
     Timeframe,
@@ -19,8 +19,15 @@
     SnapMode,
     MultiChartSyncConfig,
     WorkspaceMode,
-    AppSettings
+    AppSettings,
+    QuickSymbolsConfig
   } from '../lib/types/market';
+  import {
+    fetchWatchlist,
+    fetchQuickSymbolsConfig,
+    persistQuickSymbolsConfig,
+    DEFAULT_QUICK_SYMBOLS_CONFIG
+  } from '../lib/services/drawingStorage';
   import { saveWorkspace, type SavedWorkspace } from '../lib/services/workspaceStorage';
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
 
@@ -29,6 +36,7 @@
   let activeTimeframe = $state<Timeframe>('1m');
   let currentLayout = $state('1');
   let ticker = $state<TickerInfo | null>(null);
+  let activeProviderId = $state('binance');
 
   // Dual Workspace Mode: 'terminal' vs 'pine'
   let workspaceMode = $state<WorkspaceMode>('terminal');
@@ -52,7 +60,6 @@
 
   // Panels & Modals Visibility State
   let isSettingsModalOpen = $state(false);
-  let isProviderModalOpen = $state(false);
   let isIndicatorModalOpen = $state(false);
   let isDrawingToolbarVisible = $state(true);
   let isWatchlistOpen = $state(true);
@@ -62,6 +69,12 @@
   // Replay State
   let isReplayPlaying = $state(false);
   let replayPlaybackSpeed = $state(1);
+  let isReplaySelectingBar = $state(false);
+  let isReplayDatePickerOpen = $state(false);
+  let replayCurrentBarTime = $state<number | null>(null);
+  let replayRemainingBars = $state(0);
+  let replayCutoffTime = $state<number | null>(null);
+  let replayBounds = $state<{ first: number; last: number } | null>(null);
 
   // Drawing Tools State
   let activeDrawingTool = $state<DrawingToolType | null>('cursor');
@@ -77,19 +90,25 @@
   // Active Indicators State (bersih tanpa dummy)
   let activeIndicators = $state<ActiveIndicatorInfo[]>([]);
 
-  const defaultWatchlistSymbols = [
+  // Watchlist & Quick Symbols State
+  let watchlistSymbols = $state<string[]>([
     'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
     'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
-  ];
+  ]);
+  let quickSymbolsConfig = $state<QuickSymbolsConfig>(DEFAULT_QUICK_SYMBOLS_CONFIG);
 
   function handleNavigateWatchlist(direction: number) {
-    const idx = defaultWatchlistSymbols.indexOf(activeSymbol);
+    const list = watchlistSymbols.length > 0 ? watchlistSymbols : [
+      'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
+      'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
+    ];
+    const idx = list.indexOf(activeSymbol);
     if (idx === -1) {
-      handleSymbolChange(defaultWatchlistSymbols[0]);
+      handleSymbolChange(list[0]);
     } else {
-      let nextIdx = (idx + direction) % defaultWatchlistSymbols.length;
-      if (nextIdx < 0) nextIdx += defaultWatchlistSymbols.length;
-      handleSymbolChange(defaultWatchlistSymbols[nextIdx]);
+      let nextIdx = (idx + direction) % list.length;
+      if (nextIdx < 0) nextIdx += list.length;
+      handleSymbolChange(list[nextIdx]);
     }
   }
 
@@ -119,6 +138,18 @@
   });
 
   onMount(() => {
+    getActiveProviderId().then((pId) => {
+      if (pId) activeProviderId = pId;
+    });
+
+    fetchWatchlist().then((list) => {
+      if (list && list.length > 0) watchlistSymbols = list;
+    });
+
+    fetchQuickSymbolsConfig().then((cfg) => {
+      if (cfg) quickSymbolsConfig = cfg;
+    });
+
     updateTicker();
     tickerInterval = setInterval(updateTicker, 4000);
 
@@ -191,6 +222,20 @@
         return;
       }
 
+      // Replay Keyboard Controls (Space untuk play/pause, ArrowRight untuk step)
+      if (isReplayActive && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          handleReplayTogglePlay();
+          return;
+        }
+        if (e.code === 'ArrowRight') {
+          e.preventDefault();
+          handleReplayStepForward();
+          return;
+        }
+      }
+
       // Quick Timeframe Shortcuts & Esc
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         if (e.key === '1') { handleTimeframeChange('1m'); return; }
@@ -201,6 +246,12 @@
           return;
         }
         if (e.key === 'Escape') {
+          if (isReplaySelectingBar) {
+            isReplaySelectingBar = false;
+            chartComponent?.cancelCutoffSelection();
+            addSystemLog('Mode pemilihan bar dibatalkan.', 'info');
+            return;
+          }
           handleSelectTool('cursor');
           return;
         }
@@ -275,6 +326,20 @@
   function handleUpdateSettings(newSettings: Partial<AppSettings>) {
     appSettings = { ...appSettings, ...newSettings };
     addSystemLog(`Pengaturan aplikasi diperbarui.`, 'info');
+  }
+
+  function handleWatchlistChange(newSymbols: string[]) {
+    watchlistSymbols = newSymbols;
+  }
+
+  function handleQuickSymbolsConfigChange(newConfig: QuickSymbolsConfig) {
+    quickSymbolsConfig = newConfig;
+    persistQuickSymbolsConfig(newConfig);
+  }
+
+  function handleProviderChange(newProviderId: string) {
+    activeProviderId = newProviderId;
+    addSystemLog(`Data provider beralih ke: ${newProviderId.toUpperCase()}`, 'success');
   }
 
   function handleSaveWorkspace(name: string) {
@@ -373,15 +438,77 @@
     if (isReplayActive) {
       isReplayPlaying = false;
       if (chartComponent) {
-        await chartComponent.startReplay();
-        addSystemLog('Bar Replay mode aktif. Menampilkan candle masa lalu.', 'info');
+        replayBounds = chartComponent.getReplayBounds();
+        isReplaySelectingBar = true;
+        chartComponent.enableCutoffSelection();
+        addSystemLog('Bar Replay aktif. Klik candle pada grafik atau pilih tanggal untuk mulai.', 'info');
       }
     } else {
       isReplayPlaying = false;
+      isReplaySelectingBar = false;
       if (chartComponent) {
         chartComponent.stopReplay();
         addSystemLog('Bar Replay dinonaktifkan. Kembali ke streaming live.', 'info');
       }
+    }
+  }
+
+  function handleToggleSelectBar() {
+    isReplaySelectingBar = !isReplaySelectingBar;
+    if (chartComponent) {
+      if (isReplaySelectingBar) {
+        chartComponent.enableCutoffSelection();
+        addSystemLog('Mode pilih bar aktif. Klik salah satu candle pada grafik.', 'info');
+      } else {
+        chartComponent.cancelCutoffSelection();
+        addSystemLog('Mode pilih bar dinonaktifkan.', 'info');
+      }
+    }
+  }
+
+  function handleCutoffBarSelected(timestamp: number) {
+    isReplaySelectingBar = false;
+    replayCutoffTime = timestamp;
+    replayCurrentBarTime = timestamp;
+    const formatted = new Date(timestamp).toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    addSystemLog(`Bar Replay dipotong di candle: ${formatted}. Siap diputar.`, 'success');
+  }
+
+  async function handleSelectDate(timestamp: number) {
+    isReplaySelectingBar = false;
+    replayCutoffTime = timestamp;
+    replayCurrentBarTime = timestamp;
+    if (chartComponent) {
+      await chartComponent.startReplay(timestamp);
+    }
+    const formatted = new Date(timestamp).toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    addSystemLog(`Bar Replay melompat ke tanggal: ${formatted}.`, 'success');
+  }
+
+  function handleReplayStateChange(state: {
+    active: boolean;
+    playing: boolean;
+    cursorTime: number | null;
+    remaining: number;
+    bounds: { first: number; last: number } | null;
+  }) {
+    isReplayPlaying = state.playing;
+    replayCurrentBarTime = state.cursorTime;
+    replayRemainingBars = state.remaining;
+    if (state.bounds) {
+      replayBounds = state.bounds;
     }
   }
 
@@ -417,7 +544,11 @@
     if (chartComponent) {
       isReplayPlaying = false;
       chartComponent.pauseReplay();
-      await chartComponent.startReplay();
+      if (replayCutoffTime) {
+        await chartComponent.startReplay(replayCutoffTime);
+      } else {
+        await chartComponent.startReplay();
+      }
       addSystemLog('Replay di-rewind kembali ke titik cut-off.', 'info');
     }
   }
@@ -425,6 +556,7 @@
   function handleCloseReplay() {
     isReplayActive = false;
     isReplayPlaying = false;
+    isReplaySelectingBar = false;
     if (chartComponent) {
       chartComponent.stopReplay();
     }
@@ -485,12 +617,16 @@
     {activeTimeframe}
     {ticker}
     {currentLayout}
+    {activeProviderId}
     {workspaceMode}
     {syncConfig}
     {activeIndicators}
     {isDrawingToolbarVisible}
     {isWatchlistOpen}
     {isReplayActive}
+    {watchlistSymbols}
+    {quickSymbolsConfig}
+    onQuickSymbolsConfigChange={handleQuickSymbolsConfigChange}
     onSymbolChange={handleSymbolChange}
     onTimeframeChange={handleTimeframeChange}
     onLayoutChange={handleLayoutChange}
@@ -502,7 +638,6 @@
     onToggleDrawingToolbar={() => (isDrawingToolbarVisible = !isDrawingToolbarVisible)}
     onToggleWatchlist={() => (isWatchlistOpen = !isWatchlistOpen)}
     onToggleReplay={handleToggleReplay}
-    onOpenProviderModal={() => (isProviderModalOpen = true)}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
     onOpenSettingsModal={() => (isSettingsModalOpen = true)}
   />
@@ -514,6 +649,11 @@
       <ReplayBar
         isPlaying={isReplayPlaying}
         playbackSpeed={replayPlaybackSpeed}
+        isSelectingBar={isReplaySelectingBar}
+        currentBarTime={replayCurrentBarTime}
+        remainingBars={replayRemainingBars}
+        onToggleSelectBar={handleToggleSelectBar}
+        onOpenDatePicker={() => (isReplayDatePickerOpen = true)}
         onTogglePlay={handleReplayTogglePlay}
         onStepForward={handleReplayStepForward}
         onSelectSpeed={handleReplaySpeedChange}
@@ -535,10 +675,14 @@
             symbol={activeSymbol}
             timeframe={activeTimeframe}
             layout={currentLayout}
+            providerId={activeProviderId}
             {syncConfig}
             showWatermark={appSettings.showWatermark}
             onActiveIndicatorsChange={(list) => (activeIndicators = list)}
             onActiveCellChange={handleActiveCellChange}
+            onReplayStateChange={handleReplayStateChange}
+            onCutoffSelected={handleCutoffBarSelected}
+            onCutoffCancelled={() => (isReplaySelectingBar = false)}
           />
 
           <!-- Left Utility Ribbon (Drawing Tools) -->
@@ -565,8 +709,11 @@
         <WatchlistPanel
           isOpen={isWatchlistOpen}
           {activeSymbol}
+          {activeProviderId}
+          {watchlistSymbols}
           {activeIndicators}
           onSelectSymbol={handleSymbolChange}
+          onWatchlistChange={handleWatchlistChange}
           onToggleCollapse={() => (isWatchlistOpen = !isWatchlistOpen)}
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
           onRemoveIndicator={handleRemoveIndicator}
@@ -602,9 +749,13 @@
             symbol={activeSymbol}
             timeframe={activeTimeframe}
             layout="1"
+            providerId={activeProviderId}
             {syncConfig}
             onActiveIndicatorsChange={(list) => (activeIndicators = list)}
             onActiveCellChange={handleActiveCellChange}
+            onReplayStateChange={handleReplayStateChange}
+            onCutoffSelected={handleCutoffBarSelected}
+            onCutoffCancelled={() => (isReplaySelectingBar = false)}
           />
         </div>
 
@@ -666,14 +817,10 @@
   <SettingsModal
     isOpen={isSettingsModalOpen}
     settings={appSettings}
+    {activeProviderId}
     onClose={() => (isSettingsModalOpen = false)}
     onUpdateSettings={handleUpdateSettings}
-  />
-
-  <!-- Custom Provider Modal -->
-  <ProviderModal
-    isOpen={isProviderModalOpen}
-    onClose={() => (isProviderModalOpen = false)}
+    onProviderChange={handleProviderChange}
   />
 
   <!-- Indicator Library Modal -->
@@ -682,6 +829,15 @@
     onClose={() => (isIndicatorModalOpen = false)}
     onSelectIndicator={handleAddIndicator}
     onOpenInEditor={handleOpenInEditor}
+  />
+
+  <!-- Replay Jump to Date Modal -->
+  <ReplayDatePickerModal
+    isOpen={isReplayDatePickerOpen}
+    bounds={replayBounds}
+    currentBarTime={replayCurrentBarTime}
+    onSelectDate={handleSelectDate}
+    onClose={() => (isReplayDatePickerOpen = false)}
   />
 </div>
 
@@ -728,9 +884,6 @@
     flex-direction: column;
   }
 
-  .chart-canvas-area.with-watchlist {
-    /* Watchlist panel uses flex flow, no padding needed here */
-  }
 
   /* MODE 2: PINE SCRIPT IDE STYLING */
   .pine-workspace {

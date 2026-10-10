@@ -123,6 +123,8 @@ export interface StrategyPerformanceSummary {
   maxDrawdown: number;
   maxDrawdownPercent: number;
 }
-
-
-
+export interface QuickSymbolsConfig {
+  mode: 'watchlist' | 'custom';
+  customSymbols: string[];
+  maxDisplayCount: number;
+}

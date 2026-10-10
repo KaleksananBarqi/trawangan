@@ -11,26 +11,168 @@
     VolumeX,
     Grid,
     Clock,
-    Sparkles
+    Sparkles,
+    Radio,
+    PlugZap,
+    RefreshCw,
+    Trash2,
+    Server,
+    ExternalLink,
+    Zap
   } from '@lucide/svelte';
-  import type { AppSettings } from '../types/market';
+  import type { AppSettings, ProviderConfig } from '../types/market';
+  import {
+    getSavedProviders,
+    setActiveProvider,
+    saveProviderConfig,
+    deleteProvider
+  } from '../services/marketProvider';
 
   interface Props {
     isOpen: boolean;
     settings: AppSettings;
+    activeProviderId?: string;
     onClose: () => void;
     onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
+    onProviderChange?: (providerId: string) => void;
   }
 
-  let { isOpen, settings, onClose, onUpdateSettings }: Props = $props();
+  let {
+    isOpen,
+    settings,
+    activeProviderId = 'binance',
+    onClose,
+    onUpdateSettings,
+    onProviderChange
+  }: Props = $props();
 
-  let activeTab = $state<'general' | 'chart' | 'system'>('general');
+  let activeTab = $state<'general' | 'chart' | 'feed' | 'system'>('general');
 
-  // Simulasi Telemetri Hardware WebGL2 Real-Time (untuk diagnosa)
+  // ─── Provider Management State ───
+  let providersList = $state<ProviderConfig[]>([]);
+  let selectedProviderId = $state('binance');
+  let showCustomForm = $state(false);
+  let customName = $state('');
+  let customRestUrl = $state('');
+  let customWsUrl = $state('');
+  let isTestingConnection = $state(false);
+  let testFeedback = $state<{ success: boolean; message: string } | null>(null);
+
+  // ─── Telemetri Hardware WebGL2 Real-Time ───
   let fps = $state(120);
   let vram = $state('82 MB');
   let l2Latency = $state('180 µs');
   let droppedPackets = $state(0);
+
+  $effect(() => {
+    if (isOpen) {
+      loadProviders();
+    }
+  });
+
+  $effect(() => {
+    if (activeProviderId) {
+      selectedProviderId = activeProviderId;
+    }
+  });
+
+  async function loadProviders() {
+    try {
+      providersList = await getSavedProviders();
+      const active = providersList.find((p) => p.is_active);
+      if (active) {
+        selectedProviderId = active.id;
+      } else if (activeProviderId) {
+        selectedProviderId = activeProviderId;
+      }
+    } catch (err) {
+      console.error('Gagal memuat provider data:', err);
+    }
+  }
+
+  let customProviders = $derived(
+    providersList.filter((p) => !['binance', 'hyperliquid', 'coinbase'].includes(p.id))
+  );
+
+  let selectedProviderName = $derived.by(() => {
+    if (selectedProviderId === 'binance') return 'Binance Official Public';
+    if (selectedProviderId === 'bitunix') return 'Bitunix Futures (USDT-M)';
+    if (selectedProviderId === 'hyperliquid') return 'Hyperliquid DEX Perpetuals';
+    if (selectedProviderId === 'coinbase') return 'Coinbase Exchange Spot';
+    const custom = providersList.find((p) => p.id === selectedProviderId);
+    return custom ? custom.name : 'Binance Official';
+  });
+
+  async function handleSwitchProvider(providerId: string) {
+    selectedProviderId = providerId;
+    await setActiveProvider(providerId);
+    await loadProviders();
+    onProviderChange?.(providerId);
+  }
+
+  async function handleTestCustomConnection() {
+    if (!customRestUrl.trim()) {
+      testFeedback = { success: false, message: 'Masukkan REST API Base URL terlebih dahulu.' };
+      return;
+    }
+    isTestingConnection = true;
+    testFeedback = null;
+    const start = performance.now();
+    try {
+      const res = await fetch(customRestUrl.trim(), { method: 'GET', mode: 'cors' });
+      const elapsed = Math.round(performance.now() - start);
+      if (res.ok || res.status < 400) {
+        testFeedback = {
+          success: true,
+          message: `Endpoint terjangkau! HTTP ${res.status} (${elapsed}ms latency)`
+        };
+      } else {
+        testFeedback = {
+          success: false,
+          message: `Endpoint merespon status error HTTP ${res.status} (${elapsed}ms)`
+        };
+      }
+    } catch (err: any) {
+      const elapsed = Math.round(performance.now() - start);
+      testFeedback = {
+        success: false,
+        message: `Gagal ping endpoint (${elapsed}ms): ${err.message || 'CORS / Network Error'}`
+      };
+    } finally {
+      isTestingConnection = false;
+    }
+  }
+
+  async function handleSaveCustomProvider() {
+    if (!customName.trim() || !customRestUrl.trim()) {
+      testFeedback = { success: false, message: 'Nama dan REST URL wajib diisi.' };
+      return;
+    }
+    const newConfig: ProviderConfig = {
+      id: `custom-${Date.now()}`,
+      name: customName.trim(),
+      rest_url: customRestUrl.trim(),
+      ws_url: customWsUrl.trim(),
+      is_active: true
+    };
+    await saveProviderConfig(newConfig);
+    await loadProviders();
+    selectedProviderId = newConfig.id;
+    onProviderChange?.(newConfig.id);
+    customName = '';
+    customRestUrl = '';
+    customWsUrl = '';
+    showCustomForm = false;
+    testFeedback = { success: true, message: 'Custom node berhasil disimpan dan diaktifkan!' };
+  }
+
+  async function handleDeleteCustomProvider(id: string) {
+    await deleteProvider(id);
+    await loadProviders();
+    if (selectedProviderId === id) {
+      handleSwitchProvider('binance');
+    }
+  }
 </script>
 
 {#if isOpen}
@@ -53,7 +195,7 @@
       </div>
 
       <div class="modal-body">
-        <!-- Sidebar Tabs -->
+        <!-- Sidebar Navigation Tabs -->
         <nav class="settings-nav">
           <button
             class="nav-tab {activeTab === 'general' ? 'active' : ''}"
@@ -72,6 +214,14 @@
           </button>
 
           <button
+            class="nav-tab {activeTab === 'feed' ? 'active' : ''}"
+            onclick={() => (activeTab = 'feed')}
+          >
+            <Radio size={14} />
+            <span>Data Feed</span>
+          </button>
+
+          <button
             class="nav-tab {activeTab === 'system' ? 'active' : ''}"
             onclick={() => (activeTab = 'system')}
           >
@@ -80,8 +230,9 @@
           </button>
         </nav>
 
-        <!-- Tab Content -->
+        <!-- Tab Content Viewport -->
         <div class="tab-content">
+          <!-- TAB 1: UMUM & AUDIO -->
           {#if activeTab === 'general'}
             <div class="section-group">
               <h4 class="section-title">Preferensi Regional & Notifikasi</h4>
@@ -133,6 +284,7 @@
               </div>
             </div>
 
+          <!-- TAB 2: TAMPILAN GRAFIK -->
           {:else if activeTab === 'chart'}
             <div class="section-group">
               <h4 class="section-title">Kebersihan & Tampilan Canvas</h4>
@@ -177,6 +329,266 @@
               </div>
             </div>
 
+          <!-- TAB 3: DATA PROVIDER & FEED (BARU & TERINTEGRASI) -->
+          {:else if activeTab === 'feed'}
+            <div class="section-group">
+              <!-- Status Header Banner -->
+              <div class="feed-status-card">
+                <div class="feed-status-left">
+                  <span class="feed-pulsing-pip"></span>
+                  <div class="feed-status-text">
+                    <span class="feed-eyebrow">FEED AKTIF SAAT INI</span>
+                    <span class="feed-current-name font-bold text-bull">{selectedProviderName}</span>
+                  </div>
+                </div>
+                <div class="feed-status-right">
+                  <span class="feed-tag live"><Radio size={11} /> WebGL2 Stream</span>
+                  <span class="feed-tag latency mono-nums"><Wifi size={11} /> &lt;40ms</span>
+                </div>
+              </div>
+
+              <!-- Preset Bursa Resmi -->
+              <div>
+                <h4 class="section-title">Bursa & Preset Resmi (Vela Native)</h4>
+                <p class="section-desc">
+                  Didukung secara langsung oleh renderer WebGL2 Vela tanpa perlu konfigurasi API key tambahan.
+                </p>
+              </div>
+
+              <div class="provider-grid">
+                <!-- Binance Preset Card -->
+                <button
+                  type="button"
+                  class="provider-card {selectedProviderId === 'binance' ? 'selected' : ''}"
+                  onclick={() => handleSwitchProvider('binance')}
+                >
+                  <div class="card-header">
+                    <div class="brand-box">
+                      <div class="avatar binance">B</div>
+                      <div>
+                        <div class="brand-title">Binance Official</div>
+                        <div class="brand-subtitle">Spot & USDT Perpetuals</div>
+                      </div>
+                    </div>
+                    {#if selectedProviderId === 'binance'}
+                      <span class="badge-active"><Check size={11} /> Aktif</span>
+                    {:else}
+                      <span class="badge-choose">Pilih</span>
+                    {/if}
+                  </div>
+                  <p class="card-caption">
+                    Bursa crypto global dengan likuiditas nomor satu dan update tick kline milidetik.
+                  </p>
+                  <div class="card-meta">
+                    <span class="meta-pill">Global Liquid</span>
+                    <span class="meta-pill highlight">Rekomendasi</span>
+                  </div>
+                </button>
+
+                <!-- Bitunix Futures Preset Card -->
+                <button
+                  type="button"
+                  class="provider-card {selectedProviderId === 'bitunix' ? 'selected' : ''}"
+                  onclick={() => handleSwitchProvider('bitunix')}
+                >
+                  <div class="card-header">
+                    <div class="brand-box">
+                      <div class="avatar bitunix">BX</div>
+                      <div>
+                        <div class="brand-title">Bitunix Futures</div>
+                        <div class="brand-subtitle">USDT-Margined Perpetuals</div>
+                      </div>
+                    </div>
+                    {#if selectedProviderId === 'bitunix'}
+                      <span class="badge-active"><Check size={11} /> Aktif</span>
+                    {:else}
+                      <span class="badge-choose">Pilih</span>
+                    {/if}
+                  </div>
+                  <p class="card-caption">
+                    Data feed kontrak futures perpetual Bitunix dengan direct REST klines dan orderbook futures.
+                  </p>
+                  <div class="card-meta">
+                    <span class="meta-pill">Futures Perp</span>
+                    <span class="meta-pill highlight">Trawangan Feed</span>
+                  </div>
+                </button>
+
+                <!-- Hyperliquid Preset Card -->
+                <button
+                  type="button"
+                  class="provider-card {selectedProviderId === 'hyperliquid' ? 'selected' : ''}"
+                  onclick={() => handleSwitchProvider('hyperliquid')}
+                >
+                  <div class="card-header">
+                    <div class="brand-box">
+                      <div class="avatar hyperliquid">H</div>
+                      <div>
+                        <div class="brand-title">Hyperliquid DEX</div>
+                        <div class="brand-subtitle">On-chain L1 Perpetuals</div>
+                      </div>
+                    </div>
+                    {#if selectedProviderId === 'hyperliquid'}
+                      <span class="badge-active"><Check size={11} /> Aktif</span>
+                    {:else}
+                      <span class="badge-choose">Pilih</span>
+                    {/if}
+                  </div>
+                  <p class="card-caption">
+                    DEX perpetual terdesentralisasi on-chain dengan orderbook L1 berkecepatan tinggi.
+                  </p>
+                  <div class="card-meta">
+                    <span class="meta-pill">Decentralized</span>
+                    <span class="meta-pill">Direct WS</span>
+                  </div>
+                </button>
+
+                <!-- Coinbase Preset Card -->
+                <button
+                  type="button"
+                  class="provider-card {selectedProviderId === 'coinbase' ? 'selected' : ''}"
+                  onclick={() => handleSwitchProvider('coinbase')}
+                >
+                  <div class="card-header">
+                    <div class="brand-box">
+                      <div class="avatar coinbase">C</div>
+                      <div>
+                        <div class="brand-title">Coinbase Exchange</div>
+                        <div class="brand-subtitle">Regulated US Spot</div>
+                      </div>
+                    </div>
+                    {#if selectedProviderId === 'coinbase'}
+                      <span class="badge-active"><Check size={11} /> Aktif</span>
+                    {:else}
+                      <span class="badge-choose">Pilih</span>
+                    {/if}
+                  </div>
+                  <p class="card-caption">
+                    Standar bursa teregulasi AS dengan orderbook spot institusional.
+                  </p>
+                  <div class="card-meta">
+                    <span class="meta-pill">Institutional</span>
+                    <span class="meta-pill">US Spot</span>
+                  </div>
+                </button>
+              </div>
+
+              <!-- Custom Node / Proxy Gateway Section -->
+              <div class="custom-section">
+                <div class="custom-header">
+                  <div>
+                    <h4 class="section-title">Koneksi Node / Proxy Kustom</h4>
+                    <p class="section-desc">
+                      Hubungkan gateway lokal, internal relay proxy, atau private aggregator node Anda.
+                    </p>
+                  </div>
+                  <button
+                    class="btn-custom-toggle"
+                    onclick={() => (showCustomForm = !showCustomForm)}
+                  >
+                    {showCustomForm ? 'Tutup Formulir' : '+ Tambah Custom Endpoint'}
+                  </button>
+                </div>
+
+                {#if showCustomForm}
+                  <div class="custom-form-panel">
+                    <div class="form-field">
+                      <label for="custom-name">Nama Provider / Node</label>
+                      <input
+                        id="custom-name"
+                        type="text"
+                        placeholder="e.g. My Private Relay / Local Node"
+                        bind:value={customName}
+                        class="text-input"
+                      />
+                    </div>
+
+                    <div class="form-field">
+                      <label for="custom-rest">REST API Base URL (Kline Historis)</label>
+                      <input
+                        id="custom-rest"
+                        type="text"
+                        placeholder="https://api.myfeed.com atau http://127.0.0.1:8080"
+                        bind:value={customRestUrl}
+                        class="text-input mono-nums"
+                      />
+                    </div>
+
+                    <div class="form-field">
+                      <label for="custom-ws">WebSocket Stream URL (Opsional)</label>
+                      <input
+                        id="custom-ws"
+                        type="text"
+                        placeholder="wss://stream.myfeed.com/ws"
+                        bind:value={customWsUrl}
+                        class="text-input mono-nums"
+                      />
+                    </div>
+
+                    {#if testFeedback}
+                      <div class="feedback-banner {testFeedback.success ? 'success' : 'error'} mono-nums">
+                        {testFeedback.message}
+                      </div>
+                    {/if}
+
+                    <div class="form-btn-group">
+                      <button
+                        class="btn-ping"
+                        disabled={isTestingConnection}
+                        onclick={handleTestCustomConnection}
+                      >
+                        {#if isTestingConnection}
+                          <RefreshCw size={13} class="spin" />
+                          <span>Menguji...</span>
+                        {:else}
+                          <PlugZap size={13} />
+                          <span>Uji Koneksi (Ping)</span>
+                        {/if}
+                      </button>
+                      <button class="btn-save" onclick={handleSaveCustomProvider}>
+                        <Check size={13} />
+                        <span>Simpan & Terapkan</span>
+                      </button>
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Custom Providers List -->
+                {#if customProviders.length > 0}
+                  <div class="custom-list">
+                    {#each customProviders as cp}
+                      <div class="custom-item {selectedProviderId === cp.id ? 'active' : ''}">
+                        <div class="custom-item-info">
+                          <span class="custom-item-name font-bold">{cp.name}</span>
+                          <span class="custom-item-url mono-nums">{cp.rest_url}</span>
+                        </div>
+                        <div class="custom-item-actions">
+                          {#if selectedProviderId === cp.id}
+                            <span class="badge-active"><Check size={11} /> Aktif</span>
+                          {:else}
+                            <button
+                              class="btn-use-custom"
+                              onclick={() => handleSwitchProvider(cp.id)}
+                            >
+                              Gunakan
+                            </button>
+                          {/if}
+                          <button
+                            class="btn-trash"
+                            title="Hapus Provider Kustom"
+                            onclick={() => handleDeleteCustomProvider(cp.id)}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+          <!-- TAB 4: TELEMETRI & WEBGL2 -->
           {:else if activeTab === 'system'}
             <div class="section-group">
               <h4 class="section-title">Status Akselerasi WebGL 2.0 & Native Core</h4>
@@ -200,7 +612,7 @@
                 <div class="telemetry-card">
                   <span class="card-label">L2 Network Latency</span>
                   <span class="card-value text-cyan">{l2Latency}</span>
-                  <span class="card-sub">Direct Binance Streams</span>
+                  <span class="card-sub">Direct Streams</span>
                 </div>
 
                 <div class="telemetry-card">
@@ -239,8 +651,8 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(11, 14, 20, 0.78);
-    backdrop-filter: blur(4px);
+    background: rgba(11, 14, 20, 0.82);
+    backdrop-filter: blur(5px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -248,12 +660,12 @@
   }
 
   .settings-modal {
-    width: 620px;
-    max-width: 92vw;
+    width: 680px;
+    max-width: 94vw;
     background-color: var(--bg-surface);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-md);
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.75);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -301,11 +713,12 @@
 
   .modal-body {
     display: flex;
-    min-height: 320px;
+    min-height: 380px;
+    max-height: 75vh;
   }
 
   .settings-nav {
-    width: 170px;
+    width: 175px;
     background-color: var(--bg-container);
     border-right: 1px solid var(--border-hairline);
     padding: 10px 8px;
@@ -344,7 +757,7 @@
 
   .tab-content {
     flex: 1;
-    padding: 18px;
+    padding: 18px 20px;
     background-color: var(--bg-surface);
     overflow-y: auto;
   }
@@ -447,6 +860,412 @@
     border: 1px solid rgba(0, 240, 144, 0.25);
   }
 
+  /* ─── DATA FEED STYLING ─── */
+  .feed-status-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+  }
+
+  .feed-status-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .feed-pulsing-pip {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--bull-color);
+    box-shadow: 0 0 8px var(--bull-color);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.9); }
+  }
+
+  .feed-status-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .feed-eyebrow {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+  }
+
+  .feed-current-name {
+    font-size: 13px;
+  }
+
+  .feed-status-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .feed-tag {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: var(--radius-xs);
+  }
+
+  .feed-tag.live {
+    background-color: rgba(0, 240, 144, 0.1);
+    color: var(--brand-primary);
+    border: 1px solid rgba(0, 240, 144, 0.25);
+  }
+
+  .feed-tag.latency {
+    background-color: rgba(0, 242, 254, 0.1);
+    color: var(--brand-cyan);
+    border: 1px solid rgba(0, 242, 254, 0.25);
+  }
+
+  .provider-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .provider-card {
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .provider-card:hover {
+    background-color: var(--bg-panel);
+    border-color: var(--border-medium);
+  }
+
+  .provider-card.selected {
+    border-color: var(--brand-primary);
+    background-color: rgba(0, 240, 144, 0.03);
+    box-shadow: 0 0 14px rgba(0, 240, 144, 0.12);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .brand-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .avatar.binance {
+    background-color: #F0B90B;
+    color: #000;
+  }
+
+  .avatar.bitunix {
+    background-color: #06B6D4;
+    color: #000;
+  }
+
+  .avatar.hyperliquid {
+    background-color: #50E3C2;
+    color: #000;
+  }
+
+  .avatar.coinbase {
+    background-color: #0052FF;
+    color: #fff;
+  }
+
+  .brand-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .brand-subtitle {
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+
+  .badge-active {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    background-color: rgba(0, 240, 144, 0.15);
+    color: var(--brand-primary);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    border: 1px solid rgba(0, 240, 144, 0.3);
+  }
+
+  .badge-choose {
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 2px 6px;
+    background-color: var(--bg-panel);
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border-hairline);
+  }
+
+  .card-caption {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0;
+    flex: 1;
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .meta-pill {
+    font-size: 9px;
+    color: var(--text-dim);
+    background-color: var(--bg-darkest);
+    padding: 2px 5px;
+    border-radius: var(--radius-xs);
+  }
+
+  .meta-pill.highlight {
+    color: var(--brand-primary);
+    background-color: rgba(0, 240, 144, 0.08);
+  }
+
+  /* ─── CUSTOM NODE / PROXY ─── */
+  .custom-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .custom-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .btn-custom-toggle {
+    font-size: 11px;
+    font-weight: 600;
+    background: transparent;
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    padding: 4px 10px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-custom-toggle:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--border-medium);
+  }
+
+  .custom-form-panel {
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .form-field label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-dim);
+  }
+
+  .text-input {
+    background-color: var(--bg-darkest);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    padding: 6px 10px;
+    font-size: 11px;
+    border-radius: var(--radius-xs);
+    outline: none;
+  }
+
+  .text-input:focus {
+    border-color: var(--border-focus);
+  }
+
+  .feedback-banner {
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: var(--radius-xs);
+  }
+
+  .feedback-banner.success {
+    background-color: rgba(0, 240, 144, 0.1);
+    color: var(--bull-color);
+    border: 1px solid rgba(0, 240, 144, 0.25);
+  }
+
+  .feedback-banner.error {
+    background-color: rgba(255, 59, 105, 0.1);
+    color: var(--bear-color);
+    border: 1px solid rgba(255, 59, 105, 0.25);
+  }
+
+  .form-btn-group {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .btn-ping, .btn-save {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-ping {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+  }
+
+  .btn-ping:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .btn-save {
+    background-color: var(--brand-primary);
+    border: 1px solid var(--brand-primary);
+    color: var(--bg-darkest);
+  }
+
+  .btn-save:hover {
+    opacity: 0.9;
+  }
+
+  .custom-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .custom-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+  }
+
+  .custom-item.active {
+    border-color: var(--brand-primary);
+    background-color: rgba(0, 240, 144, 0.04);
+  }
+
+  .custom-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .custom-item-name {
+    font-size: 11px;
+    color: var(--text-main);
+  }
+
+  .custom-item-url {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .custom-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .btn-use-custom {
+    font-size: 10px;
+    padding: 2px 8px;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+  }
+
+  .btn-use-custom:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .btn-trash {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 3px;
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-trash:hover {
+    color: var(--bear-color);
+  }
+
+  /* ─── TELEMETRI STYLING ─── */
   .telemetry-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -507,6 +1326,11 @@
     color: var(--brand-cyan);
   }
 
+  .font-bold {
+    font-weight: 700;
+  }
+
+  /* ─── FOOTER ─── */
   .modal-footer {
     height: 48px;
     padding: 0 16px;
@@ -534,5 +1358,15 @@
 
   .primary-btn:hover {
     opacity: 0.9;
+  }
+
+  :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    100% {
+      transform: rotate(360deg);
+    }
   }
 </style>

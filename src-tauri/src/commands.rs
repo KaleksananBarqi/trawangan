@@ -1,9 +1,9 @@
 // Modul Tauri IPC Commands yang dipanggil oleh Frontend
 use crate::db::{
-    cache_candles, clear_drawings, delete_pine_script, get_cached_candles, get_drawings,
-    get_pine_scripts, get_providers, get_watchlist, get_workspace, save_drawings,
-    save_pine_script, save_provider, save_watchlist, save_workspace, Candle, DbState,
-    PineScriptRecord, ProviderConfig,
+    cache_candles, clear_drawings, delete_pine_script, delete_provider, get_cached_candles,
+    get_drawings, get_pine_scripts, get_providers, get_watchlist, get_workspace, save_drawings,
+    save_pine_script, save_provider, save_watchlist, save_workspace, set_active_provider,
+    Candle, DbState, PineScriptRecord, ProviderConfig,
 };
 use crate::market::MarketService;
 use tauri::State;
@@ -98,6 +98,24 @@ pub fn add_or_update_provider(
 ) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     save_provider(&conn, &provider).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_active_data_provider(
+    db: State<'_, DbState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    set_active_provider(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_data_provider(
+    db: State<'_, DbState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    delete_provider(&conn, &id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

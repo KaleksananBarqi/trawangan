@@ -1,0 +1,184 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: TRAWANGAN
+      - generic [ref=e9]: PRO
+    - generic [ref=e11]:
+      - button "Terminal" [ref=e12] [cursor=pointer]
+      - button "Pine IDE" [ref=e15] [cursor=pointer]
+    - generic [ref=e19]:
+      - generic [ref=e20]:
+        - button "BTC" [ref=e21] [cursor=pointer]
+        - button "ETH" [ref=e22] [cursor=pointer]
+        - button "SOL" [ref=e23] [cursor=pointer]
+        - button "BNB" [ref=e24] [cursor=pointer]
+        - button "DOGE" [ref=e25] [cursor=pointer]
+      - button "BTCUSDT ▾" [ref=e26] [cursor=pointer]:
+        - generic [ref=e28]: BTCUSDT
+        - generic [ref=e29]: ▾
+    - generic [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e33]: $82,630.00
+        - generic [ref=e34]: +0.86%
+      - generic [ref=e36]:
+        - generic [ref=e37]: "H: $83,528.98"
+        - generic [ref=e38]: "L: $81,603.52"
+    - generic [ref=e39]:
+      - button "1m" [ref=e40] [cursor=pointer]
+      - button "5m" [ref=e41] [cursor=pointer]
+      - button "15m" [ref=e42] [cursor=pointer]
+      - button "1h" [ref=e43] [cursor=pointer]
+      - button "4h" [ref=e44] [cursor=pointer]
+      - button "1D" [ref=e45] [cursor=pointer]
+      - button "Edit Timeframes" [ref=e46] [cursor=pointer]
+    - generic [ref=e49]:
+      - button "Workspaces" [ref=e51] [cursor=pointer]
+      - button "1" [ref=e54] [cursor=pointer]
+      - button "2h" [ref=e57] [cursor=pointer]
+      - button "2v" [ref=e60] [cursor=pointer]
+      - button "4" [ref=e63] [cursor=pointer]
+    - generic [ref=e67]:
+      - button "Replay" [active] [ref=e68] [cursor=pointer]
+      - button "Draw" [ref=e71] [cursor=pointer]
+      - button "Indikator" [ref=e74] [cursor=pointer]
+      - button "Panel" [ref=e77] [cursor=pointer]
+      - button "Feed" [ref=e80] [cursor=pointer]
+      - button "Buka Pengaturan & Telemetri Sistem" [ref=e83] [cursor=pointer]
+      - button "Toggle Layar Penuh" [ref=e85] [cursor=pointer]
+  - main [ref=e87]:
+    - generic [ref=e296]:
+      - generic [ref=e297]: BAR REPLAY
+      - generic [ref=e301]:
+        - generic [ref=e302]:
+          - button "Klik Lilin..." [ref=e303] [cursor=pointer]
+          - button "Pilih Tanggal" [ref=e306] [cursor=pointer]
+        - generic [ref=e310]:
+          - button "Kembali ke titik awal cut-off (Rewind)" [ref=e311] [cursor=pointer]
+          - button "Mulai Replay (Space)" [ref=e313] [cursor=pointer]
+          - button "Langkah +1 Bar ke depan (Panah Kanan)" [ref=e315] [cursor=pointer]
+        - generic [ref=e318]:
+          - generic [ref=e319]: "SPEED:"
+          - button "0.2x" [ref=e320] [cursor=pointer]
+          - button "0.5x" [ref=e321] [cursor=pointer]
+          - button "1x" [ref=e322] [cursor=pointer]
+          - button "3x" [ref=e323] [cursor=pointer]
+          - button "5x" [ref=e324] [cursor=pointer]
+          - button "10x" [ref=e325] [cursor=pointer]
+      - button "Keluar" [ref=e327] [cursor=pointer]
+    - generic [ref=e88]:
+      - generic [ref=e89]:
+        - generic [ref=e90]:
+          - generic [ref=e92]:
+            - generic [ref=e96]:
+              - generic [ref=e97]:
+                - generic [ref=e98]:
+                  - application "Interactive price chart. Use Left/Right arrows to move between bars, Shift+Arrow to pan, plus/minus to zoom, Home/End to jump, 0 to reset." [ref=e99]
+                  - generic [ref=e100]:
+                    - generic [ref=e101]: Volume
+                    - generic [ref=e102]: "0.18"
+                - status [ref=e103]
+              - generic: BTCUSDT · 1M
+              - generic [ref=e104]:
+                - generic [ref=e105]:
+                  - generic [ref=e107]: BTCUSDT
+                  - generic [ref=e108]: · BINANCE · 1M
+                  - generic "Market Open" [ref=e110]
+                - generic [ref=e117]:
+                  - generic [ref=e118]:
+                    - generic [ref=e330]: O 82,630.01
+                    - generic [ref=e331]: H 82,630.01
+                    - generic [ref=e332]: L 82,630.00
+                    - generic [ref=e333]: C 82,630.01
+                  - generic [ref=e123]: +0.00 (+0.00%)
+              - link "Charting by Vela" [ref=e124] [cursor=pointer]:
+                - /url: https://velacharts.dev/?utm_source=vela&utm_medium=attribution
+            - generic [ref=e134]:
+              - button "1D" [ref=e135] [cursor=pointer]
+              - button "7D" [ref=e136] [cursor=pointer]
+              - button "1M" [ref=e137] [cursor=pointer]
+              - button "3M" [ref=e138] [cursor=pointer]
+              - button "6M" [ref=e139] [cursor=pointer]
+              - button "YTD" [ref=e140] [cursor=pointer]
+              - button "1Y" [ref=e141] [cursor=pointer]
+              - button "5Y" [ref=e142] [cursor=pointer]
+              - button "ALL" [ref=e143] [cursor=pointer]
+              - button "Time zone" [ref=e144] [cursor=pointer]:
+                - generic [ref=e145]: 22:49:19
+                - generic [ref=e146]: UTC
+              - button "Chart settings" [ref=e147] [cursor=pointer]
+          - generic [ref=e334]:
+            - generic [ref=e336]: KLIK LILIN DI GRAFIK UNTUK MEMULAI REPLAY DARI TITIK TERSEBUT
+            - button "Batal (Esc)" [ref=e337] [cursor=pointer]
+        - complementary [ref=e152]:
+          - button "Cursor (Select & Pan)" [ref=e154] [cursor=pointer]
+          - button "▸" [ref=e158] [cursor=pointer]
+          - button "▸" [ref=e162] [cursor=pointer]
+          - button "▸" [ref=e166] [cursor=pointer]
+          - button "Text Note / Annotation" [ref=e170] [cursor=pointer]
+          - 'button "Magnet Snap (Mode: OFF)" [ref=e174] [cursor=pointer]'
+          - button "Stay in Drawing Mode (OFF)" [ref=e177] [cursor=pointer]
+          - button "Lock All Drawings" [ref=e180] [cursor=pointer]
+          - button "Hide All Drawings" [ref=e183] [cursor=pointer]
+          - button "Undo Drawing (Ctrl+Z)" [ref=e187] [cursor=pointer]
+          - button "Redo Drawing (Ctrl+Y)" [ref=e190] [cursor=pointer]
+          - button "Clear All Drawings on Canvas" [ref=e193] [cursor=pointer]
+      - complementary [ref=e195]:
+        - generic [ref=e196]:
+          - navigation [ref=e197]:
+            - button "Watchlist 4" [ref=e198] [cursor=pointer]:
+              - generic [ref=e200]: Watchlist
+              - generic [ref=e201]: "4"
+            - button "Alerts 3" [ref=e202] [cursor=pointer]:
+              - generic [ref=e204]: Alerts
+              - generic [ref=e205]: "3"
+            - button "Layers" [ref=e206] [cursor=pointer]
+          - button "Tutup Panel" [ref=e209] [cursor=pointer]
+        - generic [ref=e211]:
+          - textbox "Filter pair..." [ref=e215]
+          - button "Tambah Simbol" [ref=e216] [cursor=pointer]
+        - generic [ref=e218]:
+          - generic [ref=e219]: Symbol
+          - generic [ref=e220]: Last Price
+          - generic [ref=e221]: 24h %
+        - generic [ref=e222]:
+          - generic [ref=e223]:
+            - button "BTC .P 82,630.00 +0.86%" [ref=e224] [cursor=pointer]:
+              - generic [ref=e225]:
+                - generic [ref=e227]: BTC
+                - generic [ref=e228]: .P
+              - generic [ref=e229]: 82,630.00
+              - generic [ref=e230]: +0.86%
+            - button "Hapus dari watchlist" [ref=e232] [cursor=pointer]
+          - generic [ref=e234]:
+            - button "ETH .P 2,490.01 +0.59%" [ref=e338] [cursor=pointer]:
+              - generic [ref=e236]:
+                - generic [ref=e238]: ETH
+                - generic [ref=e239]: .P
+              - generic [ref=e240]: 2,490.01
+              - generic [ref=e241]: +0.59%
+            - button "Hapus dari watchlist" [ref=e243] [cursor=pointer]
+          - generic [ref=e245]:
+            - button "SOL .P 109.3200 -1.02%" [ref=e339] [cursor=pointer]:
+              - generic [ref=e247]:
+                - generic [ref=e249]: SOL
+                - generic [ref=e250]: .P
+              - generic [ref=e251]: "109.3200"
+              - generic [ref=e252]: "-1.02%"
+            - button "Hapus dari watchlist" [ref=e254] [cursor=pointer]
+          - generic [ref=e256]:
+            - button "BNB .P 741.9100 +0.61%" [ref=e340] [cursor=pointer]:
+              - generic [ref=e258]:
+                - generic [ref=e260]: BNB
+                - generic [ref=e261]: .P
+              - generic [ref=e262]: "741.9100"
+              - generic [ref=e263]: +0.61%
+            - button "Hapus dari watchlist" [ref=e265] [cursor=pointer]
+  - contentinfo [ref=e267]:
+    - generic [ref=e268]:
+      - generic [ref=e269]: "Engine: NATIVE_SYS_X64"
+      - generic [ref=e273]: "RAM: ~46MB / Ultra Lightweight"
+      - generic [ref=e278]: SQLite Local ACTIVE
+      - generic [ref=e282]: Pine Script v6 Runtime Ready
+    - generic [ref=e285]:
+      - generic [ref=e286]: 05.49.18 WIB (UTC+7)
+      - 'button "Terminal Logs [CTRL+`]" [ref=e291] [cursor=pointer]'
