@@ -97,6 +97,8 @@
     onClose: () => void;
     onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
     onProviderChange?: (providerId: string) => void;
+    onOpenChartSettings?: (section?: string) => void;
+    onResetChartFactory?: () => void;
   }
 
   let {
@@ -105,14 +107,28 @@
     activeProviderId = 'binance',
     onClose,
     onUpdateSettings,
-    onProviderChange
+    onProviderChange,
+    onOpenChartSettings,
+    onResetChartFactory
   }: Props = $props();
 
   let activeTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about'>('general');
+  let resetChartFeedback = $state<string | null>(null);
+
+  function handleResetChartFactoryClick() {
+    if (onResetChartFactory) {
+      onResetChartFactory();
+      resetChartFeedback = '✓ Konfigurasi lilin dikembalikan ke default pabrik!';
+      setTimeout(() => {
+        resetChartFeedback = null;
+      }, 3000);
+    }
+  }
 
   // ─── State Cek Pembaruan (About Page) ───
   let isCheckingUpdate = $state(false);
   let updateFeedback = $state<{ type: 'idle' | 'success' | 'info' | 'error'; message: string } | null>(null);
+
 
   async function handleCheckUpdate() {
     if (isCheckingUpdate) return;
@@ -722,6 +738,50 @@
                 </button>
               </div>
             </div>
+
+            <!-- Konfigurasi Lilin & Tampilan VelaChart -->
+            <div class="section-group">
+              <h4 class="section-title">Warna Lilin & Tampilan VelaChart</h4>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-label">Pengaturan Lilin & Bar (Vela Settings)</span>
+                  <span class="setting-desc">Kustomisasi warna candle, borders, wick, spacing, dan animasi via modal VelaChart</span>
+                </div>
+                <button
+                  type="button"
+                  class="btn-test-notification"
+                  onclick={() => {
+                    onClose();
+                    onOpenChartSettings?.('Symbol');
+                  }}
+                  title="Buka dialog pengaturan lilin Vela"
+                >
+                  <SlidersHorizontal size={13} />
+                  <span>Buka Chart Settings</span>
+                </button>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-label">Reset Konfigurasi Lilin ke Default Pabrik</span>
+                  <span class="setting-desc">Hapus template default yang pernah disimpan dan kembalikan ke warna awal bawaan Vela</span>
+                  {#if resetChartFeedback}
+                    <span class="notification-test-feedback mono-nums">{resetChartFeedback}</span>
+                  {/if}
+                </div>
+                <button
+                  type="button"
+                  class="btn-reset-font"
+                  onclick={handleResetChartFactoryClick}
+                  title="Kembalikan konfigurasi lilin ke default pabrik"
+                >
+                  <RotateCcw size={12} />
+                  <span>Reset ke Pabrik</span>
+                </button>
+              </div>
+            </div>
+
 
             <div class="section-group">
               <h4 class="section-title">Timeframe & Navigasi Bilah Atas</h4>

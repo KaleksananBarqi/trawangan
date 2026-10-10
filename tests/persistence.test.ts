@@ -150,4 +150,38 @@ describe('Deep Persistence Module Unit Tests', () => {
     const loaded = await service.loadSettings();
     assert.deepStrictEqual(loaded, settings);
   });
+
+  test('Chart Default Config: menyimpan, memuat, dan menghapus konfigurasi default grafik', async () => {
+    const initial = await service.loadChartDefaultConfig();
+    assert.strictEqual(initial, null);
+
+    const mockChartConfig = {
+      series: { style: 'candles', spacing: 1.2 },
+      candles: {
+        upColor: '#10b981',
+        downColor: '#ef4444',
+        bodyVisible: true,
+        borderVisible: true,
+        borderUpColor: '#10b981',
+        borderDownColor: '#ef4444',
+        wickVisible: true,
+        wickUpColor: '#10b981',
+        wickDownColor: '#ef4444',
+      },
+      animations: {
+        zoom: true,
+        pan: true,
+        autoscale: false,
+      },
+    };
+
+    await service.saveChartDefaultConfig(mockChartConfig);
+    const loaded = await service.loadChartDefaultConfig();
+    assert.deepStrictEqual(loaded, mockChartConfig);
+
+    await service.clearChartDefaultConfig();
+    const cleared = await service.loadChartDefaultConfig();
+    assert.strictEqual(cleared, null);
+  });
 });
+

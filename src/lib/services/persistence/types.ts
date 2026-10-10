@@ -66,4 +66,10 @@ export interface IPersistenceService {
   // App Settings
   loadSettings(): Promise<Partial<AppSettings> | null>;
   saveSettings(settings: Partial<AppSettings>): Promise<void>;
+
+  // Chart Default Configuration
+  loadChartDefaultConfig(): Promise<any | null>;
+  saveChartDefaultConfig(config: any): Promise<void>;
+  clearChartDefaultConfig(): Promise<void>;
 }
+

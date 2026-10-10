@@ -199,6 +199,49 @@ export class PersistenceService implements IPersistenceService {
     const json = JSON.stringify(settings);
     await this.adapter.saveLayoutSlot('trawangan_app_settings', 'User App Settings', json);
   }
+
+  // ─── Chart Default Config Persistence ───
+
+  async loadChartDefaultConfig(): Promise<any | null> {
+    // 1. Coba baca dari adapter (SQLite / InMemory)
+    const raw = await this.adapter.loadLayoutSlot('trawangan_chart_default_config');
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (err) {
+        console.warn('[PersistenceService] Gagal parsing JSON chart default config:', err);
+      }
+    }
+    // 2. Fallback instan ke localStorage browser jika ada
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const local = window.localStorage.getItem('trawangan_chart_default_config');
+        if (local) return JSON.parse(local);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  async saveChartDefaultConfig(config: any): Promise<void> {
+    const json = typeof config === 'string' ? config : JSON.stringify(config);
+    // Simpan ke adapter (SQLite / InMemory)
+    await this.adapter.saveLayoutSlot('trawangan_chart_default_config', 'User Chart Default Config', json);
+    // Sinkronkan ke localStorage browser untuk fallback cepat
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem('trawangan_chart_default_config', json);
+      } catch (_) {}
+    }
+  }
+
+  async clearChartDefaultConfig(): Promise<void> {
+    await this.adapter.saveLayoutSlot('trawangan_chart_default_config', 'User Chart Default Config', '');
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.removeItem('trawangan_chart_default_config');
+      } catch (_) {}
+    }
+  }
 }
 
 // Singleton Service Instance
@@ -228,3 +271,7 @@ export const deleteScript = (id: string) => storage.deleteScript(id);
 
 export const loadSettings = () => storage.loadSettings();
 export const saveSettings = (cfg: Partial<AppSettings>) => storage.saveSettings(cfg);
+
+export const loadChartDefaultConfig = () => storage.loadChartDefaultConfig();
+export const saveChartDefaultConfig = (cfg: any) => storage.saveChartDefaultConfig(cfg);
+export const clearChartDefaultConfig = () => storage.clearChartDefaultConfig();

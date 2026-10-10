@@ -685,19 +685,62 @@
       />
     {/if}
 
-    <!-- WORKSPACE MODE 1: TRADING TERMINAL VIEW -->
-    {#if workspaceMode === 'terminal'}
-      <div class="terminal-workspace">
-        <!-- Chart Canvas Container -->
-        <div class="chart-canvas-area {isWatchlistOpen ? 'with-watchlist' : ''}">
+    <!-- WORKSPACE UNIFIED PERSISTENT VIEWPORT (SINGLETON CHART INSTANCE) -->
+    <div class="workspace-viewport mode-{workspaceMode}">
+      <!-- Top / Main Chart Section (Fluid Resize: 100% on terminal, ~42% on pine) -->
+      <div class="chart-section {workspaceMode === 'pine' ? 'is-pine-split' : 'is-terminal-full'}">
+        <div class="chart-canvas-area {isWatchlistOpen && workspaceMode === 'terminal' ? 'with-watchlist' : ''}">
+          <!-- Dynamic Floating Signal Badge (Tampil hanya saat mode Pine IDE) -->
+          {#if workspaceMode === 'pine'}
+            <div class="floating-strategy-badge obsidian-panel mono-nums">
+              {#if activeStrategySummary}
+                <div class="badge-item">
+                  <span class="badge-pip {activeStrategySummary.currentPosition.direction === 'long' ? 'badge-pip-bull' : activeStrategySummary.currentPosition.direction === 'short' ? 'badge-pip-bear' : ''}"></span>
+                  <span class="badge-bold">
+                    POSITION: {activeStrategySummary.currentPosition.direction.toUpperCase()}
+                    {#if activeStrategySummary.currentPosition.direction !== 'flat'}
+                      ({activeStrategySummary.currentPosition.size} {activeSymbol.replace('USDT', '')})
+                    {/if}
+                  </span>
+                </div>
+                <div class="badge-divider"></div>
+                <div class="badge-item">
+                  <span class="badge-label">NET PnL:</span>
+                  <span class="{activeStrategySummary.netProfit >= 0 ? 'badge-val-bull' : 'badge-val-bear'}">
+                    {activeStrategySummary.netProfit >= 0 ? '+' : ''}${activeStrategySummary.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    ({activeStrategySummary.netProfitPercent >= 0 ? '+' : ''}{activeStrategySummary.netProfitPercent}%)
+                  </span>
+                </div>
+                <div class="badge-divider"></div>
+                <div class="badge-item">
+                  <span class="badge-label">WIN RATE:</span>
+                  <span class="badge-val">{activeStrategySummary.winRate}%</span>
+                </div>
+                <div class="badge-divider"></div>
+                <div class="badge-item">
+                  <span class="badge-label">PF:</span>
+                  <span class="badge-val text-cyan">{activeStrategySummary.profitFactor}</span>
+                </div>
+              {:else}
+                <div class="badge-item">
+                  <span class="badge-pip-bull"></span>
+                  <span class="badge-bold text-bull">STRATEGY TESTER READY</span>
+                </div>
+                <div class="badge-divider"></div>
+                <div class="badge-item">
+                  <span class="badge-label">SYMBOL:</span>
+                  <span class="badge-val text-cyan">{activeSymbol} ({activeTimeframe})</span>
+                </div>
+              {/if}
+            </div>
+          {/if}
 
-
-          <!-- WebGL2 Vela Chart Core -->
+          <!-- WebGL2 Vela Chart Core (PERSISTENT SINGLETON INSTANCE) -->
           <Chart
             bind:this={chartComponent}
             symbol={activeSymbol}
             timeframe={activeTimeframe}
-            layout={currentLayout}
+            layout={workspaceMode === 'pine' ? '1' : currentLayout}
             providerId={activeProviderId}
             themePreset={appSettings.themePreset || 'signature'}
             fontSize={appSettings.fontSize || 12}
@@ -705,11 +748,12 @@
             showWatermark={appSettings.showWatermark}
             onActiveIndicatorsChange={(list) => (activeIndicators = list)}
             onActiveCellChange={handleActiveCellChange}
+            onStrategyUpdate={handleStrategyUpdate}
             onRequestCreateAlert={handleRequestCreateAlert}
           />
 
-          <!-- Left Utility Ribbon (Drawing Tools) -->
-          {#if isDrawingToolbarVisible}
+          <!-- Left Utility Ribbon (Drawing Tools - Hanya aktif saat mode terminal) -->
+          {#if isDrawingToolbarVisible && workspaceMode === 'terminal'}
             <DrawingToolbar
               activeTool={activeDrawingTool}
               {snapMode}
@@ -728,96 +772,34 @@
           {/if}
         </div>
 
-        <!-- Right Collapsible Panel (Watchlist, Alerts, Object Tree) -->
-        <WatchlistPanel
-          isOpen={isWatchlistOpen}
-          {activeSymbol}
-          {activeProviderId}
-          {watchlistSymbols}
-          {activeIndicators}
-          onSelectSymbol={handleSymbolChange}
-          onWatchlistChange={handleWatchlistChange}
-          onToggleCollapse={() => (isWatchlistOpen = !isWatchlistOpen)}
-          onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
-          onRemoveIndicator={handleRemoveIndicator}
-          onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
-        />
+        <!-- Right Collapsible Panel (Watchlist - Hanya tampil saat mode terminal) -->
+        {#if workspaceMode === 'terminal'}
+          <WatchlistPanel
+            isOpen={isWatchlistOpen}
+            {activeSymbol}
+            {activeProviderId}
+            {watchlistSymbols}
+            {activeIndicators}
+            onSelectSymbol={handleSymbolChange}
+            onWatchlistChange={handleWatchlistChange}
+            onToggleCollapse={() => (isWatchlistOpen = !isWatchlistOpen)}
+            onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
+            onRemoveIndicator={handleRemoveIndicator}
+            onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
+          />
+        {/if}
       </div>
 
-    <!-- WORKSPACE MODE 2: PINE SCRIPT v6 IDE & BACKTESTER VIEW -->
-    {:else if workspaceMode === 'pine'}
-      <div class="pine-workspace">
-        <!-- Top Pane (40%): Mini Live Strategy Chart & Execution Signal Overlay -->
-        <div class="pine-top-chart-pane">
-          <!-- Dynamic Floating Signal Badge -->
-          <div class="floating-strategy-badge obsidian-panel mono-nums">
-            {#if activeStrategySummary}
-              <div class="badge-item">
-                <span class="badge-pip {activeStrategySummary.currentPosition.direction === 'long' ? 'badge-pip-bull' : activeStrategySummary.currentPosition.direction === 'short' ? 'badge-pip-bear' : ''}"></span>
-                <span class="badge-bold">
-                  POSITION: {activeStrategySummary.currentPosition.direction.toUpperCase()}
-                  {#if activeStrategySummary.currentPosition.direction !== 'flat'}
-                    ({activeStrategySummary.currentPosition.size} {activeSymbol.replace('USDT', '')})
-                  {/if}
-                </span>
-              </div>
-              <div class="badge-divider"></div>
-              <div class="badge-item">
-                <span class="badge-label">NET PnL:</span>
-                <span class="{activeStrategySummary.netProfit >= 0 ? 'badge-val-bull' : 'badge-val-bear'}">
-                  {activeStrategySummary.netProfit >= 0 ? '+' : ''}${activeStrategySummary.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  ({activeStrategySummary.netProfitPercent >= 0 ? '+' : ''}{activeStrategySummary.netProfitPercent}%)
-                </span>
-              </div>
-              <div class="badge-divider"></div>
-              <div class="badge-item">
-                <span class="badge-label">WIN RATE:</span>
-                <span class="badge-val">{activeStrategySummary.winRate}%</span>
-              </div>
-              <div class="badge-divider"></div>
-              <div class="badge-item">
-                <span class="badge-label">PF:</span>
-                <span class="badge-val text-cyan">{activeStrategySummary.profitFactor}</span>
-              </div>
-            {:else}
-              <div class="badge-item">
-                <span class="badge-pip-bull"></span>
-                <span class="badge-bold text-bull">STRATEGY TESTER READY</span>
-              </div>
-              <div class="badge-divider"></div>
-              <div class="badge-item">
-                <span class="badge-label">SYMBOL:</span>
-                <span class="badge-val text-cyan">{activeSymbol} ({activeTimeframe})</span>
-              </div>
-            {/if}
-          </div>
-
-          <!-- WebGL2 Vela Live Chart -->
-          <Chart
-            bind:this={chartComponent}
-            symbol={activeSymbol}
-            timeframe={activeTimeframe}
-            layout="1"
-            providerId={activeProviderId}
-            themePreset={appSettings.themePreset || 'signature'}
-            fontSize={appSettings.fontSize || 12}
-            {syncConfig}
-            onActiveIndicatorsChange={(list) => (activeIndicators = list)}
-            onActiveCellChange={handleActiveCellChange}
-            onStrategyUpdate={handleStrategyUpdate}
-            onRequestCreateAlert={handleRequestCreateAlert}
-          />
-        </div>
-
+      <!-- Bottom Pane: Pine Script v6 IDE & Strategy Tester (Persistent Docked Container) -->
+      <div class="pine-docked-container {workspaceMode === 'pine' ? 'visible' : 'hidden'}">
         <!-- Splitter Handle (1px Precision Hairline) -->
         <div class="splitter-hairline">
           <div class="splitter-grip"></div>
         </div>
 
-        <!-- Bottom Pane (60%): Pine Script v6 Split IDE & Strategy Tester -->
         <div class="pine-bottom-ide-pane">
           <PineEditor
-            isOpen={true}
+            isOpen={workspaceMode === 'pine'}
             initialCode={editorInitialCode}
             initialTitle={editorInitialTitle}
             activeSymbol={activeSymbol}
@@ -829,7 +811,7 @@
           />
         </div>
       </div>
-    {/if}
+    </div>
   </main>
 
   <!-- Interactive Terminal Console Drawer (Collapsible [Ctrl+`]) -->
@@ -875,7 +857,10 @@
     onClose={() => (isSettingsModalOpen = false)}
     onUpdateSettings={handleUpdateSettings}
     onProviderChange={handleProviderChange}
+    onOpenChartSettings={(sec) => chartComponent?.openChartSettings(sec)}
+    onResetChartFactory={() => chartComponent?.resetChartSettingsToFactory()}
   />
+
 
   <!-- Indicator Library Modal -->
   <IndicatorModal
@@ -936,15 +921,34 @@
     position: relative;
   }
 
-  /* MODE 1: TRADING TERMINAL STYLING */
-  .terminal-workspace {
+  /* WORKSPACE UNIFIED VIEWPORT STYLING */
+  .workspace-viewport {
     flex: 1;
     display: flex;
+    flex-direction: column;
     width: 100%;
     height: 100%;
     min-height: 0;
     overflow: hidden;
     position: relative;
+  }
+
+  .chart-section {
+    display: flex;
+    width: 100%;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .chart-section.is-terminal-full {
+    flex: 1;
+    height: 100%;
+  }
+
+  .chart-section.is-pine-split {
+    height: 42%;
+    flex-shrink: 0;
   }
 
   .chart-canvas-area {
@@ -957,24 +961,22 @@
     flex-direction: column;
   }
 
-
-  /* MODE 2: PINE SCRIPT IDE STYLING */
-  .pine-workspace {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
+  .pine-docked-container {
     width: 100%;
-    height: 100%;
     min-height: 0;
     overflow: hidden;
   }
 
-  .pine-top-chart-pane {
-    height: 40%;
-    width: 100%;
-    position: relative;
-    overflow: hidden;
-    background-color: var(--bg-darkest);
+  .pine-docked-container.visible {
+    flex: 1;
+    height: 58%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pine-docked-container.hidden {
+    display: none;
+    height: 0;
   }
 
   .floating-strategy-badge {
@@ -1071,7 +1073,7 @@
   }
 
   .pine-bottom-ide-pane {
-    height: 60%;
+    flex: 1;
     width: 100%;
     min-height: 0;
     overflow: hidden;

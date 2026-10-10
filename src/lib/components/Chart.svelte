@@ -11,7 +11,10 @@
   import {
     saveDrawingsDebounced,
     loadDrawings,
-    clearDrawings
+    clearDrawings,
+    loadChartDefaultConfig,
+    saveChartDefaultConfig,
+    clearChartDefaultConfig
   } from '../services/persistence';
   import { getHistoricalCandles } from '../services/marketProvider';
   import { alertService } from '../services/alertService';
@@ -80,6 +83,10 @@
   let workspace: VelaWorkspace | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let isMounted = false;
+  let unsubAlerts: (() => void) | null = null;
+
+  let chartSettingsObserver: MutationObserver | null = null;
+  let activeChartDefaultConfig: any = null;
 
   // Koleksi handle indikator aktif
   const indicatorHandles = new Map<string, any>();
@@ -95,6 +102,224 @@
         console.warn('PineWorkerEngine info:', err);
       }
     }
+  }
+
+  /**
+   * Terapkan konfigurasi default chart ke seluruh cell atau cell tertentu
+   */
+  function applySavedChartDefaultConfig(targetCell?: any) {
+    if (!activeChartDefaultConfig || !workspace) return;
+    try {
+      const cells = targetCell ? [targetCell] : Array.from(workspace.cells());
+      for (const cell of cells) {
+        const renderer = (cell as any)?.chart?.renderer;
+        if (renderer && typeof renderer.applyConfig === 'function') {
+          renderer.applyConfig(activeChartDefaultConfig);
+          renderer.factoryConfig = activeChartDefaultConfig;
+        }
+      }
+    } catch (err) {
+      console.warn('Gagal menerapkan saved chart default config:', err);
+    }
+  }
+
+  /**
+   * Simpan konfigurasi chart aktif saat ini sebagai setelan default permanen
+   */
+  export async function saveCurrentChartSettingsAsDefault(buttonEl?: HTMLElement): Promise<boolean> {
+    if (!workspace || !workspace.active) return false;
+    try {
+      const activeChart = workspace.active.chart as any;
+      const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+      const currentConfig = renderer?.getConfig?.() || activeChart?.getConfig?.();
+
+      if (!currentConfig) {
+        console.warn('Gagal membaca getConfig() dari chart renderer aktif');
+        return false;
+      }
+
+      // 1. Simpan ke state lokal memory
+      activeChartDefaultConfig = currentConfig;
+
+      // 2. Simpan ke SQLite & localStorage
+      await saveChartDefaultConfig(currentConfig);
+
+      // 3. Perbarui factoryConfig pada seluruh cell agar tombol "Reset defaults" selaras
+      for (const cell of workspace.cells()) {
+        const r = (cell as any)?.chart?.renderer;
+        if (r) {
+          r.factoryConfig = currentConfig;
+        }
+      }
+
+      // 4. Terapkan konfigurasi ke seluruh cell aktif (multi-chart sync)
+      for (const cell of workspace.cells()) {
+        if (cell !== workspace.active) {
+          (cell as any)?.chart?.renderer?.applyConfig?.(currentConfig);
+        }
+      }
+
+      // 5. Animasi feedback visual pada tombol jika tersedia
+      if (buttonEl) {
+        buttonEl.classList.add('saved');
+        const prevContent = buttonEl.innerHTML;
+        buttonEl.innerHTML = `
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px; flex-shrink: 0;">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>✓ Tersimpan sebagai Default!</span>
+        `;
+        setTimeout(() => {
+          buttonEl.classList.remove('saved');
+          buttonEl.innerHTML = prevContent;
+        }, 2500);
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Error saat menyimpan chart settings as default:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Reset konfigurasi lilin & chart kembali ke setelan awal pabrik Vela
+   */
+  export async function resetChartSettingsToFactory(): Promise<void> {
+    try {
+      activeChartDefaultConfig = null;
+      await clearChartDefaultConfig();
+      if (workspace) {
+        for (const cell of workspace.cells()) {
+          const r = (cell as any)?.chart?.renderer;
+          if (r && typeof r.factoryResetDocument === 'function') {
+            const orig = r.factoryConfig;
+            if (orig) {
+              r.applyConfig(r.factoryResetDocument(orig));
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Gagal reset chart settings ke pabrik:', err);
+    }
+  }
+
+  /**
+   * Buka modal dialog pengaturan grafik Vela (Warna bar, lilin, canvas, skala, dll)
+   * Memastikan dialog terbuka dan fokus pada tab yang sesuai (default: 'Symbol')
+   */
+  export function openChartSettings(section: string = 'Symbol'): void {
+    if (!workspace) return;
+    try {
+      const activeCell = (workspace.active || Array.from(workspace.cells())[0]) as any;
+      if (!activeCell) return;
+
+      // Pastikan cell terdaftar aktif di workspace
+      if (!workspace.active && typeof (workspace as any).setActive === 'function') {
+        try {
+          (workspace as any).setActive(activeCell);
+        } catch (_) {}
+      }
+
+      const chart = activeCell.chart;
+      const rendererControl = chart?.renderer;
+      const nativeRenderer = rendererControl?.renderer || rendererControl;
+
+      // Jika dialog pengaturan sudah terbuka, arahkan ke tab yang diminta tanpa menutupnya (mencegah toggle close)
+      if (nativeRenderer?.settingsDialog && typeof nativeRenderer.settingsDialog.isOpen === 'function') {
+        if (nativeRenderer.settingsDialog.isOpen()) {
+          if (typeof nativeRenderer.settingsDialog.showSection === 'function') {
+            nativeRenderer.settingsDialog.showSection(section);
+          }
+          return;
+        }
+      }
+
+      // 1. Standar resmi Vela Workspace: rendererControl.openSettings(section)
+      if (typeof rendererControl?.openSettings === 'function') {
+        rendererControl.openSettings(section);
+        return;
+      }
+
+      // 2. Direct call ke inner NativeChartRenderer
+      if (typeof nativeRenderer?.openSettingsDialog === 'function') {
+        nativeRenderer.openSettingsDialog(section);
+        return;
+      }
+
+      // 3. Fallback jika rendererControl langsung memiliki openSettingsDialog
+      if (typeof rendererControl?.openSettingsDialog === 'function') {
+        rendererControl.openSettingsDialog(section);
+        return;
+      }
+
+      // 4. Fallback chart level
+      if (typeof chart?.openSettings === 'function') {
+        chart.openSettings(section);
+        return;
+      }
+    } catch (err) {
+      console.warn('Gagal membuka pengaturan chart:', err);
+    }
+  }
+
+  /**
+   * Pasang observer untuk mendeteksi kemunculan modal Chart Settings Vela
+   * dan menyisipkan tombol "Simpan sebagai default" di samping tombol "Reset defaults"
+   */
+  function initChartSettingsModalObserver() {
+    if (typeof document === 'undefined') return;
+
+    const checkAndInjectButton = () => {
+      const dialogs = document.querySelectorAll('.vela-dialog--settings');
+      if (!dialogs || dialogs.length === 0) return;
+
+      for (const dialog of Array.from(dialogs)) {
+        // Cari tombol "Reset defaults" di dalam footer dialog
+        const buttons = Array.from(dialog.querySelectorAll('button'));
+        const resetBtn = buttons.find((b) => b.textContent?.trim() === 'Reset defaults');
+        if (!resetBtn || !resetBtn.parentElement) continue;
+
+        const footer = resetBtn.parentElement;
+        if (footer.querySelector('.trawangan-save-default-btn')) continue;
+
+        // Buat tombol "Simpan sebagai default"
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'vela-sd-btn trawangan-save-default-btn';
+        saveBtn.title = 'Simpan warna bar, lilin, dan konfigurasi grafik ini sebagai setelan default permanen';
+        saveBtn.innerHTML = `
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px; flex-shrink: 0;">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+            <polyline points="7 3 7 8 15 8"></polyline>
+          </svg>
+          <span>Simpan sebagai default</span>
+        `;
+
+        saveBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          saveCurrentChartSettingsAsDefault(saveBtn);
+        });
+
+        // Sisipkan tombol tepat setelah tombol "Reset defaults"
+        footer.appendChild(saveBtn);
+      }
+    };
+
+    chartSettingsObserver = new MutationObserver(() => {
+      checkAndInjectButton();
+    });
+
+    chartSettingsObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    // Jalankan pengecekan langsung jika dialog sudah terbuka
+    checkAndInjectButton();
   }
 
   /**
@@ -564,6 +789,11 @@
             executeCutoff(ev.time);
           }
         });
+
+        // Terapkan konfigurasi default chart jika pengguna telah menyimpannya
+        if (activeChartDefaultConfig) {
+          applySavedChartDefaultConfig(cell);
+        }
       }
     } catch (e) {
       console.warn('attachCellListeners error:', e);
@@ -597,18 +827,22 @@
         textColor: cfg.chart.textColor,
         gridColor: cfg.chart.gridColor,
         borderColor: cfg.chart.borderColor,
-        upColor: cfg.chart.upColor,
-        downColor: cfg.chart.downColor,
+        upColor: activeChartDefaultConfig?.candles?.upColor || cfg.chart.upColor,
+        downColor: activeChartDefaultConfig?.candles?.downColor || cfg.chart.downColor,
         fontSize: Math.max(9, Math.min(32, Math.round(fontSize))),
         fontFamily: "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
       };
       try {
         workspace.setTheme(t as any);
+        if (activeChartDefaultConfig) {
+          applySavedChartDefaultConfig();
+        }
       } catch (err) {
         console.warn('Gagal memperbarui tema workspace Vela:', err);
       }
     }
   });
+
 
   onMount(() => {
     if (!chartContainer) return;
@@ -766,6 +1000,15 @@
 
       isMounted = true;
       restoreDrawingsForCurrentChart();
+
+      // Muat dan terapkan preferensi konfigurasi default chart yang tersimpan
+      loadChartDefaultConfig().then((saved) => {
+        if (saved) {
+          activeChartDefaultConfig = saved;
+          applySavedChartDefaultConfig();
+        }
+      });
+      initChartSettingsModalObserver();
     } catch (err) {
       console.error('Error saat menginisialisasi Vela Workspace:', err);
     }
@@ -781,7 +1024,7 @@
     window.addEventListener('contextmenu', handleContainerContextMenu, true);
 
     // Langganan pembaruan state price alert secara real-time
-    const unsubAlerts = alertService.subscribe((alerts) => {
+    unsubAlerts = alertService.subscribe((alerts) => {
       allAlerts = alerts;
       updateAlertYPositions();
     });
@@ -794,6 +1037,53 @@
       updateAlertYPositions();
     });
     resizeObserver.observe(chartContainer);
+  });
+
+  onDestroy(() => {
+    // 1. Hentikan timer interval alert
+    if (alertPositionInterval) {
+      clearInterval(alertPositionInterval);
+      alertPositionInterval = null;
+    }
+
+    // 2. Bersihkan listeners pada container dan window
+    if (chartContainer) {
+      chartContainer.removeEventListener('mousemove', handleContainerPointerMove);
+      chartContainer.removeEventListener('mouseleave', handleContainerMouseLeave);
+      chartContainer.removeEventListener('click', handleContainerClickCapture, true);
+      chartContainer.removeEventListener('pointerup', handleContainerClickCapture, true);
+      chartContainer.removeEventListener('contextmenu', handleContainerContextMenu, true);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('contextmenu', handleContainerContextMenu, true);
+    }
+
+    // 3. Putuskan mutation observer dan resize observer
+    if (chartSettingsObserver) {
+      chartSettingsObserver.disconnect();
+      chartSettingsObserver = null;
+    }
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+
+    // 4. Berhenti berlangganan price alerts service
+    if (unsubAlerts) {
+      unsubAlerts();
+      unsubAlerts = null;
+    }
+
+    // 5. Destruksi Vela Workspace dan bebaskan alokasi WebGL Context
+    if (workspace) {
+      try {
+        workspace.destroy();
+      } catch (err) {
+        console.warn('Peringatan saat destroy VelaWorkspace:', err);
+      }
+      workspace = null;
+    }
+    isMounted = false;
   });
 
   // Reaktif terhadap perubahan simbol atau provider aktif
@@ -867,9 +1157,15 @@
         workspace.sync.set('viewport', syncConfig.viewport ?? true);
         workspace.sync.set('drawings', syncConfig.drawings);
         workspace.sync.set('symbol', syncConfig.symbol);
+
+        // Terapkan konfigurasi default chart ke seluruh cell pada layout baru
+        if (activeChartDefaultConfig) {
+          applySavedChartDefaultConfig();
+        }
       } catch (e) {
         console.warn('setLayout error:', e);
       }
+
     }
   });
 
@@ -1259,12 +1555,17 @@
     if (resizeObserver) {
       resizeObserver.disconnect();
     }
+    if (chartSettingsObserver) {
+      chartSettingsObserver.disconnect();
+      chartSettingsObserver = null;
+    }
     try {
       replaySession.bindDriver(null);
       if (workspace && typeof (workspace as any).destroy === 'function') {
         (workspace as any).destroy();
       }
     } catch (e) {}
+
   });
 </script>
 
@@ -1343,9 +1644,11 @@
     onCreateAlert={handleCreateAlertFromMenu}
     onDrawHorizontalLine={handleDrawHorizontalLine}
     onResetChartScale={fitChart}
+    onOpenSettings={() => openChartSettings()}
     onClose={() => (isContextMenuOpen = false)}
   />
 </div>
+
 
 <style>
   .chart-wrapper {
@@ -1596,4 +1899,38 @@
     color: var(--bear-color);
     background-color: rgba(255, 59, 105, 0.15);
   }
+
+  /* Styling Tombol 'Simpan sebagai default' pada Modal Chart Settings Vela */
+  :global(.trawangan-save-default-btn) {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    background: rgba(255, 105, 180, 0.12) !important;
+    border: 1px solid rgba(255, 105, 180, 0.4) !important;
+    color: #ff69b4 !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    padding: 0 12px !important;
+    height: 30px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    user-select: none !important;
+    margin-left: 6px !important;
+  }
+
+  :global(.trawangan-save-default-btn:hover) {
+    background: rgba(255, 105, 180, 0.22) !important;
+    border-color: rgba(255, 105, 180, 0.8) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(255, 105, 180, 0.35) !important;
+  }
+
+  :global(.trawangan-save-default-btn.saved) {
+    background: rgba(16, 185, 129, 0.2) !important;
+    border-color: rgba(16, 185, 129, 0.85) !important;
+    color: #10b981 !important;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4) !important;
+  }
 </style>
+
