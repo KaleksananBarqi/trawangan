@@ -20,8 +20,11 @@
     ExternalLink,
     Zap,
     Star,
-    RotateCcw
+    RotateCcw,
+    Bell,
+    BellOff
   } from '@lucide/svelte';
+  import { sendTestNotification } from '../services/systemNotificationService';
   import type { AppSettings, ProviderConfig } from '../types/market';
   import {
     getSavedProviders,
@@ -92,6 +95,22 @@
   let vram = $state('82 MB');
   let l2Latency = $state('180 µs');
   let droppedPackets = $state(0);
+
+  // ─── Feedback Tes Notifikasi Windows ───
+  let testNotificationFeedback = $state<string | null>(null);
+
+  async function handleSendTestNotification() {
+    testNotificationFeedback = 'Mengirim notifikasi ke Windows...';
+    const ok = await sendTestNotification();
+    if (ok) {
+      testNotificationFeedback = '✓ Notifikasi terkirim ke Windows Action Center!';
+    } else {
+      testNotificationFeedback = '⚠ Izin notifikasi belum diizinkan di Windows.';
+    }
+    setTimeout(() => {
+      testNotificationFeedback = null;
+    }, 4500);
+  }
 
   $effect(() => {
     if (isOpen) {
@@ -287,7 +306,7 @@
               <div class="setting-row">
                 <div class="setting-info">
                   <span class="setting-label">Efek Suara Notifikasi (Audio Chime)</span>
-                  <span class="setting-desc">Bunyikan nada saat harga menembus level Alert</span>
+                  <span class="setting-desc">Bunyikan nada kristal sintetis saat harga menembus level Alert</span>
                 </div>
                 <button
                   class="toggle-btn {settings.soundEnabled ? 'active' : ''}"
@@ -299,6 +318,39 @@
                     <VolumeX size={14} /> Senyap
                   {/if}
                 </button>
+              </div>
+
+              <!-- Notifikasi Native Windows Action Center -->
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-label">Notifikasi Sistem Windows (Windows Toast)</span>
+                  <span class="setting-desc">Kirim notifikasi native ke Windows Action Center saat alert terpicu</span>
+                  {#if testNotificationFeedback}
+                    <span class="notification-test-feedback mono-nums">{testNotificationFeedback}</span>
+                  {/if}
+                </div>
+                <div class="setting-action-group">
+                  <button
+                    type="button"
+                    class="btn-test-notification"
+                    onclick={handleSendTestNotification}
+                    title="Kirim notifikasi uji coba ke Windows"
+                  >
+                    <Bell size={12} />
+                    <span>Tes Notifikasi</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="toggle-btn {settings.systemNotificationEnabled !== false ? 'active' : ''}"
+                    onclick={() => onUpdateSettings({ systemNotificationEnabled: settings.systemNotificationEnabled === false })}
+                  >
+                    {#if settings.systemNotificationEnabled !== false}
+                      <Bell size={14} /> Aktif
+                    {:else}
+                      <BellOff size={14} /> Nonaktif
+                    {/if}
+                  </button>
+                </div>
               </div>
 
               <div class="setting-row">
@@ -972,6 +1024,40 @@
     border-color: var(--brand-primary);
     color: var(--brand-primary);
     font-weight: 600;
+  }
+
+  .setting-action-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-test-notification {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-medium, #2a3447);
+    color: #38bdf8;
+    padding: 6px 10px;
+    border-radius: var(--radius-xs);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-test-notification:hover {
+    background-color: rgba(56, 189, 248, 0.15);
+    border-color: #38bdf8;
+    color: #ffffff;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+  }
+
+  .notification-test-feedback {
+    font-size: 10px;
+    color: #38bdf8;
+    margin-top: 2px;
   }
 
   .theme-badge {

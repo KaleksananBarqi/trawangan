@@ -10,6 +10,10 @@
   import StatusBar from '../lib/components/StatusBar.svelte';
   import SettingsModal from '../lib/components/SettingsModal.svelte';
   import IndicatorModal from '../lib/components/IndicatorModal.svelte';
+  import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
+  import AlertNotificationToast from '../lib/components/AlertNotificationToast.svelte';
+  import { alertService } from '../lib/services/alertService';
+  import { ensureNotificationPermission } from '../lib/services/systemNotificationService';
   import { fetch24hTicker, getActiveProviderId } from '../lib/services/marketProvider';
   import type {
     TickerInfo,
@@ -21,7 +25,8 @@
     WorkspaceMode,
     AppSettings,
     QuickSymbolsConfig,
-    StrategyPerformanceSummary
+    StrategyPerformanceSummary,
+    PriceAlert
   } from '../lib/types/market';
   import {
     fetchWatchlist,
@@ -53,6 +58,7 @@
   let appSettings = $state<AppSettings>({
     timezone: 'Asia/Jakarta',
     soundEnabled: true,
+    systemNotificationEnabled: true,
     showWatermark: true,
     showGrid: true,
     showReplayBar: false,
@@ -69,6 +75,22 @@
   let isWatchlistOpen = $state(true);
   let isReplayActive = $state(false);
   let isConsoleDrawerOpen = $state(false);
+
+  // Price Alerts Modals & Toast State
+  let isCreateAlertModalOpen = $state(false);
+  let createAlertSymbol = $state('BTCUSDT');
+  let createAlertTargetPrice = $state<number | undefined>(undefined);
+  let triggeredAlertsToasts = $state<PriceAlert[]>([]);
+
+  function handleRequestCreateAlert(sym?: string, price?: number) {
+    createAlertSymbol = sym || activeSymbol;
+    createAlertTargetPrice = price;
+    isCreateAlertModalOpen = true;
+  }
+
+  function handleDismissAlertToast(id: string) {
+    triggeredAlertsToasts = triggeredAlertsToasts.filter((a) => a.id !== id);
+  }
 
   // Replay State
   let isReplayPlaying = $state(false);
@@ -134,9 +156,14 @@
     { time: '16:00:05', msg: 'LuxAlgo Vela WebGL2 context ready. Target: 120 FPS.', level: 'success' },
   ]);
 
+  let unsubAlertTrigger: (() => void) | null = null;
+
   async function updateTicker() {
     try {
       ticker = await fetch24hTicker(activeSymbol);
+      if (ticker && ticker.price > 0) {
+        alertService.evaluateAlerts(activeSymbol, ticker.price);
+      }
     } catch (e) {
       console.warn('Ticker update failed:', e);
     }
@@ -162,6 +189,26 @@
     } catch (e) {
       console.warn('Gagal memuat pengaturan tersimpan:', e);
     }
+
+    // Sinkronisasi preferensi audio notifikasi & notifikasi sistem Windows
+    alertService.setSoundEnabled(appSettings.soundEnabled);
+    alertService.setSystemNotificationEnabled(appSettings.systemNotificationEnabled !== false);
+
+    // Verifikasi izin notifikasi native Windows desktop
+    ensureNotificationPermission().then((granted) => {
+      if (granted) {
+        addSystemLog('Notifikasi native Windows Action Center aktif.', 'info');
+      }
+    });
+
+    // Dengarkan event saat Price Alert terpicu secara real-time
+    unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
+      triggeredAlertsToasts = [alert, ...triggeredAlertsToasts.slice(0, 3)];
+      addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di $${actualPrice}`, 'warn');
+      setTimeout(() => {
+        handleDismissAlertToast(alert.id);
+      }, 12000);
+    });
 
     getActiveProviderId().then((pId) => {
       if (pId) activeProviderId = pId;
@@ -238,6 +285,13 @@
           addSystemLog('Shortcut: Reset skala/fit grafik (Alt+Z)', 'info');
           return;
         }
+        if (k === 'a') {
+          e.preventDefault();
+          const cursorPrice = chartComponent?.getLastHoveredPrice?.() || ticker?.price;
+          handleRequestCreateAlert(activeSymbol, cursorPrice);
+          addSystemLog(`Shortcut: Buat Price Alert untuk ${activeSymbol} (Alt+A)`, 'info');
+          return;
+        }
       }
 
       // Toggle Bar Replay: Shift + R
@@ -309,6 +363,7 @@
 
   onDestroy(() => {
     if (tickerInterval) clearInterval(tickerInterval);
+    if (unsubAlertTrigger) unsubAlertTrigger();
   });
 
   function handleSymbolChange(newSym: string) {
@@ -350,6 +405,12 @@
 
   function handleUpdateSettings(newSettings: Partial<AppSettings>) {
     appSettings = { ...appSettings, ...newSettings };
+    if (newSettings.soundEnabled !== undefined) {
+      alertService.setSoundEnabled(newSettings.soundEnabled);
+    }
+    if (newSettings.systemNotificationEnabled !== undefined) {
+      alertService.setSystemNotificationEnabled(newSettings.systemNotificationEnabled);
+    }
     try {
       localStorage.setItem('trawangan_app_settings', JSON.stringify(appSettings));
     } catch (e) {
@@ -674,6 +735,7 @@
     customTimeframes={appSettings.customTimeframes}
     onFavoriteTimeframesChange={(tfs) => handleUpdateSettings({ favoriteTimeframes: tfs })}
     onCustomTimeframesChange={(customs) => handleUpdateSettings({ customTimeframes: customs })}
+    onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol, chartComponent?.getLastHoveredPrice?.() || ticker?.price)}
   />
 
   <!-- Main Viewport Area -->
@@ -717,6 +779,7 @@
             onReplayStateChange={handleReplayStateChange}
             onCutoffSelected={handleCutoffBarSelected}
             onCutoffCancelled={() => (isReplaySelectingBar = false)}
+            onRequestCreateAlert={handleRequestCreateAlert}
           />
 
           <!-- Left Utility Ribbon (Drawing Tools) -->
@@ -751,6 +814,7 @@
           onToggleCollapse={() => (isWatchlistOpen = !isWatchlistOpen)}
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
           onRemoveIndicator={handleRemoveIndicator}
+          onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
         />
       </div>
 
@@ -816,6 +880,7 @@
             onCutoffSelected={handleCutoffBarSelected}
             onCutoffCancelled={() => (isReplaySelectingBar = false)}
             onStrategyUpdate={handleStrategyUpdate}
+            onRequestCreateAlert={handleRequestCreateAlert}
           />
         </div>
 
@@ -902,6 +967,25 @@
     currentBarTime={replayCurrentBarTime}
     onSelectDate={handleSelectDate}
     onClose={() => (isReplayDatePickerOpen = false)}
+  />
+
+  <!-- Create Price Alert Modal -->
+  <CreateAlertModal
+    isOpen={isCreateAlertModalOpen}
+    initialSymbol={createAlertSymbol}
+    initialPrice={createAlertTargetPrice}
+    currentMarketPrice={ticker?.price || 0}
+    onClose={() => (isCreateAlertModalOpen = false)}
+    onCreated={(newAlert) => {
+      addSystemLog(`Price Alert dibuat: ${newAlert.symbol} @ $${newAlert.targetPrice}`, 'success');
+    }}
+  />
+
+  <!-- Alert Triggered Floating Toasts -->
+  <AlertNotificationToast
+    alerts={triggeredAlertsToasts}
+    onSelectSymbol={handleSymbolChange}
+    onDismiss={handleDismissAlertToast}
   />
 </div>
 

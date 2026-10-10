@@ -28,7 +28,8 @@
     Sparkles,
     Star,
     Clock,
-    Trash2
+    Trash2,
+    Bell
   } from '@lucide/svelte';
   import type { TickerInfo, Timeframe, MultiChartSyncConfig, WorkspaceMode, QuickSymbolsConfig } from '../types/market';
   import { saveWorkspace, getWorkspaces, deleteWorkspace, type SavedWorkspace } from '../services/workspaceStorage';
@@ -65,6 +66,7 @@
     onToggleReplay?: () => void;
     onOpenIndicatorModal: () => void;
     onOpenSettingsModal?: () => void;
+    onRequestCreateAlert?: () => void;
   }
 
   let {
@@ -102,6 +104,7 @@
     onToggleReplay,
     onOpenIndicatorModal,
     onOpenSettingsModal,
+    onRequestCreateAlert,
     favoriteTimeframes = ['1m', '5m', '15m', '1h', '4h', '1D'],
     customTimeframes = [],
     onFavoriteTimeframesChange,
@@ -987,6 +990,16 @@
       {/if}
     </button>
 
+    <!-- Create Alert Button (Quick Header Action) -->
+    <button
+      class="action-btn alert-header-btn"
+      title="Buat Price Alert Baru (Alt+A)"
+      onclick={onRequestCreateAlert}
+    >
+      <Bell size={13} class="text-cyan-accent" />
+      <span>Alert</span>
+    </button>
+
     <!-- Toggle Watchlist Panel -->
     <button
       class="action-btn {isWatchlistOpen ? 'active' : ''}"
@@ -1028,6 +1041,21 @@
     gap: 8px;
     border-bottom: 1px solid var(--border-hairline);
     z-index: 100;
+  }
+
+  .alert-header-btn {
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.25) !important;
+  }
+
+  .alert-header-btn:hover {
+    background-color: rgba(56, 189, 248, 0.15) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+  }
+
+  .text-cyan-accent {
+    color: #38bdf8;
   }
 
   .brand-section {

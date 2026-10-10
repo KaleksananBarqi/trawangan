@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Scissors } from '@lucide/svelte';
+  import { Scissors, Bell, X } from '@lucide/svelte';
   import { VelaWorkspace } from '@luxalgo/vela/workspace';
   import { BinanceProvider } from '@luxalgo/vela/providers/binance';
   import { HyperliquidProvider } from '@luxalgo/vela/providers/hyperliquid';
@@ -14,6 +14,8 @@
     clearDrawings
   } from '../services/drawingStorage';
   import { getHistoricalCandles } from '../services/marketProvider';
+  import { alertService } from '../services/alertService';
+  import ChartContextMenu from './ChartContextMenu.svelte';
   import type {
     Timeframe,
     ActiveIndicatorInfo,
@@ -22,7 +24,8 @@
     MultiChartSyncConfig,
     Candle,
     StrategyPerformanceSummary,
-    StrategyTradeRecord
+    StrategyTradeRecord,
+    PriceAlert
   } from '../types/market';
 
   export interface ReplayStateInfo {
@@ -46,6 +49,7 @@
     onCutoffSelected?: (timestamp: number) => void;
     onCutoffCancelled?: () => void;
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
+    onRequestCreateAlert?: (symbol: string, price: number) => void;
   }
 
   let {
@@ -61,6 +65,7 @@
     onCutoffSelected,
     onCutoffCancelled,
     onStrategyUpdate,
+    onRequestCreateAlert,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -122,9 +127,33 @@
 
   let isSelectingCutoff = $state(false);
   let lastHoveredBarTime = $state<number | null>(null);
+  let lastHoveredPrice = $state<number | null>(null);
   let cutlineX = $state<number | null>(null);
   let cutlineY = $state<number | null>(null);
   let hoveredBarDateText = $state<string>('');
+
+  // Context Menu State
+  let isContextMenuOpen = $state(false);
+  let contextMenuX = $state(0);
+  let contextMenuY = $state(0);
+  let contextMenuPrice = $state<number | null>(null);
+  let contextMenuTime = $state<number | null>(null);
+
+  // Price Alert Visual Overlays
+  let allAlerts = $state<PriceAlert[]>([]);
+  let activeSymbolAlerts = $derived.by(() => {
+    const clean = symbol.replace('.P', '').toUpperCase();
+    return allAlerts.filter((a) => a.symbol.replace('.P', '').toUpperCase() === clean);
+  });
+  let alertYPositions = $state<Record<string, number | null>>({});
+  let alertPositionInterval: any = null;
+
+  function formatPrice(p: number | null): string {
+    if (p === null || p === undefined || isNaN(p)) return '--';
+    if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (p >= 1) return p.toFixed(4);
+    return p.toFixed(6);
+  }
 
   /**
    * Format timestamp ke format teks Indonesia yang rapi
@@ -145,6 +174,146 @@
   function getChartCoords(chart: any): any {
     if (!chart) return null;
     return chart.renderer?.renderer?.coords || chart.renderer?.coords || chart.coords || null;
+  }
+
+  /**
+   * Hitung harga tepat dari koordinat pixel Y mouse
+   */
+  function getPriceFromClientY(clientY: number): number | null {
+    if (!chartContainer || !workspace || !workspace.active) return null;
+    try {
+      const rect = chartContainer.getBoundingClientRect();
+      const localY = clientY - rect.top;
+      const activeChart = workspace.active.chart as any;
+      const coords = getChartCoords(activeChart);
+      const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+      const pane = renderer?.paneNodeAtY ? renderer.paneNodeAtY(localY) : (renderer?.panes?.[0] || renderer?.pricePane);
+
+      if (coords && typeof coords.yToPrice === 'function' && pane) {
+        const scale = pane.scale || activeChart.scale;
+        const bounds = pane.bounds || activeChart.bounds;
+        if (scale && bounds) {
+          const p = coords.yToPrice(localY, scale, bounds);
+          if (typeof p === 'number' && !isNaN(p) && p > 0) {
+            return p;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Gagal menghitung harga dari koordinat Y:', err);
+    }
+    return null;
+  }
+
+  /**
+   * Hitung koordinat pixel Y untuk target harga tertentu pada grafik
+   */
+  function getAlertY(targetPrice: number): number | null {
+    if (!chartContainer || !workspace || !workspace.active) return null;
+    try {
+      const activeChart = workspace.active.chart as any;
+      const coords = getChartCoords(activeChart);
+      const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+      const pane = renderer?.paneNodeAtY ? renderer.paneNodeAtY(50) : (renderer?.panes?.[0] || renderer?.pricePane);
+      if (coords && typeof coords.priceToY === 'function' && pane) {
+        const scale = pane.scale || activeChart.scale;
+        const bounds = pane.bounds || activeChart.bounds;
+        if (scale && bounds) {
+          const y = coords.priceToY(targetPrice, scale, bounds);
+          if (typeof y === 'number' && !isNaN(y)) {
+            return y;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /**
+   * Perbarui posisi Y dari seluruh alert aktif untuk simbol ini
+   */
+  function updateAlertYPositions() {
+    if (!workspace || !workspace.active || activeSymbolAlerts.length === 0) {
+      alertYPositions = {};
+      return;
+    }
+    const pos: Record<string, number | null> = {};
+    for (const a of activeSymbolAlerts) {
+      pos[a.id] = getAlertY(a.targetPrice);
+    }
+    alertYPositions = pos;
+  }
+
+  /**
+   * Handler event klik kanan (context menu) pada canvas grafik
+   * Menangkap event klik kanan baik dari container langsung maupun global window capture phase
+   */
+  function handleContainerContextMenu(e: MouseEvent) {
+    if (isSelectingCutoff) return;
+    if (!chartContainer) return;
+
+    // Periksa apakah kursor berada di dalam area canvas grafik
+    const rect = chartContainer.getBoundingClientRect();
+    const isInside = (
+      e.clientX >= rect.left &&
+      e.clientX <= rect.right &&
+      e.clientY >= rect.top &&
+      e.clientY <= rect.bottom
+    );
+    if (!isInside) return;
+
+    // Cegah menu default browser atau menu internal Vela yang memblokir
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation?.();
+
+    // Hitung harga tepat dari koordinat Y klik mouse
+    let detected = getPriceFromClientY(e.clientY) || lastHoveredPrice;
+    if (!detected || detected <= 0) {
+      const activeChart = workspace?.active?.chart as any;
+      const innerRenderer = activeChart?.renderer?.renderer;
+      const rawBars = activeChart?.rawBars || innerRenderer?.bars;
+      if (Array.isArray(rawBars) && rawBars.length > 0) {
+        detected = rawBars[rawBars.length - 1].close;
+      }
+    }
+
+    contextMenuX = e.clientX;
+    contextMenuY = e.clientY;
+    contextMenuPrice = detected ?? null;
+    contextMenuTime = lastHoveredBarTime ?? null;
+    isContextMenuOpen = true;
+  }
+
+  function handleCreateAlertFromMenu(targetSym: string, targetPrice: number) {
+    isContextMenuOpen = false;
+    if (onRequestCreateAlert) {
+      onRequestCreateAlert(targetSym, targetPrice);
+    } else {
+      alertService.addAlert({
+        symbol: targetSym,
+        targetPrice,
+        condition: 'crossing',
+        label: `Alert ${targetSym} @ ${formatPrice(targetPrice)}`
+      });
+    }
+  }
+
+  function handleDrawHorizontalLine(linePrice: number) {
+    isContextMenuOpen = false;
+    if (!workspace || !workspace.active) return;
+    try {
+      const activeChart = workspace.active.chart as any;
+      if (activeChart?.drawings) {
+        activeChart.drawings.create?.({
+          type: 'hline',
+          price: linePrice,
+        });
+        handleDrawingMutated();
+      }
+    } catch (e) {
+      console.warn('handleDrawHorizontalLine error:', e);
+    }
   }
 
   /**
@@ -336,9 +505,15 @@
       if (renderer) {
         // 1. Dengarkan perpindahan kursor crosshair pada renderer
         renderer.onCrosshairMove?.((ev: any) => {
-          if (ev && typeof ev.time === 'number') {
-            lastHoveredBarTime = ev.time;
-            hoveredBarDateText = formatBarTime(ev.time);
+          if (ev) {
+            if (typeof ev.time === 'number') {
+              lastHoveredBarTime = ev.time;
+              hoveredBarDateText = formatBarTime(ev.time);
+            }
+            if (typeof ev.price === 'number' && ev.price > 0) {
+              lastHoveredPrice = ev.price;
+            }
+            updateAlertYPositions();
           }
         });
 
@@ -510,15 +685,28 @@
       console.error('Error saat menginisialisasi Vela Workspace:', err);
     }
 
-    // Pasang listeners interaksi container untuk mode seleksi cut-off replay
+    // Pasang listeners interaksi container untuk mode seleksi cut-off replay dan context menu
     chartContainer.addEventListener('mousemove', handleContainerPointerMove);
     chartContainer.addEventListener('mouseleave', handleContainerMouseLeave);
     chartContainer.addEventListener('click', handleContainerClickCapture, true);
     chartContainer.addEventListener('pointerup', handleContainerClickCapture, true);
+    chartContainer.addEventListener('contextmenu', handleContainerContextMenu, true);
+
+    // Global Window Capture Phase: Menjamin 100% event klik kanan di area grafik tertangkap tanpa di-swallow oleh WebGL canvas
+    window.addEventListener('contextmenu', handleContainerContextMenu, true);
+
+    // Langganan pembaruan state price alert secara real-time
+    const unsubAlerts = alertService.subscribe((alerts) => {
+      allAlerts = alerts;
+      updateAlertYPositions();
+    });
+
+    alertPositionInterval = setInterval(updateAlertYPositions, 400);
 
     // Pantau perubahan ukuran jendela agar chart responsif
     resizeObserver = new ResizeObserver(() => {
       window.dispatchEvent(new Event('resize'));
+      updateAlertYPositions();
     });
     resizeObserver.observe(chartContainer);
   });
@@ -904,14 +1092,23 @@
     } catch (_) {}
   }
 
+  export function getLastHoveredPrice(): number | null {
+    return lastHoveredPrice;
+  }
+
   onDestroy(() => {
+    window.removeEventListener('contextmenu', handleContainerContextMenu, true);
     if (chartContainer) {
       try {
         chartContainer.removeEventListener('mousemove', handleContainerPointerMove);
         chartContainer.removeEventListener('mouseleave', handleContainerMouseLeave);
         chartContainer.removeEventListener('click', handleContainerClickCapture, true);
         chartContainer.removeEventListener('pointerup', handleContainerClickCapture, true);
+        chartContainer.removeEventListener('contextmenu', handleContainerContextMenu, true);
       } catch (_) {}
+    }
+    if (alertPositionInterval) {
+      clearInterval(alertPositionInterval);
     }
     if (resizeObserver) {
       resizeObserver.disconnect();
@@ -924,8 +1121,41 @@
   });
 </script>
 
-<div class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''}">
+<div 
+  class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''}"
+  oncontextmenu={handleContainerContextMenu}
+>
   <div bind:this={chartContainer} class="vela-container"></div>
+
+  <!-- Visual Price Alert Overlays -->
+  {#each activeSymbolAlerts as a (a.id)}
+    {@const yPos = alertYPositions[a.id]}
+    {#if yPos !== null && yPos >= 0}
+      <div
+        class="chart-alert-line {a.triggered ? 'triggered' : ''} {a.active ? 'active' : 'paused'}"
+        style="top: {yPos}px;"
+      >
+        <div class="alert-line-badge mono-nums">
+          <Bell size={10} class="badge-bell" />
+          <span class="badge-price">${formatPrice(a.targetPrice)}</span>
+          {#if a.label}
+            <span class="badge-lbl">{a.label}</span>
+          {/if}
+          <button
+            type="button"
+            class="badge-del-btn"
+            title="Hapus Alert Ini"
+            onclick={(e) => {
+              e.stopPropagation();
+              alertService.deleteAlert(a.id);
+            }}
+          >
+            <X size={10} />
+          </button>
+        </div>
+      </div>
+    {/if}
+  {/each}
 
   {#if isSelectingCutoff}
     <!-- Panduan Garis Vertikal Pemotong Lilin (Vertical Cutline Guide) -->
@@ -954,6 +1184,20 @@
       </div>
     </div>
   {/if}
+
+  <!-- Floating Context Menu Klik Kanan Kursor -->
+  <ChartContextMenu
+    isOpen={isContextMenuOpen}
+    x={contextMenuX}
+    y={contextMenuY}
+    {symbol}
+    price={contextMenuPrice}
+    time={contextMenuTime}
+    onCreateAlert={handleCreateAlertFromMenu}
+    onDrawHorizontalLine={handleDrawHorizontalLine}
+    onResetChartScale={fitChart}
+    onClose={() => (isContextMenuOpen = false)}
+  />
 </div>
 
 <style>
@@ -1090,5 +1334,119 @@
   .cancel-hint-btn:hover {
     color: var(--text-main);
     background-color: var(--bg-hover);
+  }
+
+  /* Garis Horizontal Visual Price Alert pada Grafik */
+  .chart-alert-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: repeating-linear-gradient(
+      to right,
+      #f59e0b 0,
+      #f59e0b 5px,
+      transparent 5px,
+      transparent 10px
+    );
+    pointer-events: none;
+    z-index: 18;
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.35);
+  }
+
+  .chart-alert-line.triggered {
+    background: repeating-linear-gradient(
+      to right,
+      var(--bear-color) 0,
+      var(--bear-color) 5px,
+      transparent 5px,
+      transparent 10px
+    );
+    box-shadow: 0 0 8px var(--bear-glow);
+  }
+
+  .chart-alert-line.paused {
+    opacity: 0.35;
+    background: repeating-linear-gradient(
+      to right,
+      var(--text-dim) 0,
+      var(--text-dim) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+    box-shadow: none;
+  }
+
+  .alert-line-badge {
+    position: absolute;
+    right: 60px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background-color: rgba(20, 16, 10, 0.94);
+    backdrop-filter: blur(4px);
+    border: 1px solid #f59e0b;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.75), 0 0 8px rgba(245, 158, 11, 0.25);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    font-size: 9px;
+    font-weight: 600;
+    color: #fbbf24;
+    pointer-events: auto;
+    cursor: default;
+    transition: all 0.12s ease;
+  }
+
+  .alert-line-badge:hover {
+    background-color: rgba(28, 22, 12, 0.98);
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.85), 0 0 10px rgba(245, 158, 11, 0.4);
+  }
+
+  .chart-alert-line.triggered .alert-line-badge {
+    background-color: rgba(30, 10, 15, 0.94);
+    border-color: var(--bear-color);
+    color: var(--bear-color);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.75), 0 0 8px var(--bear-glow);
+  }
+
+  .badge-bell {
+    color: inherit;
+    flex-shrink: 0;
+  }
+
+  .badge-price {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .badge-lbl {
+    color: var(--text-muted);
+    font-size: 8.5px;
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-left: 1px solid rgba(255, 255, 255, 0.12);
+    padding-left: 4px;
+  }
+
+  .badge-del-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 1px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 2px;
+    transition: color 0.1s ease;
+  }
+
+  .badge-del-btn:hover {
+    color: var(--bear-color);
+    background-color: rgba(255, 59, 105, 0.15);
   }
 </style>

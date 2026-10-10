@@ -14,10 +14,18 @@
     Eye,
     EyeOff,
     Trash2,
-    CheckCircle2
+    CheckCircle2,
+    Play,
+    Pause,
+    RotateCcw,
+    ArrowUpRight,
+    ArrowDownRight,
+    MoveHorizontal,
+    SlidersHorizontal
   } from '@lucide/svelte';
-  import { fetchWatchlist, persistWatchlist, fetchAlerts, persistAlerts } from '../services/drawingStorage';
+  import { fetchWatchlist, persistWatchlist } from '../services/drawingStorage';
   import { fetchWatchlistTickers } from '../services/marketProvider';
+  import { alertService } from '../services/alertService';
   import SymbolSearchModal from './SymbolSearchModal.svelte';
   import type { PriceAlert, ObjectTreeItem } from '../types/market';
 
@@ -32,6 +40,7 @@
     onToggleIndicatorVisibility?: (id: string) => void;
     onRemoveIndicator?: (id: string) => void;
     onWatchlistChange?: (symbols: string[]) => void;
+    onRequestCreateAlert?: () => void;
   }
 
   let {
@@ -45,6 +54,7 @@
     onToggleIndicatorVisibility,
     onRemoveIndicator,
     onWatchlistChange,
+    onRequestCreateAlert,
   }: Props = $props();
 
   let activeTab = $state<'watchlist' | 'alerts' | 'objects'>('watchlist');
@@ -58,45 +68,26 @@
   let tickerMap = $state<Record<string, { price: number; change24h: number; high24h: number; low24h: number; volume24h: number }>>({});
   let searchQuery = $state('');
   let newSymbolInput = $state('');
-  let showAddInput = $state(false);
-  let pollInterval: any = null;
-
-  // Alerts state
-  let alerts = $state<PriceAlert[]>([
-    {
-      id: 'a1',
-      symbol: 'BTCUSDT',
-      targetPrice: 68900,
-      condition: 'above',
-      label: 'Resistance Breakout (H)',
-      active: true,
-      triggered: false,
-      createdAt: Date.now() - 3600000,
-    },
-    {
-      id: 'a2',
-      symbol: 'BTCUSDT',
-      targetPrice: 67800,
-      condition: 'below',
-      label: 'EMA 50 Invalidation',
-      active: false,
-      triggered: true,
-      createdAt: Date.now() - 7200000,
-    },
-    {
-      id: 'a3',
-      symbol: 'ETHUSDT',
-      targetPrice: 3600,
-      condition: 'above',
-      label: 'Target Take Profit',
-      active: true,
-      triggered: false,
-      createdAt: Date.now() - 1800000,
-    }
-  ]);
+  // Alerts state & filters
+  let alerts = $state<PriceAlert[]>([]);
+  let alertFilterMode = $state<'all' | 'current'>('all');
   let newAlertPrice = $state('');
   let newAlertLabel = $state('');
+  let showAddInput = $state(false);
   let showAddAlert = $state(false);
+  let pollInterval: any = null;
+  let unsubAlerts: (() => void) | null = null;
+
+  const displayAlerts = $derived.by(() => {
+    if (alertFilterMode === 'current') {
+      const clean = activeSymbol.replace('.P', '').toUpperCase();
+      return alerts.filter((a) => a.symbol.replace('.P', '').toUpperCase() === clean);
+    }
+    return alerts;
+  });
+
+  const activeAlertsCount = $derived(alerts.filter((a) => a.active && !a.triggered).length);
+  const triggeredAlertsCount = $derived(alerts.filter((a) => a.triggered).length);
 
   let lastSyncedHash = '';
 
@@ -132,10 +123,6 @@
           onWatchlistChange?.(symbols);
         }
       }
-      const savedAlerts = await fetchAlerts();
-      if (savedAlerts && savedAlerts.length > 0) {
-        alerts = savedAlerts;
-      }
       await refreshTickers();
     } catch (err) {
       console.warn('Gagal memuat awal watchlist:', err);
@@ -153,6 +140,13 @@
     try {
       const data = await fetchWatchlistTickers(symbols, activeProviderId);
       tickerMap = { ...tickerMap, ...data };
+
+      // Evaluasi real-time alert dengan harga terkini
+      for (const [sym, t] of Object.entries(data)) {
+        if (t && t.price > 0) {
+          alertService.evaluateAlerts(sym, t.price);
+        }
+      }
     } catch (err) {
       console.warn('Refresh watchlist tickers error:', err);
     }
@@ -160,11 +154,15 @@
 
   onMount(() => {
     loadInitialWatchlist();
+    unsubAlerts = alertService.subscribe((list) => {
+      alerts = list;
+    });
     pollInterval = setInterval(refreshTickers, 4000);
   });
 
   onDestroy(() => {
     if (pollInterval) clearInterval(pollInterval);
+    if (unsubAlerts) unsubAlerts();
   });
 
   async function handleAddSymbol(e: Event) {
@@ -204,32 +202,77 @@
     await applyWatchlistUpdate(next);
   }
 
+  function handleTriggerOpenCreateAlert() {
+    if (onRequestCreateAlert) {
+      onRequestCreateAlert();
+    } else {
+      showAddAlert = !showAddAlert;
+    }
+  }
+
   async function handleCreateAlert(e: Event) {
     e.preventDefault();
     const p = parseFloat(newAlertPrice);
     if (!p) return;
 
-    const newA: PriceAlert = {
-      id: 'a_' + Date.now(),
+    const curP = tickerMap[activeSymbol]?.price || 0;
+    const cond = curP > 0 ? (p > curP ? 'crossing_up' : 'crossing_down') : 'crossing';
+
+    await alertService.addAlert({
       symbol: activeSymbol,
       targetPrice: p,
-      condition: p > (tickerMap[activeSymbol]?.price || 0) ? 'above' : 'below',
-      label: newAlertLabel.trim() || `Target ${activeSymbol}`,
-      active: true,
-      triggered: false,
-      createdAt: Date.now(),
-    };
+      condition: cond,
+      frequency: 'once',
+      label: newAlertLabel.trim() || `Target ${activeSymbol} @ ${p}`,
+    });
 
-    alerts = [newA, ...alerts];
-    await persistAlerts(alerts);
     newAlertPrice = '';
     newAlertLabel = '';
     showAddAlert = false;
   }
 
+  async function handleToggleAlert(id: string) {
+    await alertService.toggleAlertActive(id);
+  }
+
+  async function handleResetAlert(id: string) {
+    await alertService.resetTriggeredAlert(id);
+  }
+
   async function handleRemoveAlert(id: string) {
-    alerts = alerts.filter(a => a.id !== id);
-    await persistAlerts(alerts);
+    await alertService.deleteAlert(id);
+  }
+
+  function getConditionBadge(cond: string) {
+    switch (cond) {
+      case 'crossing_up':
+      case 'above':
+        return { label: '↗ Crossing Up', class: 'bull' };
+      case 'crossing_down':
+      case 'below':
+        return { label: '↘ Crossing Down', class: 'bear' };
+      case 'crossing':
+        return { label: '↔ Crossing', class: 'cyan' };
+      case 'greater_than':
+        return { label: '≥ Greater', class: 'bull' };
+      case 'less_than':
+        return { label: '≤ Less', class: 'bear' };
+      default:
+        return { label: 'Crossing', class: 'muted' };
+    }
+  }
+
+  function calculateAlertDistance(target: number, sym: string): { diffText: string; pctText: string; isBull: boolean } | null {
+    const cur = tickerMap[sym]?.price;
+    if (!cur || cur <= 0) return null;
+    const diff = target - cur;
+    const pct = (diff / cur) * 100;
+    const isBull = diff > 0;
+    return {
+      diffText: `${isBull ? '+' : ''}$${Math.abs(diff).toFixed(diff >= 100 ? 1 : 2)}`,
+      pctText: `${isBull ? '+' : ''}${pct.toFixed(2)}%`,
+      isBull,
+    };
   }
 
   const filteredSymbols = $derived(
@@ -417,14 +460,32 @@
 
     <!-- TAB 2: PRICE ALERTS -->
     {:else if activeTab === 'alerts'}
-      <div class="sub-toolbar">
-        <span class="sub-title">Price Alerts</span>
+      <div class="sub-toolbar alert-sub-toolbar">
+        <div class="alert-filter-tabs">
+          <button
+            type="button"
+            class="filter-pill {alertFilterMode === 'all' ? 'active' : ''}"
+            onclick={() => (alertFilterMode = 'all')}
+          >
+            Semua ({alerts.length})
+          </button>
+          <button
+            type="button"
+            class="filter-pill {alertFilterMode === 'current' ? 'active' : ''}"
+            onclick={() => (alertFilterMode = 'current')}
+          >
+            {activeSymbol.replace('USDT', '').replace('.P', '')} ({displayAlerts.length})
+          </button>
+        </div>
+
         <button
+          type="button"
           class="add-symbol-btn {showAddAlert ? 'active' : ''}"
-          title="Buat Alert Baru"
-          onclick={() => (showAddAlert = !showAddAlert)}
+          title="Buat Price Alert Baru"
+          onclick={handleTriggerOpenCreateAlert}
         >
-          <Plus size={14} /> Alert
+          <Plus size={13} />
+          <span>Alert</span>
         </button>
       </div>
 
@@ -451,32 +512,100 @@
       {/if}
 
       <div class="items-list alerts-list">
-        {#each alerts as a (a.id)}
-          <div class="alert-card {a.triggered ? 'triggered' : ''}">
+        {#each displayAlerts as a (a.id)}
+          {@const condBadge = getConditionBadge(a.condition)}
+          {@const distance = calculateAlertDistance(a.targetPrice, a.symbol)}
+          <div class="alert-card {a.triggered ? 'triggered' : ''} {!a.active ? 'paused' : ''}">
             <div class="alert-main">
+              <!-- Baris Atas: Simbol, Badge Kondisi, & Status -->
               <div class="alert-top">
-                <span class="alert-sym mono-nums">{a.symbol} {a.condition === 'above' ? '≥' : '≤'} ${a.targetPrice.toLocaleString()}</span>
+                <button
+                  type="button"
+                  class="alert-sym-btn mono-nums"
+                  title="Beralih grafik ke simbol {a.symbol}"
+                  onclick={() => onSelectSymbol(a.symbol)}
+                >
+                  <span class="sym-txt">{a.symbol}</span>
+                </button>
+
+                <span class="badge-cond {condBadge.class}">
+                  {condBadge.label}
+                </span>
+
                 {#if a.triggered}
                   <span class="badge-alert triggered">TRIGGERED</span>
+                {:else if !a.active}
+                  <span class="badge-alert paused">PAUSED</span>
                 {:else}
                   <span class="badge-alert active">ACTIVE</span>
                 {/if}
               </div>
-              <span class="alert-label">{a.label}</span>
+
+              <!-- Baris Tengah: Target Price & Selisih Jarak -->
+              <div class="alert-price-row mono-nums">
+                <span class="target-val">${formatPrice(a.targetPrice)}</span>
+                {#if distance && a.active && !a.triggered}
+                  <span class="distance-pill {distance.isBull ? 'pill-bull' : 'pill-bear'}">
+                    {distance.pctText} ({distance.diffText})
+                  </span>
+                {:else if a.triggered && a.triggeredPrice}
+                  <span class="hit-pill">
+                    Hit @ ${formatPrice(a.triggeredPrice)}
+                  </span>
+                {/if}
+              </div>
+
+              <!-- Baris Bawah: Catatan Label -->
+              {#if a.label}
+                <span class="alert-label">{a.label}</span>
+              {/if}
             </div>
-            <button
-              class="delete-alert-btn"
-              title="Hapus Price Alert ini"
-              onclick={() => handleRemoveAlert(a.id)}
-            >
-              <Trash2 size={13} />
-            </button>
+
+            <!-- Tombol Aksi Kontrol Alert -->
+            <div class="alert-actions">
+              {#if a.triggered}
+                <button
+                  type="button"
+                  class="icon-alert-btn reset"
+                  title="Aktifkan kembali alert ini"
+                  onclick={() => handleResetAlert(a.id)}
+                >
+                  <RotateCcw size={12} />
+                </button>
+              {:else}
+                <button
+                  type="button"
+                  class="icon-alert-btn toggle {a.active ? 'active' : ''}"
+                  title={a.active ? 'Jeda alert ini' : 'Aktifkan alert ini'}
+                  onclick={() => handleToggleAlert(a.id)}
+                >
+                  {#if a.active}
+                    <Pause size={12} />
+                  {:else}
+                    <Play size={12} />
+                  {/if}
+                </button>
+              {/if}
+
+              <button
+                type="button"
+                class="icon-alert-btn delete"
+                title="Hapus Price Alert ini"
+                onclick={() => handleRemoveAlert(a.id)}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
           </div>
         {/each}
 
-        {#if alerts.length === 0}
-          <div class="empty-state">
-            <span>Belum ada price alert yang diset.</span>
+        {#if displayAlerts.length === 0}
+          <div class="empty-state alert-empty">
+            <span class="empty-icon"><Bell size={24} /></span>
+            <span class="empty-title">Belum ada Price Alert</span>
+            <p class="empty-sub">
+              Klik kanan pada grafik di harga mana pun untuk membuat alert instan, atau klik tombol <strong>+ Alert</strong> di atas.
+            </p>
           </div>
         {/if}
       </div>
@@ -979,6 +1108,44 @@
     border-color: rgba(255, 59, 105, 0.4);
   }
 
+  /* Alerts Sub Toolbar & Filters */
+  .alert-sub-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 8px;
+    background-color: var(--bg-base);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .alert-filter-tabs {
+    display: flex;
+    gap: 3px;
+  }
+
+  .filter-pill {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-xs);
+    color: var(--text-dim);
+    font-size: 10px;
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .filter-pill:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .filter-pill.active {
+    color: var(--brand-cyan);
+    background-color: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.25);
+    font-weight: 600;
+  }
+
   /* Alerts List */
   .alerts-list {
     padding: 6px;
@@ -989,9 +1156,9 @@
 
   .alert-card {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    padding: 6px 8px;
+    padding: 8px 10px;
     background-color: var(--bg-base);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
@@ -1004,54 +1171,81 @@
     border-color: var(--border-medium);
   }
 
-  .delete-alert-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    padding: 4px 6px;
-    border-radius: var(--radius-xs);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0.75;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-  }
-
-  .delete-alert-btn:hover {
-    opacity: 1;
-    color: var(--bear-color);
-    background-color: rgba(255, 59, 105, 0.15);
-  }
-
   .alert-card.triggered {
-    border-color: rgba(255, 59, 105, 0.4);
-    background-color: rgba(255, 59, 105, 0.05);
+    border-color: rgba(255, 59, 105, 0.45);
+    background-color: rgba(255, 59, 105, 0.06);
+    box-shadow: 0 0 10px var(--bear-glow);
+  }
+
+  .alert-card.paused {
+    opacity: 0.6;
+    border-style: dashed;
   }
 
   .alert-main {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
   }
 
   .alert-top {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
+    flex-wrap: wrap;
   }
 
-  .alert-sym {
+  .alert-sym-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
     font-size: 11px;
     font-weight: 700;
     color: var(--text-main);
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .alert-sym-btn:hover .sym-txt {
+    color: var(--brand-primary);
+    text-decoration: underline;
+  }
+
+  .badge-cond {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+  }
+
+  .badge-cond.bull {
+    background-color: rgba(0, 240, 144, 0.12);
+    color: var(--bull-color);
+  }
+
+  .badge-cond.bear {
+    background-color: rgba(255, 59, 105, 0.12);
+    color: var(--bear-color);
+  }
+
+  .badge-cond.cyan {
+    background-color: rgba(56, 189, 248, 0.12);
+    color: var(--brand-cyan);
+  }
+
+  .badge-cond.muted {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--text-dim);
   }
 
   .badge-alert {
-    font-size: 9px;
-    font-weight: 700;
-    padding: 0 4px;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    padding: 1px 4px;
     border-radius: var(--radius-xs);
   }
 
@@ -1061,13 +1255,121 @@
   }
 
   .badge-alert.triggered {
-    background-color: rgba(255, 59, 105, 0.15);
+    background-color: rgba(255, 59, 105, 0.2);
     color: var(--bear-color);
+    animation: pulseTrigger 1.5s infinite;
+  }
+
+  @keyframes pulseTrigger {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  .badge-alert.paused {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+  }
+
+  .alert-price-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .target-val {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .distance-pill {
+    font-size: 9.5px;
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+  }
+
+  .hit-pill {
+    font-size: 9.5px;
+    font-weight: 700;
+    color: var(--bull-color);
+    background-color: rgba(0, 240, 144, 0.1);
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
   }
 
   .alert-label {
     font-size: 10px;
     color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .alert-actions {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 6px;
+  }
+
+  .icon-alert-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+  }
+
+  .icon-alert-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .icon-alert-btn.toggle.active:hover {
+    color: #eab308;
+    background-color: rgba(234, 179, 8, 0.15);
+  }
+
+  .icon-alert-btn.reset:hover {
+    color: var(--brand-primary);
+    background-color: rgba(0, 240, 144, 0.15);
+  }
+
+  .icon-alert-btn.delete:hover {
+    color: var(--bear-color);
+    background-color: rgba(255, 59, 105, 0.15);
+  }
+
+  .alert-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 30px 14px;
+  }
+
+  .empty-icon {
+    color: var(--text-dim);
+    opacity: 0.5;
+  }
+
+  .empty-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
+  .empty-sub {
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.4;
+    text-align: center;
   }
 
   /* Layer Objects */

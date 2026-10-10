@@ -102,15 +102,29 @@ export interface MultiChartSyncConfig {
 
 export type WorkspaceMode = 'terminal' | 'pine';
 
+export type AlertCondition =
+  | 'crossing'
+  | 'crossing_up'
+  | 'crossing_down'
+  | 'greater_than'
+  | 'less_than'
+  | 'above'
+  | 'below';
+
+export type AlertFrequency = 'once' | 'every_time';
+
 export interface PriceAlert {
   id: string;
   symbol: string;
   targetPrice: number;
-  condition: 'above' | 'below';
+  condition: AlertCondition;
+  frequency: AlertFrequency;
   label: string;
   active: boolean;
   triggered: boolean;
   createdAt: number;
+  triggeredAt?: number;
+  triggeredPrice?: number;
 }
 
 export interface ObjectTreeItem {
@@ -124,6 +138,7 @@ export interface ObjectTreeItem {
 export interface AppSettings {
   timezone: string;
   soundEnabled: boolean;
+  systemNotificationEnabled?: boolean;
   showWatermark: boolean;
   showGrid: boolean;
   showReplayBar: boolean;
