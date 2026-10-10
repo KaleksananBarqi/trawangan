@@ -41,6 +41,7 @@
     onRemoveIndicator?: (id: string) => void;
     onWatchlistChange?: (symbols: string[]) => void;
     onRequestCreateAlert?: () => void;
+    onOpenSymbolSearch?: () => void;
   }
 
   let {
@@ -55,6 +56,7 @@
     onRemoveIndicator,
     onWatchlistChange,
     onRequestCreateAlert,
+    onOpenSymbolSearch,
   }: Props = $props();
 
   let activeTab = $state<'watchlist' | 'alerts' | 'objects'>('watchlist');
@@ -353,7 +355,10 @@
           type="button"
           class="symbol-search-trigger-btn"
           title="Buka Pencarian Pair Kripto Valid (Spot / Perpetuals)"
-          onclick={() => (isSymbolSearchOpen = true)}
+          onclick={() => {
+            if (onOpenSymbolSearch) onOpenSymbolSearch();
+            else isSymbolSearchOpen = true;
+          }}
         >
           <Search size={11} />
           <span>Cari Pair</span>

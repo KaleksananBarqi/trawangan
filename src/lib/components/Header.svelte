@@ -3,36 +3,26 @@
     Activity,
     Code,
     Search,
-    TrendingUp,
-    TrendingDown,
-    Zap,
-    History,
-    PenTool,
-    Layers,
     Bell,
     Flame,
     Settings,
     Maximize2
   } from '@lucide/svelte';
   import type {
-    TickerInfo,
     Timeframe,
     MultiChartSyncConfig,
     WorkspaceMode,
-    QuickSymbolsConfig,
     SavedWorkspace
   } from '../types/market';
 
-  // Subkomponen modular yang telah didecouple
-  import WorkspaceMenu from './header/WorkspaceMenu.svelte';
-  import LayoutGridSelector from './header/LayoutGridSelector.svelte';
-  import QuickSymbolsDropdown from './header/QuickSymbolsDropdown.svelte';
+  // Subkomponen modular header baru yang ringkas dan terpadu
+  import WorkspaceLayoutMenu from './header/WorkspaceLayoutMenu.svelte';
+  import ActionsMenu from './header/ActionsMenu.svelte';
   import TimeframeSelector from './header/TimeframeSelector.svelte';
 
   interface Props {
     activeSymbol: string;
     activeTimeframe: Timeframe;
-    ticker: TickerInfo | null;
     currentLayout: string;
     activeProviderId?: string;
     workspaceMode?: WorkspaceMode;
@@ -41,14 +31,11 @@
     isDrawingToolbarVisible?: boolean;
     isWatchlistOpen?: boolean;
     isReplayActive?: boolean;
-    watchlistSymbols?: string[];
-    quickSymbolsConfig?: QuickSymbolsConfig;
     favoriteTimeframes?: Timeframe[];
     customTimeframes?: string[];
     onFavoriteTimeframesChange?: (tfs: Timeframe[]) => void;
     onCustomTimeframesChange?: (customs: string[]) => void;
-    onQuickSymbolsConfigChange?: (config: QuickSymbolsConfig) => void;
-    onSymbolChange: (sym: string) => void;
+    onSymbolChange?: (sym: string) => void;
     onTimeframeChange: (tf: Timeframe) => void;
     onLayoutChange: (layout: string) => void;
     onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
@@ -68,12 +55,17 @@
     onOpenIndicatorModal: () => void;
     onOpenSettingsModal?: () => void;
     onRequestCreateAlert?: () => void;
+    onOpenSymbolSearch?: () => void;
+    // Props opsional lama agar backward-compatible
+    ticker?: any;
+    watchlistSymbols?: string[];
+    quickSymbolsConfig?: any;
+    onQuickSymbolsConfigChange?: any;
   }
 
   let {
     activeSymbol,
     activeTimeframe,
-    ticker,
     currentLayout,
     activeProviderId = 'binance',
     workspaceMode = 'terminal',
@@ -82,21 +74,10 @@
     isDrawingToolbarVisible = true,
     isWatchlistOpen = true,
     isReplayActive = false,
-    watchlistSymbols = [
-      'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
-      'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
-    ],
-    quickSymbolsConfig = {
-      mode: 'watchlist',
-      customSymbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT'],
-      maxDisplayCount: 5
-    },
     favoriteTimeframes = ['1m', '5m', '15m', '1h', '4h', '1D'],
     customTimeframes = [],
     onFavoriteTimeframesChange,
     onCustomTimeframesChange,
-    onQuickSymbolsConfigChange,
-    onSymbolChange,
     onTimeframeChange,
     onLayoutChange,
     onWorkspaceModeChange,
@@ -115,23 +96,9 @@
     onToggleReplay,
     onOpenIndicatorModal,
     onOpenSettingsModal,
-    onRequestCreateAlert
+    onRequestCreateAlert,
+    onOpenSymbolSearch
   }: Props = $props();
-
-  let activeIndicatorCount = $derived(activeIndicators.length);
-
-  // Symbol Search Input Modal State
-  let showSymbolPicker = $state(false);
-  let customSymbolInput = $state('');
-
-  function handleCustomSymbolSubmit(e: Event) {
-    e.preventDefault();
-    if (customSymbolInput.trim()) {
-      onSymbolChange(customSymbolInput.trim().toUpperCase());
-      showSymbolPicker = false;
-      customSymbolInput = '';
-    }
-  }
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
@@ -152,7 +119,6 @@
     <span class="version-tag">terminal</span>
   </div>
 
-
   <div class="divider"></div>
 
   <!-- Workspace Mode Switcher (Dual Mode Switcher) -->
@@ -162,7 +128,7 @@
       title="Mode Trading Terminal (Chart, Watchlist, Orderflow)"
       onclick={() => onWorkspaceModeChange?.('terminal')}
     >
-      <Activity size={13} />
+      <Activity size={12} />
       <span>Terminal</span>
     </button>
     <button
@@ -170,81 +136,30 @@
       title="Mode Pine Script v6 IDE & Backtester"
       onclick={() => onWorkspaceModeChange?.('pine')}
     >
-      <Code size={13} />
+      <Code size={12} />
       <span>Pine IDE</span>
     </button>
   </div>
 
   <div class="divider"></div>
 
-  <!-- Symbol Switcher (Quick Symbols Bar + Custom Search) -->
+  <!-- Simbol Aktif Minimalis (Klik / Ctrl+K untuk membuka modal cari pair) -->
   <div class="symbol-section">
-    <QuickSymbolsDropdown
-      {activeSymbol}
-      {watchlistSymbols}
-      {quickSymbolsConfig}
-      {isWatchlistOpen}
-      {onSymbolChange}
-      {onQuickSymbolsConfigChange}
-      {onToggleWatchlist}
-    />
-
     <button
-      class="custom-symbol-btn"
-      title="Cari atau masukkan simbol kustom ({activeProviderId.toUpperCase()})"
-      onclick={() => {
-        showSymbolPicker = !showSymbolPicker;
-      }}
+      class="symbol-badge-btn"
+      title="Klik atau tekan Ctrl+K untuk mencari simbol koin & pair ({activeProviderId.toUpperCase()})"
+      onclick={() => onOpenSymbolSearch?.()}
     >
       <Search size={12} class="search-icon" />
-      <span class="provider-feed-badge {activeProviderId === 'bitunix' ? 'bitunix' : 'binance'}">
+      <span class="active-sym-title mono-nums">{activeSymbol}</span>
+      <span class="provider-pill {activeProviderId === 'bitunix' ? 'bitunix' : 'binance'}">
         {activeProviderId.toUpperCase()}
       </span>
-      <span class="active-sym-label">{activeSymbol}</span>
-      <span class="dropdown-arrow">▾</span>
+      <span class="kbd-hint mono-nums">Ctrl+K</span>
     </button>
-
-    {#if showSymbolPicker}
-      <div class="symbol-dropdown obsidian-panel">
-        <form onsubmit={handleCustomSymbolSubmit}>
-          <input
-            type="text"
-            placeholder="Ketik simbol (e.g. BTCUSDT)..."
-            bind:value={customSymbolInput}
-            class="symbol-input mono-nums"
-          />
-        </form>
-      </div>
-    {/if}
   </div>
 
   <div class="divider"></div>
-
-  <!-- Live Ticker Stats -->
-  {#if ticker && ticker.price > 0}
-    <div class="ticker-stats mono-nums">
-      <div class="price-box">
-        <span class="price-value {ticker.change24h >= 0 ? 'bull' : 'bear'}">
-          ${ticker.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
-        <span class="change-badge {ticker.change24h >= 0 ? 'bg-bull' : 'bg-bear'}">
-          {#if ticker.change24h >= 0}
-            <TrendingUp size={11} />
-          {:else}
-            <TrendingDown size={11} />
-          {/if}
-          {ticker.change24h >= 0 ? '+' : ''}{ticker.change24h.toFixed(2)}%
-        </span>
-      </div>
-
-      <div class="hl-stats">
-        <span class="stat-item"><small>H:</small> ${ticker.high24h.toLocaleString()}</span>
-        <span class="stat-item"><small>L:</small> ${ticker.low24h.toLocaleString()}</span>
-      </div>
-    </div>
-  {/if}
-
-  <div class="spacer"></div>
 
   <!-- Timeframe Selector & Favorit Bar -->
   <TimeframeSelector
@@ -256,68 +171,43 @@
     {onCustomTimeframesChange}
   />
 
-  <div class="divider"></div>
+  <div class="spacer"></div>
 
-  <!-- Multi-Chart Layouts & Workspace -->
-  <div class="workspace-layout-group">
-    <WorkspaceMenu
-      {activeWorkspace}
-      {isAutoSaveWorkspace}
-      {onToggleAutoSaveWorkspace}
-      {onSaveWorkspace}
-      {onLoadWorkspace}
-      {onNewWorkspace}
-    />
-    <div class="divider-vertical"></div>
-    <LayoutGridSelector
-      {currentLayout}
-      {syncConfig}
-      {onLayoutChange}
-      {onToggleSyncCrosshair}
-      {onToggleSyncViewport}
-      {onToggleSyncSymbol}
-      {onToggleSyncDrawings}
-    />
-  </div>
+  <!-- Multi-Chart Layout & Manajemen Workspace Terpadu -->
+  <WorkspaceLayoutMenu
+    {currentLayout}
+    {onLayoutChange}
+    {activeWorkspace}
+    {isAutoSaveWorkspace}
+    {onToggleAutoSaveWorkspace}
+    {onSaveWorkspace}
+    {onLoadWorkspace}
+    {onNewWorkspace}
+  />
 
   <div class="divider"></div>
 
-  <!-- Action Controls -->
+  <!-- Actions Terpadu (Indikator, Replay, Draw, Sinkronisasi Multi-Chart) -->
+  <ActionsMenu
+    {activeIndicators}
+    {isReplayActive}
+    {isDrawingToolbarVisible}
+    {currentLayout}
+    {syncConfig}
+    {onOpenIndicatorModal}
+    {onToggleReplay}
+    {onToggleDrawingToolbar}
+    {onToggleSyncCrosshair}
+    {onToggleSyncViewport}
+    {onToggleSyncSymbol}
+    {onToggleSyncDrawings}
+  />
+
+  <div class="divider"></div>
+
+  <!-- Quick Utility Actions (Kanan Header) -->
   <div class="actions-section">
-    <!-- Replay Controller Toggle -->
-    <button
-      class="action-btn {isReplayActive ? 'active' : ''}"
-      title="Toggle Bar Replay Mode"
-      onclick={onToggleReplay}
-    >
-      <History size={13} />
-      <span>Replay</span>
-    </button>
-
-    <!-- Toggle Drawing Tools -->
-    <button
-      class="action-btn {isDrawingToolbarVisible ? 'active' : ''}"
-      title="Tampilkan / Sembunyikan Toolbar Alat Gambar"
-      onclick={onToggleDrawingToolbar}
-    >
-      <PenTool size={13} />
-      <span>Draw</span>
-    </button>
-
-    <!-- Indicators Modal -->
-    <button
-      class="action-btn {activeIndicatorCount > 0 ? 'active' : ''}"
-      title="Buka library indikator teknikal"
-      onclick={onOpenIndicatorModal}
-    >
-      <Layers size={13} />
-      <span>Indikator</span>
-      {#if activeIndicatorCount > 0}
-        <span class="count-badge">{activeIndicatorCount}</span>
-      {/if}
-    </button>
-
-    <!-- Create Alert Button (Quick Header Action) -->
+    <!-- Create Alert Button -->
     <button
       class="action-btn alert-header-btn"
       title="Buat Price Alert Baru (Alt+A)"
@@ -337,10 +227,10 @@
       <span>Panel</span>
     </button>
 
-    <!-- Settings & Telemetry Modal -->
+    <!-- Settings & Help Modal -->
     <button
       class="action-btn"
-      title="Buka Pengaturan, Data Feed & Telemetri Sistem"
+      title="Buka Pengaturan & Panduan Bantuan"
       onclick={onOpenSettingsModal}
     >
       <Settings size={13} />
@@ -365,30 +255,15 @@
     display: flex;
     align-items: center;
     padding: 0 10px;
-    gap: 8px;
+    gap: 7px;
     border-bottom: 1px solid var(--border-hairline);
     z-index: 100;
-  }
-
-  .alert-header-btn {
-    color: #38bdf8;
-    border-color: rgba(56, 189, 248, 0.25) !important;
-  }
-
-  .alert-header-btn:hover {
-    background-color: rgba(56, 189, 248, 0.15) !important;
-    color: #ffffff !important;
-    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
-  }
-
-  .text-cyan-accent {
-    color: #38bdf8;
   }
 
   .brand-section {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     flex-shrink: 0;
   }
 
@@ -398,21 +273,21 @@
     gap: 5px;
     background-color: var(--bg-container);
     border: 1px solid var(--border-hairline);
-    padding: 3px 7px;
+    padding: 3px 6px;
     border-radius: var(--radius-xs);
   }
 
   .brand-logo-img {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     object-fit: contain;
     display: block;
-    filter: drop-shadow(0 0 6px rgba(255, 105, 180, 0.4));
+    filter: drop-shadow(0 0 5px rgba(255, 105, 180, 0.4));
   }
 
   .brand-title {
     font-family: var(--font-brand);
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 800;
     letter-spacing: -0.02em;
     color: var(--text-main);
@@ -421,248 +296,143 @@
 
   .version-tag {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 8.5px;
     font-weight: 600;
     background-color: rgba(255, 105, 180, 0.12);
     color: var(--brand-primary);
-    padding: 2px 5px;
+    padding: 2px 4.5px;
     border-radius: var(--radius-xs);
     border: 1px solid rgba(255, 105, 180, 0.28);
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
     text-transform: lowercase;
   }
 
-
   .divider {
     width: 1px;
-    height: 18px;
+    height: 16px;
     background-color: var(--border-hairline);
     flex-shrink: 0;
   }
 
-  .divider-vertical {
-    width: 1px;
-    height: 14px;
-    background-color: var(--border-hairline);
-    margin: 0 2px;
-    flex-shrink: 0;
-  }
-
-  /* Mode Switcher */
   .mode-switcher {
     display: flex;
+    align-items: center;
     background-color: var(--bg-base);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
-    padding: 1px;
-    gap: 1px;
-    flex-shrink: 0;
+    padding: 2px;
+    gap: 2px;
   }
 
   .mode-btn {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 3px 8px;
-    border: none;
-    background: transparent;
+    gap: 4px;
+    padding: 2px 7px;
+    font-size: 10.5px;
+    font-weight: 600;
     color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 500;
-    border-radius: var(--radius-xs);
+    background: transparent;
+    border: none;
+    border-radius: 3px;
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
   .mode-btn:hover {
     color: var(--text-main);
-    background-color: var(--bg-hover);
   }
 
   .mode-btn.active {
-    color: var(--brand-primary);
     background-color: var(--bg-surface);
-    font-weight: 600;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    color: var(--brand-primary);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   }
 
-  /* Symbols */
   .symbol-section {
     display: flex;
     align-items: center;
-    gap: 4px;
-    position: relative;
-    flex-shrink: 0;
   }
 
-  .custom-symbol-btn {
+  .symbol-badge-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 3px 7px;
+    gap: 6px;
+    padding: 3px 8px;
+    height: 26px;
     background-color: var(--bg-base);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
-    color: var(--text-main);
     cursor: pointer;
-    font-size: 11px;
-    font-family: var(--font-mono);
-    font-weight: 600;
+    transition: all 0.15s ease;
   }
 
-  .custom-symbol-btn:hover {
+  .symbol-badge-btn:hover {
     background-color: var(--bg-hover);
+    border-color: var(--border-bright);
   }
 
-  .provider-feed-badge {
-    font-size: 8px;
-    font-weight: 800;
-    padding: 1px 3px;
-    border-radius: 2px;
-    letter-spacing: 0.04em;
-    line-height: 1;
-  }
-
-  .provider-feed-badge.bitunix {
-    background-color: rgba(6, 182, 212, 0.2);
-    color: #22d3ee;
-    border: 1px solid rgba(6, 182, 212, 0.35);
-  }
-
-  .provider-feed-badge.binance {
-    background-color: rgba(245, 158, 11, 0.18);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.3);
-  }
-
-  :global(.search-icon) {
+  .search-icon {
     color: var(--text-dim);
   }
 
-  .dropdown-arrow {
-    font-size: 8px;
-    color: var(--text-dim);
-  }
-
-  .symbol-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm);
-    padding: 4px;
-    z-index: 200;
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5);
-  }
-
-  .symbol-input {
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    color: var(--text-main);
-    padding: 5px 8px;
-    border-radius: var(--radius-xs);
-    font-size: 11px;
-    width: 170px;
-    outline: none;
-  }
-
-  .symbol-input:focus {
-    border-color: var(--border-focus);
-  }
-
-  /* Ticker Stats */
-  .ticker-stats {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-
-  .price-box {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .price-value {
-    font-size: 13px;
+  .active-sym-title {
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    color: var(--text-main);
+    letter-spacing: 0.02em;
   }
 
-  .price-value.bull {
-    color: var(--bull-color);
-  }
-
-  .price-value.bear {
-    color: var(--bear-color);
-  }
-
-  .change-badge {
-    display: flex;
-    align-items: center;
-    gap: 2px;
+  .provider-pill {
+    font-size: 8.5px;
+    font-weight: 700;
     padding: 1px 4px;
-    border-radius: var(--radius-xs);
-    font-size: 10px;
-    font-weight: 600;
+    border-radius: 2px;
+    letter-spacing: 0.03em;
   }
 
-  .change-badge.bg-bull {
-    background-color: rgba(0, 240, 144, 0.12);
-    color: var(--bull-color);
+  .provider-pill.binance {
+    background-color: rgba(243, 186, 47, 0.12);
+    color: #f3ba2f;
+    border: 1px solid rgba(243, 186, 47, 0.25);
   }
 
-  .change-badge.bg-bear {
-    background-color: rgba(255, 59, 105, 0.12);
-    color: var(--bear-color);
+  .provider-pill.bitunix {
+    background-color: rgba(14, 165, 233, 0.12);
+    color: #38bdf8;
+    border: 1px solid rgba(14, 165, 233, 0.25);
   }
 
-  .hl-stats {
-    display: flex;
-    gap: 6px;
-    font-size: 10px;
+  .kbd-hint {
+    font-size: 9px;
     color: var(--text-dim);
-  }
-
-  .stat-item {
-    display: flex;
-    align-items: center;
-    gap: 2px;
+    background-color: var(--bg-container);
+    border: 1px solid var(--border-hairline);
+    padding: 1px 4px;
+    border-radius: 2px;
   }
 
   .spacer {
     flex: 1;
   }
 
-  /* Workspace & Layout Group */
-  .workspace-layout-group {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-
-  /* Actions */
   .actions-section {
     display: flex;
     align-items: center;
     gap: 4px;
-    flex-shrink: 0;
   }
 
   .action-btn {
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 7px;
+    padding: 3px 7px;
+    height: 26px;
     background-color: var(--bg-base);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
     color: var(--text-muted);
     font-size: 11px;
-    font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
   }
@@ -670,6 +440,7 @@
   .action-btn:hover {
     background-color: var(--bg-hover);
     color: var(--text-main);
+    border-color: var(--border-bright);
   }
 
   .action-btn.active {
@@ -679,15 +450,21 @@
   }
 
   .action-btn.icon-only {
-    padding: 5px;
+    padding: 3px 6px;
   }
 
-  .count-badge {
-    background-color: var(--brand-primary);
-    color: var(--bg-darkest);
-    font-size: 9px;
-    font-weight: 700;
-    padding: 0 4px;
-    border-radius: var(--radius-xs);
+  .alert-header-btn {
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.25);
+  }
+
+  .alert-header-btn:hover {
+    background-color: rgba(56, 189, 248, 0.12);
+    color: #ffffff;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+  }
+
+  .text-cyan-accent {
+    color: #38bdf8;
   }
 </style>

@@ -10,6 +10,7 @@
   import StatusBar from '../lib/components/StatusBar.svelte';
   import SettingsModal from '../lib/components/SettingsModal.svelte';
   import IndicatorModal from '../lib/components/IndicatorModal.svelte';
+  import SymbolSearchModal from '../lib/components/SymbolSearchModal.svelte';
   import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
   import AlertNotificationToast from '../lib/components/AlertNotificationToast.svelte';
   import { alertService } from '../lib/services/alertService';
@@ -33,6 +34,7 @@
   } from '../lib/types/market';
   import {
     loadWatchlist,
+    saveWatchlist,
     loadQuickSymbolsConfig,
     saveQuickSymbolsConfig,
     saveWorkspace,
@@ -111,6 +113,8 @@
   // Panels & Modals Visibility State
   let isSettingsModalOpen = $state(false);
   let isIndicatorModalOpen = $state(false);
+  let isSymbolSearchOpen = $state(false);
+  let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isDrawingToolbarVisible = $state(true);
   let isWatchlistOpen = $state(true);
   let isConsoleDrawerOpen = $state(false);
@@ -287,6 +291,21 @@
       if ((e.ctrlKey || e.metaKey) && (e.key === '`' || e.code === 'Backquote')) {
         e.preventDefault();
         isConsoleDrawerOpen = !isConsoleDrawerOpen;
+        return;
+      }
+
+      // Quick Symbol Search Modal: Ctrl + K or Cmd + K (selalu aktif)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        isSymbolSearchOpen = true;
+        return;
+      }
+
+      // Quick Help & Shortcuts Modal: F1 (selalu aktif) atau ? (saat tidak sedang di input)
+      if (e.key === 'F1' || (!isInput && e.key === '?')) {
+        e.preventDefault();
+        settingsInitialTab = 'help';
+        isSettingsModalOpen = true;
         return;
       }
 
@@ -510,6 +529,17 @@
 
   function handleWatchlistChange(newSymbols: string[]) {
     watchlistSymbols = newSymbols;
+  }
+
+  async function handleToggleWatchlistSymbolFromSearch(sym: string) {
+    let next: string[];
+    if (watchlistSymbols.includes(sym)) {
+      next = watchlistSymbols.filter((s) => s !== sym);
+    } else {
+      next = [...watchlistSymbols, sym];
+    }
+    handleWatchlistChange(next);
+    await saveWatchlist(next);
   }
 
   function handleQuickSymbolsConfigChange(newConfig: QuickSymbolsConfig) {
@@ -835,7 +865,11 @@
     onToggleWatchlist={() => (isWatchlistOpen = !isWatchlistOpen)}
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
-    onOpenSettingsModal={() => (isSettingsModalOpen = true)}
+    onOpenSettingsModal={() => {
+      settingsInitialTab = 'general';
+      isSettingsModalOpen = true;
+    }}
+    onOpenSymbolSearch={() => (isSymbolSearchOpen = true)}
     favoriteTimeframes={appSettings.favoriteTimeframes}
     customTimeframes={appSettings.customTimeframes}
     onFavoriteTimeframesChange={(tfs) => handleUpdateSettings({ favoriteTimeframes: tfs })}
@@ -963,6 +997,7 @@
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
           onRemoveIndicator={handleRemoveIndicator}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
+          onOpenSymbolSearch={() => (isSymbolSearchOpen = true)}
         />
       {/if}
     </div>
@@ -1008,11 +1043,23 @@
     isOpen={isSettingsModalOpen}
     settings={appSettings}
     {activeProviderId}
+    initialTab={settingsInitialTab}
     onClose={() => (isSettingsModalOpen = false)}
     onUpdateSettings={handleUpdateSettings}
     onProviderChange={handleProviderChange}
     onOpenChartSettings={(sec) => chartComponent?.openChartSettings(sec)}
     onResetChartFactory={() => chartComponent?.resetChartSettingsToFactory()}
+  />
+
+  <!-- Symbol Search Modal (Global via Header / Ctrl+K / Watchlist) -->
+  <SymbolSearchModal
+    isOpen={isSymbolSearchOpen}
+    activeSymbol={activeSymbol}
+    {activeProviderId}
+    {watchlistSymbols}
+    onSelectSymbol={handleSymbolChange}
+    onToggleWatchlistSymbol={handleToggleWatchlistSymbolFromSearch}
+    onClose={() => (isSymbolSearchOpen = false)}
   />
 
 

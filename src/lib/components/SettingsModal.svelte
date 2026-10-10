@@ -28,7 +28,13 @@
     Minus,
     Plus,
     Info,
-    Coffee
+    Coffee,
+    HelpCircle,
+    Keyboard,
+    BookOpen,
+    Command,
+    Search,
+    Code
   } from '@lucide/svelte';
   import { openExternalUrl } from '../services/urlService';
   import {
@@ -94,6 +100,7 @@
     isOpen: boolean;
     settings: AppSettings;
     activeProviderId?: string;
+    initialTab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help';
     onClose: () => void;
     onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
     onProviderChange?: (providerId: string) => void;
@@ -105,6 +112,7 @@
     isOpen,
     settings,
     activeProviderId = 'binance',
+    initialTab = 'general',
     onClose,
     onUpdateSettings,
     onProviderChange,
@@ -112,8 +120,66 @@
     onResetChartFactory
   }: Props = $props();
 
-  let activeTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about'>('general');
+  let activeTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let resetChartFeedback = $state<string | null>(null);
+  let helpSearchQuery = $state('');
+
+  $effect(() => {
+    if (isOpen && initialTab) {
+      activeTab = initialTab;
+    }
+  });
+
+  const SHORTCUT_ITEMS = [
+    { category: 'Navigasi & Simbol', keys: ['Ctrl', 'K'], desc: 'Buka modal pencarian simbol & pair pasar' },
+    { category: 'Navigasi & Simbol', keys: ['Space'], desc: 'Pindah ke koin berikutnya di daftar Watchlist' },
+    { category: 'Navigasi & Simbol', keys: ['Shift', 'Space'], desc: 'Pindah ke koin sebelumnya di daftar Watchlist' },
+
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'T'], desc: 'Aktifkan alat Garis Tren (Trendline)' },
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'H'], desc: 'Aktifkan alat Garis Horisontal (Horizontal Line)' },
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'F'], desc: 'Aktifkan alat Fibonacci Retracement' },
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'M'], desc: 'Aktifkan Penggaris Ukur Jarak & Persentase (Measure)' },
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'Z'], desc: 'Reset skala & paskan grafik ke layar penuh (Fit Chart)' },
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['F'], desc: 'Shortcut alternatif untuk Fit Chart' },
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['Escape'], desc: 'Batalkan alat aktif / kembali ke kursor default' },
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['Delete / Backspace'], desc: 'Hapus objek terpilih / batalkan gambar terakhir' },
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['Ctrl', 'Z'], desc: 'Urungkan tindakan gambar terakhir (Undo)' },
+    { category: 'Alat Gambar (Drawing Tools)', keys: ['Ctrl', 'Y'], desc: 'Ulangi tindakan gambar (Redo)' },
+
+    { category: 'Timeframe Cepat', keys: ['1'], desc: 'Beralih ke Timeframe 1 Menit (1m)' },
+    { category: 'Timeframe Cepat', keys: ['5'], desc: 'Beralih ke Timeframe 5 Menit (5m)' },
+    { category: 'Timeframe Cepat', keys: ['0'], desc: 'Beralih ke Timeframe 15 Menit (15m)' },
+
+    { category: 'Bar Replay (Simulasi)', keys: ['Shift', 'R'], desc: 'Buka atau tutup mode simulasi Bar Replay' },
+    { category: 'Bar Replay (Simulasi)', keys: ['Space'], desc: 'Putar otomatis atau jeda lilin (saat replay aktif)' },
+    { category: 'Bar Replay (Simulasi)', keys: ['→'], desc: 'Langkah maju satu candle ke depan (Step)' },
+    { category: 'Bar Replay (Simulasi)', keys: ['Escape'], desc: 'Batalkan mode pemilihan lilin awal cutline' },
+
+    { category: 'Price Alert', keys: ['Alt', 'A'], desc: 'Buat Price Alert baru pada harga kursor terakhir' },
+
+    { category: 'Sistem & Bantuan', keys: ['Ctrl', '`'], desc: 'Buka atau tutup laci Terminal Console Logs' },
+    { category: 'Sistem & Bantuan', keys: ['F1 / ?'], desc: 'Buka pusat bantuan & panduan tombol shortcut ini' },
+  ];
+
+  let filteredShortcuts = $derived.by(() => {
+    const q = helpSearchQuery.trim().toLowerCase();
+    if (!q) return SHORTCUT_ITEMS;
+    return SHORTCUT_ITEMS.filter(
+      (item) =>
+        item.keys.some((k) => k.toLowerCase().includes(q)) ||
+        item.desc.toLowerCase().includes(q) ||
+        item.category.toLowerCase().includes(q)
+    );
+  });
+
+  let groupedShortcuts = $derived.by(() => {
+    const groups: Record<string, typeof SHORTCUT_ITEMS> = {};
+    for (const item of filteredShortcuts) {
+      if (!groups[item.category]) groups[item.category] = [];
+      groups[item.category].push(item);
+    }
+    return groups;
+  });
 
   function handleResetChartFactoryClick() {
     if (onResetChartFactory) {
@@ -389,6 +455,15 @@
           >
             <Info size={14} />
             <span>Tentang Aplikasi</span>
+          </button>
+
+          <button
+            class="nav-tab {activeTab === 'help' ? 'active' : ''}"
+            onclick={() => (activeTab = 'help')}
+          >
+            <HelpCircle size={14} />
+            <span class="nav-tab-label">Bantuan & Shortcut</span>
+            <span class="tab-shortcut-badge mono-nums">F1</span>
           </button>
         </nav>
 
@@ -1329,6 +1404,116 @@
               <div class="about-footer-meta">
                 <p>trawangan · Dibuat dengan dedikasi untuk trader teknikal & analis independen.</p>
                 <p class="meta-copyright">Copyright © 2026 KaleksananBarqi / arthex1204. All rights reserved.</p>
+              </div>
+            </div>
+          {:else if activeTab === 'help'}
+            <div class="tab-content">
+              <!-- Header Seksi Bantuan -->
+              <div class="section-group">
+                <div class="help-header-flex">
+                  <div>
+                    <h3 class="section-heading">Pusat Bantuan & Panduan Shortcut</h3>
+                    <p class="section-desc">
+                      Gunakan tombol pintas keyboard berikut untuk mempercepat navigasi grafik, eksekusi alat gambar, dan analisis pasar.
+                    </p>
+                  </div>
+                  <div class="help-f1-badge mono-nums">
+                    <span>Shortcut Bantuan:</span> <kbd class="kbd-key">F1</kbd> / <kbd class="kbd-key">?</kbd>
+                  </div>
+                </div>
+
+                <!-- Input Pencarian Cepat Shortcut -->
+                <div class="shortcut-search-box">
+                  <Search size={14} class="search-icon-dim" />
+                  <input
+                    type="text"
+                    placeholder="Cari tombol shortcut (e.g. replay, alt, kursor, fit)..."
+                    bind:value={helpSearchQuery}
+                    class="shortcut-search-input"
+                  />
+                  {#if helpSearchQuery}
+                    <button class="clear-search-btn" onclick={() => (helpSearchQuery = '')}>
+                      <X size={12} />
+                    </button>
+                  {/if}
+                </div>
+              </div>
+
+              <!-- Daftar Shortcut Per Kategori -->
+              <div class="section-group">
+                <div class="shortcut-categories-container">
+                  {#if Object.keys(groupedShortcuts).length === 0}
+                    <div class="empty-shortcut-state">
+                      <HelpCircle size={24} class="text-dim" />
+                      <span>Tidak ada tombol shortcut yang cocok dengan "{helpSearchQuery}".</span>
+                    </div>
+                  {/if}
+
+                  {#each Object.entries(groupedShortcuts) as [categoryName, items]}
+                    <div class="shortcut-category-card">
+                      <div class="category-header">
+                        <span class="category-title">{categoryName}</span>
+                        <span class="category-count mono-nums">{items.length} pintasan</span>
+                      </div>
+
+                      <div class="shortcut-items-table">
+                        {#each items as item}
+                          <div class="shortcut-row">
+                            <div class="shortcut-keys-wrapper">
+                              {#each item.keys as keyPart, idx}
+                                <kbd class="kbd-key mono-nums">{keyPart}</kbd>
+                                {#if idx < item.keys.length - 1}
+                                  <span class="kbd-plus">+</span>
+                                {/if}
+                              {/each}
+                            </div>
+                            <div class="shortcut-desc">{item.desc}</div>
+                          </div>
+                        {/each}
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+
+              <!-- Panduan Fitur Inti (Quick Guide) -->
+              <div class="section-group">
+                <h4 class="section-title">Panduan Ringkas Fitur Utama</h4>
+                <div class="feature-guides-grid">
+                  <div class="feature-guide-card">
+                    <div class="guide-card-header">
+                      <Grid size={14} class="text-cyan" />
+                      <span class="guide-card-title">Multi-Chart & Sinkronisasi</span>
+                    </div>
+                    <p class="guide-card-body">
+                      Pilih tata letak multi-chart (1, 2 Horisontal, 2 Vertikal, 4 Grid) lewat tombol menu
+                      <strong>Workspace & Layout</strong>. Aktifkan sinkronisasi kursor crosshair, gerakan waktu viewport,
+                      simbol, dan objek gambar secara langsung lewat menu <strong>Actions</strong> di header.
+                    </p>
+                  </div>
+
+                  <div class="feature-guide-card">
+                    <div class="guide-card-header">
+                      <Code size={14} class="text-bull" />
+                      <span class="guide-card-title">Pine Script v6 IDE & Backtester</span>
+                    </div>
+                    <p class="guide-card-body">
+                      Beralih ke mode <strong>Pine IDE</strong> di header kiri atas untuk membuat, mengedit, dan mengevaluasi indikator
+                      serta strategi kuantitatif kustom secara instan menggunakan AST Engine Pine Script v6 di Web Worker independen.
+                    </p>
+                  </div>
+
+                  <div class="feature-guide-card">
+                    <div class="guide-card-header">
+                      <Radio size={14} class="text-amber" />
+                      <span class="guide-card-title">Data Feed Binance & Bitunix</span>
+                    </div>
+                    <p class="guide-card-body">
+                      Ganti penyedia feed live antara <strong>Binance Futures</strong> dan <strong>Bitunix Futures</strong>
+                      di tab <strong>Data Feed</strong>. Trawangan Terminal mendukung format koin perpetual standar dan simbol <span class="mono-nums">.P</span> secara mulus.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           {/if}
@@ -2948,5 +3133,234 @@
   .meta-copyright {
     color: var(--text-disabled, #525252);
     margin-top: 2px !important;
+  }
+
+  /* ─── Styling Tab Bantuan & Shortcut (Help) ─── */
+  .tab-shortcut-badge {
+    margin-left: auto;
+    font-size: 8.5px;
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border-hairline);
+  }
+
+  .nav-tab.active .tab-shortcut-badge {
+    color: var(--brand-primary);
+    border-color: rgba(0, 240, 144, 0.3);
+    background-color: rgba(0, 240, 144, 0.1);
+  }
+
+  .help-header-flex {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .help-f1-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--text-muted);
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    padding: 3px 7px;
+    border-radius: var(--radius-xs);
+    flex-shrink: 0;
+  }
+
+  .shortcut-search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    padding: 6px 10px;
+    margin-top: 6px;
+    transition: border-color 0.15s ease;
+  }
+
+  .shortcut-search-box:focus-within {
+    border-color: var(--brand-primary);
+  }
+
+  .search-icon-dim {
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .shortcut-search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 11.5px;
+    color: var(--text-main);
+  }
+
+  .shortcut-search-input::placeholder {
+    color: var(--text-dim);
+  }
+
+  .clear-search-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+  }
+
+  .clear-search-btn:hover {
+    color: var(--text-main);
+  }
+
+  .shortcut-categories-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .empty-shortcut-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    background-color: var(--bg-base);
+    border: 1px dashed var(--border-hairline);
+    border-radius: var(--radius-xs);
+  }
+
+  .shortcut-category-card {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    overflow: hidden;
+  }
+
+  .category-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background-color: var(--bg-container);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .category-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .category-count {
+    font-size: 9.5px;
+    color: var(--text-dim);
+  }
+
+  .shortcut-items-table {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .shortcut-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    gap: 14px;
+    transition: background-color 0.12s ease;
+  }
+
+  .shortcut-row:last-child {
+    border-bottom: none;
+  }
+
+  .shortcut-row:hover {
+    background-color: rgba(255, 255, 255, 0.02);
+  }
+
+  .shortcut-keys-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 140px;
+    flex-shrink: 0;
+  }
+
+  .kbd-key {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--text-main);
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    border-bottom: 2px solid var(--border-bright);
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  .kbd-plus {
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+
+  .shortcut-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    flex: 1;
+  }
+
+  .feature-guides-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 8px;
+  }
+
+  .feature-guide-card {
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .guide-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .guide-card-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .guide-card-body {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.45;
+    margin: 0;
+  }
+
+  .guide-card-body strong {
+    color: var(--text-main);
   }
 </style>
