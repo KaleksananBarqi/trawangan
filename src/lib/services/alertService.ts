@@ -1,6 +1,5 @@
-// Layanan Engine Evaluasi dan Manajemen Price Alert Real-Time
 import type { PriceAlert, AlertCondition, AlertFrequency } from '../types/market';
-import { fetchAlerts, persistAlerts } from './drawingStorage';
+import { loadAlerts, saveAlerts } from './persistence';
 import { playAlertChime, playSuccessPip } from './soundService';
 import { sendWindowsAlertNotification } from './systemNotificationService';
 
@@ -23,7 +22,7 @@ class AlertService {
   private async init() {
     if (typeof window === 'undefined') return;
     try {
-      const saved = await fetchAlerts();
+      const saved = await loadAlerts();
       if (Array.isArray(saved)) {
         this.alerts = saved.map((a: any) => ({
           ...a,
@@ -79,7 +78,7 @@ class AlertService {
   private async save() {
     this.notifyChanges();
     try {
-      await persistAlerts(this.alerts);
+      await saveAlerts(this.alerts);
     } catch (err) {
       console.warn('Gagal menyimpan alerts ke storage:', err);
     }

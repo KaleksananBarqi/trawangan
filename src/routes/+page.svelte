@@ -26,15 +26,16 @@
     AppSettings,
     QuickSymbolsConfig,
     StrategyPerformanceSummary,
-    PriceAlert
+    PriceAlert,
+    SavedWorkspace
   } from '../lib/types/market';
   import {
-    fetchWatchlist,
-    fetchQuickSymbolsConfig,
-    persistQuickSymbolsConfig,
+    loadWatchlist,
+    loadQuickSymbolsConfig,
+    saveQuickSymbolsConfig,
+    saveWorkspace,
     DEFAULT_QUICK_SYMBOLS_CONFIG
-  } from '../lib/services/drawingStorage';
-  import { saveWorkspace, type SavedWorkspace } from '../lib/services/workspaceStorage';
+  } from '../lib/services/persistence';
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
 
   // ─── Core Market & Navigation State ───
@@ -214,11 +215,11 @@
       if (pId) activeProviderId = pId;
     });
 
-    fetchWatchlist().then((list) => {
+    loadWatchlist().then((list) => {
       if (list && list.length > 0) watchlistSymbols = list;
     });
 
-    fetchQuickSymbolsConfig().then((cfg) => {
+    loadQuickSymbolsConfig().then((cfg) => {
       if (cfg) quickSymbolsConfig = cfg;
     });
 
@@ -425,7 +426,7 @@
 
   function handleQuickSymbolsConfigChange(newConfig: QuickSymbolsConfig) {
     quickSymbolsConfig = newConfig;
-    persistQuickSymbolsConfig(newConfig);
+    saveQuickSymbolsConfig(newConfig);
   }
 
   function handleProviderChange(newProviderId: string) {

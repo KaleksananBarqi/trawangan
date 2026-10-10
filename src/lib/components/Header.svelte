@@ -31,8 +31,8 @@
     Trash2,
     Bell
   } from '@lucide/svelte';
-  import type { TickerInfo, Timeframe, MultiChartSyncConfig, WorkspaceMode, QuickSymbolsConfig } from '../types/market';
-  import { saveWorkspace, getWorkspaces, deleteWorkspace, type SavedWorkspace } from '../services/workspaceStorage';
+  import type { TickerInfo, Timeframe, MultiChartSyncConfig, WorkspaceMode, QuickSymbolsConfig, SavedWorkspace } from '../types/market';
+  import { loadWorkspaces, deleteWorkspace } from '../services/persistence';
 
   interface Props {
     activeSymbol: string;
@@ -318,8 +318,8 @@
     }
   }
 
-  function loadWorkspacesList() {
-    savedWorkspaces = getWorkspaces();
+  async function loadWorkspacesList() {
+    savedWorkspaces = await loadWorkspaces();
   }
 
   function handleSaveWorkspace() {
@@ -337,9 +337,9 @@
     showWorkspaceMenu = false;
   }
   
-  function handleDeleteWorkspace(id: string) {
-    deleteWorkspace(id);
-    loadWorkspacesList();
+  async function handleDeleteWorkspace(id: string) {
+    await deleteWorkspace(id);
+    await loadWorkspacesList();
   }
 </script>
 

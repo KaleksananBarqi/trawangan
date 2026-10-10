@@ -197,3 +197,13 @@ export interface QuickSymbolsConfig {
   customSymbols: string[];
   maxDisplayCount: number;
 }
+
+export interface SavedWorkspace {
+  id: string;
+  name: string;
+  symbol: string;
+  timeframe: string;
+  layout: string;
+  indicators: { title: string; source?: string; visible: boolean }[];
+  timestamp: number;
+}

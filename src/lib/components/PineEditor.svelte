@@ -28,7 +28,8 @@
     ArrowDownRight,
     Filter
   } from '@lucide/svelte';
-  import { savePineScript, getHistoricalCandles } from '../services/marketProvider';
+  import { getHistoricalCandles } from '../services/marketProvider';
+  import { saveScript } from '../services/persistence';
   import { Indicator } from 'pinets';
   import { runPineStrategyBacktest } from '../services/strategyEngine';
   import type { PineScriptRecord, StrategyPerformanceSummary, StrategyTradeRecord, Candle } from '../types/market';
@@ -309,7 +310,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
       updated_at: Date.now(),
     };
 
-    await savePineScript(record);
+    await saveScript(record);
     addLog(`Skrip "${record.title}" disimpan ke database SQLite offline.`, 'success');
   }
 

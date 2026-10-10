@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { Search, X, Plus, Code, Trash2, Sliders, Layers, Sparkles } from '@lucide/svelte';
   import { INDICATOR_PRESETS, type IndicatorPreset } from '../data/indicatorPresets';
-  import { getSavedScripts, deletePineScript } from '../services/marketProvider';
+  import { loadScripts, deleteScript } from '../services/persistence';
   import type { PineScriptRecord } from '../types/market';
 
   interface Props {
@@ -27,12 +27,12 @@
   });
 
   async function loadSavedScripts() {
-    savedScripts = await getSavedScripts();
+    savedScripts = await loadScripts();
   }
 
   async function handleDeleteScript(e: MouseEvent, id: string) {
     e.stopPropagation();
-    await deletePineScript(id);
+    await deleteScript(id);
     await loadSavedScripts();
   }
 

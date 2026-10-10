@@ -12,7 +12,7 @@
     saveDrawingsDebounced,
     loadDrawings,
     clearDrawings
-  } from '../services/drawingStorage';
+  } from '../services/persistence';
   import { getHistoricalCandles } from '../services/marketProvider';
   import { alertService } from '../services/alertService';
   import ChartContextMenu from './ChartContextMenu.svelte';

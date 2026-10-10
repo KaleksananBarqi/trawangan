@@ -23,7 +23,7 @@
     MoveHorizontal,
     SlidersHorizontal
   } from '@lucide/svelte';
-  import { fetchWatchlist, persistWatchlist } from '../services/drawingStorage';
+  import { loadWatchlist, saveWatchlist } from '../services/persistence';
   import { fetchWatchlistTickers } from '../services/marketProvider';
   import { alertService } from '../services/alertService';
   import SymbolSearchModal from './SymbolSearchModal.svelte';
@@ -106,7 +106,7 @@
     symbols = [...newSymbols];
     lastSyncedHash = JSON.stringify(newSymbols);
     onWatchlistChange?.(newSymbols);
-    await persistWatchlist(newSymbols);
+    await saveWatchlist(newSymbols);
     await refreshTickers();
   }
 
@@ -116,7 +116,7 @@
         symbols = [...propSymbols];
         lastSyncedHash = JSON.stringify(symbols);
       } else {
-        const saved = await fetchWatchlist();
+        const saved = await loadWatchlist();
         if (saved && saved.length > 0) {
           symbols = [...saved];
           lastSyncedHash = JSON.stringify(symbols);

@@ -260,78 +260,27 @@ export async function fetch24hTicker(symbol: string): Promise<TickerInfo> {
   };
 }
 
+import { loadScripts, saveScript, deleteScript } from './persistence';
+
 /**
- * Mengambil seluruh skrip Pine tersimpan dari SQLite
+ * Mengambil seluruh skrip Pine tersimpan (didelegasikan ke modul deep persistence)
  */
 export async function getSavedScripts(): Promise<import('../types/market').PineScriptRecord[]> {
-  if (isTauri()) {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      return await invoke('get_saved_scripts');
-    } catch (e) {
-      console.warn('Gagal memanggil get_saved_scripts:', e);
-    }
-  }
-
-  // Fallback localStorage jika dijalankan di web browser biasa
-  try {
-    const raw = localStorage.getItem('trawangan_scripts');
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  return loadScripts();
 }
 
 /**
- * Menyimpan skrip Pine ke SQLite
+ * Menyimpan skrip Pine (didelegasikan ke modul deep persistence)
  */
 export async function savePineScript(script: import('../types/market').PineScriptRecord): Promise<void> {
-  if (isTauri()) {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('save_script', { script });
-      return;
-    } catch (e) {
-      console.warn('Gagal memanggil save_script:', e);
-    }
-  }
-
-  // Fallback localStorage
-  try {
-    const scripts = await getSavedScripts();
-    const idx = scripts.findIndex((s) => s.id === script.id);
-    if (idx >= 0) {
-      scripts[idx] = script;
-    } else {
-      scripts.unshift(script);
-    }
-    localStorage.setItem('trawangan_scripts', JSON.stringify(scripts));
-  } catch (e) {
-    console.error('Gagal menyimpan skrip ke localStorage:', e);
-  }
+  return saveScript(script);
 }
 
 /**
- * Menghapus skrip Pine dari SQLite
+ * Menghapus skrip Pine (didelegasikan ke modul deep persistence)
  */
 export async function deletePineScript(id: string): Promise<void> {
-  if (isTauri()) {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('delete_script', { id });
-      return;
-    } catch (e) {
-      console.warn('Gagal memanggil delete_script:', e);
-    }
-  }
-
-  // Fallback localStorage
-  try {
-    const scripts = (await getSavedScripts()).filter((s) => s.id !== id);
-    localStorage.setItem('trawangan_scripts', JSON.stringify(scripts));
-  } catch (e) {
-    console.error(e);
-  }
+  return deleteScript(id);
 }
 
 /**
