@@ -13,12 +13,16 @@
     loadDrawings,
     clearDrawings
   } from '../services/drawingStorage';
+  import { getHistoricalCandles } from '../services/marketProvider';
   import type {
     Timeframe,
     ActiveIndicatorInfo,
     DrawingToolType,
     SnapMode,
-    MultiChartSyncConfig
+    MultiChartSyncConfig,
+    Candle,
+    StrategyPerformanceSummary,
+    StrategyTradeRecord
   } from '../types/market';
 
   export interface ReplayStateInfo {
@@ -41,6 +45,7 @@
     onReplayStateChange?: (state: ReplayStateInfo) => void;
     onCutoffSelected?: (timestamp: number) => void;
     onCutoffCancelled?: () => void;
+    onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
   }
 
   let {
@@ -55,6 +60,7 @@
     onReplayStateChange,
     onCutoffSelected,
     onCutoffCancelled,
+    onStrategyUpdate,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -408,6 +414,84 @@
       // Pasang listener status replay
       attachReplayListeners();
 
+      // Dengarkan eksekusi script / kalkulasi strategi dari seluruh cell di workspace
+      (workspace as any).on?.('script:run', async (run: any) => {
+        if (!run) return;
+        if (run.kind === 'strategy' || run.strategy) {
+          try {
+            const strat = run.strategy;
+            const rawTrades = typeof run.trades === 'function' ? await run.trades() : [];
+            const initialCapital = Number(strat?.initialCapital) || 1000;
+            const netProfit = Number(strat?.netPnl) || 0;
+            const grossProfit = Number(strat?.grossProfit) || 0;
+            const grossLoss = Number(strat?.grossLoss) || 0;
+            const equity = Number(strat?.equity) || (initialCapital + netProfit);
+            const netProfitPercent = initialCapital > 0 ? (netProfit / initialCapital) * 100 : 0;
+            const profitFactor = grossLoss > 0 ? parseFloat((grossProfit / grossLoss).toFixed(2)) : (grossProfit > 0 ? 999 : 0);
+            const wintrades = Number(strat?.wins) || 0;
+            const losstrades = Number(strat?.losses) || 0;
+            const eventrades = Number(strat?.even) || 0;
+            const totalClosed = wintrades + losstrades + eventrades;
+            const winRate = totalClosed > 0 ? parseFloat(((wintrades / totalClosed) * 100).toFixed(1)) : 0;
+            const maxDrawdown = Number(strat?.maxDrawdown) || 0;
+            const maxDrawdownPercent = initialCapital > 0 ? parseFloat(((maxDrawdown / initialCapital) * 100).toFixed(2)) : 0;
+            const pos = Number(strat?.position) || 0;
+            const avgP = Number(strat?.avgPrice) || 0;
+            const openPnl = Number(strat?.openPnl) || 0;
+            const openPnlPct = initialCapital > 0 ? parseFloat(((openPnl / initialCapital) * 100).toFixed(2)) : 0;
+
+            const tradesList: StrategyTradeRecord[] = (rawTrades || []).map((t: any, idx: number) => ({
+              id: String(t.id || `trade_${idx + 1}`),
+              tradeNum: idx + 1,
+              direction: t.side === 'short' ? 'short' : 'long',
+              entryPrice: Number(t.entry?.price) || 0,
+              entryTime: Number(t.entry?.time) || 0,
+              entryComment: t.entry?.comment || t.entry?.id,
+              exitPrice: t.exit?.price !== undefined ? Number(t.exit.price) : undefined,
+              exitTime: t.exit?.time !== undefined ? Number(t.exit.time) : undefined,
+              exitComment: t.exit?.comment || t.exit?.id,
+              size: Number(t.qty) || 0,
+              profit: t.pnl !== undefined ? parseFloat(Number(t.pnl).toFixed(2)) : undefined,
+              profitPercent: t.pnl !== undefined && t.entry?.price ? parseFloat(((Number(t.pnl) / (Number(t.qty) * Number(t.entry.price))) * 100).toFixed(2)) : undefined,
+              status: t.open ? 'open' : 'closed',
+              maxDrawdown: t.maxDrawdown !== undefined ? parseFloat(Number(t.maxDrawdown).toFixed(2)) : undefined,
+              maxRunup: t.maxRunup !== undefined ? parseFloat(Number(t.maxRunup).toFixed(2)) : undefined,
+            }));
+
+            const summary: StrategyPerformanceSummary = {
+              strategyTitle: run.title || 'Pine Strategy',
+              netProfit: parseFloat(netProfit.toFixed(2)),
+              netProfitPercent: parseFloat(netProfitPercent.toFixed(2)),
+              grossProfit: parseFloat(grossProfit.toFixed(2)),
+              grossLoss: parseFloat(grossLoss.toFixed(2)),
+              profitFactor,
+              winRate,
+              totalTrades: totalClosed,
+              winningTrades: wintrades,
+              losingTrades: losstrades,
+              evenTrades: eventrades,
+              maxDrawdown: parseFloat(maxDrawdown.toFixed(2)),
+              maxDrawdownPercent,
+              initialCapital,
+              equity: parseFloat(equity.toFixed(2)),
+              openTrades: (rawTrades || []).filter((t: any) => t.open).length,
+              currentPosition: {
+                size: pos,
+                avgPrice: avgP,
+                direction: pos > 0 ? 'long' : pos < 0 ? 'short' : 'flat',
+                unrealizedPnl: openPnl,
+                unrealizedPnlPercent: openPnlPct,
+              },
+              trades: tradesList,
+            };
+
+            onStrategyUpdate?.(summary);
+          } catch (err) {
+            console.warn('Gagal memproses script:run strategy telemetry:', err);
+          }
+        }
+      });
+
       // Dengarkan pergantian cell aktif (multi-chart grid cell focus)
       (workspace as any).on?.('cell:active', (ev: any) => {
         const cur = workspace?.active;
@@ -686,6 +770,10 @@
 
   // Alias agar pemanggilan via applyPineScript tetap kompatibel
   export const applyPineScript = addPineIndicator;
+
+  export async function getActiveCandles(limit = 1000): Promise<Candle[]> {
+    return getHistoricalCandles(symbol, timeframe, limit, providerId);
+  }
 
   export function removeIndicator(id: string): void {
     const item = indicatorHandles.get(id);

@@ -133,14 +133,49 @@ export interface AppSettings {
   customTimeframes?: string[];
 }
 
+export interface StrategyTradeRecord {
+  id: string;
+  tradeNum: number;
+  direction: 'long' | 'short';
+  entryPrice: number;
+  entryTime: number;
+  entryComment?: string;
+  exitPrice?: number;
+  exitTime?: number;
+  exitComment?: string;
+  size: number;
+  profit?: number;
+  profitPercent?: number;
+  status: 'open' | 'closed';
+  maxDrawdown?: number;
+  maxRunup?: number;
+}
+
 export interface StrategyPerformanceSummary {
+  strategyTitle?: string;
   netProfit: number;
   netProfitPercent: number;
+  grossProfit: number;
+  grossLoss: number;
+  profitFactor: number;
   winRate: number;
   totalTrades: number;
-  profitFactor: number;
+  winningTrades: number;
+  losingTrades: number;
+  evenTrades: number;
   maxDrawdown: number;
   maxDrawdownPercent: number;
+  initialCapital: number;
+  equity: number;
+  openTrades: number;
+  currentPosition: {
+    size: number;
+    avgPrice: number;
+    direction: 'flat' | 'long' | 'short';
+    unrealizedPnl: number;
+    unrealizedPnlPercent: number;
+  };
+  trades: StrategyTradeRecord[];
 }
 export interface QuickSymbolsConfig {
   mode: 'watchlist' | 'custom';

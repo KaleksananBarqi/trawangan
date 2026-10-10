@@ -20,7 +20,8 @@
     MultiChartSyncConfig,
     WorkspaceMode,
     AppSettings,
-    QuickSymbolsConfig
+    QuickSymbolsConfig,
+    StrategyPerformanceSummary
   } from '../lib/types/market';
   import {
     fetchWatchlist,
@@ -92,6 +93,13 @@
 
   // Active Indicators State (bersih tanpa dummy)
   let activeIndicators = $state<ActiveIndicatorInfo[]>([]);
+
+  // Active Strategy Performance State
+  let activeStrategySummary = $state<StrategyPerformanceSummary | null>(null);
+
+  function handleStrategyUpdate(summary: StrategyPerformanceSummary) {
+    activeStrategySummary = summary;
+  }
 
   // Watchlist & Quick Symbols State
   let watchlistSymbols = $state<string[]>([
@@ -753,20 +761,45 @@
         <div class="pine-top-chart-pane">
           <!-- Dynamic Floating Signal Badge -->
           <div class="floating-strategy-badge obsidian-panel mono-nums">
-            <div class="badge-item">
-              <span class="badge-pip-bull"></span>
-              <span class="badge-bold">POSITION: LONG (2.5 BTC)</span>
-            </div>
-            <div class="badge-divider"></div>
-            <div class="badge-item">
-              <span class="badge-label">UNREALIZED PnL:</span>
-              <span class="badge-val-bull">+$8,245.50 (+13.2%)</span>
-            </div>
-            <div class="badge-divider"></div>
-            <div class="badge-item">
-              <span class="badge-label">RISK/REWARD:</span>
-              <span class="badge-val">1:3.4</span>
-            </div>
+            {#if activeStrategySummary}
+              <div class="badge-item">
+                <span class="badge-pip {activeStrategySummary.currentPosition.direction === 'long' ? 'badge-pip-bull' : activeStrategySummary.currentPosition.direction === 'short' ? 'badge-pip-bear' : ''}"></span>
+                <span class="badge-bold">
+                  POSITION: {activeStrategySummary.currentPosition.direction.toUpperCase()}
+                  {#if activeStrategySummary.currentPosition.direction !== 'flat'}
+                    ({activeStrategySummary.currentPosition.size} {activeSymbol.replace('USDT', '')})
+                  {/if}
+                </span>
+              </div>
+              <div class="badge-divider"></div>
+              <div class="badge-item">
+                <span class="badge-label">NET PnL:</span>
+                <span class="{activeStrategySummary.netProfit >= 0 ? 'badge-val-bull' : 'badge-val-bear'}">
+                  {activeStrategySummary.netProfit >= 0 ? '+' : ''}${activeStrategySummary.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  ({activeStrategySummary.netProfitPercent >= 0 ? '+' : ''}{activeStrategySummary.netProfitPercent}%)
+                </span>
+              </div>
+              <div class="badge-divider"></div>
+              <div class="badge-item">
+                <span class="badge-label">WIN RATE:</span>
+                <span class="badge-val">{activeStrategySummary.winRate}%</span>
+              </div>
+              <div class="badge-divider"></div>
+              <div class="badge-item">
+                <span class="badge-label">PF:</span>
+                <span class="badge-val text-cyan">{activeStrategySummary.profitFactor}</span>
+              </div>
+            {:else}
+              <div class="badge-item">
+                <span class="badge-pip-bull"></span>
+                <span class="badge-bold text-bull">STRATEGY TESTER READY</span>
+              </div>
+              <div class="badge-divider"></div>
+              <div class="badge-item">
+                <span class="badge-label">SYMBOL:</span>
+                <span class="badge-val text-cyan">{activeSymbol} ({activeTimeframe})</span>
+              </div>
+            {/if}
           </div>
 
           <!-- WebGL2 Vela Live Chart -->
@@ -782,6 +815,7 @@
             onReplayStateChange={handleReplayStateChange}
             onCutoffSelected={handleCutoffBarSelected}
             onCutoffCancelled={() => (isReplaySelectingBar = false)}
+            onStrategyUpdate={handleStrategyUpdate}
           />
         </div>
 
@@ -796,8 +830,12 @@
             isOpen={true}
             initialCode={editorInitialCode}
             initialTitle={editorInitialTitle}
+            activeSymbol={activeSymbol}
+            activeTimeframe={activeTimeframe}
+            providerId={activeProviderId}
             onClose={() => (workspaceMode = 'terminal')}
             onAddToChart={handleAddIndicator}
+            onStrategyUpdate={handleStrategyUpdate}
           />
         </div>
       </div>
@@ -961,6 +999,14 @@
     box-shadow: 0 0 6px var(--bull-color);
   }
 
+  .badge-pip-bear {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: var(--bear-color);
+    box-shadow: 0 0 6px var(--bear-color);
+  }
+
   .badge-bold {
     font-weight: 700;
     color: var(--text-main);
@@ -972,6 +1018,11 @@
 
   .badge-val-bull {
     color: var(--bull-color);
+    font-weight: 700;
+  }
+
+  .badge-val-bear {
+    color: var(--bear-color);
     font-weight: 700;
   }
 

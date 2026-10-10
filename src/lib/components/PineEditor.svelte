@@ -21,26 +21,40 @@
     ShieldAlert,
     Cpu,
     FileCode,
-    Sparkles
+    Sparkles,
+    History,
+    PlayCircle,
+    ArrowUpRight,
+    ArrowDownRight,
+    Filter
   } from '@lucide/svelte';
-  import { savePineScript } from '../services/marketProvider';
+  import { savePineScript, getHistoricalCandles } from '../services/marketProvider';
   import { Indicator } from 'pinets';
-  import type { PineScriptRecord, StrategyPerformanceSummary } from '../types/market';
+  import { runPineStrategyBacktest } from '../services/strategyEngine';
+  import type { PineScriptRecord, StrategyPerformanceSummary, StrategyTradeRecord, Candle } from '../types/market';
 
   interface Props {
     isOpen: boolean;
     initialCode?: string;
     initialTitle?: string;
+    activeSymbol?: string;
+    activeTimeframe?: string;
+    providerId?: string;
     onClose: () => void;
     onAddToChart: (code: string, title: string) => Promise<boolean>;
+    onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
   }
 
   let {
     isOpen,
     initialCode = '',
     initialTitle = 'Trawangan_Alpha_v6.pine',
+    activeSymbol = 'BTCUSDT',
+    activeTimeframe = '15m',
+    providerId = 'binance',
     onClose,
     onAddToChart,
+    onStrategyUpdate,
   }: Props = $props();
 
   let editorContainer: HTMLDivElement | null = $state(null);
@@ -51,26 +65,29 @@
     scriptTitle = initialTitle;
   });
 
-  let rightTab = $state<'performance' | 'console'>('performance');
+  let rightTab = $state<'performance' | 'trades' | 'console'>('performance');
   let isCompiling = $state(false);
+  let isBacktesting = $state(false);
   let compileDurationMs = $state(14);
   let compileStatus = $state<'ready' | 'success' | 'error'>('ready');
+  let indicatorNotice = $state<string | null>(null);
+  let tradeFilter = $state<'all' | 'long' | 'short' | 'open'>('all');
 
-  // Strategy Tester Summary State (Mock/Live Quant Telemetry)
-  let perf = $state<StrategyPerformanceSummary>({
-    netProfit: 18450.00,
-    netProfitPercent: 27.4,
-    winRate: 68.4,
-    totalTrades: 70,
-    profitFactor: 2.42,
-    maxDrawdown: 2100.00,
-    maxDrawdownPercent: 4.12,
+  // Strategy Tester Summary State (Kuantitatif Real-time Telemetry)
+  let perf = $state<StrategyPerformanceSummary | null>(null);
+
+  let filteredTrades = $derived.by(() => {
+    const list = perf?.trades || [];
+    if (tradeFilter === 'long') return list.filter((t) => t.direction === 'long');
+    if (tradeFilter === 'short') return list.filter((t) => t.direction === 'short');
+    if (tradeFilter === 'open') return list.filter((t) => t.status === 'open');
+    return list;
   });
 
   let consoleLog = $state<{ msg: string; type: 'info' | 'success' | 'error'; time: string }[]>([
-    { msg: 'PineTS Runtime Web Worker v0.2.15 initialized.', type: 'info', time: '14:00:01' },
+    { msg: 'PineTS Runtime Web Worker initialized.', type: 'info', time: '14:00:01' },
     { msg: 'WebAssembly SIMD acceleration enabled.', type: 'info', time: '14:00:02' },
-    { msg: 'Strategy "Trawangan_Alpha_v6" loaded ready for backtesting.', type: 'success', time: '14:00:04' },
+    { msg: 'Strategy Engine siap mengevaluasi algoritma Pine Script v6.', type: 'success', time: '14:00:04' },
   ]);
 
   const DEFAULT_BOILERPLATE = `//@version=6
@@ -189,6 +206,49 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
     return editorView ? editorView.state.doc.toString() : '';
   }
 
+  async function executeStrategyBacktest(silent = false): Promise<StrategyPerformanceSummary | null> {
+    const code = getCode();
+    if (!code.trim()) return null;
+
+    isBacktesting = true;
+    if (!silent) addLog(`Mengambil candle ${activeSymbol} (${activeTimeframe}) & menjalankan backtester...`, 'info');
+
+    try {
+      const candles = await getHistoricalCandles(activeSymbol, activeTimeframe, 1000, providerId);
+      const result = await runPineStrategyBacktest(code, candles);
+
+      if (!result.success) {
+        compileStatus = 'error';
+        indicatorNotice = result.error || 'Terjadi kesalahan eksekusi strategi.';
+        addLog(`Backtest gagal: ${result.error}`, 'error');
+        return null;
+      }
+
+      if (!result.isStrategy) {
+        indicatorNotice = result.error || 'Skrip merupakan indikator, bukan strategi.';
+        addLog(indicatorNotice, 'info');
+        perf = null;
+        return null;
+      }
+
+      indicatorNotice = null;
+      perf = result.summary || null;
+      if (result.summary) {
+        onStrategyUpdate?.(result.summary);
+        addLog(
+          `Backtest "${result.scriptTitle || scriptTitle}" (${result.executionTimeMs}ms): ${result.summary.totalTrades} closed trades | Net PnL: ${result.summary.netProfit >= 0 ? '+' : ''}$${result.summary.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })} (${result.summary.netProfitPercent >= 0 ? '+' : ''}${result.summary.netProfitPercent}%) | Win Rate: ${result.summary.winRate}% | Max DD: -${result.summary.maxDrawdownPercent}%`,
+          'success'
+        );
+      }
+      return result.summary || null;
+    } catch (err: any) {
+      addLog(`Error backtester: ${err.message || err}`, 'error');
+      return null;
+    } finally {
+      isBacktesting = false;
+    }
+  }
+
   async function handleAddToChart() {
     const code = getCode();
     if (!code.trim()) return;
@@ -211,7 +271,10 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
       return;
     }
 
-    // Tahap 2: Terapkan ke chart engine Vela WebGL2
+    // Tahap 2: Jalankan evaluasi backtest PineTS untuk Strategy Performance
+    await executeStrategyBacktest(true);
+
+    // Tahap 3: Terapkan ke chart engine Vela WebGL2
     try {
       const ok = await onAddToChart(code, scriptTitle);
       compileDurationMs = Math.round(performance.now() - start) || 12;
@@ -292,6 +355,16 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
           </button>
 
           <button
+            class="btn-backtest"
+            title="Jalankan Backtester kuantitatif instan"
+            disabled={isCompiling || isBacktesting}
+            onclick={() => executeStrategyBacktest(false)}
+          >
+            <PlayCircle size={12} class="text-cyan" />
+            <span>{isBacktesting ? 'Testing...' : 'Test Strategy'}</span>
+          </button>
+
+          <button
             class="btn-secondary"
             title="Simpan ke basis data SQLite"
             onclick={handleSaveScript}
@@ -352,7 +425,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
         <div class="codemirror-wrapper" bind:this={editorContainer}></div>
       </section>
 
-      <!-- 35% STRATEGY PERFORMANCE & CONSOLE -->
+      <!-- 35% STRATEGY PERFORMANCE, TRADES & CONSOLE -->
       <aside class="right-strategy-pane obsidian-panel">
         <!-- Sub Tabs -->
         <div class="strategy-tabs-bar">
@@ -361,7 +434,18 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
             onclick={() => (rightTab = 'performance')}
           >
             <BarChart3 size={13} />
-            <span>Strategy Performance</span>
+            <span>Performance</span>
+          </button>
+
+          <button
+            class="strategy-tab {rightTab === 'trades' ? 'active' : ''}"
+            onclick={() => (rightTab = 'trades')}
+          >
+            <History size={13} />
+            <span>List of Trades</span>
+            {#if perf && perf.trades.length > 0}
+              <span class="log-count mono-nums">{perf.trades.length}</span>
+            {/if}
           </button>
 
           <button
@@ -377,53 +461,204 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
         <div class="strategy-content">
           {#if rightTab === 'performance'}
             <div class="perf-container">
-              <!-- Net Profit Card -->
-              <div class="perf-metric-hero obsidian-card">
-                <span class="metric-label">Net Profit (Unrealized + Realized)</span>
-                <div class="hero-val-box mono-nums">
-                  <span class="hero-val text-bull">+${perf.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  <span class="hero-pct pill-bull">+{perf.netProfitPercent}%</span>
+              {#if indicatorNotice}
+                <div class="indicator-info-card obsidian-card">
+                  <AlertCircle size={16} class="text-cyan flex-shrink-0" />
+                  <div>
+                    <div class="indicator-notice-title">Indikator Visual Terdeteksi</div>
+                    <div class="indicator-notice-desc">{indicatorNotice}</div>
+                  </div>
+                </div>
+              {/if}
+
+              {#if !perf}
+                <div class="empty-perf-card obsidian-card">
+                  <Cpu size={28} class="text-bull" />
+                  <div class="empty-perf-title">Strategy Tester Siap</div>
+                  <div class="empty-perf-desc">
+                    Tulis deklarasi <code>strategy(...)</code> lalu klik <strong>Compile & Apply (Ctrl+S)</strong> atau <strong>Test Strategy</strong> untuk mengevaluasi strategi pada data historis {activeSymbol} ({activeTimeframe}).
+                  </div>
+                  <button
+                    class="btn-compile mt-1"
+                    disabled={isBacktesting || isCompiling}
+                    onclick={() => executeStrategyBacktest(false)}
+                  >
+                    <Play size={12} fill="currentColor" />
+                    <span>{isBacktesting ? 'Mengevaluasi...' : 'Jalankan Backtest Sekarang'}</span>
+                  </button>
+                </div>
+              {:else}
+                <!-- Net Profit Hero Card -->
+                <div class="perf-metric-hero obsidian-card">
+                  <div class="metric-top-row">
+                    <span class="metric-label">Net Profit (Unrealized + Realized)</span>
+                    <span class="strategy-meta-pill mono-nums">{perf.strategyTitle || 'Strategy'}</span>
+                  </div>
+                  <div class="hero-val-box mono-nums">
+                    <span class="hero-val {perf.netProfit >= 0 ? 'text-bull' : 'text-bear'}">
+                      {perf.netProfit >= 0 ? '+' : ''}${perf.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                    <span class="hero-pct {perf.netProfitPercent >= 0 ? 'pill-bull' : 'pill-bear'}">
+                      {perf.netProfitPercent >= 0 ? '+' : ''}{perf.netProfitPercent}%
+                    </span>
+                  </div>
+                  <div class="capital-sub-row mono-nums">
+                    <span>Modal: ${perf.initialCapital.toLocaleString()}</span>
+                    <span>Equity: ${perf.equity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div class="perf-grid mono-nums">
+                  <div class="perf-card">
+                    <span class="perf-card-title">Win Rate</span>
+                    <span class="perf-card-value text-bull">{perf.winRate}%</span>
+                    <span class="perf-card-sub">{perf.winningTrades} Win / {perf.losingTrades} Loss / {perf.evenTrades} Even</span>
+                  </div>
+
+                  <div class="perf-card">
+                    <span class="perf-card-title">Profit Factor</span>
+                    <span class="perf-card-value text-cyan">{perf.profitFactor}</span>
+                    <span class="perf-card-sub">+${perf.grossProfit.toLocaleString()} / -${perf.grossLoss.toLocaleString()}</span>
+                  </div>
+
+                  <div class="perf-card">
+                    <span class="perf-card-title">Max Drawdown</span>
+                    <span class="perf-card-value text-bear">-{perf.maxDrawdownPercent}%</span>
+                    <span class="perf-card-sub">-${perf.maxDrawdown.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+
+                  <div class="perf-card">
+                    <span class="perf-card-title">Total Closed Trades</span>
+                    <span class="perf-card-value">{perf.totalTrades}</span>
+                    <span class="perf-card-sub">{perf.openTrades} Posisi Terbuka</span>
+                  </div>
+                </div>
+
+                <!-- Live Position Status Badge -->
+                <div class="strategy-banner obsidian-card">
+                  <div class="banner-item">
+                    <TrendingUp size={14} class="{perf.currentPosition.direction === 'long' ? 'text-bull' : perf.currentPosition.direction === 'short' ? 'text-bear' : 'text-muted'}" />
+                    <span>
+                      Posisi Terkini:
+                      <strong class="{perf.currentPosition.direction === 'long' ? 'text-bull' : perf.currentPosition.direction === 'short' ? 'text-bear' : 'text-muted'}">
+                        {perf.currentPosition.direction.toUpperCase()}
+                        {#if perf.currentPosition.direction !== 'flat'}
+                          ({perf.currentPosition.size} @ ${perf.currentPosition.avgPrice.toLocaleString()})
+                        {/if}
+                      </strong>
+                    </span>
+                  </div>
+                  {#if perf.currentPosition.direction !== 'flat'}
+                    <div class="banner-item">
+                      <Sparkles size={14} class="text-cyan" />
+                      <span>
+                        Floating PnL:
+                        <strong class="{perf.currentPosition.unrealizedPnl >= 0 ? 'text-bull' : 'text-bear'}">
+                          {perf.currentPosition.unrealizedPnl >= 0 ? '+' : ''}${perf.currentPosition.unrealizedPnl.toFixed(2)}
+                          ({perf.currentPosition.unrealizedPnlPercent >= 0 ? '+' : ''}{perf.currentPosition.unrealizedPnlPercent}%)
+                        </strong>
+                      </span>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+
+          {:else if rightTab === 'trades'}
+            <div class="trades-container">
+              <!-- Filter Bar -->
+              <div class="trades-filter-bar">
+                <div class="filter-buttons">
+                  <button
+                    class="filter-btn {tradeFilter === 'all' ? 'active' : ''}"
+                    onclick={() => (tradeFilter = 'all')}
+                  >
+                    Semua ({perf?.trades.length || 0})
+                  </button>
+                  <button
+                    class="filter-btn {tradeFilter === 'long' ? 'active' : ''}"
+                    onclick={() => (tradeFilter = 'long')}
+                  >
+                    Long
+                  </button>
+                  <button
+                    class="filter-btn {tradeFilter === 'short' ? 'active' : ''}"
+                    onclick={() => (tradeFilter = 'short')}
+                  >
+                    Short
+                  </button>
+                  <button
+                    class="filter-btn {tradeFilter === 'open' ? 'active' : ''}"
+                    onclick={() => (tradeFilter = 'open')}
+                  >
+                    Open
+                  </button>
                 </div>
               </div>
 
-              <!-- Metrics Grid -->
-              <div class="perf-grid mono-nums">
-                <div class="perf-card">
-                  <span class="perf-card-title">Win Rate</span>
-                  <span class="perf-card-value text-bull">{perf.winRate}%</span>
-                  <span class="perf-card-sub">48 Win / 22 Loss</span>
+              <!-- Trades Table -->
+              {#if filteredTrades.length === 0}
+                <div class="empty-trades-notice obsidian-card">
+                  <p>Tidak ada transaksi yang cocok dengan filter saat ini.</p>
                 </div>
-
-                <div class="perf-card">
-                  <span class="perf-card-title">Profit Factor</span>
-                  <span class="perf-card-value text-cyan">{perf.profitFactor}</span>
-                  <span class="perf-card-sub">Gross Win / Gross Loss</span>
+              {:else}
+                <div class="trades-table-wrapper">
+                  <table class="trades-table mono-nums">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Tipe</th>
+                        <th>Entry Price</th>
+                        <th>Exit Price</th>
+                        <th>Profit ($)</th>
+                        <th>Return</th>
+                        <th>Sinyal / Komentar</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each filteredTrades as t}
+                        <tr class="{t.status === 'open' ? 'row-open' : ''}">
+                          <td class="col-id">{t.tradeNum}</td>
+                          <td>
+                            <span class="side-pill {t.direction === 'long' ? 'pill-bull' : 'pill-bear'}">
+                              {#if t.direction === 'long'}
+                                <ArrowUpRight size={10} />
+                              {:else}
+                                <ArrowDownRight size={10} />
+                              {/if}
+                              {t.direction.toUpperCase()}
+                            </span>
+                          </td>
+                          <td>
+                            <div class="price-val">${t.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                            <div class="time-sub">{new Date(t.entryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                          </td>
+                          <td>
+                            {#if t.status === 'open'}
+                              <span class="badge-open">OPEN</span>
+                            {:else if t.exitPrice !== undefined}
+                              <div class="price-val">${t.exitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                              <div class="time-sub">{new Date(t.exitTime || 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                            {:else}
+                              <span>-</span>
+                            {/if}
+                          </td>
+                          <td class="{t.profit !== undefined ? (t.profit >= 0 ? 'text-bull' : 'text-bear') : 'text-muted'}">
+                            {t.profit !== undefined ? `${t.profit >= 0 ? '+' : ''}$${t.profit.toFixed(2)}` : '-'}
+                          </td>
+                          <td class="{t.profitPercent !== undefined ? (t.profitPercent >= 0 ? 'text-bull' : 'text-bear') : 'text-muted'}">
+                            {t.profitPercent !== undefined ? `${t.profitPercent >= 0 ? '+' : ''}${t.profitPercent}%` : '-'}
+                          </td>
+                          <td class="col-comment" title="{t.exitComment || t.entryComment}">
+                            {t.exitComment || t.entryComment || '-'}
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
                 </div>
-
-                <div class="perf-card">
-                  <span class="perf-card-title">Max Drawdown</span>
-                  <span class="perf-card-value text-bear">-{perf.maxDrawdownPercent}%</span>
-                  <span class="perf-card-sub">-${perf.maxDrawdown.toLocaleString()}</span>
-                </div>
-
-                <div class="perf-card">
-                  <span class="perf-card-title">Total Closed Trades</span>
-                  <span class="perf-card-value">{perf.totalTrades}</span>
-                  <span class="perf-card-sub">Bar Backtest Run</span>
-                </div>
-              </div>
-
-              <!-- Strategy Status Badge -->
-              <div class="strategy-banner obsidian-card">
-                <div class="banner-item">
-                  <TrendingUp size={14} class="text-bull" />
-                  <span>Trailing Stop: <strong>Active (2.5% ATR)</strong></span>
-                </div>
-                <div class="banner-item">
-                  <Sparkles size={14} class="text-cyan" />
-                  <span>Execution: <strong>Web Worker Non-blocking</strong></span>
-                </div>
-              </div>
+              {/if}
             </div>
 
           {:else if rightTab === 'console'}
@@ -862,6 +1097,250 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 
   .log-entry.error .log-msg {
     color: var(--bear-color);
+  }
+
+  .btn-backtest {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background-color: rgba(0, 229, 255, 0.12);
+    border: 1px solid rgba(0, 229, 255, 0.3);
+    color: var(--brand-cyan);
+    padding: 4px 8px;
+    border-radius: var(--radius-xs);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-backtest:hover:not(:disabled) {
+    background-color: rgba(0, 229, 255, 0.22);
+    border-color: var(--brand-cyan);
+    color: #fff;
+  }
+
+  .btn-backtest:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .metric-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .strategy-meta-pill {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: var(--radius-xs);
+    background-color: var(--bg-container);
+    color: var(--brand-cyan);
+    border: 1px solid var(--border-hairline);
+  }
+
+  .capital-sub-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border-hairline);
+  }
+
+  .pill-bear {
+    color: var(--bear-color);
+    background-color: rgba(255, 59, 105, 0.12);
+  }
+
+  .indicator-info-card {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    background-color: rgba(0, 229, 255, 0.05);
+    border: 1px solid rgba(0, 229, 255, 0.2);
+    border-radius: var(--radius-xs);
+  }
+
+  .indicator-notice-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--brand-cyan);
+    margin-bottom: 2px;
+  }
+
+  .indicator-notice-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .empty-perf-card {
+    padding: 24px 16px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background-color: var(--bg-panel);
+    border: 1px dashed var(--border-hairline);
+    border-radius: var(--radius-xs);
+  }
+
+  .empty-perf-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .empty-perf-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    max-width: 320px;
+  }
+
+  .empty-perf-desc code {
+    background-color: var(--bg-base);
+    color: var(--brand-cyan);
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* Trades List Tab */
+  .trades-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+  }
+
+  .trades-filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .filter-buttons {
+    display: flex;
+    gap: 4px;
+  }
+
+  .filter-btn {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-dim);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+  }
+
+  .filter-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .filter-btn.active {
+    background-color: var(--bg-base);
+    border-color: var(--brand-cyan);
+    color: var(--brand-cyan);
+    font-weight: 600;
+  }
+
+  .empty-trades-notice {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 11px;
+    border: 1px dashed var(--border-hairline);
+  }
+
+  .trades-table-wrapper {
+    flex: 1;
+    overflow: auto;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    background-color: var(--bg-darkest);
+  }
+
+  .trades-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    text-align: left;
+  }
+
+  .trades-table th {
+    background-color: var(--bg-container);
+    color: var(--text-dim);
+    padding: 6px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-hairline);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    white-space: nowrap;
+  }
+
+  .trades-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    white-space: nowrap;
+  }
+
+  .trades-table tr:hover {
+    background-color: var(--bg-hover);
+  }
+
+  .trades-table tr.row-open {
+    background-color: rgba(0, 229, 255, 0.04);
+  }
+
+  .col-id {
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+
+  .side-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: var(--radius-xs);
+  }
+
+  .price-val {
+    color: var(--text-main);
+    font-weight: 500;
+  }
+
+  .time-sub {
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+
+  .badge-open {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--brand-cyan);
+    background-color: rgba(0, 229, 255, 0.12);
+    padding: 1px 5px;
+    border-radius: var(--radius-xs);
+  }
+
+  .col-comment {
+    color: var(--text-muted);
+    font-size: 10px;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .text-bull {
