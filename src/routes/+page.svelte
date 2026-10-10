@@ -56,6 +56,9 @@
     showGrid: true,
     showReplayBar: false,
     theme: 'obsidian',
+    defaultTimeframe: '15m',
+    favoriteTimeframes: ['1m', '5m', '15m', '1h', '4h', '1D'],
+    customTimeframes: [],
   });
 
   // Panels & Modals Visibility State
@@ -138,6 +141,20 @@
   });
 
   onMount(() => {
+    // Muat preferensi aplikasi tersimpan dari localStorage
+    try {
+      const savedSettings = localStorage.getItem('trawangan_app_settings');
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
+        appSettings = { ...appSettings, ...parsed };
+        if (appSettings.defaultTimeframe) {
+          activeTimeframe = appSettings.defaultTimeframe;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat pengaturan tersimpan:', e);
+    }
+
     getActiveProviderId().then((pId) => {
       if (pId) activeProviderId = pId;
     });
@@ -325,6 +342,11 @@
 
   function handleUpdateSettings(newSettings: Partial<AppSettings>) {
     appSettings = { ...appSettings, ...newSettings };
+    try {
+      localStorage.setItem('trawangan_app_settings', JSON.stringify(appSettings));
+    } catch (e) {
+      console.warn('Gagal menyimpan pengaturan aplikasi ke localStorage:', e);
+    }
     addSystemLog(`Pengaturan aplikasi diperbarui.`, 'info');
   }
 
@@ -640,6 +662,10 @@
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
     onOpenSettingsModal={() => (isSettingsModalOpen = true)}
+    favoriteTimeframes={appSettings.favoriteTimeframes}
+    customTimeframes={appSettings.customTimeframes}
+    onFavoriteTimeframesChange={(tfs) => handleUpdateSettings({ favoriteTimeframes: tfs })}
+    onCustomTimeframesChange={(customs) => handleUpdateSettings({ customTimeframes: customs })}
   />
 
   <!-- Main Viewport Area -->

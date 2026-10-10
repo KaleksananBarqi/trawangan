@@ -97,6 +97,9 @@ export class BitunixProvider {
       case '720':
       case '12h':
         return '12h';
+      case '45':
+      case '45m':
+        return '45m';
       case '1d':
       case 'd':
         return '1d';
@@ -104,6 +107,10 @@ export class BitunixProvider {
       case 'w':
         return '1w';
       default:
+        // Jika format sudah valid seperti 15m, 2h, 1d, gunakan langsung
+        if (/^\d+[mhdw]$/.test(clean)) {
+          return clean;
+        }
         return '1h';
     }
   }

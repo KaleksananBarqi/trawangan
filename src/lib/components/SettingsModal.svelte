@@ -18,7 +18,9 @@
     Trash2,
     Server,
     ExternalLink,
-    Zap
+    Zap,
+    Star,
+    RotateCcw
   } from '@lucide/svelte';
   import type { AppSettings, ProviderConfig } from '../types/market';
   import {
@@ -27,6 +29,33 @@
     saveProviderConfig,
     deleteProvider
   } from '../services/marketProvider';
+
+  const ALL_AVAILABLE_TIMEFRAMES = [
+    { id: '1m', label: '1m' },
+    { id: '3m', label: '3m' },
+    { id: '5m', label: '5m' },
+    { id: '15m', label: '15m' },
+    { id: '30m', label: '30m' },
+    { id: '45m', label: '45m' },
+    { id: '1h', label: '1h' },
+    { id: '2h', label: '2h' },
+    { id: '4h', label: '4h' },
+    { id: '6h', label: '6h' },
+    { id: '12h', label: '12h' },
+    { id: '1D', label: '1D' },
+    { id: '1W', label: '1W' },
+    { id: '1M', label: '1M' },
+  ];
+
+  function handleToggleFavFromSettings(tf: string) {
+    const current = settings.favoriteTimeframes || ['1m', '5m', '15m', '1h', '4h', '1D'];
+    if (current.includes(tf)) {
+      if (current.length <= 1) return; // Sisakan minimal 1 favorit
+      onUpdateSettings({ favoriteTimeframes: current.filter((t) => t !== tf) });
+    } else {
+      onUpdateSettings({ favoriteTimeframes: [...current, tf] });
+    }
+  }
 
   interface Props {
     isOpen: boolean;
@@ -326,6 +355,104 @@
                 >
                   {settings.showReplayBar ? 'Tampil' : 'Sembunyi'}
                 </button>
+              </div>
+            </div>
+
+            <div class="section-group">
+              <h4 class="section-title">Timeframe & Navigasi Bilah Atas</h4>
+
+              <!-- Pilihan Timeframe Default -->
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-label">Timeframe Default (Saat Membuka Aplikasi)</span>
+                  <span class="setting-desc">Interval chart yang otomatis aktif saat pertama kali dibuka</span>
+                </div>
+                <select
+                  class="select-input mono-nums"
+                  value={settings.defaultTimeframe || '15m'}
+                  onchange={(e) => onUpdateSettings({ defaultTimeframe: e.currentTarget.value as any })}
+                >
+                  <optgroup label="Menit">
+                    <option value="1m">1m (1 Menit)</option>
+                    <option value="3m">3m (3 Menit)</option>
+                    <option value="5m">5m (5 Menit)</option>
+                    <option value="15m">15m (15 Menit - Day Trading)</option>
+                    <option value="30m">30m (30 Menit)</option>
+                    <option value="45m">45m (45 Menit)</option>
+                  </optgroup>
+                  <optgroup label="Jam">
+                    <option value="1h">1h (1 Jam - Swing MTF)</option>
+                    <option value="2h">2h (2 Jam)</option>
+                    <option value="4h">4h (4 Jam - HTF Analisis)</option>
+                    <option value="6h">6h (6 Jam)</option>
+                    <option value="12h">12h (12 Jam)</option>
+                  </optgroup>
+                  <optgroup label="Hari & Pekan">
+                    <option value="1D">1D (1 Hari - Trend Utama)</option>
+                    <option value="1W">1W (1 Pekan)</option>
+                    <option value="1M">1M (1 Bulan)</option>
+                  </optgroup>
+                  {#if settings.customTimeframes && settings.customTimeframes.length > 0}
+                    <optgroup label="Kustom Pengguna">
+                      {#each settings.customTimeframes as ctf}
+                        <option value={ctf}>{ctf} (Kustom)</option>
+                      {/each}
+                    </optgroup>
+                  {/if}
+                </select>
+              </div>
+
+              <!-- Pilihan Sematan Timeframe Favorit -->
+              <div class="setting-box-column">
+                <div class="setting-info-header">
+                  <span class="setting-label">Timeframe Favorit di Header (Sematkan ⭐)</span>
+                  <span class="setting-desc">Pilih timeframe mana saja yang tampil di bilah navigasi kilat</span>
+                </div>
+
+                <div class="tf-favorites-chips-grid">
+                  {#each ALL_AVAILABLE_TIMEFRAMES as tfOpt}
+                    {@const isStarred = (settings.favoriteTimeframes || ['1m', '5m', '15m', '1h', '4h', '1D']).includes(tfOpt.id)}
+                    <button
+                      type="button"
+                      class="tf-fav-chip {isStarred ? 'starred' : ''}"
+                      title="{isStarred ? 'Lepas sematan' : 'Sematkan ke bilah atas'} {tfOpt.label}"
+                      onclick={() => handleToggleFavFromSettings(tfOpt.id)}
+                    >
+                      <Star size={11} fill={isStarred ? '#f59e0b' : 'none'} color={isStarred ? '#f59e0b' : 'currentColor'} />
+                      <span class="mono-nums">{tfOpt.label}</span>
+                    </button>
+                  {/each}
+
+                  {#if settings.customTimeframes && settings.customTimeframes.length > 0}
+                    {#each settings.customTimeframes as ctf}
+                      {@const isStarred = (settings.favoriteTimeframes || []).includes(ctf)}
+                      <button
+                        type="button"
+                        class="tf-fav-chip {isStarred ? 'starred' : ''}"
+                        title="{isStarred ? 'Lepas sematan' : 'Sematkan ke bilah atas'} {ctf}"
+                        onclick={() => handleToggleFavFromSettings(ctf)}
+                      >
+                        <Star size={11} fill={isStarred ? '#f59e0b' : 'none'} color={isStarred ? '#f59e0b' : 'currentColor'} />
+                        <span class="mono-nums">{ctf}</span>
+                      </button>
+                    {/each}
+                  {/if}
+                </div>
+
+                <div class="tf-settings-actions">
+                  <span class="tf-chip-summary">
+                    {(settings.favoriteTimeframes || ['1m', '5m', '15m', '1h', '4h', '1D']).length} timeframe disematkan di bilah atas
+                  </span>
+                  <button
+                    type="button"
+                    class="reset-defaults-btn"
+                    title="Kembalikan favorit ke 1m, 5m, 15m, 1h, 4h, 1D"
+                    onclick={() => onUpdateSettings({ favoriteTimeframes: ['1m', '5m', '15m', '1h', '4h', '1D'] })}
+                  >
+                    <RotateCcw size={11} />
+                    <span>Reset Standar</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -858,6 +985,90 @@
     padding: 4px 8px;
     border-radius: var(--radius-xs);
     border: 1px solid rgba(0, 240, 144, 0.25);
+  }
+
+  /* Timeframe Settings in Chart Tab */
+  .setting-box-column {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+  }
+
+  .setting-info-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tf-favorites-chips-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 0;
+  }
+
+  .tf-fav-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 8px;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .tf-fav-chip:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+    border-color: var(--border-bright);
+  }
+
+  .tf-fav-chip.starred {
+    background-color: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  .tf-settings-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-hairline);
+  }
+
+  .tf-chip-summary {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .reset-defaults-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-size: 10.5px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .reset-defaults-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+    border-color: var(--border-bright);
   }
 
   /* ─── DATA FEED STYLING ─── */

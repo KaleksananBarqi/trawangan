@@ -42,10 +42,18 @@ impl MarketService {
             "60" => "1h",
             "120" => "2h",
             "240" => "4h",
-            "d" => "1d",
-            "w" => "1w",
+            "d" | "1d" => "1d",
+            "w" | "1w" => "1w",
             "m" => "1M",
-            _ => interval,
+            "1m" => if interval == "1M" { "1M" } else { "1m" },
+            _ => {
+                if lower_interval.ends_with('d') || lower_interval.ends_with('w') {
+                    // Binance memakai lowercase untuk d dan w
+                    lower_interval.as_str()
+                } else {
+                    interval
+                }
+            }
         };
 
         let url = format!(

@@ -27,7 +27,23 @@ export interface ProviderConfig {
   is_active: boolean;
 }
 
-export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1D' | '1W';
+export type StandardTimeframe =
+  | '1m'
+  | '3m'
+  | '5m'
+  | '15m'
+  | '30m'
+  | '45m'
+  | '1h'
+  | '2h'
+  | '4h'
+  | '6h'
+  | '12h'
+  | '1D'
+  | '1W'
+  | '1M';
+
+export type Timeframe = StandardTimeframe | (string & {});
 
 export interface SymbolOption {
   symbol: string;
@@ -112,6 +128,9 @@ export interface AppSettings {
   showGrid: boolean;
   showReplayBar: boolean;
   theme: 'obsidian';
+  defaultTimeframe?: Timeframe;
+  favoriteTimeframes?: Timeframe[];
+  customTimeframes?: string[];
 }
 
 export interface StrategyPerformanceSummary {
