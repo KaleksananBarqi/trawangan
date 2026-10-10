@@ -167,5 +167,26 @@ Aplikasi ini sudah dilengkapi dengan GitHub Actions CI/CD matrix workflow (`.git
 
 ---
 
+## 🚨 Troubleshooting: Mengatasi Layar Putih (Blank Screen) Pasca-Build
+
+Jika setelah melakukan proses *build* aplikasi dibuka dan hanya menampilkan **layar putih polos (blank white screen)**, hal ini umumnya bukan karena kode grafik rusak, melainkan salah satu dari tiga kendala eksekusi berikut:
+
+> [!WARNING]
+> **Penyebab Utama & Solusi Cepat:**
+> 1. **Membuka `build/index.html` langsung via File Explorer:** Jangan klik ganda berkas HTML secara langsung. Browser memblokir modul ES dinamis SvelteKit pada protokol `file:///`. Gunakan `npm run preview`.
+> 2. **Menjalankan `cargo build` tanpa Tauri CLI:** Menjalankan `cargo build --release` mandiri akan membekukan alamat dev server `127.0.0.1:1420`. Jika dev server sedang tidak aktif, aplikasi gagal memuat halaman. Selalu gunakan `npx tauri build` untuk menyematkan bundle statis produksi.
+> 3. **Inspeksi Langsung via DevTools:** Tekan <kbd>F12</kbd> atau klik kanan dan pilih **Inspect Element** di dalam aplikasi desktop untuk memeriksa log konsol WebView2 secara langsung.
+
+### 📋 Matriks Alur Build & Eksekusi yang Benar
+
+| Target Kebutuhan | Perintah yang Benar | Hasil / Lokasi Output |
+| :--- | :--- | :--- |
+| **Pratinjau Web Bundle** (Browser) | `npm run preview` | Dibuka via `http://localhost:4173` |
+| **Build Executable Desktop Cepat** | `npx tauri build --no-bundle` | `src-tauri/target/release/tauri-app.exe` |
+| **Build Installer Lengkap (NSIS/MSI)** | `npm run tauri build` | `src-tauri/target/release/bundle/nsis/` |
+| **Menjalankan Binary Rilis Langsung** | `.\src-tauri\target\release\tauri-app.exe` | Aplikasi desktop native (dukung F12) |
+
+---
+
 ## 📄 Lisensi
 Didistribusikan di bawah lisensi terbuka **MIT License**. Lihat [LICENSE](LICENSE) untuk detail lengkap.

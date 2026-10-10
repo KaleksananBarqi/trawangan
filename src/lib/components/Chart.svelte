@@ -87,6 +87,8 @@
 
   let chartSettingsObserver: MutationObserver | null = null;
   let activeChartDefaultConfig: any = null;
+  let isApplyingLayout = false;
+  let lastAppliedLayout = '';
 
   // Koleksi handle indikator aktif
   const indicatorHandles = new Map<string, any>();
@@ -909,9 +911,19 @@
       replaySession.bindDriver(chartReplayDriver);
 
       // Dengarkan eksekusi script / kalkulasi strategi dari seluruh cell di workspace
+      let lastStrategyEmitAt = 0;
+      const STRATEGY_EMIT_THROTTLE_MS = 1500;
+
       (workspace as any).on?.('script:run', async (run: any) => {
         if (!run) return;
         if (run.kind === 'strategy' || run.strategy) {
+          const now = Date.now();
+          // Throttling: Batasi pemrosesan serialisasi trade agar tidak membanjiri event loop saat streaming tick Binance
+          if (!run.first && now - lastStrategyEmitAt < STRATEGY_EMIT_THROTTLE_MS) {
+            return;
+          }
+          lastStrategyEmitAt = now;
+
           try {
             const strat = run.strategy;
             const rawTrades = typeof run.trades === 'function' ? await run.trades() : [];
@@ -988,12 +1000,16 @@
 
       // Dengarkan pergantian cell aktif (multi-chart grid cell focus)
       (workspace as any).on?.('cell:active', (ev: any) => {
+        if (isApplyingLayout) return;
         const cur = workspace?.active;
         if (cur && onActiveCellChange) {
           const rawSym = (cur as any).symbol || symbol;
           const cleanSym = rawSym.includes(':') ? rawSym.split(':')[1] : rawSym;
           const curTf = (cur as any).timeframe || timeframe;
-          onActiveCellChange({ symbol: cleanSym, timeframe: curTf });
+          // Guard: HANYA panggil onActiveCellChange jika ada perbedaan nyata dengan props aktif
+          if (cleanSym !== symbol || curTf !== timeframe) {
+            onActiveCellChange({ symbol: cleanSym, timeframe: curTf });
+          }
           attachCellListeners(cur);
         }
       });
@@ -1091,16 +1107,21 @@
     if (isMounted && workspace && symbol) {
       try {
         const targetSym = resolveVelaSymbol(symbol, providerId);
+        let hasChanged = false;
         if (syncConfig.symbol) {
           for (const cell of workspace.cells()) {
             if (cell.symbol !== targetSym) {
               cell.setSymbol(targetSym);
+              hasChanged = true;
             }
           }
-        } else if (workspace.active) {
+        } else if (workspace.active && workspace.active.symbol !== targetSym) {
           workspace.active.setSymbol(targetSym);
+          hasChanged = true;
         }
-        restoreDrawingsForCurrentChart();
+        if (hasChanged) {
+          restoreDrawingsForCurrentChart();
+        }
       } catch (e) {
         console.warn('setSymbol error:', e);
       }
@@ -1111,16 +1132,21 @@
   $effect(() => {
     if (isMounted && workspace && timeframe) {
       try {
+        let hasChanged = false;
         if (syncConfig.timeframe) {
           for (const cell of workspace.cells()) {
             if (cell.timeframe !== timeframe) {
               cell.setTimeframe(timeframe);
+              hasChanged = true;
             }
           }
-        } else if (workspace.active) {
+        } else if (workspace.active && workspace.active.timeframe !== timeframe) {
           workspace.active.setTimeframe(timeframe);
+          hasChanged = true;
         }
-        restoreDrawingsForCurrentChart();
+        if (hasChanged) {
+          restoreDrawingsForCurrentChart();
+        }
       } catch (e) {
         console.warn('setTimeframe error:', e);
       }
@@ -1129,7 +1155,9 @@
 
   // Reaktif terhadap perubahan layout grid multi-chart
   $effect(() => {
-    if (isMounted && workspace && layout) {
+    if (isMounted && workspace && layout && layout !== lastAppliedLayout) {
+      lastAppliedLayout = layout;
+      isApplyingLayout = true;
       try {
         workspace.setLayout(layout as any);
 
@@ -1164,8 +1192,11 @@
         }
       } catch (e) {
         console.warn('setLayout error:', e);
+      } finally {
+        setTimeout(() => {
+          isApplyingLayout = false;
+        }, 60);
       }
-
     }
   });
 
@@ -1368,23 +1399,60 @@
     if (!workspace || !workspace.active) return false;
 
     try {
+      const cleanTitle = (customTitle || 'Custom Indicator').trim();
+
+      // 1. DEDUPLIKASI: Hapus instance lama dengan judul atau kode identik agar Web Worker tidak menumpuk
+      for (const [existingId, item] of indicatorHandles.entries()) {
+        if (item.title === cleanTitle || (item.source && item.source.trim() === source.trim())) {
+          const list = item.handles || (item.handle ? [item.handle] : []);
+          for (const h of list) {
+            try {
+              if (typeof h?.remove === 'function') h.remove();
+            } catch (e) {
+              console.warn('Gagal menghapus handle lama:', e);
+            }
+          }
+          indicatorHandles.delete(existingId);
+        }
+      }
+
+      // 2. Bersihkan juga secara native di seluruh cell chart jika ada indicator dengan title yang sama
       const cellMap = (workspace as any).cellsById;
       const cells = cellMap ? Array.from(cellMap.values()) : [workspace.active];
+      for (const cell of cells as any[]) {
+        if (!cell || !cell.chart || typeof cell.chart.indicators !== 'function') continue;
+        try {
+          const nativeList = cell.chart.indicators();
+          for (const ind of nativeList) {
+            if (ind && ind.title === cleanTitle) {
+              if (typeof ind.remove === 'function') ind.remove();
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 3. Tambahkan indikator ke seluruh cell dan lacak semua handles (mencegah zombie worker pada multi-cell)
+      const createdHandles: any[] = [];
       let firstHandle = null;
 
       for (const cell of cells as any[]) {
         if (!cell || !cell.chart) continue;
         const handle = cell.chart.addIndicator(source, {
           language: 'pine',
-          title: customTitle,
+          title: cleanTitle,
         });
-        if (!firstHandle && handle) firstHandle = handle;
+        if (handle) {
+          createdHandles.push(handle);
+          if (!firstHandle) firstHandle = handle;
+        }
       }
 
       if (firstHandle) {
         indicatorHandles.set(firstHandle.id, {
+          id: firstHandle.id,
           handle: firstHandle,
-          title: customTitle || firstHandle.title || 'Custom Indicator',
+          handles: createdHandles,
+          title: cleanTitle,
           source,
           visible: firstHandle.visible ?? true,
         });
@@ -1408,31 +1476,63 @@
   export function removeIndicator(id: string): void {
     const item = indicatorHandles.get(id);
     if (item) {
-      const handle = item.handle || item;
-      try {
-        if (typeof handle.remove === 'function') {
-          handle.remove();
+      const list = item.handles || (item.handle ? [item.handle] : [item]);
+      for (const h of list) {
+        try {
+          if (typeof h?.remove === 'function') {
+            h.remove();
+          }
+        } catch (e) {
+          console.warn('Gagal memanggil handle.remove:', e);
         }
-      } catch (e) {
-        console.warn('Gagal memanggil handle.remove:', e);
       }
       indicatorHandles.delete(id);
       notifyActiveIndicators();
     }
   }
 
+  export function clearAllIndicators(): void {
+    for (const [id, item] of indicatorHandles.entries()) {
+      const list = item.handles || (item.handle ? [item.handle] : [item]);
+      for (const h of list) {
+        try {
+          if (typeof h?.remove === 'function') h.remove();
+        } catch (_) {}
+      }
+    }
+    indicatorHandles.clear();
+
+    if (workspace) {
+      try {
+        const cellMap = (workspace as any).cellsById;
+        const cells = cellMap ? Array.from(cellMap.values()) : [workspace.active];
+        for (const cell of cells as any[]) {
+          if (cell?.chart && typeof cell.chart.indicators === 'function') {
+            for (const h of cell.chart.indicators()) {
+              if (typeof h?.remove === 'function') h.remove();
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    notifyActiveIndicators();
+  }
+
   export function toggleIndicatorVisibility(id: string): void {
     const item = indicatorHandles.get(id);
     if (item) {
-      const handle = item.handle || item;
-      const nextVisible = !(item.visible ?? handle.visible ?? true);
+      const nextVisible = !(item.visible ?? item.handle?.visible ?? true);
       item.visible = nextVisible;
-      try {
-        if (typeof handle.setVisible === 'function') {
-          handle.setVisible(nextVisible);
+      const list = item.handles || (item.handle ? [item.handle] : [item]);
+      for (const h of list) {
+        try {
+          if (typeof h?.setVisible === 'function') {
+            h.setVisible(nextVisible);
+          }
+        } catch (e) {
+          console.warn('Gagal memanggil handle.setVisible:', e);
         }
-      } catch (e) {
-        console.warn('Gagal memanggil handle.setVisible:', e);
       }
       notifyActiveIndicators();
     }

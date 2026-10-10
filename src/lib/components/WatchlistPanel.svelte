@@ -104,7 +104,9 @@
   async function applyWatchlistUpdate(newSymbols: string[]) {
     symbols = [...newSymbols];
     lastSyncedHash = JSON.stringify(newSymbols);
-    onWatchlistChange?.(newSymbols);
+    if (JSON.stringify(newSymbols) !== JSON.stringify(propSymbols)) {
+      onWatchlistChange?.(newSymbols);
+    }
     await saveWatchlist(newSymbols);
   }
 
@@ -118,7 +120,9 @@
         if (saved && saved.length > 0) {
           symbols = [...saved];
           lastSyncedHash = JSON.stringify(symbols);
-          onWatchlistChange?.(symbols);
+          if (JSON.stringify(saved) !== JSON.stringify(propSymbols)) {
+            onWatchlistChange?.(symbols);
+          }
         }
       }
     } catch (err) {

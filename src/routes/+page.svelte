@@ -175,7 +175,10 @@
   }
 
   let chartComponent: any = $state(null);
+  let pineEditorComponent: any = $state(null);
   let unsubTicker: (() => void) | null = null;
+  let pinePanelWidth = $state(480);
+  let isResizingPinePanel = false;
 
   // Terminal Diagnostics Logs
   let systemLogs = $state<{ time: string; msg: string; level: 'info' | 'success' | 'warn' }[]>([
@@ -210,6 +213,14 @@
         appSettings = { ...appSettings, ...parsed };
         if (appSettings.defaultTimeframe) {
           activeTimeframe = appSettings.defaultTimeframe;
+        }
+      }
+
+      const savedPineWidth = localStorage.getItem('trawangan_pine_panel_width');
+      if (savedPineWidth) {
+        const parsed = parseInt(savedPineWidth, 10);
+        if (!isNaN(parsed) && parsed >= 340 && parsed <= 900) {
+          pinePanelWidth = parsed;
         }
       }
     } catch (e) {
@@ -439,6 +450,36 @@
   function handleWorkspaceModeChange(mode: WorkspaceMode) {
     workspaceMode = mode;
     addSystemLog(`Workspace beralih ke mode: ${mode === 'terminal' ? 'Trading Terminal' : 'Pine Script IDE'}`, 'info');
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 40);
+  }
+
+  function handleStartResizePinePanel(e: PointerEvent) {
+    isResizingPinePanel = true;
+    const startX = e.clientX;
+    const startWidth = pinePanelWidth;
+
+    function onPointerMove(ev: PointerEvent) {
+      if (!isResizingPinePanel) return;
+      const deltaX = startX - ev.clientX;
+      const maxWidth = Math.min(850, window.innerWidth * 0.65);
+      const nextWidth = Math.max(340, Math.min(maxWidth, startWidth + deltaX));
+      pinePanelWidth = nextWidth;
+    }
+
+    function onPointerUp() {
+      isResizingPinePanel = false;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      try {
+        localStorage.setItem('trawangan_pine_panel_width', String(pinePanelWidth));
+      } catch (_) {}
+      window.dispatchEvent(new Event('resize'));
+    }
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
   }
 
   function handleUpdateSettings(newSettings: Partial<AppSettings>) {
@@ -621,10 +662,15 @@
     syncActiveIndicators();
   }
 
-  function handleOpenInEditor(code: string, title: string) {
+  function handleOpenInEditor(code: string, title: string, id?: string) {
     editorInitialCode = code;
     editorInitialTitle = title;
     workspaceMode = 'pine';
+    setTimeout(() => {
+      pineEditorComponent?.loadScript(code, title, id);
+      window.dispatchEvent(new Event('resize'));
+    }, 40);
+    addSystemLog(`Membuka "${title}" di Pine Script IDE.`, 'info');
   }
 
   function addSystemLog(msg: string, level: 'info' | 'success' | 'warn') {
@@ -685,132 +731,115 @@
       />
     {/if}
 
-    <!-- WORKSPACE UNIFIED PERSISTENT VIEWPORT (SINGLETON CHART INSTANCE) -->
+    <!-- WORKSPACE UNIFIED VIEWPORT (TradingView Side-by-Side: Chart | Resizer | Pine IDE or Watchlist) -->
     <div class="workspace-viewport mode-{workspaceMode}">
-      <!-- Top / Main Chart Section (Fluid Resize: 100% on terminal, ~42% on pine) -->
-      <div class="chart-section {workspaceMode === 'pine' ? 'is-pine-split' : 'is-terminal-full'}">
-        <div class="chart-canvas-area {isWatchlistOpen && workspaceMode === 'terminal' ? 'with-watchlist' : ''}">
-          <!-- Dynamic Floating Signal Badge (Tampil hanya saat mode Pine IDE) -->
-          {#if workspaceMode === 'pine'}
-            <div class="floating-strategy-badge obsidian-panel mono-nums">
-              {#if activeStrategySummary}
-                <div class="badge-item">
-                  <span class="badge-pip {activeStrategySummary.currentPosition.direction === 'long' ? 'badge-pip-bull' : activeStrategySummary.currentPosition.direction === 'short' ? 'badge-pip-bear' : ''}"></span>
-                  <span class="badge-bold">
-                    POSITION: {activeStrategySummary.currentPosition.direction.toUpperCase()}
-                    {#if activeStrategySummary.currentPosition.direction !== 'flat'}
-                      ({activeStrategySummary.currentPosition.size} {activeSymbol.replace('USDT', '')})
-                    {/if}
-                  </span>
-                </div>
-                <div class="badge-divider"></div>
-                <div class="badge-item">
-                  <span class="badge-label">NET PnL:</span>
-                  <span class="{activeStrategySummary.netProfit >= 0 ? 'badge-val-bull' : 'badge-val-bear'}">
-                    {activeStrategySummary.netProfit >= 0 ? '+' : ''}${activeStrategySummary.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    ({activeStrategySummary.netProfitPercent >= 0 ? '+' : ''}{activeStrategySummary.netProfitPercent}%)
-                  </span>
-                </div>
-                <div class="badge-divider"></div>
-                <div class="badge-item">
-                  <span class="badge-label">WIN RATE:</span>
-                  <span class="badge-val">{activeStrategySummary.winRate}%</span>
-                </div>
-                <div class="badge-divider"></div>
-                <div class="badge-item">
-                  <span class="badge-label">PF:</span>
-                  <span class="badge-val text-cyan">{activeStrategySummary.profitFactor}</span>
-                </div>
-              {:else}
-                <div class="badge-item">
-                  <span class="badge-pip-bull"></span>
-                  <span class="badge-bold text-bull">STRATEGY TESTER READY</span>
-                </div>
-                <div class="badge-divider"></div>
-                <div class="badge-item">
-                  <span class="badge-label">SYMBOL:</span>
-                  <span class="badge-val text-cyan">{activeSymbol} ({activeTimeframe})</span>
-                </div>
-              {/if}
+      <!-- Left: Chart Canvas Area (Fluid 100% minus right panel) -->
+      <div class="chart-canvas-area">
+        <!-- Dynamic Floating Signal Badge (Tampil hanya saat mode Pine IDE dan ada strategi) -->
+        {#if workspaceMode === 'pine' && activeStrategySummary}
+          <div class="floating-strategy-badge obsidian-panel mono-nums">
+            <div class="badge-item">
+              <span class="badge-pip {activeStrategySummary.currentPosition.direction === 'long' ? 'badge-pip-bull' : activeStrategySummary.currentPosition.direction === 'short' ? 'badge-pip-bear' : ''}"></span>
+              <span class="badge-bold">
+                POSITION: {activeStrategySummary.currentPosition.direction.toUpperCase()}
+                {#if activeStrategySummary.currentPosition.direction !== 'flat'}
+                  ({activeStrategySummary.currentPosition.size} {activeSymbol.replace('USDT', '')})
+                {/if}
+              </span>
             </div>
-          {/if}
+            <div class="badge-divider"></div>
+            <div class="badge-item">
+              <span class="badge-label">NET PnL:</span>
+              <span class="{activeStrategySummary.netProfit >= 0 ? 'badge-val-bull' : 'badge-val-bear'}">
+                {activeStrategySummary.netProfit >= 0 ? '+' : ''}${activeStrategySummary.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                ({activeStrategySummary.netProfitPercent >= 0 ? '+' : ''}{activeStrategySummary.netProfitPercent}%)
+              </span>
+            </div>
+            <div class="badge-divider"></div>
+            <div class="badge-item">
+              <span class="badge-label">WIN RATE:</span>
+              <span class="badge-val">{activeStrategySummary.winRate}%</span>
+            </div>
+          </div>
+        {/if}
 
-          <!-- WebGL2 Vela Chart Core (PERSISTENT SINGLETON INSTANCE) -->
-          <Chart
-            bind:this={chartComponent}
-            symbol={activeSymbol}
-            timeframe={activeTimeframe}
-            layout={workspaceMode === 'pine' ? '1' : currentLayout}
-            providerId={activeProviderId}
-            themePreset={appSettings.themePreset || 'signature'}
-            fontSize={appSettings.fontSize || 12}
-            {syncConfig}
-            showWatermark={appSettings.showWatermark}
-            onActiveIndicatorsChange={(list) => (activeIndicators = list)}
-            onActiveCellChange={handleActiveCellChange}
-            onStrategyUpdate={handleStrategyUpdate}
-            onRequestCreateAlert={handleRequestCreateAlert}
-          />
+        <!-- WebGL2 Vela Chart Core (PERSISTENT SINGLETON INSTANCE) -->
+        <Chart
+          bind:this={chartComponent}
+          symbol={activeSymbol}
+          timeframe={activeTimeframe}
+          layout={currentLayout}
+          providerId={activeProviderId}
+          themePreset={appSettings.themePreset || 'signature'}
+          fontSize={appSettings.fontSize || 12}
+          {syncConfig}
+          showWatermark={appSettings.showWatermark}
+          onActiveIndicatorsChange={(list) => (activeIndicators = list)}
+          onActiveCellChange={handleActiveCellChange}
+          onStrategyUpdate={handleStrategyUpdate}
+          onRequestCreateAlert={handleRequestCreateAlert}
+        />
 
-          <!-- Left Utility Ribbon (Drawing Tools - Hanya aktif saat mode terminal) -->
-          {#if isDrawingToolbarVisible && workspaceMode === 'terminal'}
-            <DrawingToolbar
-              activeTool={activeDrawingTool}
-              {snapMode}
-              {stayMode}
-              isLocked={isDrawingsLocked}
-              isHidden={isDrawingsHidden}
-              onSelectTool={handleSelectTool}
-              onToggleSnap={handleToggleSnap}
-              onToggleStay={handleToggleStay}
-              onToggleLock={handleToggleLock}
-              onToggleHide={handleToggleHide}
-              onUndo={handleUndo}
-              onRedo={handleRedo}
-              onClear={handleClear}
-            />
-          {/if}
-        </div>
-
-        <!-- Right Collapsible Panel (Watchlist - Hanya tampil saat mode terminal) -->
-        {#if workspaceMode === 'terminal'}
-          <WatchlistPanel
-            isOpen={isWatchlistOpen}
-            {activeSymbol}
-            {activeProviderId}
-            {watchlistSymbols}
-            {activeIndicators}
-            onSelectSymbol={handleSymbolChange}
-            onWatchlistChange={handleWatchlistChange}
-            onToggleCollapse={() => (isWatchlistOpen = !isWatchlistOpen)}
-            onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
-            onRemoveIndicator={handleRemoveIndicator}
-            onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
+        <!-- Left Utility Ribbon (Drawing Tools - Hanya aktif saat mode terminal) -->
+        {#if isDrawingToolbarVisible && workspaceMode === 'terminal'}
+          <DrawingToolbar
+            activeTool={activeDrawingTool}
+            {snapMode}
+            {stayMode}
+            isLocked={isDrawingsLocked}
+            isHidden={isDrawingsHidden}
+            onSelectTool={handleSelectTool}
+            onToggleSnap={handleToggleSnap}
+            onToggleStay={handleToggleStay}
+            onToggleLock={handleToggleLock}
+            onToggleHide={handleToggleHide}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onClear={handleClear}
           />
         {/if}
       </div>
 
-      <!-- Bottom Pane: Pine Script v6 IDE & Strategy Tester (Persistent Docked Container) -->
-      <div class="pine-docked-container {workspaceMode === 'pine' ? 'visible' : 'hidden'}">
-        <!-- Splitter Handle (1px Precision Hairline) -->
-        <div class="splitter-hairline">
-          <div class="splitter-grip"></div>
+      <!-- Right Column: Mutually Exclusive (Pine Editor vs Watchlist) -->
+      {#if workspaceMode === 'pine'}
+        <!-- Draggable Resizer Splitter -->
+        <div
+          class="side-panel-resizer"
+          title="Tarik untuk mengatur lebar Pine IDE"
+          onpointerdown={handleStartResizePinePanel}
+        >
+          <div class="resizer-grip"></div>
         </div>
 
-        <div class="pine-bottom-ide-pane">
+        <div class="side-panel-container" style="width: {pinePanelWidth}px">
           <PineEditor
-            isOpen={workspaceMode === 'pine'}
+            bind:this={pineEditorComponent}
+            isOpen={true}
             initialCode={editorInitialCode}
             initialTitle={editorInitialTitle}
             activeSymbol={activeSymbol}
             activeTimeframe={activeTimeframe}
             providerId={activeProviderId}
-            onClose={() => (workspaceMode = 'terminal')}
+            onClose={() => handleWorkspaceModeChange('terminal')}
             onAddToChart={handleAddIndicator}
             onStrategyUpdate={handleStrategyUpdate}
           />
         </div>
-      </div>
+      {:else if isWatchlistOpen}
+        <WatchlistPanel
+          isOpen={isWatchlistOpen}
+          {activeSymbol}
+          {activeProviderId}
+          {watchlistSymbols}
+          {activeIndicators}
+          onSelectSymbol={handleSymbolChange}
+          onWatchlistChange={handleWatchlistChange}
+          onToggleCollapse={() => (isWatchlistOpen = !isWatchlistOpen)}
+          onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
+          onRemoveIndicator={handleRemoveIndicator}
+          onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
+        />
+      {/if}
     </div>
   </main>
 
@@ -933,22 +962,15 @@
     position: relative;
   }
 
-  .chart-section {
+  .workspace-viewport {
     display: flex;
-    width: 100%;
-    min-height: 0;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .chart-section.is-terminal-full {
+    flex-direction: row;
     flex: 1;
+    width: 100%;
     height: 100%;
-  }
-
-  .chart-section.is-pine-split {
-    height: 42%;
-    flex-shrink: 0;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
   }
 
   .chart-canvas-area {
@@ -957,126 +979,47 @@
     width: 100%;
     height: 100%;
     min-height: 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-  }
-
-  .pine-docked-container {
-    width: 100%;
-    min-height: 0;
     overflow: hidden;
   }
 
-  .pine-docked-container.visible {
-    flex: 1;
-    height: 58%;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .pine-docked-container.hidden {
-    display: none;
-    height: 0;
-  }
-
-  .floating-strategy-badge {
-    position: absolute;
-    top: 10px;
-    left: 12px;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 4px 10px;
-    border-radius: var(--radius-xs);
-    font-size: 10px;
-    background-color: rgba(18, 23, 33, 0.92);
-    border: 1px solid var(--border-hairline);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-    pointer-events: none;
-  }
-
-  .badge-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .badge-pip-bull {
+  /* Draggable Splitter Handle between Chart and Pine IDE */
+  .side-panel-resizer {
     width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background-color: var(--bull-color);
-    box-shadow: 0 0 6px var(--bull-color);
-  }
-
-  .badge-pip-bear {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background-color: var(--bear-color);
-    box-shadow: 0 0 6px var(--bear-color);
-  }
-
-  .badge-bold {
-    font-weight: 700;
-    color: var(--text-main);
-  }
-
-  .badge-label {
-    color: var(--text-dim);
-  }
-
-  .badge-val-bull {
-    color: var(--bull-color);
-    font-weight: 700;
-  }
-
-  .badge-val-bear {
-    color: var(--bear-color);
-    font-weight: 700;
-  }
-
-  .badge-val {
-    color: var(--brand-primary);
-    font-weight: 600;
-  }
-
-  .badge-divider {
-    width: 1px;
-    height: 10px;
-    background-color: var(--border-hairline);
-  }
-
-  .splitter-hairline {
-    height: 4px;
-    background-color: var(--bg-container);
-    border-top: 1px solid var(--border-hairline);
-    border-bottom: 1px solid var(--border-hairline);
-    cursor: row-resize;
+    height: 100%;
+    background-color: var(--bg-container, #0E121A);
+    border-left: 1px solid var(--border-hairline, #1E293B);
+    border-right: 1px solid var(--border-hairline, #1E293B);
+    cursor: col-resize;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    z-index: 25;
     transition: background-color 0.15s ease;
   }
 
-  .splitter-hairline:hover {
-    background-color: var(--brand-primary);
+  .side-panel-resizer:hover,
+  .side-panel-resizer:active {
+    background-color: var(--bull-color, #00F090);
   }
 
-  .splitter-grip {
-    width: 32px;
-    height: 2px;
-    border-radius: 2px;
-    background-color: var(--border-bright);
+  .resizer-grip {
+    width: 1px;
+    height: 24px;
+    background-color: var(--border-bright, #334155);
   }
 
-  .pine-bottom-ide-pane {
-    flex: 1;
-    width: 100%;
+  .side-panel-container {
+    height: 100%;
     min-height: 0;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
+    z-index: 20;
   }
 
   /* Console Drawer [Ctrl+`] */

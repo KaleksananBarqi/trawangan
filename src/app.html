@@ -1,13 +1,52 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="background-color: #0F0F0F; color: #F7F7F7;">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/no background.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>trawangan · Professional Crypto Charting Terminal</title>
+    <style>
+      html, body {
+        background-color: #0F0F0F;
+        color: #F7F7F7;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+    </style>
+    <script>
+      // Penangkap error runtime darurat untuk mendeteksi kendala inisialisasi WebView2 / Svelte
+      window.addEventListener('error', function(event) {
+        console.error('[TRAWANGAN_STARTUP_ERROR]', event.error || event.message);
+        var errBanner = document.getElementById('startup-error-card');
+        if (!errBanner) {
+          errBanner = document.createElement('div');
+          errBanner.id = 'startup-error-card';
+          errBanner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;background:#18181B;border:1px solid #EF4444;color:#FCA5A5;padding:12px 16px;font-family:monospace;font-size:12px;z-index:999999;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,0.6);white-space:pre-wrap;';
+          document.body.appendChild(errBanner);
+        }
+        var msg = (event.error && (event.error.stack || event.error.message)) || event.message || 'Unknown startup error';
+        errBanner.innerText = '⚠️ Trawangan Startup Error:\n' + msg;
+      });
+
+      window.addEventListener('unhandledrejection', function(event) {
+        console.error('[TRAWANGAN_UNHANDLED_REJECTION]', event.reason);
+        var errBanner = document.getElementById('startup-error-card');
+        if (!errBanner) {
+          errBanner = document.createElement('div');
+          errBanner.id = 'startup-error-card';
+          errBanner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;background:#18181B;border:1px solid #EF4444;color:#FCA5A5;padding:12px 16px;font-family:monospace;font-size:12px;z-index:999999;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,0.6);white-space:pre-wrap;';
+          document.body.appendChild(errBanner);
+        }
+        var msg = (event.reason && (event.reason.stack || event.reason.message || event.reason)) || 'Unknown promise rejection';
+        errBanner.innerText = '⚠️ Trawangan Unhandled Rejection:\n' + msg;
+      });
+    </script>
     %sveltekit.head%
   </head>
-  <body data-sveltekit-preload-data="hover">
+  <body style="background-color: #0F0F0F; color: #F7F7F7;" data-sveltekit-preload-data="hover">
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

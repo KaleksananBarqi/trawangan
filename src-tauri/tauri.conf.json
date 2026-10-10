@@ -5,19 +5,21 @@
   "identifier": "com.trawangan.app",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://127.0.0.1:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../build"
   },
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "trawangan · Crypto Charting Terminal",
         "width": 1360,
         "height": 860,
         "minWidth": 960,
         "minHeight": 640,
-        "theme": "Dark"
+        "theme": "Dark",
+        "devtools": true
       }
     ],
     "security": {
