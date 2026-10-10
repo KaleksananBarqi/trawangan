@@ -27,6 +27,8 @@
   import { sendTestNotification } from '../services/systemNotificationService';
   import type { AppSettings, ProviderConfig } from '../types/market';
   import { marketFeed } from '../services/market';
+  import { telemetryService, type TelemetryData } from '../services/telemetryService';
+  import { onDestroy } from 'svelte';
 
   const ALL_AVAILABLE_TIMEFRAMES = [
     { id: '1m', label: '1m' },
@@ -86,10 +88,8 @@
   let testFeedback = $state<{ success: boolean; message: string } | null>(null);
 
   // ─── Telemetri Hardware WebGL2 Real-Time ───
-  let fps = $state(120);
-  let vram = $state('82 MB');
-  let l2Latency = $state('180 µs');
-  let droppedPackets = $state(0);
+  let telemetry = $state<TelemetryData>(telemetryService.getSnapshot());
+  let unsubTelemetry: (() => void) | null = null;
 
   // ─── Feedback Tes Notifikasi Windows ───
   let testNotificationFeedback = $state<string | null>(null);
@@ -110,7 +110,19 @@
   $effect(() => {
     if (isOpen) {
       loadProviders();
+      unsubTelemetry = telemetryService.subscribe((data) => {
+        telemetry = data;
+      });
+    } else {
+      if (unsubTelemetry) {
+        unsubTelemetry();
+        unsubTelemetry = null;
+      }
     }
+  });
+
+  onDestroy(() => {
+    if (unsubTelemetry) unsubTelemetry();
   });
 
   $effect(() => {
@@ -773,26 +785,28 @@
               <div class="telemetry-grid mono-nums">
                 <div class="telemetry-card">
                   <span class="card-label">Target Rendering</span>
-                  <span class="card-value text-bull">{fps} FPS</span>
-                  <span class="card-sub">LuxAlgo Vela WebGL2</span>
+                  <span class="card-value {telemetry.fps >= 55 ? 'text-bull' : telemetry.fps >= 30 ? 'text-amber' : 'text-bear'}">{telemetry.fps} FPS</span>
+                  <span class="card-sub">Actual Canvas Frame Rate</span>
                 </div>
 
                 <div class="telemetry-card">
-                  <span class="card-label">Estimasi VRAM Buffer</span>
-                  <span class="card-value">{vram}</span>
-                  <span class="card-sub">Zero Heap Thrash</span>
+                  <span class="card-label">Estimasi RAM Buffer</span>
+                  <span class="card-value">{telemetry.memoryMb.toFixed(1)} MB</span>
+                  <span class="card-sub">{telemetry.nativeProcessMb ? 'Windows Working Set' : 'JS Heap Memory'}</span>
                 </div>
 
                 <div class="telemetry-card">
-                  <span class="card-label">L2 Network Latency</span>
-                  <span class="card-value text-cyan">{l2Latency}</span>
-                  <span class="card-sub">Direct Streams</span>
+                  <span class="card-label">Network Latency (Ping)</span>
+                  <span class="card-value {telemetry.isOnline && telemetry.latencyMs !== null ? 'text-cyan' : 'text-bear'}">
+                    {telemetry.isOnline && telemetry.latencyMs !== null ? `${telemetry.latencyMs} ms` : 'Offline / Timeout'}
+                  </span>
+                  <span class="card-sub">RTT to {telemetry.providerName}</span>
                 </div>
 
                 <div class="telemetry-card">
                   <span class="card-label">Packet Drop Health</span>
-                  <span class="card-value">{droppedPackets} Dropped</span>
-                  <span class="card-sub">Zero loss buffering</span>
+                  <span class="card-value {telemetry.packetDrops > 0 ? 'text-amber' : ''}">{telemetry.packetDrops} Gagal / Drop</span>
+                  <span class="card-sub">{telemetry.packetDrops === 0 ? 'Zero connection loss' : 'Detected drops'}</span>
                 </div>
               </div>
 

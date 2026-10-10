@@ -9,8 +9,10 @@
     ChevronUp,
     ChevronDown,
     Activity,
-    Wifi
+    Wifi,
+    Zap
   } from '@lucide/svelte';
+  import { telemetryService, type TelemetryData } from '../services/telemetryService';
 
   interface Props {
     isConsoleOpen: boolean;
@@ -21,6 +23,8 @@
 
   let currentTime = $state('');
   let timeInterval: any = null;
+  let telemetry = $state<TelemetryData>(telemetryService.getSnapshot());
+  let unsubTelemetry: (() => void) | null = null;
 
   function updateClock() {
     const now = new Date();
@@ -30,26 +34,23 @@
   onMount(() => {
     updateClock();
     timeInterval = setInterval(updateClock, 1000);
+    unsubTelemetry = telemetryService.subscribe((data) => {
+      telemetry = data;
+    });
   });
 
   onDestroy(() => {
     if (timeInterval) clearInterval(timeInterval);
+    if (unsubTelemetry) unsubTelemetry();
   });
 </script>
 
 <footer class="system-status-bar">
-  <!-- Left Telemetry Cluster -->
+  <!-- Left Telemetry Cluster: Sistem Dasar -->
   <div class="left-cluster">
     <div class="telemetry-pill">
       <span class="live-pip"></span>
       <span class="pill-text font-bold">Engine: NATIVE_SYS_X64</span>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="telemetry-pill">
-      <span class="icon-dim"><HardDrive size={12} /></span>
-      <span class="pill-text mono-nums">RAM: ~46MB / Ultra Lightweight</span>
     </div>
 
     <div class="divider"></div>
@@ -67,15 +68,58 @@
     </div>
   </div>
 
-  <!-- Right Time & Console Toggle Cluster -->
+  <!-- Right Time & Real-Time Performance Cluster -->
   <div class="right-cluster">
-    <div class="telemetry-pill mono-nums">
-      <span class="icon-dim"><Clock size={12} /></span>
-      <span class="pill-text">{currentTime} WIB (UTC+7)</span>
+    <!-- Real-Time FPS Metric -->
+    <div
+      class="telemetry-pill interactive mono-nums"
+      title="Actual WebGL2 Render Frame Rate: {telemetry.fps} FPS"
+    >
+      <span class="icon-dim"><Zap size={11} class={telemetry.fps >= 55 ? 'text-bull' : telemetry.fps >= 30 ? 'text-amber' : 'text-bear'} /></span>
+      <span class="pill-badge {telemetry.fps >= 55 ? 'badge-bull' : telemetry.fps >= 30 ? 'badge-amber' : 'badge-bear'}">
+        {telemetry.fps} FPS
+      </span>
     </div>
 
     <div class="divider"></div>
 
+    <!-- Real-Time Network Latency (Ping) Metric -->
+    <div
+      class="telemetry-pill interactive mono-nums"
+      title="Round-Trip Ping ke {telemetry.providerName}: {telemetry.latencyMs !== null ? `${telemetry.latencyMs} ms` : 'Offline / Timeout'} (Packet Drops: {telemetry.packetDrops})"
+    >
+      <span class="icon-dim"><Wifi size={11} class={!telemetry.isOnline ? 'text-bear' : (telemetry.latencyMs || 0) > 150 ? 'text-amber' : 'text-cyan'} /></span>
+      {#if telemetry.isOnline && telemetry.latencyMs !== null}
+        <span class="pill-text {telemetry.latencyMs > 150 ? 'text-amber' : 'text-cyan'}">
+          {telemetry.latencyMs}ms
+        </span>
+      {:else}
+        <span class="pill-badge badge-bear">OFFLINE</span>
+      {/if}
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Real-Time RAM Usage Metric -->
+    <div
+      class="telemetry-pill interactive mono-nums"
+      title="Pemakaian RAM Real-Time: {telemetry.nativeProcessMb ? `Working Set Windows: ${telemetry.nativeProcessMb} MB` : ''}{telemetry.jsHeapMb ? ` (JS Heap: ${telemetry.jsHeapMb} MB)` : ''}"
+    >
+      <span class="icon-dim"><HardDrive size={11} /></span>
+      <span class="pill-text">RAM: {telemetry.memoryMb.toFixed(1)}MB</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Clock -->
+    <div class="telemetry-pill mono-nums">
+      <span class="icon-dim"><Clock size={11} /></span>
+      <span class="pill-text">{currentTime} WIB</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Terminal Log Button -->
     <button
       class="terminal-log-btn {isConsoleOpen ? 'active' : ''}"
       title="Buka / Tutup Terminal Logs [Ctrl+`]"
@@ -150,6 +194,52 @@
 
   .text-bull {
     color: var(--bull-color);
+  }
+
+  .text-bear {
+    color: var(--bear-color);
+  }
+
+  .text-amber {
+    color: #f59e0b;
+  }
+
+  .text-cyan {
+    color: #38bdf8;
+  }
+
+  .interactive {
+    cursor: default;
+    transition: opacity 0.15s ease;
+  }
+
+  .interactive:hover {
+    opacity: 0.85;
+  }
+
+  .pill-badge {
+    padding: 1px 4px;
+    border-radius: var(--radius-xs, 3px);
+    font-weight: 700;
+    font-size: 9.5px;
+  }
+
+  .badge-bull {
+    color: var(--bull-color);
+    background-color: rgba(0, 240, 144, 0.1);
+    border: 1px solid rgba(0, 240, 144, 0.25);
+  }
+
+  .badge-amber {
+    color: #f59e0b;
+    background-color: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+  }
+
+  .badge-bear {
+    color: var(--bear-color);
+    background-color: rgba(255, 68, 88, 0.1);
+    border: 1px solid rgba(255, 68, 88, 0.25);
   }
 
   .divider {

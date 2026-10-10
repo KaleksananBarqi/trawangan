@@ -15,6 +15,7 @@
   import { alertService } from '../lib/services/alertService';
   import { ensureNotificationPermission } from '../lib/services/systemNotificationService';
   import { marketFeed } from '../lib/services/market';
+  import { telemetryService } from '../lib/services/telemetryService';
   import { replaySession, type ReplaySnapshot } from '../lib/services/replay';
   import type {
     TickerInfo,
@@ -203,7 +204,10 @@
     });
 
     marketFeed.getActiveProviderId().then((pId) => {
-      if (pId) activeProviderId = pId;
+      if (pId) {
+        activeProviderId = pId;
+        telemetryService.setActiveProvider(pId);
+      }
     });
 
     loadWatchlist().then((list) => {
@@ -420,6 +424,7 @@
   function handleProviderChange(newProviderId: string) {
     activeProviderId = newProviderId;
     marketFeed.setActiveProvider(newProviderId);
+    telemetryService.setActiveProvider(newProviderId);
     addSystemLog(`Data provider beralih ke: ${newProviderId.toUpperCase()}`, 'success');
   }
 

@@ -192,4 +192,65 @@ pub fn save_user_watchlist(
     save_watchlist(&conn, &symbols).map_err(|e| e.to_string())
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct ProcessMemoryInfo {
+    pub working_set_bytes: usize,
+    pub private_bytes: usize,
+}
+
+#[tauri::command]
+pub fn get_process_memory() -> Result<ProcessMemoryInfo, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::mem::size_of;
+        use std::os::raw::c_void;
+
+        #[repr(C)]
+        struct ProcessMemoryCounters {
+            cb: u32,
+            page_fault_count: u32,
+            peak_working_set_size: usize,
+            working_set_size: usize,
+            quota_peak_paged_pool_usage: usize,
+            quota_paged_pool_usage: usize,
+            quota_peak_non_paged_pool_usage: usize,
+            quota_non_paged_pool_usage: usize,
+            pagefile_usage: usize,
+            peak_pagefile_usage: usize,
+        }
+
+        #[link(name = "psapi")]
+        extern "system" {
+            fn GetCurrentProcess() -> *mut c_void;
+            fn GetProcessMemoryInfo(
+                process: *mut c_void,
+                counters: *mut ProcessMemoryCounters,
+                cb: u32,
+            ) -> i32;
+        }
+
+        unsafe {
+            let mut pmc: ProcessMemoryCounters = std::mem::zeroed();
+            pmc.cb = size_of::<ProcessMemoryCounters>() as u32;
+            let handle = GetCurrentProcess();
+            if GetProcessMemoryInfo(handle, &mut pmc, pmc.cb) != 0 {
+                Ok(ProcessMemoryInfo {
+                    working_set_bytes: pmc.working_set_size,
+                    private_bytes: pmc.pagefile_usage,
+                })
+            } else {
+                Err("Gagal membaca memori proses via GetProcessMemoryInfo".to_string())
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(ProcessMemoryInfo {
+            working_set_bytes: 0,
+            private_bytes: 0,
+        })
+    }
+}
+
+
 
