@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import {
     History,
     Play,
@@ -11,36 +12,57 @@
     Clock,
     Layers
   } from '@lucide/svelte';
+  import { replaySession, type ReplaySnapshot } from '../services/replay';
 
   interface Props {
-    isPlaying: boolean;
-    playbackSpeed: number;
+    onOpenDatePicker?: () => void;
+    onClose?: () => void;
+    // Opsi override jika caller ingin mengendalikan secara manual
+    isPlaying?: boolean;
+    playbackSpeed?: number;
     isSelectingBar?: boolean;
     currentBarTime?: number | null;
     remainingBars?: number;
     onToggleSelectBar?: () => void;
-    onOpenDatePicker?: () => void;
-    onTogglePlay: () => void;
-    onStepForward: () => void;
-    onSelectSpeed: (speed: number) => void;
-    onClose: () => void;
+    onTogglePlay?: () => void;
+    onStepForward?: () => void;
+    onSelectSpeed?: (speed: number) => void;
     onRewind?: () => void;
   }
 
   let {
-    isPlaying,
-    playbackSpeed,
-    isSelectingBar = false,
-    currentBarTime = null,
-    remainingBars = 0,
-    onToggleSelectBar,
     onOpenDatePicker,
-    onTogglePlay,
-    onStepForward,
-    onSelectSpeed,
     onClose,
-    onRewind,
+    isPlaying: propIsPlaying,
+    playbackSpeed: propPlaybackSpeed,
+    isSelectingBar: propIsSelectingBar,
+    currentBarTime: propCurrentBarTime,
+    remainingBars: propRemainingBars,
+    onToggleSelectBar: propOnToggleSelectBar,
+    onTogglePlay: propOnTogglePlay,
+    onStepForward: propOnStepForward,
+    onSelectSpeed: propOnSelectSpeed,
+    onRewind: propOnRewind,
   }: Props = $props();
+
+  let sessionSnap = $state<ReplaySnapshot>(replaySession.getSnapshot());
+  let unsub: (() => void) | null = null;
+
+  onMount(() => {
+    unsub = replaySession.subscribe((snap) => {
+      sessionSnap = snap;
+    });
+  });
+
+  onDestroy(() => {
+    if (unsub) unsub();
+  });
+
+  let isPlaying = $derived(propIsPlaying !== undefined ? propIsPlaying : sessionSnap.isPlaying);
+  let playbackSpeed = $derived(propPlaybackSpeed !== undefined ? propPlaybackSpeed : sessionSnap.playbackSpeed);
+  let isSelectingBar = $derived(propIsSelectingBar !== undefined ? propIsSelectingBar : sessionSnap.isSelectingBar);
+  let currentBarTime = $derived(propCurrentBarTime !== undefined ? propCurrentBarTime : sessionSnap.cursorTime);
+  let remainingBars = $derived(propRemainingBars !== undefined ? propRemainingBars : sessionSnap.remainingBars);
 
   const speeds = [0.2, 0.5, 1, 3, 5, 10];
 
@@ -55,6 +77,58 @@
       minute: '2-digit',
       hour12: false,
     });
+  }
+
+  function handleToggleSelectBar() {
+    if (propOnToggleSelectBar) {
+      propOnToggleSelectBar();
+    } else {
+      if (sessionSnap.isSelectingBar) {
+        replaySession.cancelBarSelection();
+      } else {
+        replaySession.enableBarSelection();
+      }
+    }
+  }
+
+  function handleTogglePlay() {
+    if (propOnTogglePlay) {
+      propOnTogglePlay();
+    } else {
+      replaySession.togglePlay();
+    }
+  }
+
+  function handleStepForward() {
+    if (propOnStepForward) {
+      propOnStepForward();
+    } else {
+      replaySession.step();
+    }
+  }
+
+  function handleSelectSpeed(s: number) {
+    if (propOnSelectSpeed) {
+      propOnSelectSpeed(s);
+    } else {
+      replaySession.setSpeed(s);
+    }
+  }
+
+  function handleRewind() {
+    if (propOnRewind) {
+      propOnRewind();
+    } else {
+      replaySession.rewind();
+    }
+  }
+
+  function handleClose() {
+    if (onClose) {
+      onClose();
+    } else {
+      replaySession.close();
+    }
   }
 </script>
 
@@ -86,16 +160,14 @@
   <div class="group-center">
     <!-- Cut-off & Date Selection Tools -->
     <div class="selection-tools">
-      {#if onToggleSelectBar}
-        <button
-          class="tool-btn {isSelectingBar ? 'active-cutter' : ''}"
-          title={isSelectingBar ? 'Batalkan Pemilihan Bar' : 'Pilih Lilin di Grafik (Gunting Titik Replay)'}
-          onclick={onToggleSelectBar}
-        >
-          <Scissors size={12} />
-          <span>{isSelectingBar ? 'Klik Lilin...' : 'Pilih Bar'}</span>
-        </button>
-      {/if}
+      <button
+        class="tool-btn {isSelectingBar ? 'active-cutter' : ''}"
+        title={isSelectingBar ? 'Batalkan Pemilihan Bar' : 'Pilih Lilin di Grafik (Gunting Titik Replay)'}
+        onclick={handleToggleSelectBar}
+      >
+        <Scissors size={12} />
+        <span>{isSelectingBar ? 'Klik Lilin...' : 'Pilih Bar'}</span>
+      </button>
 
       {#if onOpenDatePicker}
         <button
@@ -113,20 +185,18 @@
 
     <!-- Playback Control Buttons -->
     <div class="playback-buttons">
-      {#if onRewind}
-        <button
-          class="step-btn"
-          title="Kembali ke titik awal cut-off (Rewind)"
-          onclick={onRewind}
-        >
-          <RotateCcw size={12} />
-        </button>
-      {/if}
+      <button
+        class="step-btn"
+        title="Kembali ke titik awal cut-off (Rewind)"
+        onclick={handleRewind}
+      >
+        <RotateCcw size={12} />
+      </button>
 
       <button
         class="play-btn {isPlaying ? 'playing' : ''}"
         title={isPlaying ? 'Jeda Replay (Space)' : 'Mulai Replay (Space)'}
-        onclick={onTogglePlay}
+        onclick={handleTogglePlay}
       >
         {#if isPlaying}
           <Pause size={12} />
@@ -138,7 +208,7 @@
       <button
         class="step-btn"
         title="Langkah +1 Bar ke depan (Panah Kanan)"
-        onclick={onStepForward}
+        onclick={handleStepForward}
       >
         <SkipForward size={12} />
       </button>
@@ -152,7 +222,7 @@
       {#each speeds as s}
         <button
           class="speed-chip {playbackSpeed === s ? 'active' : ''}"
-          onclick={() => onSelectSpeed(s)}
+          onclick={() => handleSelectSpeed(s)}
         >
           {s}x
         </button>
@@ -162,7 +232,7 @@
 
   <!-- Right: Close Button -->
   <div class="group-right">
-    <button class="close-replay-btn" title="Keluar dari Bar Replay (Kembali ke Live)" onclick={onClose}>
+    <button class="close-replay-btn" title="Keluar dari Bar Replay (Kembali ke Live)" onclick={handleClose}>
       <X size={13} />
       <span class="close-text">Keluar</span>
     </button>

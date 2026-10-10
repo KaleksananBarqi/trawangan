@@ -15,6 +15,7 @@
   import { alertService } from '../lib/services/alertService';
   import { ensureNotificationPermission } from '../lib/services/systemNotificationService';
   import { marketFeed } from '../lib/services/market';
+  import { replaySession, type ReplaySnapshot } from '../lib/services/replay';
   import type {
     TickerInfo,
     Timeframe,
@@ -74,7 +75,6 @@
   let isIndicatorModalOpen = $state(false);
   let isDrawingToolbarVisible = $state(true);
   let isWatchlistOpen = $state(true);
-  let isReplayActive = $state(false);
   let isConsoleDrawerOpen = $state(false);
 
   // Price Alerts Modals & Toast State
@@ -93,15 +93,9 @@
     triggeredAlertsToasts = triggeredAlertsToasts.filter((a) => a.id !== id);
   }
 
-  // Replay State
-  let isReplayPlaying = $state(false);
-  let replayPlaybackSpeed = $state(1);
-  let isReplaySelectingBar = $state(false);
+  // Deep Replay Session Reactive State
+  let replaySnapshot = $state<ReplaySnapshot>(replaySession.getSnapshot());
   let isReplayDatePickerOpen = $state(false);
-  let replayCurrentBarTime = $state<number | null>(null);
-  let replayRemainingBars = $state(0);
-  let replayCutoffTime = $state<number | null>(null);
-  let replayBounds = $state<{ first: number; last: number } | null>(null);
 
   // Drawing Tools State
   let activeDrawingTool = $state<DrawingToolType | null>('cursor');
@@ -158,6 +152,7 @@
   ]);
 
   let unsubAlertTrigger: (() => void) | null = null;
+  let unsubReplay: (() => void) | null = null;
 
   $effect(() => {
     if (activeSymbol) {
@@ -169,6 +164,10 @@
   });
 
   onMount(() => {
+    unsubReplay = replaySession.subscribe((snap) => {
+      replaySnapshot = snap;
+    });
+
     // Muat preferensi aplikasi tersimpan dari localStorage
     try {
       const savedSettings = localStorage.getItem('trawangan_app_settings');
@@ -292,15 +291,15 @@
       }
 
       // Replay Keyboard Controls (Space untuk play/pause, ArrowRight untuk step)
-      if (isReplayActive && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+      if (replaySnapshot.active && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         if (e.code === 'Space') {
           e.preventDefault();
-          handleReplayTogglePlay();
+          replaySession.togglePlay();
           return;
         }
         if (e.code === 'ArrowRight') {
           e.preventDefault();
-          handleReplayStepForward();
+          replaySession.step();
           return;
         }
       }
@@ -315,9 +314,8 @@
           return;
         }
         if (e.key === 'Escape') {
-          if (isReplaySelectingBar) {
-            isReplaySelectingBar = false;
-            chartComponent?.cancelCutoffSelection();
+          if (replaySnapshot.isSelectingBar) {
+            replaySession.cancelBarSelection();
             addSystemLog('Mode pemilihan bar dibatalkan.', 'info');
             return;
           }
@@ -354,6 +352,7 @@
   onDestroy(() => {
     if (unsubTicker) unsubTicker();
     if (unsubAlertTrigger) unsubAlertTrigger();
+    if (unsubReplay) unsubReplay();
   });
 
   function handleSymbolChange(newSym: string) {
@@ -514,61 +513,19 @@
     }
   }
 
-  // ─── Bar Replay Handlers ───
-  async function handleToggleReplay() {
-    isReplayActive = !isReplayActive;
-    if (isReplayActive) {
-      isReplayPlaying = false;
-      if (chartComponent) {
-        replayBounds = chartComponent.getReplayBounds();
-        isReplaySelectingBar = true;
-        chartComponent.enableCutoffSelection();
-        addSystemLog('Bar Replay aktif. Klik candle pada grafik atau pilih tanggal untuk mulai.', 'info');
-      }
+  // ─── Bar Replay Handlers (Didelegasikan ke Modul Deep replaySession) ───
+  function handleToggleReplay() {
+    if (replaySnapshot.active) {
+      replaySession.close();
+      addSystemLog('Bar Replay dinonaktifkan. Kembali ke streaming live.', 'info');
     } else {
-      isReplayPlaying = false;
-      isReplaySelectingBar = false;
-      if (chartComponent) {
-        chartComponent.stopReplay();
-        addSystemLog('Bar Replay dinonaktifkan. Kembali ke streaming live.', 'info');
-      }
+      replaySession.open();
+      addSystemLog('Bar Replay aktif. Klik candle pada grafik atau pilih tanggal untuk mulai.', 'info');
     }
   }
 
-  function handleToggleSelectBar() {
-    isReplaySelectingBar = !isReplaySelectingBar;
-    if (chartComponent) {
-      if (isReplaySelectingBar) {
-        chartComponent.enableCutoffSelection();
-        addSystemLog('Mode pilih bar aktif. Klik salah satu candle pada grafik.', 'info');
-      } else {
-        chartComponent.cancelCutoffSelection();
-        addSystemLog('Mode pilih bar dinonaktifkan.', 'info');
-      }
-    }
-  }
-
-  function handleCutoffBarSelected(timestamp: number) {
-    isReplaySelectingBar = false;
-    replayCutoffTime = timestamp;
-    replayCurrentBarTime = timestamp;
-    const formatted = new Date(timestamp).toLocaleString('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    addSystemLog(`Bar Replay dipotong di candle: ${formatted}. Siap diputar.`, 'success');
-  }
-
-  async function handleSelectDate(timestamp: number) {
-    isReplaySelectingBar = false;
-    replayCutoffTime = timestamp;
-    replayCurrentBarTime = timestamp;
-    if (chartComponent) {
-      await chartComponent.startReplay(timestamp);
-    }
+  function handleSelectDate(timestamp: number) {
+    replaySession.setCutoff(timestamp);
     const formatted = new Date(timestamp).toLocaleString('id-ID', {
       day: '2-digit',
       month: 'short',
@@ -577,72 +534,6 @@
       minute: '2-digit',
     });
     addSystemLog(`Bar Replay melompat ke tanggal: ${formatted}.`, 'success');
-  }
-
-  function handleReplayStateChange(state: {
-    active: boolean;
-    playing: boolean;
-    cursorTime: number | null;
-    remaining: number;
-    bounds: { first: number; last: number } | null;
-  }) {
-    isReplayPlaying = state.playing;
-    replayCurrentBarTime = state.cursorTime;
-    replayRemainingBars = state.remaining;
-    if (state.bounds) {
-      replayBounds = state.bounds;
-    }
-  }
-
-  function handleReplayTogglePlay() {
-    isReplayPlaying = !isReplayPlaying;
-    if (chartComponent) {
-      if (isReplayPlaying) {
-        chartComponent.playReplay(replayPlaybackSpeed);
-        addSystemLog(`Replay memutar candle (${replayPlaybackSpeed}x).`, 'info');
-      } else {
-        chartComponent.pauseReplay();
-        addSystemLog('Replay dijeda.', 'info');
-      }
-    }
-  }
-
-  function handleReplayStepForward() {
-    if (chartComponent) {
-      chartComponent.stepReplay();
-      addSystemLog('Replay step +1 bar ke depan.', 'info');
-    }
-  }
-
-  function handleReplaySpeedChange(speed: number) {
-    replayPlaybackSpeed = speed;
-    if (chartComponent && isReplayPlaying) {
-      chartComponent.playReplay(speed);
-    }
-    addSystemLog(`Kecepatan replay diatur ke ${speed}x.`, 'info');
-  }
-
-  async function handleReplayRewind() {
-    if (chartComponent) {
-      isReplayPlaying = false;
-      chartComponent.pauseReplay();
-      if (replayCutoffTime) {
-        await chartComponent.startReplay(replayCutoffTime);
-      } else {
-        await chartComponent.startReplay();
-      }
-      addSystemLog('Replay di-rewind kembali ke titik cut-off.', 'info');
-    }
-  }
-
-  function handleCloseReplay() {
-    isReplayActive = false;
-    isReplayPlaying = false;
-    isReplaySelectingBar = false;
-    if (chartComponent) {
-      chartComponent.stopReplay();
-    }
-    addSystemLog('Bar Replay ditutup. Kembali ke data pasar live.', 'info');
   }
 
   // ─── Indicators & Pine Script Handlers ───
@@ -705,7 +596,7 @@
     {activeIndicators}
     {isDrawingToolbarVisible}
     {isWatchlistOpen}
-    {isReplayActive}
+    isReplayActive={replaySnapshot.active}
     {watchlistSymbols}
     {quickSymbolsConfig}
     onQuickSymbolsConfigChange={handleQuickSymbolsConfigChange}
@@ -732,20 +623,13 @@
   <!-- Main Viewport Area -->
   <main class="main-workspace {workspaceMode}">
     <!-- Optional Bar Replay Controller (Only visible when active) -->
-    {#if isReplayActive}
+    {#if replaySnapshot.active}
       <ReplayBar
-        isPlaying={isReplayPlaying}
-        playbackSpeed={replayPlaybackSpeed}
-        isSelectingBar={isReplaySelectingBar}
-        currentBarTime={replayCurrentBarTime}
-        remainingBars={replayRemainingBars}
-        onToggleSelectBar={handleToggleSelectBar}
         onOpenDatePicker={() => (isReplayDatePickerOpen = true)}
-        onTogglePlay={handleReplayTogglePlay}
-        onStepForward={handleReplayStepForward}
-        onSelectSpeed={handleReplaySpeedChange}
-        onRewind={handleReplayRewind}
-        onClose={handleCloseReplay}
+        onClose={() => {
+          replaySession.close();
+          addSystemLog('Bar Replay ditutup. Kembali ke data pasar live.', 'info');
+        }}
       />
     {/if}
 
@@ -767,9 +651,6 @@
             showWatermark={appSettings.showWatermark}
             onActiveIndicatorsChange={(list) => (activeIndicators = list)}
             onActiveCellChange={handleActiveCellChange}
-            onReplayStateChange={handleReplayStateChange}
-            onCutoffSelected={handleCutoffBarSelected}
-            onCutoffCancelled={() => (isReplaySelectingBar = false)}
             onRequestCreateAlert={handleRequestCreateAlert}
           />
 
@@ -867,9 +748,6 @@
             {syncConfig}
             onActiveIndicatorsChange={(list) => (activeIndicators = list)}
             onActiveCellChange={handleActiveCellChange}
-            onReplayStateChange={handleReplayStateChange}
-            onCutoffSelected={handleCutoffBarSelected}
-            onCutoffCancelled={() => (isReplaySelectingBar = false)}
             onStrategyUpdate={handleStrategyUpdate}
             onRequestCreateAlert={handleRequestCreateAlert}
           />
@@ -954,8 +832,8 @@
   <!-- Replay Jump to Date Modal -->
   <ReplayDatePickerModal
     isOpen={isReplayDatePickerOpen}
-    bounds={replayBounds}
-    currentBarTime={replayCurrentBarTime}
+    bounds={replaySnapshot.bounds}
+    currentBarTime={replaySnapshot.cursorTime}
     onSelectDate={handleSelectDate}
     onClose={() => (isReplayDatePickerOpen = false)}
   />

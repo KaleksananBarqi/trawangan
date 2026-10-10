@@ -1,22 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Calendar, Clock, X, Check, History, Sparkles, ArrowRight } from '@lucide/svelte';
+  import { replaySession } from '../services/replay';
 
   interface Props {
     isOpen: boolean;
-    bounds: { first: number; last: number } | null;
+    bounds?: { first: number; last: number } | null;
     currentBarTime?: number | null;
-    onSelectDate: (timestamp: number) => void;
+    onSelectDate?: (timestamp: number) => void;
     onClose: () => void;
   }
 
   let {
     isOpen,
-    bounds,
-    currentBarTime,
+    bounds: propBounds,
+    currentBarTime: propCurrentBarTime,
     onSelectDate,
     onClose,
   }: Props = $props();
+
+  let bounds = $derived(propBounds !== undefined ? propBounds : replaySession.getSnapshot().bounds);
+  let currentBarTime = $derived(propCurrentBarTime !== undefined ? propCurrentBarTime : replaySession.getSnapshot().cursorTime);
 
   // State input datetime dalam format ISO lokal (YYYY-MM-DDTHH:mm)
   let dateTimeInput = $state('');
@@ -105,7 +109,11 @@
       }
     }
 
-    onSelectDate(selectedEpoch);
+    if (onSelectDate) {
+      onSelectDate(selectedEpoch);
+    } else {
+      replaySession.setCutoff(selectedEpoch);
+    }
     onClose();
   }
 

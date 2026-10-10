@@ -15,6 +15,7 @@
   } from '../services/persistence';
   import { getHistoricalCandles } from '../services/marketProvider';
   import { alertService } from '../services/alertService';
+  import { replaySession, type ReplayDriver } from '../services/replay';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import type {
     Timeframe,
@@ -381,6 +382,7 @@
 
     const success = await startReplay(targetTime);
     if (success) {
+      replaySession.setCutoff(targetTime);
       onCutoffSelected?.(targetTime);
     }
   }
@@ -445,24 +447,56 @@
   }
 
   /**
-   * Mengirim snapshot status Bar Replay ke parent
+   * Mengirim snapshot status Bar Replay ke replaySession dan parent
    */
   function emitReplayState() {
-    if (!workspace || !workspace.replay || !onReplayStateChange) return;
+    if (!workspace || !workspace.replay) return;
     try {
       const s = workspace.replay.state;
       const b = workspace.replay.bounds;
-      onReplayStateChange({
+      const payload: ReplayStateInfo = {
         active: Boolean(s?.active),
         playing: Boolean(s?.playing),
         cursorTime: s?.cursorTime ?? null,
         remaining: s?.remaining ?? 0,
         bounds: b ?? null,
-      });
+      };
+      replaySession.notifyDriverState(payload);
+      onReplayStateChange?.(payload);
     } catch (e) {
       console.warn('emitReplayState error:', e);
     }
   }
+
+  // Driver Seam: Mengaitkan engine Vela Workspace dengan deep ReplaySession
+  const chartReplayDriver: ReplayDriver = {
+    getBounds: () => getReplayBounds(),
+    start: async (targetTime: number) => startReplay(targetTime),
+    play: (intervalMs: number) => {
+      if (workspace?.replay) workspace.replay.play(intervalMs);
+    },
+    pause: () => {
+      if (workspace?.replay) workspace.replay.pause();
+    },
+    step: () => {
+      if (workspace?.replay) workspace.replay.step();
+    },
+    stop: () => {
+      stopReplay();
+    },
+    getState: () => {
+      if (!workspace?.replay) return null;
+      const s = workspace.replay.state;
+      return {
+        active: Boolean(s?.active),
+        playing: Boolean(s?.playing),
+        cursorTime: s?.cursorTime ?? null,
+        remaining: s?.remaining ?? 0,
+      };
+    },
+    enableCutoffVisual: () => enableCutoffSelection(),
+    cancelCutoffVisual: () => cancelCutoffSelection(),
+  };
 
   /**
    * Pasang listener event replay pada workspace
@@ -586,8 +620,9 @@
         attachCellListeners(activeCell);
       }
 
-      // Pasang listener status replay
+      // Pasang listener status replay & kaitkan driver ke session
       attachReplayListeners();
+      replaySession.bindDriver(chartReplayDriver);
 
       // Dengarkan eksekusi script / kalkulasi strategi dari seluruh cell di workspace
       (workspace as any).on?.('script:run', async (run: any) => {
@@ -1114,6 +1149,7 @@
       resizeObserver.disconnect();
     }
     try {
+      replaySession.bindDriver(null);
       if (workspace && typeof (workspace as any).destroy === 'function') {
         (workspace as any).destroy();
       }
