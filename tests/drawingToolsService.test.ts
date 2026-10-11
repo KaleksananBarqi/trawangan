@@ -9,6 +9,7 @@ import {
   getFavoriteTools,
   toggleFavoriteTool,
   searchDrawingTools,
+  clampFavoritesBarPosition,
   type DrawingToolId,
   type DrawingGroupId,
 } from '../src/lib/services/drawingToolsService.js';
@@ -99,4 +100,19 @@ describe('Drawing Tools Service & Catalog Suite', () => {
     assert.equal(vwapResults.length, 1);
     assert.equal(vwapResults[0].id, 'anchoredvwap');
   });
+
+  it('7. Floating Favorites Bar Position Clamping: Membatasi posisi agar tidak keluar layar', () => {
+    // Skenario normal dalam batas
+    const clamped1 = clampFavoritesBarPosition({ x: 100, y: 150 }, 200, 36, 1920, 1080);
+    assert.deepEqual(clamped1, { x: 100, y: 150 });
+
+    // Skenario keluar batas kiri / atas (negatif)
+    const clamped2 = clampFavoritesBarPosition({ x: -50, y: -20 }, 200, 36, 1920, 1080);
+    assert.deepEqual(clamped2, { x: 0, y: 0 });
+
+    // Skenario keluar batas kanan / bawah
+    const clamped3 = clampFavoritesBarPosition({ x: 2000, y: 1200 }, 200, 36, 1920, 1080);
+    assert.deepEqual(clamped3, { x: 1720, y: 1044 });
+  });
 });
+

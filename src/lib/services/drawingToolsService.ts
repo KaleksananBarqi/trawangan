@@ -276,3 +276,57 @@ export function searchDrawingTools(query: string): DrawingToolItem[] {
     return false;
   });
 }
+
+// ─── Floating Favorites Bar Position ───
+
+const FAV_BAR_POS_KEY = 'trawangan_drawings_fav_pos';
+export interface FavoritesBarPosition {
+  x: number;
+  y: number;
+}
+
+export function clampFavoritesBarPosition(
+  pos: FavoritesBarPosition,
+  barWidth: number = 220,
+  barHeight: number = 36,
+  windowWidth: number = 1920,
+  windowHeight: number = 1080
+): FavoritesBarPosition {
+  const maxX = Math.max(0, windowWidth - barWidth);
+  const maxY = Math.max(0, windowHeight - barHeight);
+
+  const clampedX = Math.min(Math.max(0, pos.x), maxX);
+  const clampedY = Math.min(Math.max(0, pos.y), maxY);
+
+  return { x: Math.round(clampedX), y: Math.round(clampedY) };
+}
+
+export function getFavoritesBarPosition(): FavoritesBarPosition {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem(FAV_BAR_POS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat posisi favorites bar:', e);
+    }
+  }
+  // Default: di samping toolbar kiri, kira-kira vertikal tengah
+  const defaultY = typeof window !== 'undefined' ? Math.round(window.innerHeight / 2 - 18) : 300;
+  return { x: 52, y: defaultY };
+}
+
+export function saveFavoritesBarPosition(pos: FavoritesBarPosition): void {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(FAV_BAR_POS_KEY, JSON.stringify(pos));
+    } catch (e) {
+      console.warn('Gagal menyimpan posisi favorites bar:', e);
+    }
+  }
+}
+

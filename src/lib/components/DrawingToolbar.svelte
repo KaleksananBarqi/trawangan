@@ -53,6 +53,10 @@
     getFavoriteTools,
     toggleFavoriteTool,
     isToolFavorite,
+    getFavoritesBarPosition,
+    saveFavoritesBarPosition,
+    clampFavoritesBarPosition,
+    type FavoritesBarPosition,
     type DrawingGroupId,
     type DrawingToolItem,
   } from '../services/drawingToolsService.js';
@@ -109,6 +113,52 @@
     measure_volume: getLastUsedTool('measure_volume'),
     annotations: getLastUsedTool('annotations'),
   });
+
+  // ─── Floating Favorites Bar Draggable Engine ───
+  let favBarEl = $state<HTMLDivElement | null>(null);
+  let favBarPos = $state<FavoritesBarPosition>(getFavoritesBarPosition());
+  let isDraggingFavBar = $state(false);
+  let dragStartPointer = { x: 0, y: 0 };
+  let dragStartPos = { x: 0, y: 0 };
+
+  function handleStartDragFavBar(e: PointerEvent) {
+    // Hanya tangani tombol utama (klik kiri)
+    if (e.button !== 0) return;
+    e.preventDefault();
+    isDraggingFavBar = true;
+    dragStartPointer = { x: e.clientX, y: e.clientY };
+    dragStartPos = { ...favBarPos };
+
+    function onPointerMove(moveEvent: PointerEvent) {
+      if (!isDraggingFavBar) return;
+      const dx = moveEvent.clientX - dragStartPointer.x;
+      const dy = moveEvent.clientY - dragStartPointer.y;
+      const rawX = dragStartPos.x + dx;
+      const rawY = dragStartPos.y + dy;
+
+      const barWidth = favBarEl?.offsetWidth || 220;
+      const barHeight = favBarEl?.offsetHeight || 36;
+      favBarPos = clampFavoritesBarPosition(
+        { x: rawX, y: rawY },
+        barWidth,
+        barHeight,
+        window.innerWidth,
+        window.innerHeight
+      );
+    }
+
+    function onPointerUp() {
+      if (isDraggingFavBar) {
+        isDraggingFavBar = false;
+        saveFavoritesBarPosition(favBarPos);
+      }
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    }
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  }
 
   // Pemetaan Ikon Dinamis per Tool
   function getIconComponent(toolId: DrawingToolType | null) {
@@ -299,11 +349,17 @@
     {@const isThisFlyoutOpen = openFlyout === group.id}
 
     <div class="tool-item">
-      <div class="tool-btn-wrapper {activeInThisGroup ? 'active' : ''} {isThisFlyoutOpen ? 'flyout-open' : ''}">
+      <div
+        class="tool-btn-wrapper {activeInThisGroup ? 'active' : ''} {isThisFlyoutOpen ? 'flyout-open' : ''}"
+        oncontextmenu={(e) => {
+          e.preventDefault();
+          toggleFlyout(group.id);
+        }}
+      >
         <button
           type="button"
           class="tool-btn"
-          title="{group.label} (Klik untuk aktifkan)"
+          title="{group.label} (Klik untuk aktifkan, klik kanan atau panah untuk pilihan)"
           onclick={() => handleDirectGroupClick(group)}
         >
           <CurrentIcon size={15} />
@@ -506,9 +562,18 @@
 
 <!-- Bilah Alat Favorit Melayang (Quick Floating Favorites Bar ala TradingView) -->
 {#if isFavoritesBarVisible && favoriteToolIds.length > 0}
-  <div class="favorites-bar glass-panel" aria-label="Bilah Alat Favorit">
-    <div class="fav-drag-handle" title="Bilah Cepat Favorit">
-      <GripVertical size={12} />
+  <div
+    bind:this={favBarEl}
+    class="favorites-bar glass-panel {isDraggingFavBar ? 'dragging' : ''}"
+    style="left: {favBarPos.x}px; top: {favBarPos.y}px;"
+    aria-label="Bilah Alat Favorit"
+  >
+    <div
+      class="fav-drag-handle"
+      title="Tarik untuk memindahkan bilah favorit"
+      onpointerdown={handleStartDragFavBar}
+    >
+      <GripVertical size={13} />
     </div>
 
     {#each favoriteToolIds as favId (favId)}
@@ -625,27 +690,36 @@
     position: absolute;
     right: 0;
     bottom: 0;
-    width: 10px;
-    height: 10px;
+    width: 14px;
+    height: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
+    background: rgba(0, 0, 0, 0.45);
     border: none;
+    border-top-left-radius: 4px;
+    border-bottom-right-radius: 3px;
     cursor: pointer;
     padding: 0;
     z-index: 2;
+    transition: all 0.12s ease;
+  }
+
+  .sub-arrow-btn:hover {
+    background: rgba(0, 240, 255, 0.35);
   }
 
   .sub-arrow {
-    font-size: 7px;
-    color: var(--text-dim, #666666);
+    font-size: 8px;
+    color: var(--text-dim, #888888);
     line-height: 1;
     transition: transform 0.12s ease;
   }
 
+  .sub-arrow-btn:hover .sub-arrow,
   .tool-btn-wrapper:hover .sub-arrow {
-    color: var(--text-main, #ffffff);
+    color: #ffffff;
+    transform: scale(1.15);
   }
 
   .tool-divider {
@@ -896,30 +970,42 @@
 
   /* ─── Floating Favorites Bar ─── */
   .favorites-bar {
-    position: absolute;
-    left: 50px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 34;
+    position: fixed;
+    z-index: 45;
     display: flex;
     align-items: center;
     gap: 3px;
     padding: 4px 6px;
-    background: rgba(16, 16, 20, 0.94);
-    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: rgba(16, 16, 20, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 6px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(12px);
+    user-select: none;
+    touch-action: none;
     animation: fadeIn 0.15s ease-out;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .favorites-bar.dragging {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.85);
+    cursor: grabbing;
   }
 
   .fav-drag-handle {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #555555;
-    padding: 0 2px;
+    color: #666666;
+    padding: 2px 4px;
     cursor: grab;
+    transition: color 0.12s ease;
+  }
+
+  .fav-drag-handle:hover,
+  .favorites-bar.dragging .fav-drag-handle {
+    color: #00f0ff;
   }
 
   .fav-btn {

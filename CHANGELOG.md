@@ -5,6 +5,37 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.6.0] - 2026-10-11
+
+### 🚀 Ditambahkan (Added)
+- **Ekspansi 70+ Tools Gambar Teknikal Vela (`src/lib/services/drawingToolsService.ts`):**
+  - Mendaftarkan dan mengelompokkan katalog lengkap 70+ tools gambar bawaan library LuxAlgo Vela ke dalam 7 kategori profesional:
+    - *Garis & Ray:* Trendline, Ray, Horizontal Line/Ray, Extended Line, Vertical Line, Cross Line, Info Line, Trend Angle, Arrow.
+    - *Saluran & Pitchfork:* Parallel Channel, Regression Channel, Flat Top/Bottom, Disjoint Channel, Andrews Pitchfork, Schiff Pitchfork, Modified Schiff, Inside Pitchfork.
+    - *Fibonacci & Gann:* Fib Retracement, Extension, Fan, Timezones, Channel, Circles, Arcs, Wedge, Spiral, Gann Box/Square/Fan, Dedekind, Sonic Ratios, Supersonic.
+    - *Pola Harmonik & Elliott Wave:* Elliott Impulse Wave (12345), Elliott Correction Wave (ABC), XABCD, ABCD, Head & Shoulders, Gartley, Bat, Butterfly, Crab, Shark, Cypher.
+    - *Bentuk & Kuas:* Brush (Freehand Drawing), Highlighter (Stabilo), Polyline, Path, Box (Order Block / FVG), Rotated Rect, Circle, Ellipse, Triangle, Curve, Arc.
+    - *Proyeksi, Pengukuran & Volume:* Risk/Reward Long/Short Position, Date & Price Range, Measure Ruler, Magnifier, Anchored VWAP, Fixed Range Volume Profile (FRVP).
+    - *Teks & Anotasi:* Text Note, Callout, Sticky Note, Price Note, Comment, Price Label, Signpost, Bull/Bear Marker Arrows, Flags, Icon Stamp.
+  - Perluasan skema tipe `DrawingToolType` di `src/lib/types/market.ts` agar kompatibel penuh dengan `@luxalgo/vela`.
+- **Fitur Last Used Tool Memory:**
+  - Toolbar secara adaptif mengingat tool terakhir yang dipilih dari setiap grup kategori dan otomatis mengganti ikon utama di bilah toolbar luar (`localStorage['trawangan_drawings_last_used']`).
+- **Pencarian Cepat dalam Flyout (*Instant Search Filter*):**
+  - Kolom input pencarian instan pada sub-menu flyout kategori untuk mempermudah pemilihan alat gambar dari puluhan opsi yang tersedia.
+- **Sistem Favorit & Bilah Favorit Melayang Dinamis (*Draggable Floating Favorites Bar*):**
+  - Tombol bintang (⭐) pada setiap item flyout untuk menandai tool favorit dengan persistensi ke `localStorage['trawangan_drawings_favorites']`.
+  - Bilah mini toolbar horizontal melayang (*Floating Favorites Bar*) ala TradingView yang dapat di-drag & drop bebas ke posisi mana pun di monitor dengan proteksi *clamping* batas layar serta persistensi koordinat (`localStorage['trawangan_drawings_fav_pos']`).
+- **Pengujian TDD Komprehensif (Total 71 Passing Tests):**
+  - Pembuatan unit test suite baru `tests/drawingToolsService.test.ts` yang menguji katalog, metadata, shortcut, last-used memory, favorites management, search filter, dan kalkulasi batas drag floating bar.
+
+### 🔄 Diubah (Changed)
+- **Peningkatan UX Interaksi Toolbar (`src/lib/components/DrawingToolbar.svelte`):**
+  - Memperbesar hitbox tombol panah kecil sub-menu (`sub-arrow-btn`) menjadi `14px × 14px` dengan highlight hover yang nyaman.
+  - Dukungan interaksi Klik Kanan (`contextmenu`) pada seluruh tombol grup toolbar untuk langsung membuka flyout menu.
+  - Mengklik ulang tombol grup yang sedang aktif langsung membuka menu flyout tools terkait.
+
+---
+
 ## [0.5.0] - 2026-10-11
 
 ### 🚀 Ditambahkan (Added)
