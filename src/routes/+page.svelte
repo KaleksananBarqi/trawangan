@@ -69,6 +69,7 @@
     viewport: true,
     symbol: false,
     drawings: true,
+    indicators: true,
   });
 
   // Settings & Preferences State
@@ -476,6 +477,14 @@
     addSystemLog(`Sinkronisasi objek gambar: ${syncConfig.drawings ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
+  function handleToggleSyncIndicators() {
+    syncConfig.indicators = !syncConfig.indicators;
+    addSystemLog(`Sinkronisasi indikator multi-chart: ${syncConfig.indicators ? 'AKTIF' : 'NONAKTIF'}`, 'info');
+    if (syncConfig.indicators && chartComponent && typeof chartComponent.syncIndicatorsFromActiveCell === 'function') {
+      chartComponent.syncIndicatorsFromActiveCell();
+    }
+  }
+
   function handleWorkspaceModeChange(mode: WorkspaceMode) {
     workspaceMode = mode;
     addSystemLog(`Workspace beralih ke mode: ${mode === 'terminal' ? 'Trading Terminal' : 'Pine Script IDE'}`, 'info');
@@ -861,6 +870,7 @@
     onToggleSyncViewport={handleToggleSyncViewport}
     onToggleSyncSymbol={handleToggleSyncSymbol}
     onToggleSyncDrawings={handleToggleSyncDrawings}
+    onToggleSyncIndicators={handleToggleSyncIndicators}
     onToggleDrawingToolbar={() => (isDrawingToolbarVisible = !isDrawingToolbarVisible)}
     onToggleWatchlist={() => (isWatchlistOpen = !isWatchlistOpen)}
     onToggleReplay={handleToggleReplay}

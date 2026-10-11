@@ -27,6 +27,7 @@
     onToggleSyncViewport?: () => void;
     onToggleSyncSymbol?: () => void;
     onToggleSyncDrawings?: () => void;
+    onToggleSyncIndicators?: () => void;
   }
 
   let {
@@ -34,7 +35,7 @@
     isReplayActive = false,
     isDrawingToolbarVisible = true,
     currentLayout = '1',
-    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true },
+    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     onOpenIndicatorModal,
     onToggleReplay,
     onToggleDrawingToolbar,
@@ -42,6 +43,7 @@
     onToggleSyncViewport,
     onToggleSyncSymbol,
     onToggleSyncDrawings,
+    onToggleSyncIndicators,
   }: Props = $props();
 
   let showMenu = $state(false);
@@ -204,6 +206,19 @@
           <Share2 size={12} />
           <span>Gambar</span>
           <span class="sync-pip {syncConfig.drawings ? 'on' : 'off'}"></span>
+        </button>
+
+        <!-- Indicators -->
+        <button
+          class="sync-item-btn full-width {syncConfig.indicators ? 'active' : ''}"
+          title="Sinkronisasi Indikator Teknikal ({syncConfig.indicators ? 'ON' : 'OFF'})"
+          onclick={onToggleSyncIndicators}
+        >
+          <div class="sync-label-with-icon">
+            <Layers size={12} />
+            <span>Indikator</span>
+          </div>
+          <span class="sync-pip {syncConfig.indicators ? 'on' : 'off'}"></span>
         </button>
       </div>
     </div>
@@ -459,6 +474,16 @@
     border-color: rgba(56, 189, 248, 0.35);
     color: #38bdf8;
     background-color: rgba(56, 189, 248, 0.06);
+  }
+
+  .sync-item-btn.full-width {
+    grid-column: span 2;
+  }
+
+  .sync-label-with-icon {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .sync-pip {

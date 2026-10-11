@@ -101,6 +101,7 @@ export interface MultiChartSyncConfig {
   viewport: boolean;
   symbol: boolean;
   drawings: boolean;
+  indicators?: boolean;
   timeframe?: boolean;
 }
 

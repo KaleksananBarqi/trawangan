@@ -49,6 +49,7 @@
     onToggleSyncViewport?: () => void;
     onToggleSyncSymbol?: () => void;
     onToggleSyncDrawings?: () => void;
+    onToggleSyncIndicators?: () => void;
     onToggleDrawingToolbar?: () => void;
     onToggleWatchlist?: () => void;
     onToggleReplay?: () => void;
@@ -69,7 +70,7 @@
     currentLayout,
     activeProviderId = 'binance',
     workspaceMode = 'terminal',
-    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true },
+    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     activeIndicators = [],
     isDrawingToolbarVisible = true,
     isWatchlistOpen = true,
@@ -91,6 +92,7 @@
     onToggleSyncViewport,
     onToggleSyncSymbol,
     onToggleSyncDrawings,
+    onToggleSyncIndicators,
     onToggleDrawingToolbar,
     onToggleWatchlist,
     onToggleReplay,
@@ -201,6 +203,7 @@
     {onToggleSyncViewport}
     {onToggleSyncSymbol}
     {onToggleSyncDrawings}
+    {onToggleSyncIndicators}
   />
 
   <div class="divider"></div>

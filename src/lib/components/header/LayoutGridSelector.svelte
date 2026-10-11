@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LayoutGrid, Crosshair, Share2, Move, Coins } from '@lucide/svelte';
+  import { LayoutGrid, Crosshair, Share2, Move, Coins, Layers } from '@lucide/svelte';
   import type { MultiChartSyncConfig } from '../../types/market';
 
   interface Props {
@@ -10,16 +10,18 @@
     onToggleSyncViewport?: () => void;
     onToggleSyncSymbol?: () => void;
     onToggleSyncDrawings?: () => void;
+    onToggleSyncIndicators?: () => void;
   }
 
   let {
     currentLayout,
-    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true },
+    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     onLayoutChange,
     onToggleSyncCrosshair,
     onToggleSyncViewport,
     onToggleSyncSymbol,
-    onToggleSyncDrawings
+    onToggleSyncDrawings,
+    onToggleSyncIndicators
   }: Props = $props();
 
   const layouts = [
@@ -71,6 +73,13 @@
         onclick={onToggleSyncDrawings}
       >
         <Share2 size={12} />
+      </button>
+      <button
+        class="sync-toggle-btn {syncConfig.indicators ? 'active' : ''}"
+        title="Sinkronisasi Indikator Teknikal ({syncConfig.indicators ? 'ON' : 'OFF'})"
+        onclick={onToggleSyncIndicators}
+      >
+        <Layers size={12} />
       </button>
     </div>
   {/if}

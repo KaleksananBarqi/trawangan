@@ -68,7 +68,7 @@
     providerId = 'binance',
     themePreset = 'signature',
     fontSize = 12,
-    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true },
+    syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true,
     onActiveIndicatorsChange,
     onActiveCellChange,
@@ -1063,6 +1063,9 @@
           }
           attachCellListeners(cur);
         }
+        if (syncConfig.indicators === false) {
+          notifyActiveIndicators();
+        }
       });
 
       isMounted = true;
@@ -1210,6 +1213,9 @@
       lastAppliedLayout = layout;
       isApplyingLayout = true;
       try {
+        // 1. Ambil snapshot indikator dari cell aktif sebelum setLayout
+        const activeIndicatorsSnapshot = getActiveIndicators();
+
         workspace.setLayout(layout as any);
 
         // Selaraskan cell baru dan pasangkan listener interaksi
@@ -1229,6 +1235,13 @@
               cell.chart?.setVisibleRange(curRange);
             }
           }
+        }
+
+        // 2. Auto-clone indikator ke seluruh cell baru yang terbentuk
+        if (layout === '1') {
+          ensureSingleCellMatchesSnapshot(activeIndicatorsSnapshot);
+        } else {
+          cloneIndicatorsToCells(activeIndicatorsSnapshot);
         }
 
         // Tegaskan kembali konfigurasi sinkronisasi pada layout baru
@@ -1362,6 +1375,152 @@
   function notifyActiveIndicators() {
     if (!onActiveIndicatorsChange) return;
     onActiveIndicatorsChange(getActiveIndicators());
+  }
+
+  /**
+   * Mengkloning daftar indikator aktif ke seluruh cell workspace yang belum memilikinya
+   * Menjamin saat berpindah dari 1 chart ke layout 2/4 grid, cell baru langsung memiliki indikator lengkap
+   */
+  function cloneIndicatorsToCells(snapshot: ActiveIndicatorInfo[]) {
+    if (!workspace || !snapshot || snapshot.length === 0) return;
+    try {
+      const cells = getAllWorkspaceCells();
+      for (const cell of cells) {
+        const chart = cell?.chart || cell?.inner;
+        if (!cell || !chart || typeof chart.indicators !== 'function') continue;
+
+        const existingNative = Array.from(chart.indicators() || []);
+        const existingTitles = new Set(existingNative.map((ind: any) => ind?.title).filter(Boolean));
+
+        for (const ind of snapshot) {
+          if (!ind.title || existingTitles.has(ind.title)) continue;
+          const source = ind.source || getIndicatorSource(ind.id);
+          if (!source) continue;
+
+          const addOptions: any = {
+            language: 'pine',
+            title: ind.title,
+          };
+          if (ind.inputs && Object.keys(ind.inputs).length > 0) {
+            addOptions.inputs = ind.inputs;
+          }
+          if (ind.props && Object.keys(ind.props).length > 0) {
+            addOptions.props = ind.props;
+          }
+
+          const handle = chart.addIndicator(source, addOptions);
+          if (handle) {
+            if (ind.visible === false && typeof handle.setVisible === 'function') {
+              try { handle.setVisible(false); } catch (_) {}
+            }
+            if (ind.inputs && typeof handle.setInputs === 'function') {
+              try { handle.setInputs(ind.inputs); } catch (_) {}
+            }
+            if (ind.props && typeof handle.setProps === 'function') {
+              try { handle.setProps(ind.props); } catch (_) {}
+            }
+
+            // Catat handle baru ke indicatorHandles
+            const tracked = indicatorHandles.get(ind.id);
+            if (tracked) {
+              if (!tracked.handles) tracked.handles = tracked.handle ? [tracked.handle] : [];
+              if (!tracked.handles.includes(handle)) {
+                tracked.handles.push(handle);
+              }
+            } else {
+              indicatorHandles.set(handle.id || ind.id, {
+                id: handle.id || ind.id,
+                handle,
+                handles: [handle],
+                title: ind.title,
+                source,
+                visible: ind.visible ?? true,
+                inputs: ind.inputs,
+                props: ind.props,
+              });
+            }
+          }
+        }
+      }
+      notifyActiveIndicators();
+    } catch (err) {
+      console.warn('Gagal clone indicators ke cells:', err);
+    }
+  }
+
+  /**
+   * Menjamin saat berpindah kembali ke layout 1 chart, cell tunggal memuat indikator cell aktif
+   */
+  function ensureSingleCellMatchesSnapshot(snapshot: ActiveIndicatorInfo[]) {
+    if (!workspace) return;
+    try {
+      const activeCell = workspace.active || Array.from(workspace.cells())[0];
+      const chart = (activeCell as any)?.chart;
+      if (!chart || typeof chart.indicators !== 'function') return;
+
+      const existingNative = Array.from(chart.indicators() || []);
+      const snapshotTitles = new Set(snapshot.map((i) => i.title));
+
+      // Hapus indikator yang tidak ada di snapshot cell aktif
+      for (const h of existingNative as any[]) {
+        if (h?.nativeType === 'volume') continue;
+        if (h?.title && !snapshotTitles.has(h.title)) {
+          try {
+            if (typeof h?.remove === 'function') h.remove();
+          } catch (_) {}
+        }
+      }
+
+      // Pastikan seluruh indikator snapshot terpasang
+      cloneIndicatorsToCells(snapshot);
+    } catch (err) {
+      console.warn('Gagal menyelaraskan single cell saat revert ke layout 1:', err);
+    }
+  }
+
+  /**
+   * Menyelaraskan seluruh cell agar mengikuti indikator dari cell yang sedang aktif/terfokus
+   * Dipanggil saat toggle 'Sync Indicators' dinyalakan kembali
+   */
+  export function syncIndicatorsFromActiveCell(): void {
+    if (!workspace || !workspace.active) return;
+    try {
+      const activeCell = workspace.active;
+      const activeSnapshot = getActiveIndicators();
+
+      const cells = getAllWorkspaceCells();
+      for (const cell of cells) {
+        if (cell === activeCell) continue;
+        const chart = cell?.chart || cell?.inner;
+        if (!cell || !chart || typeof chart.indicators !== 'function') continue;
+
+        // Bersihkan seluruh indikator lama di follower cell (lewati volume native)
+        const nativeList = Array.from(chart.indicators() || []);
+        for (const h of nativeList as any[]) {
+          if (h?.nativeType === 'volume') continue;
+          try {
+            if (typeof h?.remove === 'function') h.remove();
+          } catch (_) {}
+        }
+      }
+
+      // Bersihkan handles lama yang bukan dari cell aktif
+      for (const [id, item] of indicatorHandles.entries()) {
+        const activeChart = activeCell.chart;
+        const activeNative = Array.from(activeChart?.indicators?.() || []);
+        const stillInActive = activeNative.some((n: any) => n.title === item.title || n.id === id);
+        if (!stillInActive) {
+          indicatorHandles.delete(id);
+        } else {
+          item.handles = [item.handle];
+        }
+      }
+
+      // Kloning ulang seluruh indikator cell aktif ke follower cell
+      cloneIndicatorsToCells(activeSnapshot);
+    } catch (err) {
+      console.warn('Gagal rekonsiliasi indikator dari active cell:', err);
+    }
   }
 
   // ─── Drawing Suite Public Methods ───
@@ -1514,9 +1673,12 @@
         }
       }
 
-      // 2. Bersihkan juga secara native di seluruh cell chart jika ada indicator dengan title yang sama
-      const cells = getAllWorkspaceCells();
-      for (const cell of cells as any[]) {
+      // 2. Bersihkan juga secara native di cell target jika ada indicator dengan title yang sama
+      const targetCells = (syncConfig.indicators !== false)
+        ? getAllWorkspaceCells()
+        : (workspace.active ? [workspace.active] : getAllWorkspaceCells());
+
+      for (const cell of targetCells as any[]) {
         const chart = cell?.chart || cell?.inner;
         if (!cell || !chart || typeof chart.indicators !== 'function') continue;
         try {
@@ -1529,11 +1691,11 @@
         } catch (_) {}
       }
 
-      // 3. Tambahkan indikator ke seluruh cell dengan opsi inputs & props
+      // 3. Tambahkan indikator ke cell target dengan opsi inputs & props
       const createdHandles: any[] = [];
       let firstHandle = null;
 
-      for (const cell of cells as any[]) {
+      for (const cell of targetCells as any[]) {
         if (!cell || !cell.chart) continue;
         const addOptions: any = {
           language: 'pine',
@@ -1622,17 +1784,37 @@
   export function removeIndicator(id: string): void {
     const item = indicatorHandles.get(id);
     if (item) {
-      const list = item.handles || (item.handle ? [item.handle] : [item]);
-      for (const h of list) {
-        try {
-          if (typeof h?.remove === 'function') {
-            h.remove();
+      if (syncConfig.indicators !== false) {
+        // Hapus dari seluruh cell di workspace
+        const list = item.handles || (item.handle ? [item.handle] : [item]);
+        for (const h of list) {
+          try {
+            if (typeof h?.remove === 'function') {
+              h.remove();
+            }
+          } catch (e) {
+            console.warn('Gagal memanggil handle.remove:', e);
           }
-        } catch (e) {
-          console.warn('Gagal memanggil handle.remove:', e);
+        }
+        indicatorHandles.delete(id);
+      } else {
+        // Hapus hanya dari cell aktif saat ini
+        const activeChart = workspace?.active?.chart;
+        if (activeChart && typeof activeChart.indicators === 'function') {
+          const nativeList = Array.from(activeChart.indicators() || []);
+          for (const n of nativeList as any[]) {
+            if (n && (n.id === id || n.title === item.title)) {
+              try { n.remove(); } catch (_) {}
+            }
+          }
+        }
+        if (item.handles) {
+          item.handles = item.handles.filter((h: any) => h !== item.handle);
+        }
+        if (item.handle?.id === id) {
+          indicatorHandles.delete(id);
         }
       }
-      indicatorHandles.delete(id);
       notifyActiveIndicators();
     }
   }
@@ -1652,8 +1834,11 @@
     // 2. Bersihkan seluruh indikator di seluruh cell workspace secara menyeluruh
     if (workspace) {
       try {
-        const cells = getAllWorkspaceCells();
-        for (const cell of cells as any[]) {
+        const targetCells = (syncConfig.indicators !== false)
+          ? getAllWorkspaceCells()
+          : (workspace.active ? [workspace.active] : getAllWorkspaceCells());
+
+        for (const cell of targetCells as any[]) {
           // Bersihkan cell.instances jika ada agar tidak ter-rehydrate saat ganti simbol
           if (Array.isArray(cell?.instances)) {
             for (const it of [...cell.instances]) {
@@ -1693,15 +1878,25 @@
     if (item) {
       const nextVisible = !(item.visible ?? item.handle?.visible ?? true);
       item.visible = nextVisible;
-      const list = item.handles || (item.handle ? [item.handle] : [item]);
-      for (const h of list) {
-        try {
-          if (typeof h?.setVisible === 'function') {
-            h.setVisible(nextVisible);
+      if (syncConfig.indicators !== false) {
+        // Terapkan ke semua cell
+        const list = item.handles || (item.handle ? [item.handle] : [item]);
+        for (const h of list) {
+          try {
+            if (typeof h?.setVisible === 'function') {
+              h.setVisible(nextVisible);
+            }
+          } catch (e) {
+            console.warn('Gagal memanggil handle.setVisible:', e);
           }
-        } catch (e) {
-          console.warn('Gagal memanggil handle.setVisible:', e);
         }
+      } else {
+        // Terapkan hanya ke cell aktif
+        try {
+          if (item.handle && typeof item.handle.setVisible === 'function') {
+            item.handle.setVisible(nextVisible);
+          }
+        } catch (_) {}
       }
       notifyActiveIndicators();
     }
