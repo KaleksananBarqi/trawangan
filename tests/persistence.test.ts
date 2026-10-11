@@ -2,7 +2,8 @@ import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import { PersistenceService } from '../src/lib/services/persistence/index';
-import type { PriceAlert, PineScriptRecord } from '../src/lib/types/market';
+import type { PriceAlert, PineScriptRecord, AppSettings } from '../src/lib/types/market';
+import { resolveAppSettings } from '../src/lib/constants/defaults';
 
 describe('Deep Persistence Module Unit Tests', () => {
   let adapter: InMemoryLocalStorageAdapter;
@@ -150,6 +151,54 @@ describe('Deep Persistence Module Unit Tests', () => {
     const loaded = await service.loadSettings();
     assert.deepStrictEqual(loaded, settings);
   });
+
+  test('App Settings: menyimpan dan memuat syncConfig serta autoSaveWorkspace secara persisten', async () => {
+    const settings: AppSettings = {
+      timezone: 'Asia/Jakarta',
+      soundEnabled: true,
+      showWatermark: true,
+      showGrid: true,
+      showReplayBar: false,
+      defaultTimeframe: '1h',
+      autoSaveWorkspace: false,
+      syncConfig: {
+        crosshair: false,
+        viewport: true,
+        symbol: true,
+        drawings: false,
+        indicators: false,
+      },
+    };
+
+    await service.saveSettings(settings);
+    const loaded = await service.loadSettings();
+    assert.deepStrictEqual(loaded, settings);
+    assert.strictEqual(loaded?.autoSaveWorkspace, false);
+    assert.strictEqual(loaded?.syncConfig?.symbol, true);
+    assert.strictEqual(loaded?.syncConfig?.crosshair, false);
+  });
+
+  test('App Settings: resolveAppSettings mengembalikan nilai default untuk field yang belum ada', () => {
+    // Saat data dari storage kosong atau parsial lama tanpa syncConfig & autoSaveWorkspace
+    const partialSettings: Partial<AppSettings> = {
+      timezone: 'UTC',
+      soundEnabled: false,
+    };
+
+    const resolved = resolveAppSettings(partialSettings);
+    assert.strictEqual(resolved.timezone, 'UTC');
+    assert.strictEqual(resolved.soundEnabled, false);
+    assert.strictEqual(resolved.autoSaveWorkspace, true, 'Default autoSaveWorkspace harus true');
+    assert.strictEqual(resolved.defaultTimeframe, '15m', 'Default defaultTimeframe harus 15m');
+    assert.deepStrictEqual(resolved.syncConfig, {
+      crosshair: true,
+      viewport: true,
+      symbol: false,
+      drawings: true,
+      indicators: true,
+    });
+  });
+
 
   test('Chart Default Config: menyimpan, memuat, dan menghapus konfigurasi default grafik', async () => {
     const initial = await service.loadChartDefaultConfig();

@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import type { MultiChartSyncConfig } from '../src/lib/types/market';
+import { applyLayoutTimeframePolicy } from '../src/lib/constants/defaults';
 
 describe('Multi-Chart Synchronization Engine Unit Tests', () => {
   test('MultiChartSyncConfig: memverifikasi nilai default sinkronisasi kursor & viewport', () => {
@@ -279,4 +280,57 @@ describe('Multi-Chart Synchronization Engine Unit Tests', () => {
     const outOfBoundsY = 250;
     assert.strictEqual(isCrosshairInBounds(outOfBoundsX, outOfBoundsY, canvasWidth, canvasHeight), false);
   });
+
+  test('Layout Expansion Timeframe Policy: cell baru mengadopsi defaultTimeframe sedangkan cell aktif dipertahankan', () => {
+    interface MockChartCell {
+      id: string;
+      timeframe: string;
+      setTimeframe(tf: string): void;
+    }
+
+    const activeCell: MockChartCell = {
+      id: 'cell_active',
+      timeframe: '1h',
+      setTimeframe(tf) { this.timeframe = tf; }
+    };
+
+    const newCell1: MockChartCell = {
+      id: 'cell_new_1',
+      timeframe: '1m', // default bawaan acak
+      setTimeframe(tf) { this.timeframe = tf; }
+    };
+
+    const newCell2: MockChartCell = {
+      id: 'cell_new_2',
+      timeframe: '1m',
+      setTimeframe(tf) { this.timeframe = tf; }
+    };
+
+    const cells = [activeCell, newCell1, newCell2];
+
+    // Ketika syncTimeframe false (default): cell baru mendapatkan defaultTimeframe (15m), cell aktif tetap 1h
+    applyLayoutTimeframePolicy({
+      activeCell,
+      cells,
+      defaultTimeframe: '15m',
+      syncTimeframe: false,
+    });
+
+    assert.strictEqual(activeCell.timeframe, '1h', 'Cell aktif tidak boleh tertimpa timeframe-nya');
+    assert.strictEqual(newCell1.timeframe, '15m', 'Cell baru 1 harus diinisialisasi dengan defaultTimeframe 15m');
+    assert.strictEqual(newCell2.timeframe, '15m', 'Cell baru 2 harus diinisialisasi dengan defaultTimeframe 15m');
+
+    // Ketika syncTimeframe true: cell pengikut mengikuti timeframe cell aktif (1h)
+    applyLayoutTimeframePolicy({
+      activeCell,
+      cells,
+      defaultTimeframe: '15m',
+      syncTimeframe: true,
+    });
+
+    assert.strictEqual(activeCell.timeframe, '1h');
+    assert.strictEqual(newCell1.timeframe, '1h');
+    assert.strictEqual(newCell2.timeframe, '1h');
+  });
 });
+

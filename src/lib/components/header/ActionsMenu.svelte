@@ -10,7 +10,8 @@
     Share2,
     ChevronDown,
     Check,
-    Sparkles
+    Sparkles,
+    Bell
   } from '@lucide/svelte';
   import type { MultiChartSyncConfig } from '../../types/market';
 
@@ -20,7 +21,8 @@
     isDrawingToolbarVisible?: boolean;
     currentLayout?: string;
     syncConfig?: MultiChartSyncConfig;
-    onOpenIndicatorModal: () => void;
+    onOpenIndicatorModal?: () => void;
+    onRequestCreateAlert?: () => void;
     onToggleReplay?: () => void;
     onToggleDrawingToolbar?: () => void;
     onToggleSyncCrosshair?: () => void;
@@ -37,6 +39,7 @@
     currentLayout = '1',
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     onOpenIndicatorModal,
+    onRequestCreateAlert,
     onToggleReplay,
     onToggleDrawingToolbar,
     onToggleSyncCrosshair,
@@ -56,26 +59,18 @@
       showMenu = false;
     }
   }
-
-  function handleIndicatorClick() {
-    onOpenIndicatorModal();
-    showMenu = false;
-  }
 </script>
 
 <svelte:window onclick={handleGlobalClick} />
 
 <div class="actions-menu-group">
   <button
-    class="actions-trigger-btn {activeIndicatorCount > 0 || isReplayActive ? 'has-active' : ''}"
-    title="Aksi & Pengaturan Fitur (Indikator, Replay, Draw, Sinkronisasi)"
+    class="actions-trigger-btn {isReplayActive ? 'has-active' : ''}"
+    title="Aksi & Pengaturan Fitur (Alert, Replay, Draw, Sinkronisasi)"
     onclick={() => (showMenu = !showMenu)}
   >
     <SlidersHorizontal size={13} class="trigger-icon" />
     <span>Actions</span>
-    {#if activeIndicatorCount > 0}
-      <span class="count-badge mono-nums">{activeIndicatorCount}</span>
-    {/if}
     {#if isReplayActive}
       <span class="replay-dot" title="Bar Replay Aktif"></span>
     {/if}
@@ -91,23 +86,22 @@
       </div>
 
       <div class="menu-items">
-        <!-- 1. Indikator Modal -->
+        <!-- 1. Buat Price Alert Baru -->
         <button
-          class="action-item-btn {activeIndicatorCount > 0 ? 'highlight' : ''}"
-          onclick={handleIndicatorClick}
+          class="action-item-btn"
+          onclick={() => {
+            onRequestCreateAlert?.();
+            showMenu = false;
+          }}
         >
           <div class="item-left">
-            <Layers size={13} class="item-icon" />
+            <Bell size={13} class="item-icon text-cyan-accent" />
             <div class="item-text">
-              <span class="item-title">Indikator Teknikal</span>
-              <span class="item-desc">Library Pine Script v6</span>
+              <span class="item-title">Buat Price Alert</span>
+              <span class="item-desc">Target harga & notifikasi OS</span>
             </div>
           </div>
-          {#if activeIndicatorCount > 0}
-            <span class="item-badge mono-nums">{activeIndicatorCount} aktif</span>
-          {:else}
-            <span class="item-shortcut">Buka</span>
-          {/if}
+          <span class="item-shortcut mono-nums">Alt+A</span>
         </button>
 
         <!-- 2. Bar Replay -->

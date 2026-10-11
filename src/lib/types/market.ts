@@ -159,6 +159,8 @@ export interface AppSettings {
   defaultTimeframe?: Timeframe;
   favoriteTimeframes?: Timeframe[];
   customTimeframes?: string[];
+  syncConfig?: MultiChartSyncConfig;
+  autoSaveWorkspace?: boolean;
 }
 
 

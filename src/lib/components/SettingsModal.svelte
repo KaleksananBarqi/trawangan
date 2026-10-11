@@ -34,7 +34,12 @@
     BookOpen,
     Command,
     Search,
-    Code
+    Code,
+    Crosshair,
+    Move,
+    Coins,
+    PenTool,
+    Layers
   } from '@lucide/svelte';
   import { openExternalUrl } from '../services/urlService';
   import {
@@ -78,6 +83,21 @@
     } else {
       onUpdateSettings({ favoriteTimeframes: [...current, tf] });
     }
+  }
+
+  function handleToggleSync(key: 'crosshair' | 'viewport' | 'symbol' | 'drawings' | 'indicators') {
+    const currentSync = settings.syncConfig || {
+      crosshair: true,
+      viewport: true,
+      symbol: false,
+      drawings: true,
+      indicators: true,
+    };
+    const updatedSync = {
+      ...currentSync,
+      [key]: !currentSync[key],
+    };
+    onUpdateSettings({ syncConfig: updatedSync });
   }
 
   function handleSetFontSize(newSize: number) {
@@ -864,8 +884,8 @@
               <!-- Pilihan Timeframe Default -->
               <div class="setting-row">
                 <div class="setting-info">
-                  <span class="setting-label">Timeframe Default (Saat Membuka Aplikasi)</span>
-                  <span class="setting-desc">Interval chart yang otomatis aktif saat pertama kali dibuka</span>
+                  <span class="setting-label">Timeframe Default (Aplikasi & Layout Multi-Chart)</span>
+                  <span class="setting-desc">Interval candle bawaan saat aplikasi dibuka dan saat panel baru terbentuk pada layout grid</span>
                 </div>
                 <select
                   class="select-input mono-nums"
@@ -952,6 +972,129 @@
                     <RotateCcw size={11} />
                     <span>Reset Standar</span>
                   </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- SEKSI 3: PERILAKU WORKSPACE & MULTI-CHART -->
+            <div class="section-group">
+              <h4 class="section-title">Perilaku Workspace & Sinkronisasi Multi-Chart</h4>
+              <p class="section-subtitle">
+                Atur perilaku penyimpanan otomatis workspace dan preferensi sinkronisasi bawaan saat menggunakan multi-chart grid.
+              </p>
+
+              <!-- Auto-Save Workspace Toggle -->
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-label">Penyimpanan Otomatis Workspace (Auto-Save)</span>
+                  <span class="setting-desc">Simpan otomatis tata letak grid, simbol, dan perubahan workspace saat bekerja</span>
+                </div>
+                <button
+                  type="button"
+                  class="toggle-btn {settings.autoSaveWorkspace !== false ? 'active' : ''}"
+                  onclick={() => onUpdateSettings({ autoSaveWorkspace: settings.autoSaveWorkspace === false })}
+                >
+                  {settings.autoSaveWorkspace !== false ? 'Aktif' : 'Nonaktif'}
+                </button>
+              </div>
+
+              <!-- Sinkronisasi Multi-Chart Cards Grid -->
+              <div class="setting-box-column">
+                <div class="setting-info-header">
+                  <span class="setting-label">Perilaku Default Sinkronisasi Multi-Chart</span>
+                  <span class="setting-desc">Status sinkronisasi awal saat beralih ke tata letak split/grid (2 Split, 4 Grid, dsb.)</span>
+                </div>
+
+                <div class="multichart-sync-settings-grid">
+                  <!-- 1. Crosshair Sync -->
+                  <div class="sync-setting-card">
+                    <div class="sync-card-info">
+                      <div class="sync-card-title">
+                        <Crosshair size={13} class="sync-icon" />
+                        <span>Kursor Crosshair</span>
+                      </div>
+                      <span class="sync-card-desc">Sinkronkan koordinat kursor mouse serempak antar panel grafik</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="toggle-btn {(settings.syncConfig?.crosshair ?? true) ? 'active' : ''}"
+                      onclick={() => handleToggleSync('crosshair')}
+                    >
+                      {(settings.syncConfig?.crosshair ?? true) ? 'Aktif' : 'Nonaktif'}
+                    </button>
+                  </div>
+
+                  <!-- 2. Viewport / Scroll Sync -->
+                  <div class="sync-setting-card">
+                    <div class="sync-card-info">
+                      <div class="sync-card-title">
+                        <Move size={13} class="sync-icon" />
+                        <span>Gerakan Viewport (Waktu)</span>
+                      </div>
+                      <span class="sync-card-desc">Penyelarasan zoom dan pan horizontal rentang waktu candle</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="toggle-btn {(settings.syncConfig?.viewport ?? true) ? 'active' : ''}"
+                      onclick={() => handleToggleSync('viewport')}
+                    >
+                      {(settings.syncConfig?.viewport ?? true) ? 'Aktif' : 'Nonaktif'}
+                    </button>
+                  </div>
+
+                  <!-- 3. Symbol Sync -->
+                  <div class="sync-setting-card">
+                    <div class="sync-card-info">
+                      <div class="sync-card-title">
+                        <Coins size={13} class="sync-icon" />
+                        <span>Simbol Pasar (Pair)</span>
+                      </div>
+                      <span class="sync-card-desc">Ganti simbol di satu chart otomatis mengganti semua chart</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="toggle-btn {(settings.syncConfig?.symbol ?? false) ? 'active' : ''}"
+                      onclick={() => handleToggleSync('symbol')}
+                    >
+                      {(settings.syncConfig?.symbol ?? false) ? 'Aktif' : 'Independen'}
+                    </button>
+                  </div>
+
+                  <!-- 4. Drawings Sync -->
+                  <div class="sync-setting-card">
+                    <div class="sync-card-info">
+                      <div class="sync-card-title">
+                        <PenTool size={13} class="sync-icon" />
+                        <span>Objek Gambar (Drawings)</span>
+                      </div>
+                      <span class="sync-card-desc">Garis tren, horizontal line, dan anotasi gambar tersinkron</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="toggle-btn {(settings.syncConfig?.drawings ?? true) ? 'active' : ''}"
+                      onclick={() => handleToggleSync('drawings')}
+                    >
+                      {(settings.syncConfig?.drawings ?? true) ? 'Aktif' : 'Nonaktif'}
+                    </button>
+                  </div>
+
+                  <!-- 5. Indicators Sync (Auto-Clone) -->
+                  <div class="sync-setting-card">
+                    <div class="sync-card-info">
+                      <div class="sync-card-title">
+                        <Layers size={13} class="sync-icon" />
+                        <span>Indikator Teknikal</span>
+                      </div>
+                      <span class="sync-card-desc">Duplikasi indikator aktif ke seluruh cell layout baru secara otomatis</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="toggle-btn {(settings.syncConfig?.indicators ?? true) ? 'active' : ''}"
+                      onclick={() => handleToggleSync('indicators')}
+                    >
+                      {(settings.syncConfig?.indicators ?? true) ? 'Auto-Clone' : 'Manual'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3362,5 +3505,53 @@
 
   .guide-card-body strong {
     color: var(--text-main);
+  }
+
+  /* ─── MULTICHART SYNC SETTINGS GRID ─── */
+  .multichart-sync-settings-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .sync-setting-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    transition: all 0.15s ease;
+  }
+
+  .sync-setting-card:hover {
+    border-color: var(--border-bright);
+    background-color: var(--bg-base);
+  }
+
+  .sync-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sync-card-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .sync-card-title :global(.sync-icon) {
+    color: var(--brand-primary, #00f090);
+  }
+
+  .sync-card-desc {
+    font-size: 10px;
+    color: var(--text-dim);
   }
 </style>

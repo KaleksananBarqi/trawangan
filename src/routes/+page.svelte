@@ -46,6 +46,11 @@
     MONO_FONT_OPTIONS,
     DENSITY_OPTIONS
   } from '../lib/constants/themes';
+  import {
+    DEFAULT_APP_SETTINGS,
+    DEFAULT_SYNC_CONFIG,
+    resolveAppSettings
+  } from '../lib/constants/defaults';
 
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
 
@@ -64,32 +69,10 @@
   let isLoadingWorkspace = false;
 
   // Multi-Chart Sync State
-  let syncConfig = $state<MultiChartSyncConfig>({
-    crosshair: true,
-    viewport: true,
-    symbol: false,
-    drawings: true,
-    indicators: true,
-  });
+  let syncConfig = $state<MultiChartSyncConfig>({ ...DEFAULT_SYNC_CONFIG });
 
   // Settings & Preferences State
-  let appSettings = $state<AppSettings>({
-    timezone: 'Asia/Jakarta',
-    soundEnabled: true,
-    systemNotificationEnabled: true,
-    showWatermark: true,
-    showGrid: true,
-    showReplayBar: false,
-    theme: 'signature',
-    themePreset: 'signature',
-    fontFamilyUi: 'Plus Jakarta Sans',
-    fontFamilyMono: 'JetBrains Mono',
-    uiDensity: 'regular',
-    fontSize: 12,
-    defaultTimeframe: '15m',
-    favoriteTimeframes: ['1m', '5m', '15m', '1h', '4h', '1D'],
-    customTimeframes: [],
-  });
+  let appSettings = $state<AppSettings>({ ...DEFAULT_APP_SETTINGS });
 
   // Reaktif Sinkronisasi Tema & Tipografi ke Elemen Root DOM
   $effect(() => {
@@ -217,26 +200,36 @@
     // Muat preferensi aplikasi tersimpan dari localStorage
     try {
       const savedSettings = localStorage.getItem('trawangan_app_settings');
+      let parsed = null;
       if (savedSettings) {
-        const parsed = JSON.parse(savedSettings);
-        appSettings = { ...appSettings, ...parsed };
-        if (appSettings.defaultTimeframe) {
-          activeTimeframe = appSettings.defaultTimeframe;
+        try {
+          parsed = JSON.parse(savedSettings);
+        } catch (_) {}
+      }
+      appSettings = resolveAppSettings(parsed);
+      if (appSettings.defaultTimeframe) {
+        activeTimeframe = appSettings.defaultTimeframe;
+      }
+      if (appSettings.syncConfig) {
+        syncConfig = { ...appSettings.syncConfig };
+      }
+      if (appSettings.autoSaveWorkspace !== undefined) {
+        isAutoSaveWorkspace = appSettings.autoSaveWorkspace;
+      } else {
+        const savedAutoSave = localStorage.getItem('trawangan_autosave_workspace');
+        if (savedAutoSave !== null) {
+          isAutoSaveWorkspace = savedAutoSave === 'true';
         }
       }
 
       const savedPineWidth = localStorage.getItem('trawangan_pine_panel_width');
       if (savedPineWidth) {
-        const parsed = parseInt(savedPineWidth, 10);
-        if (!isNaN(parsed) && parsed >= 340 && parsed <= 900) {
-          pinePanelWidth = parsed;
+        const parsedWidth = parseInt(savedPineWidth, 10);
+        if (!isNaN(parsedWidth) && parsedWidth >= 340 && parsedWidth <= 900) {
+          pinePanelWidth = parsedWidth;
         }
       }
 
-      const savedAutoSave = localStorage.getItem('trawangan_autosave_workspace');
-      if (savedAutoSave !== null) {
-        isAutoSaveWorkspace = savedAutoSave === 'true';
-      }
       isPageMounted = true;
     } catch (e) {
       console.warn('Gagal memuat pengaturan tersimpan:', e);
@@ -457,33 +450,52 @@
     }
   }
 
+  function persistAppSettings() {
+    try {
+      localStorage.setItem('trawangan_app_settings', JSON.stringify(appSettings));
+    } catch (e) {
+      console.warn('Gagal menyimpan preferensi aplikasi ke localStorage:', e);
+    }
+  }
+
   function handleToggleSyncCrosshair() {
     syncConfig.crosshair = !syncConfig.crosshair;
+    appSettings.syncConfig = { ...syncConfig };
+    persistAppSettings();
     addSystemLog(`Sinkronisasi kursor crosshair: ${syncConfig.crosshair ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
   function handleToggleSyncViewport() {
     syncConfig.viewport = !syncConfig.viewport;
+    appSettings.syncConfig = { ...syncConfig };
+    persistAppSettings();
     addSystemLog(`Sinkronisasi gerakan viewport: ${syncConfig.viewport ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
   function handleToggleSyncSymbol() {
     syncConfig.symbol = !syncConfig.symbol;
+    appSettings.syncConfig = { ...syncConfig };
+    persistAppSettings();
     addSystemLog(`Sinkronisasi simbol market: ${syncConfig.symbol ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
   function handleToggleSyncDrawings() {
     syncConfig.drawings = !syncConfig.drawings;
+    appSettings.syncConfig = { ...syncConfig };
+    persistAppSettings();
     addSystemLog(`Sinkronisasi objek gambar: ${syncConfig.drawings ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
   function handleToggleSyncIndicators() {
     syncConfig.indicators = !syncConfig.indicators;
+    appSettings.syncConfig = { ...syncConfig };
+    persistAppSettings();
     addSystemLog(`Sinkronisasi indikator multi-chart: ${syncConfig.indicators ? 'AKTIF' : 'NONAKTIF'}`, 'info');
     if (syncConfig.indicators && chartComponent && typeof chartComponent.syncIndicatorsFromActiveCell === 'function') {
       chartComponent.syncIndicatorsFromActiveCell();
     }
   }
+
 
   function handleWorkspaceModeChange(mode: WorkspaceMode) {
     workspaceMode = mode;
@@ -522,17 +534,25 @@
 
   function handleUpdateSettings(newSettings: Partial<AppSettings>) {
     appSettings = { ...appSettings, ...newSettings };
+    if (newSettings.syncConfig !== undefined) {
+      syncConfig = { ...newSettings.syncConfig };
+    }
+    if (newSettings.autoSaveWorkspace !== undefined) {
+      isAutoSaveWorkspace = newSettings.autoSaveWorkspace;
+      try {
+        localStorage.setItem('trawangan_autosave_workspace', String(isAutoSaveWorkspace));
+      } catch (_) {}
+    }
+    if (newSettings.defaultTimeframe !== undefined) {
+      activeTimeframe = newSettings.defaultTimeframe;
+    }
     if (newSettings.soundEnabled !== undefined) {
       alertService.setSoundEnabled(newSettings.soundEnabled);
     }
     if (newSettings.systemNotificationEnabled !== undefined) {
       alertService.setSystemNotificationEnabled(newSettings.systemNotificationEnabled);
     }
-    try {
-      localStorage.setItem('trawangan_app_settings', JSON.stringify(appSettings));
-    } catch (e) {
-      console.warn('Gagal menyimpan pengaturan aplikasi ke localStorage:', e);
-    }
+    persistAppSettings();
     addSystemLog(`Pengaturan aplikasi diperbarui.`, 'info');
   }
 
@@ -659,9 +679,13 @@
 
   function handleToggleAutoSaveWorkspace() {
     isAutoSaveWorkspace = !isAutoSaveWorkspace;
+    appSettings.autoSaveWorkspace = isAutoSaveWorkspace;
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('trawangan_autosave_workspace', isAutoSaveWorkspace.toString());
+      try {
+        localStorage.setItem('trawangan_autosave_workspace', isAutoSaveWorkspace.toString());
+      } catch (_) {}
     }
+    persistAppSettings();
     addSystemLog(`Auto-save workspace: ${isAutoSaveWorkspace ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
@@ -937,6 +961,7 @@
           bind:this={chartComponent}
           symbol={activeSymbol}
           timeframe={activeTimeframe}
+          defaultTimeframe={appSettings.defaultTimeframe || '15m'}
           layout={currentLayout}
           providerId={activeProviderId}
           themePreset={appSettings.themePreset || 'signature'}
@@ -1057,7 +1082,7 @@
     onClose={() => (isSettingsModalOpen = false)}
     onUpdateSettings={handleUpdateSettings}
     onProviderChange={handleProviderChange}
-    onOpenChartSettings={(sec) => chartComponent?.openChartSettings(sec)}
+    onOpenChartSettings={(sec?: string) => chartComponent?.openChartSettings(sec)}
     onResetChartFactory={() => chartComponent?.resetChartSettingsToFactory()}
   />
 

@@ -33,6 +33,7 @@
     ThemePresetId
   } from '../types/market';
   import { THEME_PRESETS } from '../constants/themes';
+  import { applyLayoutTimeframePolicy } from '../constants/defaults';
 
 
   export interface ReplayStateInfo {
@@ -46,6 +47,7 @@
   interface Props {
     symbol: string;
     timeframe: Timeframe;
+    defaultTimeframe?: Timeframe;
     layout: string;
     providerId?: string;
     syncConfig?: MultiChartSyncConfig;
@@ -64,6 +66,7 @@
   let {
     symbol,
     timeframe,
+    defaultTimeframe = '15m',
     layout,
     providerId = 'binance',
     themePreset = 'signature',
@@ -1237,7 +1240,15 @@
           }
         }
 
-        // 2. Auto-clone indikator ke seluruh cell baru yang terbentuk
+        // 2. Selaraskan timeframe cell baru berdasarkan kebijakan defaultTimeframe
+        applyLayoutTimeframePolicy({
+          activeCell,
+          cells: Array.from(workspace.cells()),
+          defaultTimeframe: defaultTimeframe || '15m',
+          syncTimeframe: Boolean(syncConfig.timeframe),
+        });
+
+        // 3. Auto-clone indikator ke seluruh cell baru yang terbentuk
         if (layout === '1') {
           ensureSingleCellMatchesSnapshot(activeIndicatorsSnapshot);
         } else {

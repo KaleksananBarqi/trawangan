@@ -6,7 +6,8 @@
     Bell,
     Flame,
     Settings,
-    Maximize2
+    Maximize2,
+    Layers
   } from '@lucide/svelte';
   import type {
     Timeframe,
@@ -197,6 +198,7 @@
     {currentLayout}
     {syncConfig}
     {onOpenIndicatorModal}
+    {onRequestCreateAlert}
     {onToggleReplay}
     {onToggleDrawingToolbar}
     {onToggleSyncCrosshair}
@@ -210,14 +212,17 @@
 
   <!-- Quick Utility Actions (Kanan Header) -->
   <div class="actions-section">
-    <!-- Create Alert Button -->
+    <!-- Tombol Langsung Indikator Modal -->
     <button
-      class="action-btn alert-header-btn"
-      title="Buat Price Alert Baru (Alt+A)"
-      onclick={onRequestCreateAlert}
+      class="action-btn indicator-header-btn {activeIndicators && activeIndicators.length > 0 ? 'has-active' : ''}"
+      title="Buka Perpustakaan Indikator Teknikal (Pine Script v6)"
+      onclick={onOpenIndicatorModal}
     >
-      <Bell size={13} class="text-cyan-accent" />
-      <span>Alert</span>
+      <Layers size={13} class={activeIndicators && activeIndicators.length > 0 ? 'text-brand' : 'text-cyan-accent'} />
+      <span>Indikator</span>
+      {#if activeIndicators && activeIndicators.length > 0}
+        <span class="count-badge mono-nums">{activeIndicators.length}</span>
+      {/if}
     </button>
 
     <!-- Toggle Watchlist Panel -->
@@ -456,15 +461,40 @@
     padding: 3px 6px;
   }
 
-  .alert-header-btn {
+  .indicator-header-btn {
     color: #38bdf8;
     border-color: rgba(56, 189, 248, 0.25);
   }
 
-  .alert-header-btn:hover {
+  .indicator-header-btn:hover {
     background-color: rgba(56, 189, 248, 0.12);
     color: #ffffff;
     box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+  }
+
+  .indicator-header-btn.has-active {
+    color: var(--brand-primary, #00f090);
+    border-color: rgba(0, 240, 144, 0.35);
+    background-color: rgba(0, 240, 144, 0.08);
+  }
+
+  .indicator-header-btn .count-badge {
+    background: var(--brand-primary, #00f090);
+    color: #000000;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 0 4.5px;
+    height: 14px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    margin-left: 2px;
+  }
+
+  .text-brand {
+    color: var(--brand-primary, #00f090);
   }
 
   .text-cyan-accent {
