@@ -110,7 +110,7 @@ Jalankan rangkaian pengujian berikut secara berurutan:
 
 ---
 
-### Langkah 6: Remote Push (Memicu CI/CD Rilis)
+### Langkah 6: Remote Push & Sinkronisasi GitHub Release Notes
 1. Push branch `main` ke remote:
    ```powershell
    git push origin main
@@ -119,11 +119,17 @@ Jalankan rangkaian pengujian berikut secara berurutan:
    ```powershell
    git push origin vX.Y.Z
    ```
-   *Catatan:* Push tag `v*` akan otomatis memicu workflow GitHub Actions `.github/workflows/release.yml` untuk mem-build installer biner multi-platform (Windows `.exe`/`.msi`, Linux `.AppImage`/`.deb`, macOS `.dmg`).
+   *Catatan:* Push tag `v*` akan otomatis memicu workflow GitHub Actions `.github/workflows/release.yml`. Workflow tersebut secara otomatis menjalankan `node scripts/extract-changelog.cjs vX.Y.Z` untuk menyematkan changelog terbaru ke dalam `releaseBody`.
+3. *(Opsional/Verifikasi Cepat)* Jika GitHub Release sudah terbuat oleh CI/CD dan perlu pembaruan teks rilis seketika:
+   ```powershell
+   $notes = node scripts/extract-changelog.cjs vX.Y.Z
+   gh release edit vX.Y.Z --notes "$notes"
+   ```
 
 ---
 
 ### Langkah 7: Dokumentasi Otomatis Second Brain (Obsidian MCP)
+Ekstrak catatan rilis versi terkait dari `CHANGELOG.md` menggunakan `node scripts/extract-changelog.cjs vX.Y.Z`.
 Panggil tool `create_vault_file` pada MCP `mcp-tools-istefox` **tanpa menunggu persetujuan pengguna**:
 - **Lokasi Target:** `Project Logs/YYYY-MM-DD - Rilis vX.Y.Z <Ringkasan Singkat>.md`
 - **Metadata Frontmatter:**
@@ -140,4 +146,6 @@ Panggil tool `create_vault_file` pada MCP `mcp-tools-istefox` **tanpa menunggu p
   project: "[[Architecture/Trawangan - Crypto Charting Architecture]]"
   ---
   ```
-- **Konten:** Ringkasan perubahan rilis, daftar berkas yang disentuh, status git commit & tag, dan pranala Wikilinks ke catatan arsitektur relevan.
+- **Konten:** 
+  - Masukkan teks changelog lengkap yang diekstrak dari `CHANGELOG.md`.
+  - Cantumkan daftar berkas yang disentuh, status git commit & tag, dan pranala Wikilinks ke catatan arsitektur relevan.

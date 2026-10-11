@@ -72,6 +72,18 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Extract Changelog Notes
+        id: changelog_extract
+        shell: bash
+        run: |
+          TAG="${{ steps.tag_info.outputs.tag }}"
+          NOTES=$(node scripts/extract-changelog.cjs "$TAG")
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build Tauri app and create release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -84,8 +96,9 @@ jobs:
             
             > **Professional Desktop Crypto Charting Terminal — Zero Paywall**
             
-            Aplikasi desktop native ultra-ringan untuk analisis teknikal, charting WebGL2 berkecepatan tinggi, dan eksekusi Pine Script v6 tanpa paywall.
+            ${{ steps.changelog_extract.outputs.notes }}
             
+            ---
             ### ⚖️ Keunggulan Zero-Paywall Parity:
             - **Indikator Simultan:** Bebas pasang indikator tanpa batas kuota.
             - **Kapasitas Watchlist:** Simpan simbol tanpa batas.
