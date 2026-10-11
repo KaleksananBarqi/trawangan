@@ -53,6 +53,7 @@
   } from '../lib/constants/defaults';
 
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
+  import { updateService } from '../lib/services/updateService';
 
   // ─── Core Market & Navigation State ───
   let activeSymbol = $state('BTCUSDT');
@@ -245,6 +246,11 @@
         addSystemLog('Notifikasi native Windows Action Center aktif.', 'info');
       }
     });
+
+    // Pengecekan pembaruan otomatis di latar belakang (silent check)
+    setTimeout(() => {
+      updateService.checkForUpdates(true);
+    }, 3000);
 
     // Dengarkan event saat Price Alert terpicu secara real-time
     unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
@@ -899,8 +905,8 @@
     onToggleWatchlist={() => (isWatchlistOpen = !isWatchlistOpen)}
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
-    onOpenSettingsModal={() => {
-      settingsInitialTab = 'general';
+    onOpenSettingsModal={(tab = 'general') => {
+      settingsInitialTab = tab as any;
       isSettingsModalOpen = true;
     }}
     onOpenSymbolSearch={() => (isSymbolSearchOpen = true)}
@@ -1071,6 +1077,10 @@
   <StatusBar
     isConsoleOpen={isConsoleDrawerOpen}
     onToggleConsole={() => (isConsoleDrawerOpen = !isConsoleDrawerOpen)}
+    onOpenAbout={() => {
+      settingsInitialTab = 'about';
+      isSettingsModalOpen = true;
+    }}
   />
 
   <!-- Preferences & Settings Modal (Clean Screen Policy) -->

@@ -64,10 +64,17 @@ Rendering candlestick mulus hingga 120 FPS dengan akselerasi hardware penuh, ord
 Tulis, edit, dan kompilasi script PineTS v6 secara mandiri tanpa membebani UI thread utama.
 
 <p align="center">
-  <img src="static/screenshots/pinescript.png" alt="Pine Script Editor trawangan" width="95%">
+  <img src="static/screenshots/pine-editor.png" alt="Pine Script Editor trawangan" width="95%">
 </p>
 
-### 3. Preset Multi-Tema & Filosofi Sistem
+### 3. Pengaturan Terminal & Multi-Provider Data Feed
+Kustomisasi koneksi WebSocket multi-exchange (Binance, Bitunix, Hyperliquid, Coinbase), manajemen data provider kustom, serta telemetri hardware WebGL2 real-time.
+
+<p align="center">
+  <img src="static/screenshots/setting.png" alt="Pengaturan Terminal dan Multi-Provider trawangan" width="95%">
+</p>
+
+### 4. Preset Multi-Tema & Filosofi Sistem
 Dukungan *Signature Palette* cyberpunk minimalis (`#0F0F0F` + `#FF69B4`), tema exchange klasik (Binance, TradingView, Bitunix, Coinglass), serta kustomisasi densitas font antarmuka.
 
 <p align="center">

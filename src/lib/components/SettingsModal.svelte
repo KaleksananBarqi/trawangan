@@ -39,9 +39,12 @@
     Move,
     Coins,
     PenTool,
-    Layers
+    Layers,
+    Download,
+    AlertCircle
   } from '@lucide/svelte';
   import { openExternalUrl } from '../services/urlService';
+  import { updateService, type UpdateState } from '../services/updateService';
   import {
     THEME_PRESETS,
     UI_FONT_OPTIONS,
@@ -212,46 +215,11 @@
   }
 
   // ─── State Cek Pembaruan (About Page) ───
-  let isCheckingUpdate = $state(false);
-  let updateFeedback = $state<{ type: 'idle' | 'success' | 'info' | 'error'; message: string } | null>(null);
-
+  let updateState = $state<UpdateState>(updateService.getSnapshot());
+  let unsubUpdate: (() => void) | null = null;
 
   async function handleCheckUpdate() {
-    if (isCheckingUpdate) return;
-    isCheckingUpdate = true;
-    updateFeedback = { type: 'info', message: 'Memeriksa ketersediaan pembaruan dari server...' };
-    try {
-      const res = await fetch('https://api.github.com/repos/KaleksananBarqi/trawangan/releases/latest', {
-        headers: { Accept: 'application/vnd.github.v3+json' }
-      });
-      if (res.ok) {
-        const release = await res.json();
-        const tag = release.tag_name || 'v0.1.0';
-        if (tag === 'v0.1.0' || tag === '0.1.0') {
-          updateFeedback = {
-            type: 'success',
-            message: '✓ Anda sudah menggunakan versi rilis terbaru (v0.1.0).'
-          };
-        } else {
-          updateFeedback = {
-            type: 'info',
-            message: `Versi baru tersedia: ${tag}. Silakan periksa halaman rilis.`
-          };
-        }
-      } else {
-        updateFeedback = {
-          type: 'success',
-          message: '✓ trawangan v0.1.0 berada pada versi rilis stabil terkini.'
-        };
-      }
-    } catch {
-      updateFeedback = {
-        type: 'success',
-        message: '✓ trawangan v0.1.0 berada pada versi rilis stabil terkini.'
-      };
-    } finally {
-      isCheckingUpdate = false;
-    }
+    await updateService.checkForUpdates(false);
   }
 
   // ─── Provider Management State ───
@@ -290,16 +258,24 @@
       unsubTelemetry = telemetryService.subscribe((data) => {
         telemetry = data;
       });
+      unsubUpdate = updateService.subscribe((s) => {
+        updateState = s;
+      });
     } else {
       if (unsubTelemetry) {
         unsubTelemetry();
         unsubTelemetry = null;
+      }
+      if (unsubUpdate) {
+        unsubUpdate();
+        unsubUpdate = null;
       }
     }
   });
 
   onDestroy(() => {
     if (unsubTelemetry) unsubTelemetry();
+    if (unsubUpdate) unsubUpdate();
   });
 
   $effect(() => {
@@ -475,6 +451,9 @@
           >
             <Info size={14} />
             <span>Tentang Aplikasi</span>
+            {#if updateState.status === 'available'}
+              <span class="tab-update-dot" title="Pembaruan Tersedia"></span>
+            {/if}
           </button>
 
           <button
@@ -1417,7 +1396,7 @@
                 <div class="about-hero-details">
                   <div class="about-title-row">
                     <h3 class="about-app-name">trawangan</h3>
-                    <span class="about-version-badge mono-nums">v0.1.0 · Beta</span>
+                    <span class="about-version-badge mono-nums">v{updateState.currentVersion} · Stabil</span>
                   </div>
                   <div class="about-javanese-tagline">
                     <span class="javanese-script">ꦠꦿꦮꦔꦤ꧀</span>
@@ -1445,17 +1424,103 @@
                       type="button"
                       class="btn-check-update"
                       onclick={handleCheckUpdate}
-                      disabled={isCheckingUpdate}
+                      disabled={updateState.status === 'checking'}
                       title="Periksa ketersediaan versi rilis terbaru"
                     >
-                      <RefreshCw size={13} class={isCheckingUpdate ? 'spin' : ''} />
-                      <span>{isCheckingUpdate ? 'Memeriksa...' : 'Periksa Pembaruan'}</span>
+                      <RefreshCw size={13} class={updateState.status === 'checking' ? 'spin' : ''} />
+                      <span>{updateState.status === 'checking' ? 'Memeriksa...' : 'Periksa Pembaruan'}</span>
                     </button>
                   </div>
 
-                  {#if updateFeedback}
-                    <div class="update-feedback-banner {updateFeedback.type} mono-nums">
-                      <span>{updateFeedback.message}</span>
+                  <!-- Dynamic Update Card Showcase -->
+                  {#if updateState.status === 'available' && updateState.updateInfo}
+                    <div class="update-card-featured glassmorphism">
+                      <div class="update-card-header">
+                        <div class="update-badge-glow">
+                          <Sparkles size={14} class="sparkle-icon" />
+                          <span>PEMBARUAN BARU TERSEDIA</span>
+                        </div>
+                        <span class="update-tag mono-nums">{updateState.updateInfo.latestTag}</span>
+                      </div>
+
+                      <div class="update-card-body">
+                        <div class="version-comparison-row mono-nums">
+                          <div class="version-chip current">
+                            <span class="chip-label">Saat Ini</span>
+                            <span class="chip-val">v{updateState.currentVersion}</span>
+                          </div>
+                          <span class="comparison-arrow">➔</span>
+                          <div class="version-chip latest">
+                            <span class="chip-label">Rilis Baru</span>
+                            <span class="chip-val">{updateState.updateInfo.latestTag}</span>
+                          </div>
+                          {#if updateState.updateInfo.publishedAt}
+                            <span class="published-date">({updateState.updateInfo.publishedAt})</span>
+                          {/if}
+                        </div>
+
+                        <!-- Release Notes Summary Container -->
+                        <div class="release-notes-box">
+                          <div class="notes-header">
+                            <Info size={13} />
+                            <span>Catatan Pembaruan ({updateState.updateInfo.releaseName})</span>
+                          </div>
+                          <pre class="notes-content">{updateState.updateInfo.releaseNotes}</pre>
+                        </div>
+
+                        <!-- Direct Actions -->
+                        <div class="update-card-actions">
+                          {#if updateState.updateInfo.matchedAsset}
+                            <button
+                              type="button"
+                              class="btn-download-update"
+                              onclick={() => openExternalUrl(updateState.updateInfo!.matchedAsset!.browserDownloadUrl)}
+                              title="Unduh file rilis: {updateState.updateInfo.matchedAsset.name}"
+                            >
+                              <Download size={14} />
+                              <span>Unduh {updateState.updateInfo.matchedAsset.name}</span>
+                            </button>
+                          {:else}
+                            <button
+                              type="button"
+                              class="btn-download-update"
+                              onclick={() => openExternalUrl(updateState.updateInfo!.releaseUrl)}
+                              title="Buka rilis dan unduh installer"
+                            >
+                              <Download size={14} />
+                              <span>Unduh Installer Resmi</span>
+                            </button>
+                          {/if}
+
+                          <button
+                            type="button"
+                            class="btn-view-github"
+                            onclick={() => openExternalUrl(updateState.updateInfo!.releaseUrl)}
+                            title="Buka catatan rilis lengkap di GitHub"
+                          >
+                            <ExternalLink size={13} />
+                            <span>Lihat di GitHub</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  {:else if updateState.status === 'latest'}
+                    <div class="update-feedback-banner success mono-nums">
+                      <Check size={14} />
+                      <span>✓ Anda sudah menggunakan versi rilis terbaru (v{updateState.currentVersion}). Sistem berada pada performa optimal.</span>
+                      {#if updateState.lastChecked}
+                        <span class="check-time">· Dicek pukul {updateState.lastChecked.toLocaleTimeString('id-ID', { hour12: false })}</span>
+                      {/if}
+                    </div>
+                  {:else if updateState.status === 'error'}
+                    <div class="update-feedback-banner error mono-nums">
+                      <AlertCircle size={14} />
+                      <span>{updateState.errorMessage || 'Gagal menghubungi server GitHub.'}</span>
+                    </div>
+                  {:else if updateState.status === 'checking'}
+                    <div class="update-feedback-banner info mono-nums">
+                      <RefreshCw size={13} class="spin" />
+                      <span>Memeriksa ketersediaan pembaruan dari server GitHub...</span>
                     </div>
                   {/if}
                 </div>
@@ -3166,6 +3231,222 @@
     background: rgba(56, 189, 248, 0.08);
     border: 1px solid rgba(56, 189, 248, 0.25);
     color: #38bdf8;
+    gap: 7px;
+  }
+
+  .update-feedback-banner.error {
+    background: rgba(255, 68, 88, 0.08);
+    border: 1px solid rgba(255, 68, 88, 0.25);
+    color: var(--bear-color);
+    gap: 7px;
+  }
+
+  .check-time {
+    color: var(--text-dim);
+    margin-left: 6px;
+    font-size: 10px;
+  }
+
+  .tab-update-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--brand-primary);
+    box-shadow: 0 0 6px var(--brand-primary);
+    margin-left: auto;
+    animation: updatePulse 1.8s infinite;
+  }
+
+  @keyframes updatePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+  }
+
+  /* Featured Update Announcement Card */
+  .update-card-featured {
+    margin-top: 10px;
+    background: rgba(255, 105, 180, 0.04);
+    border: 1px solid rgba(255, 105, 180, 0.3);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 15px rgba(255, 105, 180, 0.08);
+  }
+
+  .update-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .update-badge-glow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+    font-weight: 800;
+    color: var(--brand-primary);
+    letter-spacing: 0.05em;
+  }
+
+  :global(.sparkle-icon) {
+    color: var(--brand-primary);
+    animation: sparkleSpin 3s linear infinite;
+  }
+
+  @keyframes sparkleSpin {
+    0% { transform: rotate(0deg); }
+    50% { transform: rotate(180deg) scale(1.15); }
+    100% { transform: rotate(360deg); }
+  }
+
+  .update-tag {
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffffff;
+    background: rgba(255, 105, 180, 0.25);
+    border: 1px solid rgba(255, 105, 180, 0.4);
+    padding: 2px 8px;
+    border-radius: var(--radius-xs);
+  }
+
+  .update-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .version-comparison-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+
+  .version-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    padding: 2px 7px;
+    border-radius: var(--radius-xs);
+  }
+
+  .version-chip.latest {
+    border-color: rgba(255, 105, 180, 0.4);
+    background: rgba(255, 105, 180, 0.08);
+  }
+
+  .chip-label {
+    color: var(--text-dim);
+    font-size: 9.5px;
+  }
+
+  .chip-val {
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .version-chip.latest .chip-val {
+    color: var(--brand-primary);
+  }
+
+  .comparison-arrow {
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+
+  .published-date {
+    color: var(--text-dim);
+    font-size: 10px;
+    margin-left: 4px;
+  }
+
+  .release-notes-box {
+    background: var(--bg-darkest);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 140px;
+    overflow-y: auto;
+  }
+
+  .notes-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .notes-content {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .update-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+  }
+
+  .btn-download-update {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--brand-primary);
+    color: #0f0f0f;
+    border: none;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 10px rgba(255, 105, 180, 0.3);
+  }
+
+  .btn-download-update:hover {
+    background: #ff80bf;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(255, 105, 180, 0.45);
+  }
+
+  .btn-view-github {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-base);
+    color: var(--text-muted);
+    border: 1px solid var(--border-hairline);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-view-github:hover {
+    color: var(--text-main);
+    border-color: var(--border-bright);
+    background: var(--bg-hover);
   }
 
   .specs-grid {

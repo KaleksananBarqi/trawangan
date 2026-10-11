@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import {
     Activity,
     Code,
@@ -7,7 +8,8 @@
     Flame,
     Settings,
     Maximize2,
-    Layers
+    Layers,
+    Sparkles
   } from '@lucide/svelte';
   import type {
     Timeframe,
@@ -15,6 +17,7 @@
     WorkspaceMode,
     SavedWorkspace
   } from '../types/market';
+  import { updateService, type UpdateState } from '../services/updateService';
 
   // Subkomponen modular header baru yang ringkas dan terpadu
   import WorkspaceLayoutMenu from './header/WorkspaceLayoutMenu.svelte';
@@ -55,7 +58,7 @@
     onToggleWatchlist?: () => void;
     onToggleReplay?: () => void;
     onOpenIndicatorModal: () => void;
-    onOpenSettingsModal?: () => void;
+    onOpenSettingsModal?: (tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help') => void;
     onRequestCreateAlert?: () => void;
     onOpenSymbolSearch?: () => void;
     // Props opsional lama agar backward-compatible
@@ -102,6 +105,19 @@
     onRequestCreateAlert,
     onOpenSymbolSearch
   }: Props = $props();
+
+  let updateState = $state<UpdateState>(updateService.getSnapshot());
+  let unsubUpdate: (() => void) | null = null;
+
+  onMount(() => {
+    unsubUpdate = updateService.subscribe((s) => {
+      updateState = s;
+    });
+  });
+
+  onDestroy(() => {
+    if (unsubUpdate) unsubUpdate();
+  });
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
@@ -235,11 +251,23 @@
       <span>Panel</span>
     </button>
 
+    <!-- Update Notification Pill (Muncul saat rilis baru tersedia) -->
+    {#if updateState.status === 'available' && updateState.updateInfo}
+      <button
+        class="action-btn update-pill mono-nums"
+        title="Versi baru {updateState.updateInfo.latestTag} tersedia! Klik untuk melihat rilis."
+        onclick={() => onOpenSettingsModal?.('about')}
+      >
+        <Sparkles size={13} class="update-sparkle-icon" />
+        <span>Update {updateState.updateInfo.latestTag}</span>
+      </button>
+    {/if}
+
     <!-- Settings & Help Modal -->
     <button
       class="action-btn"
       title="Buka Pengaturan & Panduan Bantuan"
-      onclick={onOpenSettingsModal}
+      onclick={() => onOpenSettingsModal?.('general')}
     >
       <Settings size={13} />
       <span>Setting</span>
@@ -266,6 +294,37 @@
     gap: 7px;
     border-bottom: 1px solid var(--border-hairline);
     z-index: 100;
+  }
+
+  .update-pill {
+    background: rgba(255, 105, 180, 0.15) !important;
+    border-color: rgba(255, 105, 180, 0.5) !important;
+    color: var(--brand-primary) !important;
+    font-weight: 700 !important;
+    box-shadow: 0 0 10px rgba(255, 105, 180, 0.25);
+    animation: headerPulse 2.5s infinite;
+  }
+
+  .update-pill:hover {
+    background: rgba(255, 105, 180, 0.25) !important;
+    border-color: var(--brand-primary) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 0 15px rgba(255, 105, 180, 0.45);
+  }
+
+  :global(.update-sparkle-icon) {
+    animation: sparkleSpin 3s linear infinite;
+  }
+
+  @keyframes headerPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.75; }
+  }
+
+  @keyframes sparkleSpin {
+    0% { transform: rotate(0deg); }
+    50% { transform: rotate(180deg) scale(1.15); }
+    100% { transform: rotate(360deg); }
   }
 
   .brand-section {

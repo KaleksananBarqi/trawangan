@@ -11,22 +11,27 @@
     Activity,
     Wifi,
     Zap,
-    Coffee
+    Coffee,
+    Sparkles
   } from '@lucide/svelte';
   import { telemetryService, type TelemetryData } from '../services/telemetryService';
+  import { updateService, type UpdateState } from '../services/updateService';
   import { openExternalUrl } from '../services/urlService';
 
   interface Props {
     isConsoleOpen: boolean;
     onToggleConsole: () => void;
+    onOpenAbout?: () => void;
   }
 
-  let { isConsoleOpen, onToggleConsole }: Props = $props();
+  let { isConsoleOpen, onToggleConsole, onOpenAbout }: Props = $props();
 
   let currentTime = $state('');
   let timeInterval: any = null;
   let telemetry = $state<TelemetryData>(telemetryService.getSnapshot());
   let unsubTelemetry: (() => void) | null = null;
+  let updateState = $state<UpdateState>(updateService.getSnapshot());
+  let unsubUpdate: (() => void) | null = null;
 
   function updateClock() {
     const now = new Date();
@@ -39,17 +44,34 @@
     unsubTelemetry = telemetryService.subscribe((data) => {
       telemetry = data;
     });
+    unsubUpdate = updateService.subscribe((data) => {
+      updateState = data;
+    });
   });
 
   onDestroy(() => {
     if (timeInterval) clearInterval(timeInterval);
     if (unsubTelemetry) unsubTelemetry();
+    if (unsubUpdate) unsubUpdate();
   });
 </script>
 
 <footer class="system-status-bar">
   <!-- Left Telemetry Cluster: Sistem Dasar -->
   <div class="left-cluster">
+    {#if updateState.status === 'available' && updateState.updateInfo}
+      <button
+        class="telemetry-pill update-status-pill mono-nums"
+        title="Pembaruan {updateState.updateInfo.latestTag} siap! Klik untuk melihat rilis."
+        onclick={onOpenAbout}
+      >
+        <Sparkles size={11} class="text-pink-sparkle" />
+        <span class="pill-badge badge-update">Update {updateState.updateInfo.latestTag}</span>
+      </button>
+
+      <div class="divider"></div>
+    {/if}
+
     <div class="telemetry-pill">
       <span class="live-pip"></span>
       <span class="pill-text font-bold">Engine: NATIVE_SYS_X64</span>
@@ -253,6 +275,29 @@
     color: var(--bear-color);
     background-color: rgba(255, 68, 88, 0.1);
     border: 1px solid rgba(255, 68, 88, 0.25);
+  }
+
+  .badge-update {
+    color: var(--brand-primary);
+    background-color: rgba(255, 105, 180, 0.15);
+    border: 1px solid rgba(255, 105, 180, 0.45);
+    box-shadow: 0 0 6px rgba(255, 105, 180, 0.2);
+  }
+
+  .update-status-pill {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.15s ease;
+  }
+
+  .update-status-pill:hover {
+    transform: translateY(-1px);
+  }
+
+  :global(.text-pink-sparkle) {
+    color: var(--brand-primary);
   }
 
   .divider {
