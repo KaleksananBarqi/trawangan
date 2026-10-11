@@ -150,15 +150,15 @@ Aplikasi ini sudah dilengkapi dengan GitHub Actions CI/CD matrix workflow (`.git
 #### Cara Trigger Release Otomatis:
 1. **Lewat Git Tag (Direkomendasikan):**
    ```bash
-   git tag -a v0.2.0 -m "Release v0.2.0"
-   git push origin v0.2.0
+   git tag -a v0.3.0 -m "Release v0.3.0"
+   git push origin v0.3.0
    ```
 2. **Lewat GitHub CLI:**
    ```bash
-   gh workflow run release.yml -f tag=v0.2.0
+   gh workflow run release.yml -f tag=v0.3.0
    ```
 3. **Lewat GitHub Actions UI:**
-   Buka tab **Actions** di GitHub -> Pilih **release trawangan** -> Klik **Run workflow** -> Masukkan versi tag (contoh `v0.2.0`).
+   Buka tab **Actions** di GitHub -> Pilih **release trawangan** -> Klik **Run workflow** -> Masukkan versi tag (contoh `v0.3.0`).
 
 ### Hasil Paket Rilis Biner:
 - **Windows:** `.exe` (NSIS Setup) & `.msi`
