@@ -4,10 +4,34 @@
     TrendingUp,
     Minus,
     ArrowUpRight,
+    ArrowUp,
+    ArrowDown,
+    MoveHorizontal,
+    MoveVertical,
+    Crosshair,
+    Ruler,
     Square,
+    Circle,
+    Triangle,
+    Paintbrush,
+    Highlighter,
+    Layers,
     DollarSign,
     Type,
+    MessageSquare,
+    StickyNote,
+    Tag,
+    Milestone,
+    Compass,
+    Activity,
+    ChartBar,
+    Calendar,
+    Flag,
+    Star,
+    Search,
+    Shapes,
     Magnet,
+    Pin,
     Lock,
     Unlock,
     Eye,
@@ -15,12 +39,23 @@
     Undo2,
     Redo2,
     Trash2,
-    Ruler,
-    Layers,
-    ChevronRight,
-    Pin
+    X,
+    Sparkles,
+    GitFork,
+    GripVertical,
   } from '@lucide/svelte';
-  import type { DrawingToolType, SnapMode } from '../types/market';
+  import type { DrawingToolType, SnapMode } from '../types/market.js';
+  import {
+    DRAWING_TOOL_GROUPS,
+    getToolMeta,
+    getLastUsedTool,
+    setLastUsedTool,
+    getFavoriteTools,
+    toggleFavoriteTool,
+    isToolFavorite,
+    type DrawingGroupId,
+    type DrawingToolItem,
+  } from '../services/drawingToolsService.js';
 
   interface Props {
     activeTool: DrawingToolType | null;
@@ -58,178 +93,352 @@
     onClear,
   }: Props = $props();
 
-  // Flyout submenu states
-  let openFlyout = $state<string | null>(null);
+  // State flyout menu
+  let openFlyout = $state<DrawingGroupId | null>(null);
+  let searchQuery = $state('');
+  let isFavoritesBarVisible = $state(true);
 
-  const lineTools = [
-    { id: 'trendline' as DrawingToolType, label: 'Trend Line', icon: TrendingUp },
-    { id: 'hline' as DrawingToolType, label: 'Horizontal Line', icon: Minus },
-    { id: 'hray' as DrawingToolType, label: 'Horizontal Ray', icon: ArrowUpRight },
-    { id: 'ray' as DrawingToolType, label: 'Ray', icon: ArrowUpRight },
-    { id: 'arrow' as DrawingToolType, label: 'Arrow', icon: ArrowUpRight },
-  ];
+  // State reaktif lokal untuk favorites & last used
+  let favoriteToolIds = $state<DrawingToolType[]>(getFavoriteTools());
+  let lastUsedPerGroup = $state<Record<DrawingGroupId, DrawingToolType>>({
+    lines: getLastUsedTool('lines'),
+    channels_pitchforks: getLastUsedTool('channels_pitchforks'),
+    fib_gann: getLastUsedTool('fib_gann'),
+    waves_harmonics: getLastUsedTool('waves_harmonics'),
+    shapes_brushes: getLastUsedTool('shapes_brushes'),
+    measure_volume: getLastUsedTool('measure_volume'),
+    annotations: getLastUsedTool('annotations'),
+  });
 
-  const geomTools = [
-    { id: 'fibretracement' as DrawingToolType, label: 'Fib Retracement', icon: Layers },
-    { id: 'box' as DrawingToolType, label: 'Rectangle (Order Block)', icon: Square },
-  ];
+  // Pemetaan Ikon Dinamis per Tool
+  function getIconComponent(toolId: DrawingToolType | null) {
+    if (!toolId || toolId === 'cursor') return MousePointer;
 
-  const posTools = [
-    { id: 'position' as DrawingToolType, label: 'Position (Risk/Reward)', icon: DollarSign },
-    { id: 'measure' as DrawingToolType, label: 'Measure Ruler', icon: Ruler },
-  ];
+    switch (toolId) {
+      // Lines
+      case 'trendline': return TrendingUp;
+      case 'ray':
+      case 'hray':
+      case 'arrow': return ArrowUpRight;
+      case 'hline': return Minus;
+      case 'extendedline': return MoveHorizontal;
+      case 'vline': return MoveVertical;
+      case 'crossline': return Crosshair;
+      case 'infoline': return TrendingUp;
+      case 'trendangle': return Compass;
 
-  function toggleFlyout(name: string) {
-    openFlyout = openFlyout === name ? null : name;
+      // Channels & Pitchforks
+      case 'parallelchannel':
+      case 'disjointchannel':
+      case 'flattopbottom':
+      case 'regressionchannel': return MoveHorizontal;
+      case 'pitchfork':
+      case 'schiffpitchfork':
+      case 'modifiedschiffpitchfork':
+      case 'insidepitchfork': return GitFork;
+
+      // Fib & Gann
+      case 'fibretracement':
+      case 'fibextension':
+      case 'fibextensiontrend':
+      case 'fibchannel':
+      case 'fibfan':
+      case 'fibspeedfan':
+      case 'fibspiral':
+      case 'gannfan': return Layers;
+      case 'fibtimezones':
+      case 'trendfibtime': return Calendar;
+      case 'fibcircles':
+      case 'fibarcs': return Circle;
+      case 'fibwedge': return Triangle;
+      case 'gannbox':
+      case 'gannsquare': return Square;
+      case 'dedekind': return Shapes;
+      case 'sonic':
+      case 'supersonic': return Activity;
+      case 'goldensonic':
+      case 'goldensupersonic': return Sparkles;
+
+      // Waves & Harmonics
+      case 'elliottimpulse':
+      case 'elliottcorrection':
+      case 'headshoulders': return Activity;
+      case 'xabcd':
+      case 'cypher':
+      case 'gartley':
+      case 'bat':
+      case 'butterfly':
+      case 'crab':
+      case 'shark':
+      case 'abcd': return Shapes;
+
+      // Shapes & Brushes
+      case 'box':
+      case 'rotatedrect': return Square;
+      case 'freehand': return Paintbrush;
+      case 'highlighter': return Highlighter;
+      case 'circle':
+      case 'ellipse':
+      case 'arc': return Circle;
+      case 'triangle': return Triangle;
+      case 'polyline':
+      case 'path':
+      case 'curve': return Activity;
+
+      // Measurement & Volume
+      case 'position': return DollarSign;
+      case 'datepricerange': return Calendar;
+      case 'measure': return Ruler;
+      case 'magnifier': return Search;
+      case 'anchoredvwap':
+      case 'fixedrangevp': return ChartBar;
+
+      // Annotations
+      case 'text': return Type;
+      case 'callout':
+      case 'comment': return MessageSquare;
+      case 'note': return StickyNote;
+      case 'pricenote':
+      case 'pricelabel': return Tag;
+      case 'signpost': return Milestone;
+      case 'arrowmarkup': return ArrowUp;
+      case 'arrowmarkdown': return ArrowDown;
+      case 'flagmark': return Flag;
+      case 'iconstamp': return Sparkles;
+
+      default: return TrendingUp;
+    }
   }
 
-  function handleSelect(tool: DrawingToolType | null) {
-    onSelectTool(tool);
+  function toggleFlyout(groupId: DrawingGroupId) {
+    if (openFlyout === groupId) {
+      openFlyout = null;
+    } else {
+      openFlyout = groupId;
+      searchQuery = '';
+    }
+  }
+
+  function handleSelectToolItem(toolId: DrawingToolType, groupId?: DrawingGroupId) {
+    if (groupId) {
+      setLastUsedTool(groupId, toolId);
+      lastUsedPerGroup[groupId] = toolId;
+    } else {
+      // Cari grup tool ini jika tidak diberikan
+      const meta = getToolMeta(toolId);
+      if (meta) {
+        setLastUsedTool(meta.category, toolId);
+        lastUsedPerGroup[meta.category] = toolId;
+      }
+    }
+    onSelectTool(toolId);
     openFlyout = null;
+  }
+
+  function handleDirectGroupClick(group: (typeof DRAWING_TOOL_GROUPS)[0]) {
+    const currentLastUsed = lastUsedPerGroup[group.id] || group.defaultTool;
+    if (activeTool === currentLastUsed) {
+      // Jika sudah aktif, klik tombol akan membuka flyout
+      toggleFlyout(group.id);
+    } else {
+      // Jika belum aktif, aktifkan tool terakhir dari grup tersebut
+      handleSelectToolItem(currentLastUsed, group.id);
+    }
+  }
+
+  function handleToggleFav(e: MouseEvent, toolId: DrawingToolType) {
+    e.stopPropagation();
+    toggleFavoriteTool(toolId);
+    favoriteToolIds = getFavoriteTools();
+  }
+
+  function isGroupActive(group: (typeof DRAWING_TOOL_GROUPS)[0]): boolean {
+    if (!activeTool) return false;
+    return group.tools.some((t) => t.id === activeTool);
+  }
+
+  // Menutup flyout jika pengguna mengklik di luar area toolbar
+  function handleDocumentClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (!target.closest('.drawing-toolbar') && !target.closest('.favorites-bar')) {
+      openFlyout = null;
+    }
+  }
+
+  // Keyboard shortcut Esc menutup flyout
+  function handleKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && openFlyout) {
+      openFlyout = null;
+    }
   }
 </script>
 
-<aside class="drawing-toolbar glass-panel">
+<svelte:window onclick={handleDocumentClick} onkeydown={handleKeyDown} />
+
+<!-- Toolbar Vertikal Utama Trawangan -->
+<aside class="drawing-toolbar glass-panel" aria-label="Bilah Alat Gambar Teknikal">
   <!-- 1. Cursor / Selection Tool -->
   <div class="tool-item">
     <button
+      type="button"
       class="tool-btn {activeTool === 'cursor' || activeTool === null ? 'active' : ''}"
-      title="Cursor (Select & Pan)"
-      onclick={() => handleSelect('cursor')}
+      title="Cursor (Pan & Pilih Objek)"
+      onclick={() => handleSelectToolItem('cursor')}
     >
-      <MousePointer size={16} />
+      <MousePointer size={15} />
     </button>
   </div>
 
   <div class="tool-divider"></div>
 
-  <!-- 2. Lines Group -->
-  <div class="tool-item">
-    <button
-      class="tool-btn {lineTools.some((t) => t.id === activeTool) ? 'active' : ''}"
-      title="Line Tools (Trendline, Horizontal)"
-      onclick={() => toggleFlyout('lines')}
-    >
-      <TrendingUp size={16} />
-      <span class="sub-arrow">▸</span>
-    </button>
+  <!-- 2. Tujuh Kategori Utama Tools Drawing Vela -->
+  {#each DRAWING_TOOL_GROUPS as group (group.id)}
+    {@const currentToolId = lastUsedPerGroup[group.id] || group.defaultTool}
+    {@const CurrentIcon = getIconComponent(currentToolId)}
+    {@const activeInThisGroup = isGroupActive(group)}
+    {@const isThisFlyoutOpen = openFlyout === group.id}
 
-    {#if openFlyout === 'lines'}
-      <div class="flyout-menu glass-panel">
-        <div class="flyout-header">Lines & Rays</div>
-        {#each lineTools as t}
-          {@const Icon = t.icon}
-          <button
-            class="flyout-item {activeTool === t.id ? 'active' : ''}"
-            onclick={() => handleSelect(t.id)}
-          >
-            <span class="flyout-icon"><Icon size={14} /></span>
-            <span class="flyout-label">{t.label}</span>
-          </button>
-        {/each}
+    <div class="tool-item">
+      <div class="tool-btn-wrapper {activeInThisGroup ? 'active' : ''} {isThisFlyoutOpen ? 'flyout-open' : ''}">
+        <button
+          type="button"
+          class="tool-btn"
+          title="{group.label} (Klik untuk aktifkan)"
+          onclick={() => handleDirectGroupClick(group)}
+        >
+          <CurrentIcon size={15} />
+        </button>
+        <button
+          type="button"
+          class="sub-arrow-btn"
+          title="Buka pilihan {group.label}"
+          onclick={(e) => {
+            e.stopPropagation();
+            toggleFlyout(group.id);
+          }}
+        >
+          <span class="sub-arrow">▸</span>
+        </button>
       </div>
-    {/if}
-  </div>
 
-  <!-- 3. Geometric & Fibonacci Group -->
+      <!-- Submenu Flyout -->
+      {#if isThisFlyoutOpen}
+        <div class="flyout-menu obsidian-panel" onclick={(e) => e.stopPropagation()}>
+          <div class="flyout-header-row">
+            <span class="flyout-header-title">{group.label}</span>
+            <span class="flyout-count-badge mono-nums">{group.tools.length}</span>
+          </div>
+
+          <!-- Quick Search Filter jika item > 8 -->
+          {#if group.tools.length > 8}
+            <div class="flyout-search-box">
+              <Search size={12} class="search-icon" />
+              <input
+                type="text"
+                bind:value={searchQuery}
+                placeholder="Cari tool..."
+                class="flyout-search-input"
+              />
+              {#if searchQuery}
+                <button
+                  type="button"
+                  class="clear-search-btn"
+                  onclick={() => (searchQuery = '')}
+                >
+                  <X size={10} />
+                </button>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- List Items -->
+          <div class="flyout-list-scroll">
+            {#each group.tools.filter((t) => !searchQuery || t.label.toLowerCase().includes(searchQuery.toLowerCase()) || (t.tags && t.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase())))) as tool (tool.id)}
+              {@const ToolIcon = getIconComponent(tool.id)}
+              {@const isFav = favoriteToolIds.includes(tool.id)}
+              {@const isItemActive = activeTool === tool.id}
+
+              <div class="flyout-item-row {isItemActive ? 'active' : ''}">
+                <button
+                  type="button"
+                  class="flyout-item-action"
+                  onclick={() => handleSelectToolItem(tool.id, group.id)}
+                >
+                  <span class="flyout-item-icon">
+                    <ToolIcon size={14} />
+                  </span>
+                  <span class="flyout-item-label">{tool.label}</span>
+                  {#if tool.shortcut}
+                    <span class="flyout-item-shortcut mono-nums">{tool.shortcut}</span>
+                  {/if}
+                </button>
+
+                <!-- Star Favorite Button -->
+                <button
+                  type="button"
+                  class="star-btn {isFav ? 'starred' : ''}"
+                  title={isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}
+                  onclick={(e) => handleToggleFav(e, tool.id)}
+                >
+                  <Star size={12} fill={isFav ? '#E5A93C' : 'transparent'} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/each}
+
+  <div class="tool-divider"></div>
+
+  <!-- 3. Toggle Bilah Favorit (Quick Favorites Bar) -->
   <div class="tool-item">
     <button
-      class="tool-btn {geomTools.some((t) => t.id === activeTool) ? 'active' : ''}"
-      title="Fibonacci & Shapes (Rectangle / FVG)"
-      onclick={() => toggleFlyout('shapes')}
+      type="button"
+      class="tool-btn {isFavoritesBarVisible && favoriteToolIds.length > 0 ? 'active glow-amber' : ''}"
+      title="Bilah Alat Favorit ({favoriteToolIds.length} tool) - Klik untuk {isFavoritesBarVisible ? 'Sembunyikan' : 'Tampilkan'}"
+      onclick={() => (isFavoritesBarVisible = !isFavoritesBarVisible)}
     >
-      <Square size={16} />
-      <span class="sub-arrow">▸</span>
-    </button>
-
-    {#if openFlyout === 'shapes'}
-      <div class="flyout-menu glass-panel">
-        <div class="flyout-header">Patterns & Shapes</div>
-        {#each geomTools as t}
-          {@const Icon = t.icon}
-          <button
-            class="flyout-item {activeTool === t.id ? 'active' : ''}"
-            onclick={() => handleSelect(t.id)}
-          >
-            <span class="flyout-icon"><Icon size={14} /></span>
-            <span class="flyout-label">{t.label}</span>
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </div>
-
-  <!-- 4. Position & Risk/Reward Group -->
-  <div class="tool-item">
-    <button
-      class="tool-btn {posTools.some((t) => t.id === activeTool) ? 'active' : ''}"
-      title="Position Tools (Risk/Reward, Ruler)"
-      onclick={() => toggleFlyout('pos')}
-    >
-      <DollarSign size={16} />
-      <span class="sub-arrow">▸</span>
-    </button>
-
-    {#if openFlyout === 'pos'}
-      <div class="flyout-menu glass-panel">
-        <div class="flyout-header">Risk & Measure</div>
-        {#each posTools as t}
-          {@const Icon = t.icon}
-          <button
-            class="flyout-item {activeTool === t.id ? 'active' : ''}"
-            onclick={() => handleSelect(t.id)}
-          >
-            <span class="flyout-icon"><Icon size={14} /></span>
-            <span class="flyout-label">{t.label}</span>
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </div>
-
-  <!-- 5. Text Annotation Tool -->
-  <div class="tool-item">
-    <button
-      class="tool-btn {activeTool === 'text' ? 'active' : ''}"
-      title="Text Note / Annotation"
-      onclick={() => handleSelect('text')}
-    >
-      <Type size={16} />
+      <Star size={15} fill={isFavoritesBarVisible && favoriteToolIds.length > 0 ? '#E5A93C' : 'transparent'} />
     </button>
   </div>
 
   <div class="tool-divider"></div>
 
-  <!-- 6. Magnet Snap Toggle -->
+  <!-- 4. Magnet Snap Toggle -->
   <div class="tool-item">
     <button
+      type="button"
       class="tool-btn snap-btn {snapMode !== 'off' ? 'active snap-' + snapMode : ''}"
       title="Magnet Snap (Mode: {snapMode.toUpperCase()})"
       onclick={onToggleSnap}
     >
-      <Magnet size={16} />
+      <Magnet size={15} />
       {#if snapMode !== 'off'}
-        <span class="snap-badge">{snapMode === 'weak' ? 'W' : 'S'}</span>
+        <span class="snap-badge mono-nums">{snapMode === 'weak' ? 'W' : 'S'}</span>
       {/if}
     </button>
   </div>
 
-  <!-- 7. Stay in Drawing Mode Toggle -->
+  <!-- 5. Stay in Drawing Mode Toggle -->
   <div class="tool-item">
     <button
+      type="button"
       class="tool-btn {stayMode ? 'active glow-cyan' : ''}"
-      title="Stay in Drawing Mode ({stayMode ? 'ON' : 'OFF'})"
+      title="Tetap Dalam Mode Gambar ({stayMode ? 'AKTIF' : 'NONAKTIF'})"
       onclick={onToggleStay}
     >
       <Pin size={15} />
     </button>
   </div>
 
-  <!-- 8. Lock / Unlock All -->
+  <!-- 6. Lock / Unlock All Drawings -->
   <div class="tool-item">
     <button
+      type="button"
       class="tool-btn {isLocked ? 'active glow-warn' : ''}"
-      title="{isLocked ? 'Unlock All Drawings' : 'Lock All Drawings'}"
+      title={isLocked ? 'Buka Kunci Seluruh Gambar' : 'Kunci Seluruh Gambar'}
       onclick={onToggleLock}
     >
       {#if isLocked}
@@ -240,11 +449,12 @@
     </button>
   </div>
 
-  <!-- 9. Hide / Show All -->
+  <!-- 7. Hide / Show All Drawings -->
   <div class="tool-item">
     <button
+      type="button"
       class="tool-btn {isHidden ? 'active text-dim' : ''}"
-      title="{isHidden ? 'Show All Drawings' : 'Hide All Drawings'}"
+      title={isHidden ? 'Tampilkan Seluruh Gambar' : 'Sembunyikan Seluruh Gambar'}
       onclick={onToggleHide}
     >
       {#if isHidden}
@@ -257,11 +467,13 @@
 
   <div class="tool-divider"></div>
 
-  <!-- 10. Undo / Redo Actions -->
+  <!-- 8. History & Clear Utilities -->
   <div class="tool-item">
     <button
+      type="button"
       class="tool-btn action-btn"
-      title="Undo Drawing (Ctrl+Z)"
+      title="Undo Gambar Terakhir (Ctrl+Z)"
+      disabled={!canUndo}
       onclick={onUndo}
     >
       <Undo2 size={15} />
@@ -270,19 +482,21 @@
 
   <div class="tool-item">
     <button
+      type="button"
       class="tool-btn action-btn"
-      title="Redo Drawing (Ctrl+Y)"
+      title="Redo Gambar (Ctrl+Y)"
+      disabled={!canRedo}
       onclick={onRedo}
     >
       <Redo2 size={15} />
     </button>
   </div>
 
-  <!-- 11. Clear / Trash All -->
   <div class="tool-item">
     <button
+      type="button"
       class="tool-btn delete-btn"
-      title="Clear All Drawings on Canvas"
+      title="Hapus Seluruh Objek Gambar di Grafik"
       onclick={onClear}
     >
       <Trash2 size={15} />
@@ -290,23 +504,61 @@
   </div>
 </aside>
 
+<!-- Bilah Alat Favorit Melayang (Quick Floating Favorites Bar ala TradingView) -->
+{#if isFavoritesBarVisible && favoriteToolIds.length > 0}
+  <div class="favorites-bar glass-panel" aria-label="Bilah Alat Favorit">
+    <div class="fav-drag-handle" title="Bilah Cepat Favorit">
+      <GripVertical size={12} />
+    </div>
+
+    {#each favoriteToolIds as favId (favId)}
+      {@const meta = getToolMeta(favId)}
+      {@const FavIcon = getIconComponent(favId)}
+      {#if meta}
+        <button
+          type="button"
+          class="fav-btn {activeTool === favId ? 'active' : ''}"
+          title="{meta.label}{meta.shortcut ? ` (${meta.shortcut})` : ''}"
+          onclick={() => handleSelectToolItem(favId, meta.category)}
+        >
+          <FavIcon size={14} />
+        </button>
+      {/if}
+    {/each}
+
+    <div class="fav-divider"></div>
+
+    <button
+      type="button"
+      class="fav-close-btn"
+      title="Tutup Bilah Favorit"
+      onclick={() => (isFavoritesBarVisible = false)}
+    >
+      <X size={12} />
+    </button>
+  </div>
+{/if}
+
 <style>
+  /* ─── Main Vertical Toolbar ─── */
   .drawing-toolbar {
     position: absolute;
     left: 8px;
     top: 50%;
     transform: translateY(-50%);
-    z-index: 30;
+    z-index: 35;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 6px 3px;
-    border-radius: var(--radius-sm);
+    padding: 5px 3px;
+    border-radius: var(--radius-sm, 6px);
     gap: 3px;
     width: 36px;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+    background-color: rgba(16, 16, 18, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    user-select: none;
   }
 
   .tool-item {
@@ -314,6 +566,31 @@
     width: 100%;
     display: flex;
     justify-content: center;
+  }
+
+  .tool-btn-wrapper {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-xs, 4px);
+    transition: all 0.12s ease;
+  }
+
+  .tool-btn-wrapper.active {
+    background: rgba(0, 240, 255, 0.12);
+    border: 1px solid rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+  }
+
+  .tool-btn-wrapper.active .tool-btn {
+    color: #00f0ff;
+  }
+
+  .tool-btn-wrapper.flyout-open {
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .tool-btn {
@@ -324,68 +601,88 @@
     justify-content: center;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: var(--radius-xs);
-    color: var(--text-muted);
+    border-radius: var(--radius-xs, 4px);
+    color: var(--text-muted, #888888);
     cursor: pointer;
-    transition: all 0.12s ease;
+    transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
+    padding: 0;
   }
 
   .tool-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main, #eeeeee);
   }
 
   .tool-btn.active {
-    background: rgba(0, 240, 144, 0.15);
-    color: var(--brand-primary);
-    border-color: var(--brand-primary);
-    box-shadow: 0 0 8px var(--bull-glow);
+    background: rgba(0, 240, 255, 0.12);
+    color: #00f0ff;
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
   }
 
+  .sub-arrow-btn {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 10px;
+    height: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    z-index: 2;
+  }
+
+  .sub-arrow {
+    font-size: 7px;
+    color: var(--text-dim, #666666);
+    line-height: 1;
+    transition: transform 0.12s ease;
+  }
+
+  .tool-btn-wrapper:hover .sub-arrow {
+    color: var(--text-main, #ffffff);
+  }
+
+  .tool-divider {
+    width: 20px;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 2px 0;
+  }
+
+  /* Snap and Tool Variations */
   .tool-btn.snap-weak {
-    color: var(--bull-color);
+    color: #00f090;
     border-color: rgba(0, 240, 144, 0.4);
     background: rgba(0, 240, 144, 0.12);
   }
 
   .tool-btn.snap-strong {
-    color: var(--brand-purple);
+    color: #818cf8;
     border-color: rgba(129, 140, 248, 0.4);
     background: rgba(129, 140, 248, 0.15);
   }
 
   .snap-badge {
     position: absolute;
-    bottom: 2px;
+    bottom: 1px;
     right: 2px;
     font-size: 8px;
     font-weight: 700;
     line-height: 1;
   }
 
-  .sub-arrow {
-    position: absolute;
-    right: 1px;
-    bottom: -1px;
-    font-size: 8px;
-    opacity: 0.6;
-    line-height: 1;
-  }
-
-  .tool-divider {
-    width: 18px;
-    height: 1px;
-    background: var(--border-hairline);
-    margin: 2px 0;
-  }
-
   .action-btn:hover {
-    color: var(--brand-primary);
+    color: #00f0ff;
   }
 
   .delete-btn:hover {
-    color: var(--bear-color);
+    color: #ff3b69;
     background: rgba(255, 59, 105, 0.15);
   }
 
@@ -399,76 +696,301 @@
   }
 
   .glow-cyan {
-    border-color: rgba(56, 189, 248, 0.4);
-    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.12);
   }
 
-  /* Flyout Menu Styling */
+  .glow-amber {
+    border-color: rgba(229, 169, 60, 0.4);
+    color: #e5a93c;
+  }
+
+  /* ─── Submenu Flyout Menu ─── */
   .flyout-menu {
     position: absolute;
-    left: 40px;
-    top: 0;
-    min-width: 180px;
-    padding: 4px;
-    border-radius: var(--radius-sm);
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
+    left: 42px;
+    top: -4px;
+    width: 240px;
+    max-height: 440px;
+    padding: 6px;
+    border-radius: 8px;
+    background-color: rgba(18, 18, 22, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.75);
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     z-index: 60;
-    animation: fadeIn 0.12s ease-out;
+    backdrop-filter: blur(12px);
+    animation: flyoutSlideIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .flyout-header {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    padding: 3px 6px;
-    letter-spacing: 0.5px;
-  }
-
-  .flyout-item {
+  .flyout-header-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
+    justify-content: space-between;
+    padding: 4px 6px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .flyout-header-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #f0f0f0;
+    letter-spacing: 0.3px;
+  }
+
+  .flyout-count-badge {
+    font-size: 10px;
+    color: #888888;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .flyout-search-box {
+    display: flex;
+    align-items: center;
+    position: relative;
+    padding: 2px 4px;
+  }
+
+  .flyout-search-box :global(.search-icon) {
+    position: absolute;
+    left: 10px;
+    color: #666666;
+  }
+
+  .flyout-search-input {
+    width: 100%;
+    height: 24px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    padding: 0 20px 0 24px;
+    font-size: 11px;
+    color: #ffffff;
+    outline: none;
+    transition: border-color 0.12s ease;
+  }
+
+  .flyout-search-input:focus {
+    border-color: rgba(0, 240, 255, 0.5);
+  }
+
+  .clear-search-btn {
+    position: absolute;
+    right: 8px;
     background: transparent;
     border: none;
-    border-radius: var(--radius-xs);
-    color: var(--text-muted);
-    font-size: 11px;
-    text-align: left;
+    color: #888888;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    padding: 2px;
+  }
+
+  .flyout-list-scroll {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-height: 340px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+    padding-right: 2px;
+  }
+
+  .flyout-list-scroll::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .flyout-list-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+  }
+
+  .flyout-item-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    color: #b0b0b0;
+    font-size: 11px;
     transition: all 0.12s ease;
+    user-select: none;
   }
 
-  .flyout-item:hover {
-    background: var(--bg-hover);
-    color: var(--text-main);
+  .flyout-item-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
   }
 
-  .flyout-item.active {
-    background: rgba(0, 240, 144, 0.12);
-    color: var(--brand-primary);
+  .flyout-item-row.active {
+    background: rgba(0, 240, 255, 0.12);
+    color: #00f0ff;
     font-weight: 600;
   }
 
-  .flyout-icon {
+  .flyout-item-action {
     display: flex;
     align-items: center;
+    gap: 8px;
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+    padding: 3px 0;
+    min-width: 0;
+  }
+
+  .flyout-item-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    flex-shrink: 0;
+  }
+
+  .flyout-item-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .flyout-item-shortcut {
+    font-size: 9px;
+    color: #666666;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .star-btn {
+    background: transparent;
+    border: none;
+    color: #555555;
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transition: all 0.12s ease;
+  }
+
+  .star-btn:hover {
+    color: #e5a93c;
+    transform: scale(1.15);
+  }
+
+  .star-btn.starred {
+    color: #e5a93c;
+  }
+
+  /* ─── Floating Favorites Bar ─── */
+  .favorites-bar {
+    position: absolute;
+    left: 50px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 34;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 6px;
+    background: rgba(16, 16, 20, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(10px);
+    animation: fadeIn 0.15s ease-out;
+  }
+
+  .fav-drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #555555;
+    padding: 0 2px;
+    cursor: grab;
+  }
+
+  .fav-btn {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #a0a0a0;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    padding: 0;
+  }
+
+  .fav-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+  }
+
+  .fav-btn.active {
+    background: rgba(0, 240, 255, 0.14);
+    color: #00f0ff;
+    border-color: rgba(0, 240, 255, 0.4);
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.2);
+  }
+
+  .fav-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 0 2px;
+  }
+
+  .fav-close-btn {
+    background: transparent;
+    border: none;
+    color: #666666;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border-radius: 3px;
+  }
+
+  .fav-close-btn:hover {
+    color: #ff3b69;
+    background: rgba(255, 59, 105, 0.12);
+  }
+
+  /* Animations */
+  @keyframes flyoutSlideIn {
+    from {
+      opacity: 0;
+      transform: translateX(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
 
   @keyframes fadeIn {
     from {
       opacity: 0;
-      transform: translateX(-4px);
     }
     to {
       opacity: 1;
-      transform: translateX(0);
     }
   }
 </style>
