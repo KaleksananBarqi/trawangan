@@ -31,6 +31,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   favoriteTimeframes: ['1m', '5m', '15m', '1h', '4h', '1D'],
   customTimeframes: [],
   autoSaveWorkspace: true,
+  autoLoadLastWorkspace: true,
   syncConfig: { ...DEFAULT_SYNC_CONFIG },
 };
 
@@ -55,6 +56,7 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
     ...DEFAULT_APP_SETTINGS,
     ...saved,
     autoSaveWorkspace: saved.autoSaveWorkspace ?? DEFAULT_APP_SETTINGS.autoSaveWorkspace ?? true,
+    autoLoadLastWorkspace: saved.autoLoadLastWorkspace ?? DEFAULT_APP_SETTINGS.autoLoadLastWorkspace ?? true,
     defaultTimeframe: saved.defaultTimeframe ?? DEFAULT_APP_SETTINGS.defaultTimeframe ?? '15m',
     syncConfig: mergedSyncConfig,
   };

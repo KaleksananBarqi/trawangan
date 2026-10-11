@@ -161,6 +161,7 @@ export interface AppSettings {
   customTimeframes?: string[];
   syncConfig?: MultiChartSyncConfig;
   autoSaveWorkspace?: boolean;
+  autoLoadLastWorkspace?: boolean;
 }
 
 

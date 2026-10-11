@@ -129,23 +129,28 @@ export class ReplaySession implements IReplaySession {
     this.isSelectingBar = false;
     this.cutoffTime = timestamp;
     this.cursorTime = timestamp;
-    this.status = 'ready';
+    this.status = 'loading';
+    this.emit();
 
     if (this.driver) {
       this.driver.cancelCutoffVisual();
       const ok = await this.driver.start(timestamp);
       if (ok) {
+        this.status = 'ready';
         const state = this.driver.getState();
         if (state) {
           this.cursorTime = state.cursorTime ?? timestamp;
           this.remainingBars = state.remaining;
           this.isPlaying = state.playing;
         }
+      } else {
+        this.status = 'idle';
       }
       this.emit();
       return ok;
     }
 
+    this.status = 'ready';
     this.emit();
     return true;
   }

@@ -148,6 +148,14 @@
       </div>
     {/if}
 
+    <!-- Loading Back-Streaming Indicator -->
+    {#if sessionSnap.status === 'loading'}
+      <div class="loading-stream-badge mono-nums" title="Sedang mengunduh candle historis dari bursa">
+        <span class="loading-spinner-dot"></span>
+        <span>Mengunduh riwayat lilin...</span>
+      </div>
+    {/if}
+
     <!-- Remaining Bars Counter -->
     {#if remainingBars > 0}
       <div class="remaining-badge mono-nums" title="Jumlah candle masa depan yang disembunyikan">
@@ -300,6 +308,32 @@
     border: 1px solid var(--border-hairline);
     padding: 2px 6px;
     border-radius: var(--radius-xs);
+  }
+
+  .loading-stream-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: #FBBF24;
+    background-color: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 2px 8px;
+    border-radius: var(--radius-xs);
+  }
+
+  .loading-spinner-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #FBBF24;
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.8);
+    animation: pulseDot 1s infinite alternate ease-in-out;
+  }
+
+  @keyframes pulseDot {
+    0% { transform: scale(0.8); opacity: 0.5; }
+    100% { transform: scale(1.3); opacity: 1; }
   }
 
   .selection-tools {

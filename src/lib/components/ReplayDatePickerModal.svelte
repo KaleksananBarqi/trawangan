@@ -69,10 +69,7 @@
   function applyPreset(offsetMs: number) {
     errorMessage = '';
     const referenceTime = bounds?.last || Date.now();
-    let target = referenceTime - offsetMs;
-    if (bounds?.first && target < bounds.first) {
-      target = bounds.first;
-    }
+    const target = referenceTime - offsetMs;
     dateTimeInput = toLocalISOString(target);
   }
 
@@ -95,18 +92,6 @@
     if (selectedEpoch > now) {
       errorMessage = 'Waktu tidak boleh berada di masa depan.';
       return;
-    }
-
-    if (bounds) {
-      if (bounds.first && selectedEpoch < bounds.first) {
-        // Beri kelonggaran tapi beri warning jika terlalu lampau
-        errorMessage = `Riwayat candle paling awal adalah ${formatDisplayDate(bounds.first)}.`;
-        return;
-      }
-      if (bounds.last && selectedEpoch > bounds.last) {
-        errorMessage = `Riwayat candle terakhir adalah ${formatDisplayDate(bounds.last)}.`;
-        return;
-      }
     }
 
     if (onSelectDate) {
@@ -176,25 +161,22 @@
               type="datetime-local"
               class="datetime-input mono-nums"
               bind:value={dateTimeInput}
-              max={bounds?.last ? toLocalISOString(bounds.last) : toLocalISOString(Date.now())}
-              min={bounds?.first ? toLocalISOString(bounds.first) : undefined}
+              max={toLocalISOString(Date.now())}
             />
           </div>
         </div>
 
-        <!-- Bounds Data Info -->
-        {#if bounds && bounds.first && bounds.last}
-          <div class="bounds-info mono-nums">
+        <div class="bounds-info mono-nums">
+          {#if bounds && bounds.first && bounds.last}
             <div class="bounds-row">
-              <span class="bounds-lbl">Data Paling Awal:</span>
-              <span class="bounds-val">{formatDisplayDate(bounds.first)}</span>
+              <span class="bounds-lbl">Data Aktif di Chart:</span>
+              <span class="bounds-val">{formatDisplayDate(bounds.first)} — {formatDisplayDate(bounds.last)}</span>
             </div>
-            <div class="bounds-row">
-              <span class="bounds-lbl">Data Terkini:</span>
-              <span class="bounds-val">{formatDisplayDate(bounds.last)}</span>
-            </div>
+          {/if}
+          <div class="bounds-row" style="color: #A1A1AA; font-size: 11px; margin-top: 4px;">
+            <span>💡 Memilih tanggal sebelum data aktif akan otomatis men-stream lilin historis dari bursa.</span>
           </div>
-        {/if}
+        </div>
 
         {#if errorMessage}
           <div class="error-banner mono-nums">

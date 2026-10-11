@@ -34,6 +34,7 @@
   } from '../types/market';
   import { THEME_PRESETS } from '../constants/themes';
   import { applyLayoutTimeframePolicy } from '../constants/defaults';
+  import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 
 
   export interface ReplayStateInfo {
@@ -923,7 +924,7 @@
       workspace = new VelaWorkspace(chartContainer, {
         layout: layout as any,
         symbol: velaSym,
-        timeframe: timeframe,
+        timeframe: toVelaTimeframe(timeframe),
         drawingToolbar: false, // Gunakan toolbar kustom Trawangan agar tidak tumpang tindih
         topbar: { left: [], right: [] }, // Sembunyikan topbar bawaan Vela agar tidak tumpang tindih dengan header kustom
         live: true,
@@ -1059,7 +1060,7 @@
         if (cur && onActiveCellChange) {
           const rawSym = (cur as any).symbol || symbol;
           const cleanSym = rawSym.includes(':') ? rawSym.split(':')[1] : rawSym;
-          const curTf = (cur as any).timeframe || timeframe;
+          const curTf = fromVelaTimeframe((cur as any).timeframe || timeframe);
           // Guard: HANYA panggil onActiveCellChange jika ada perbedaan nyata dengan props aktif
           if (cleanSym !== symbol || curTf !== timeframe) {
             onActiveCellChange({ symbol: cleanSym, timeframe: curTf });
@@ -1189,16 +1190,17 @@
   $effect(() => {
     if (isMounted && workspace && timeframe) {
       try {
+        const targetVelaTf = toVelaTimeframe(timeframe);
         let hasChanged = false;
         if (syncConfig.timeframe) {
           for (const cell of workspace.cells()) {
-            if (cell.timeframe !== timeframe) {
-              cell.setTimeframe(timeframe);
+            if (cell.timeframe !== targetVelaTf) {
+              cell.setTimeframe(targetVelaTf);
               hasChanged = true;
             }
           }
-        } else if (workspace.active && workspace.active.timeframe !== timeframe) {
-          workspace.active.setTimeframe(timeframe);
+        } else if (workspace.active && workspace.active.timeframe !== targetVelaTf) {
+          workspace.active.setTimeframe(targetVelaTf);
           hasChanged = true;
         }
         if (hasChanged) {

@@ -977,6 +977,21 @@
                 </button>
               </div>
 
+              <!-- Auto-Load Last Workspace on Startup Toggle -->
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-label">Muat Workspace Terakhir saat Startup</span>
+                  <span class="setting-desc">Otomatis memuat workspace, simbol, indikator, dan tata letak terakhir saat aplikasi dibuka</span>
+                </div>
+                <button
+                  type="button"
+                  class="toggle-btn {settings.autoLoadLastWorkspace !== false ? 'active' : ''}"
+                  onclick={() => onUpdateSettings({ autoLoadLastWorkspace: settings.autoLoadLastWorkspace === false })}
+                >
+                  {settings.autoLoadLastWorkspace !== false ? 'Aktif' : 'Nonaktif'}
+                </button>
+              </div>
+
               <!-- Sinkronisasi Multi-Chart Cards Grid -->
               <div class="setting-box-column">
                 <div class="setting-info-header">

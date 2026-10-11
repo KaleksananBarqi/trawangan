@@ -38,6 +38,9 @@
     loadQuickSymbolsConfig,
     saveQuickSymbolsConfig,
     saveWorkspace,
+    loadWorkspaces,
+    getLastActiveWorkspaceId,
+    setLastActiveWorkspaceId,
     DEFAULT_QUICK_SYMBOLS_CONFIG
   } from '../lib/services/persistence';
   import {
@@ -232,6 +235,24 @@
       }
 
       isPageMounted = true;
+
+      // Auto-load workspace terakhir saat startup jika preferensi aktif
+      if (appSettings.autoLoadLastWorkspace !== false) {
+        const lastWorkspaceId = getLastActiveWorkspaceId();
+        if (lastWorkspaceId) {
+          loadWorkspaces().then((list) => {
+            const target = list.find((w) => w.id === lastWorkspaceId);
+            if (target) {
+              // Beri jeda singkat agar WebGL container mount sempurna sebelum inject layout & indikator
+              setTimeout(() => {
+                handleLoadWorkspace(target);
+              }, 400);
+            }
+          }).catch((err) => {
+            console.warn('[Startup] Gagal auto-load workspace terakhir:', err);
+          });
+        }
+      }
     } catch (e) {
       console.warn('Gagal memuat pengaturan tersimpan:', e);
     }
@@ -613,12 +634,16 @@
       indicators: indicatorsData,
     });
     activeWorkspace = saved;
+    if (saved && saved.id) {
+      setLastActiveWorkspaceId(saved.id);
+    }
     addSystemLog(`Workspace "${name}" disimpan`, 'success');
   }
 
   function handleNewWorkspace() {
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     activeWorkspace = null;
+    setLastActiveWorkspaceId(null);
     addSystemLog('Workspace aktif dilepas. Siap menyetel tata letak atau indikator untuk workspace baru.', 'info');
   }
 
@@ -627,6 +652,9 @@
     isLoadingWorkspace = true;
     try {
       activeWorkspace = w;
+      if (w && w.id) {
+        setLastActiveWorkspaceId(w.id);
+      }
 
       // 1. FRESH CLEAN SLATE TAHAP 1: Reset activeIndicators state Svelte & bersihkan chart lama
       activeIndicators = [];
@@ -724,6 +752,9 @@
           indicators: indicatorsData,
         });
         activeWorkspace = saved;
+        if (saved && saved.id) {
+          setLastActiveWorkspaceId(saved.id);
+        }
         addSystemLog(`Auto-save: "${targetName}" tersimpan otomatis`, 'info');
       } catch (err) {
         console.warn('Auto-save workspace gagal:', err);

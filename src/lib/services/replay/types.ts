@@ -1,5 +1,5 @@
 // Tipe dan Kontrak Antarmuka Modul Deep Replay Session Trawangan
-export type ReplayStatus = 'idle' | 'selecting_cutoff' | 'ready' | 'playing' | 'paused' | 'ended';
+export type ReplayStatus = 'idle' | 'selecting_cutoff' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended';
 
 export interface ReplayBounds {
   first: number;

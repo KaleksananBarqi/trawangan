@@ -3,6 +3,8 @@
  * Mendukung pembacaan candle historis kline dan streaming data pasar
  */
 
+import { isMonthlyTimeframe } from '../utils/timeframeAdapter';
+
 export interface OHLCV {
   time: number;
   open: number;
@@ -64,6 +66,9 @@ export class BitunixProvider {
    * Konversi timeframe Vela ke parameter interval Bitunix API
    */
   private mapTimeframe(tf: string): string {
+    if (isMonthlyTimeframe(tf)) {
+      return '1M';
+    }
     const clean = tf.toLowerCase();
     switch (clean) {
       case '1':

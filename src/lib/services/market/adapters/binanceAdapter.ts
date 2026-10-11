@@ -2,6 +2,7 @@
 import type { MarketProviderAdapter } from '../types';
 import type { Candle, TickerInfo, MarketSearchResult } from '../../../types/market';
 import { normalizeTicker, VERIFIED_CRYPTO_ASSETS } from '../constants';
+import { toExchangeInterval } from '../../../utils/timeframeAdapter';
 
 export class BinanceAdapter implements MarketProviderAdapter {
   id = 'binance';
@@ -143,13 +144,14 @@ export class BinanceAdapter implements MarketProviderAdapter {
 
   async fetchCandles(symbol: string, interval: string, limit = 500): Promise<Candle[]> {
     const cleanSymbol = normalizeTicker(symbol);
+    const exchangeInterval = toExchangeInterval(interval, 'binance');
 
     if (this.isTauri()) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const data = await invoke<Candle[]>('fetch_candles', {
           symbol: cleanSymbol,
-          interval,
+          interval: exchangeInterval,
           limit,
           providerId: 'binance',
         });
@@ -160,7 +162,7 @@ export class BinanceAdapter implements MarketProviderAdapter {
     }
 
     const res = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
+      `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${exchangeInterval}&limit=${limit}`
     );
     if (!res.ok) {
       throw new Error(`Respon error dari Binance API: ${res.statusText}`);
