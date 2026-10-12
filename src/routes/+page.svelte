@@ -22,6 +22,8 @@
   import { marketFeed } from '../lib/services/market';
   import { telemetryService } from '../lib/services/telemetryService';
   import { replaySession, type ReplaySnapshot } from '../lib/services/replay';
+  import { commandDispatcher } from '../lib/services/commandDispatcher';
+  import { chartDrawingController } from '../lib/services/chartDrawingController';
   import type {
     TickerInfo,
     Timeframe,
@@ -331,71 +333,31 @@
       if (cfg) quickSymbolsConfig = cfg;
     });
 
-    // Global keyboard shortcuts (TradingView Standard Suite & OS Windows Normalized)
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Abaikan shortcut jika sedang fokus mengetik di input, textarea, contenteditable, atau CodeMirror
-      const target = e.target as HTMLElement | null;
-      const isInput = Boolean(
-        target && (
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable ||
-          target.closest?.('input') ||
-          target.closest?.('textarea') ||
-          target.closest?.('.cm-editor') ||
-          target.closest?.('.monaco-editor') ||
-          target.closest?.('[contenteditable="true"]')
-        )
-      );
-
-      const code = e.code || '';
-      const key = (e.key || '').toLowerCase();
-
-      // Toggle Console Logs: Ctrl + ` or Cmd + ` (selalu aktif)
-      if ((e.ctrlKey || e.metaKey) && (key === '`' || code === 'Backquote')) {
-        e.preventDefault();
-        e.stopPropagation();
+    // ─── Daftarkan Binding Perintah Terminal ke Deep CommandDispatcher ───
+    const commandUnbinds: (() => void)[] = [
+      commandDispatcher.bindHandler('toggle-console', () => {
         isConsoleDrawerOpen = !isConsoleDrawerOpen;
-        return;
-      }
-
-      // Quick Symbol Search Modal: Ctrl + K or Cmd + K (selalu aktif)
-      if ((e.ctrlKey || e.metaKey) && (key === 'k' || code === 'KeyK')) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('search-symbol', () => {
         isSymbolSearchOpen = true;
-        return;
-      }
-
-      // Quick Help & Shortcuts Cheatsheet Modal: F1 (selalu aktif) atau ? / Shift+/ (saat tidak sedang di input)
-      if (code === 'F1' || key === 'f1' || (!isInput && (key === '?' || (e.shiftKey && code === 'Slash')))) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('help-cheatsheet-f1', () => {
         isShortcutCheatsheetOpen = true;
-        return;
-      }
-
-      // Quick Settings Modal: Ctrl + , or Cmd + , (selalu aktif)
-      if ((e.ctrlKey || e.metaKey) && (key === ',' || code === 'Comma')) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('help-cheatsheet-question', () => {
+        isShortcutCheatsheetOpen = true;
+      }),
+      commandDispatcher.bindHandler('open-settings', () => {
         settingsInitialTab = 'general';
         isSettingsModalOpen = true;
-        return;
-      }
-
-      // Indicator Modal: Ctrl + I or Cmd + I (selalu aktif), atau / saat tidak di input
-      if (((e.ctrlKey || e.metaKey) && (key === 'i' || code === 'KeyI')) || (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey && (key === '/' || code === 'Slash'))) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('open-indicators', () => {
         isIndicatorModalOpen = true;
-        return;
-      }
-
-      // Fullscreen Toggle: F11 (selalu aktif) atau Shift + F saat tidak di input
-      if (code === 'F11' || key === 'f11' || (!isInput && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (key === 'f' || code === 'KeyF'))) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('open-indicators-ctrl-i', () => {
+        isIndicatorModalOpen = true;
+      }),
+      commandDispatcher.bindHandler('fullscreen-toggle', () => {
         if (typeof document !== 'undefined') {
           if (!document.fullscreenElement) {
             document.documentElement.requestFullscreen().catch(() => {});
@@ -403,184 +365,115 @@
             document.exitFullscreen().catch(() => {});
           }
         }
-        return;
-      }
-
-      if (isInput) return;
-
-      // Watchlist Navigation: Space (koin berikutnya), Shift + Space (koin sebelumnya)
-      if (code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('nav-watchlist-space', (e) => {
         handleNavigateWatchlist(e.shiftKey ? -1 : 1);
-        return;
-      }
-
-      // Toggle Right Watchlist Panel: Alt + W
-      if (e.altKey && !e.ctrlKey && !e.metaKey && (key === 'w' || code === 'KeyW')) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('toggle-watchlist', () => {
         rightDockService.toggleTab('watchlist');
         addSystemLog(`Shortcut: Panel Watchlist ${rightDockState.isOpen ? 'ditutup' : 'dibuka'} (Alt+W)`, 'info');
-        return;
-      }
-
-      // Toggle Pine Script Editor: Alt + E
-      if (e.altKey && !e.ctrlKey && !e.metaKey && (key === 'e' || code === 'KeyE')) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('toggle-pine-editor', () => {
         handleWorkspaceModeChange(workspaceMode === 'pine' ? 'terminal' : 'pine');
         addSystemLog(`Shortcut: Beralih ke mode ${workspaceMode === 'pine' ? 'Terminal' : 'Pine IDE'} (Alt+E)`, 'info');
-        return;
-      }
-
-      // Toggle Left Drawing Toolbar Rail: Alt + T
-      if (e.altKey && !e.ctrlKey && !e.metaKey && (key === 't' || code === 'KeyT')) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('toggle-left-toolbar', () => {
         leftToolbarService.toggleCollapse();
         addSystemLog(`Shortcut: Bilah gambar ${leftToolbarState.isCollapsed ? 'disembunyikan' : 'ditampilkan'} (Alt+T)`, 'info');
-        return;
-      }
-
-      // Drawing Tool Shortcuts (Alt + H, Alt + F, Alt + M, Alt + Z, Alt + R, Alt + A, Alt + Panah)
-      if (e.altKey && !e.ctrlKey && !e.metaKey) {
-        if (key === 'h' || code === 'KeyH') {
-          e.preventDefault();
-          e.stopPropagation();
-          handleSelectTool('hline');
-          addSystemLog('Shortcut: Tool Horizontal Line dipilih (Alt+H)', 'info');
-          return;
-        }
-        if (key === 'f' || code === 'KeyF') {
-          e.preventDefault();
-          e.stopPropagation();
-          handleSelectTool('fibretracement');
-          addSystemLog('Shortcut: Tool Fibonacci Retracement dipilih (Alt+F)', 'info');
-          return;
-        }
-        if (key === 'm' || code === 'KeyM') {
-          e.preventDefault();
-          e.stopPropagation();
-          handleSelectTool('measure');
-          addSystemLog('Shortcut: Tool Penggaris/Measure dipilih (Alt+M)', 'info');
-          return;
-        }
-        if (key === 'r' || code === 'KeyR') {
-          e.preventDefault();
-          e.stopPropagation();
-          handleSelectTool('position');
-          addSystemLog('Shortcut: Tool Posisi Long/Short Risk/Reward dipilih (Alt+R)', 'info');
-          return;
-        }
-        if (key === 'z' || code === 'KeyZ') {
-          e.preventDefault();
-          e.stopPropagation();
-          if (chartComponent?.fitChart) chartComponent.fitChart();
-          addSystemLog('Shortcut: Reset skala/fit grafik (Alt+Z)', 'info');
-          return;
-        }
-        if (key === 'a' || code === 'KeyA') {
-          e.preventDefault();
-          e.stopPropagation();
-          const cursorPrice = chartComponent?.getLastHoveredPrice?.() || ticker?.price;
-          handleRequestCreateAlert(activeSymbol, cursorPrice);
-          addSystemLog(`Shortcut: Buat Price Alert untuk ${activeSymbol} (Alt+A)`, 'info');
-          return;
-        }
-        if (code === 'ArrowDown' || key === 'arrowdown') {
-          e.preventDefault();
-          e.stopPropagation();
-          handleNavigateWatchlist(1);
-          return;
-        }
-        if (code === 'ArrowUp' || key === 'arrowup') {
-          e.preventDefault();
-          e.stopPropagation();
-          handleNavigateWatchlist(-1);
-          return;
-        }
-      }
-
-      // Toggle Bar Replay: Shift + R
-      if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (key === 'r' || code === 'KeyR')) {
-        e.preventDefault();
-        e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('draw-hline', () => {
+        handleSelectTool('hline');
+        addSystemLog('Shortcut: Tool Horizontal Line dipilih (Alt+H)', 'info');
+      }),
+      commandDispatcher.bindHandler('draw-fibonacci', () => {
+        handleSelectTool('fibretracement');
+        addSystemLog('Shortcut: Tool Fibonacci Retracement dipilih (Alt+F)', 'info');
+      }),
+      commandDispatcher.bindHandler('draw-measure', () => {
+        handleSelectTool('measure');
+        addSystemLog('Shortcut: Tool Penggaris/Measure dipilih (Alt+M)', 'info');
+      }),
+      commandDispatcher.bindHandler('draw-position', () => {
+        handleSelectTool('position');
+        addSystemLog('Shortcut: Tool Posisi Long/Short Risk/Reward dipilih (Alt+R)', 'info');
+      }),
+      commandDispatcher.bindHandler('fit-chart-z', () => {
+        if (chartComponent?.fitChart) chartComponent.fitChart();
+        addSystemLog('Shortcut: Reset skala/fit grafik (Alt+Z)', 'info');
+      }),
+      commandDispatcher.bindHandler('fit-chart-f', () => {
+        if (chartComponent?.fitChart) chartComponent.fitChart();
+      }),
+      commandDispatcher.bindHandler('create-alert-cursor', () => {
+        const cursorPrice = chartComponent?.getLastHoveredPrice?.() || ticker?.price;
+        handleRequestCreateAlert(activeSymbol, cursorPrice);
+        addSystemLog(`Shortcut: Buat Price Alert untuk ${activeSymbol} (Alt+A)`, 'info');
+      }),
+      commandDispatcher.bindHandler('next-symbol', () => {
+        handleNavigateWatchlist(1);
+      }),
+      commandDispatcher.bindHandler('prev-symbol', () => {
+        handleNavigateWatchlist(-1);
+      }),
+      commandDispatcher.bindHandler('replay-toggle', () => {
         handleToggleReplay();
-        return;
-      }
-
-      // Replay Keyboard Controls (Space untuk play/pause, ArrowRight untuk maju, ArrowLeft untuk mundur 1 bar)
-      if (replaySnapshot.active) {
-        if (code === 'Space') {
-          e.preventDefault();
-          e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('replay-play-pause', () => {
+        if (replaySnapshot.active) {
           replaySession.togglePlay();
-          return;
         }
-        if (code === 'ArrowRight' || key === 'arrowright') {
-          e.preventDefault();
-          e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('replay-step-forward', () => {
+        if (replaySnapshot.active) {
           replaySession.step();
-          return;
         }
-        if (code === 'ArrowLeft' || key === 'arrowleft') {
-          e.preventDefault();
-          e.stopPropagation();
+      }),
+      commandDispatcher.bindHandler('replay-step-backward', () => {
+        if (replaySnapshot.active) {
           replaySession.stepBack();
+        }
+      }),
+      commandDispatcher.bindHandler('tf-1m', () => handleTimeframeChange('1m')),
+      commandDispatcher.bindHandler('tf-3m', () => handleTimeframeChange('3m')),
+      commandDispatcher.bindHandler('tf-5m', () => handleTimeframeChange('5m')),
+      commandDispatcher.bindHandler('tf-15m', () => handleTimeframeChange('15m')),
+      commandDispatcher.bindHandler('tf-1h', () => handleTimeframeChange('1h')),
+      commandDispatcher.bindHandler('tf-4h', () => handleTimeframeChange('4h')),
+      commandDispatcher.bindHandler('tf-1d', () => handleTimeframeChange('1D')),
+      commandDispatcher.bindHandler('tf-1w', () => handleTimeframeChange('1W')),
+      commandDispatcher.bindHandler('cancel-action', () => {
+        if (replaySnapshot.isSelectingBar) {
+          replaySession.cancelBarSelection();
+          addSystemLog('Mode pemilihan bar dibatalkan.', 'info');
           return;
         }
-      }
-
-      // Quick Timeframe Shortcuts & Esc
-      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (key === '1' || code === 'Digit1' || code === 'Numpad1') { handleTimeframeChange('1m'); return; }
-        if (key === '3' || code === 'Digit3' || code === 'Numpad3') { handleTimeframeChange('3m'); return; }
-        if (key === '5' || code === 'Digit5' || code === 'Numpad5') { handleTimeframeChange('5m'); return; }
-        if (key === '0' || code === 'Digit0' || code === 'Numpad0') { handleTimeframeChange('15m'); return; }
-        if (key === 'h' || code === 'KeyH') { handleTimeframeChange('1h'); return; }
-        if (key === '4' || code === 'Digit4' || code === 'Numpad4') { handleTimeframeChange('4h'); return; }
-        if (key === 'd' || code === 'KeyD') { handleTimeframeChange('1D'); return; }
-        if (key === 'w' || code === 'KeyW') { handleTimeframeChange('1W'); return; }
-        if (key === 'f' || code === 'KeyF') {
-          if (chartComponent?.fitChart) chartComponent.fitChart();
-          return;
-        }
-        if (code === 'Escape' || key === 'escape') {
-          if (replaySnapshot.isSelectingBar) {
-            replaySession.cancelBarSelection();
-            addSystemLog('Mode pemilihan bar dibatalkan.', 'info');
-            return;
-          }
-          handleSelectTool('cursor');
-          return;
-        }
-        if (code === 'Delete' || key === 'delete' || code === 'Backspace' || key === 'backspace') {
-          handleUndo();
-          return;
-        }
-      }
-
-      // Undo / Redo
-      if ((e.ctrlKey || e.metaKey) && (key === 'z' || code === 'KeyZ')) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!e.shiftKey) {
-          handleUndo();
-        } else {
-          handleRedo();
-        }
-      } else if ((e.ctrlKey || e.metaKey) && (key === 'y' || code === 'KeyY')) {
-        e.preventDefault();
-        e.stopPropagation();
+        handleSelectTool('cursor');
+      }),
+      commandDispatcher.bindHandler('draw-delete', () => {
+        handleUndo();
+      }),
+      commandDispatcher.bindHandler('draw-undo', () => {
+        handleUndo();
+      }),
+      commandDispatcher.bindHandler('draw-redo', () => {
         handleRedo();
-      }
-    };
+      }),
+    ];
 
-    // Daftarkan di CAPTURE PHASE agar event ditangkap seketika sebelum ditelan kanvas WebGL
-    window.addEventListener('keydown', handleKeyDown, true);
+    const unsubDrawingState = chartDrawingController.subscribe((state) => {
+      activeDrawingTool = state.activeTool;
+      snapMode = state.snapMode;
+      stayMode = state.stayMode;
+      isDrawingsLocked = state.isLocked;
+      isDrawingsHidden = state.isHidden;
+    });
+
+    const unbindGlobalListener = commandDispatcher.attachGlobalListener(window);
+
     return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
+      unbindGlobalListener();
+      unsubDrawingState();
+      commandUnbinds.forEach((u) => u());
     };
   });
 
@@ -913,54 +806,38 @@
     }
   });
 
-  // ─── Drawing Tools Handlers ───
+  // ─── Drawing Tools Handlers (Didelegasikan ke Deep chartDrawingController) ───
   function handleSelectTool(tool: DrawingToolType | null) {
-    activeDrawingTool = tool;
-    if (chartComponent) {
-      chartComponent.setDrawingTool(tool);
-    }
+    chartDrawingController.setTool(tool);
   }
 
   function handleToggleSnap() {
-    const next: Record<SnapMode, SnapMode> = { off: 'weak', weak: 'strong', strong: 'off' };
-    snapMode = next[snapMode];
-    if (chartComponent) {
-      chartComponent.setSnapMode(snapMode);
-    }
+    chartDrawingController.cycleSnapMode();
   }
 
   function handleToggleStay() {
-    stayMode = !stayMode;
-    if (chartComponent) {
-      chartComponent.setStayMode(stayMode);
-    }
+    chartDrawingController.toggleStayMode();
   }
 
   function handleToggleLock() {
-    isDrawingsLocked = !isDrawingsLocked;
-    if (chartComponent) {
-      chartComponent.setDrawingsLocked(isDrawingsLocked);
-    }
+    chartDrawingController.toggleLock();
   }
 
   function handleToggleHide() {
-    isDrawingsHidden = !isDrawingsHidden;
-    if (chartComponent) {
-      chartComponent.setDrawingsHidden(isDrawingsHidden);
-    }
+    chartDrawingController.toggleHide();
   }
 
   function handleUndo() {
-    if (chartComponent) chartComponent.undoDrawing();
+    chartDrawingController.undo();
   }
 
   function handleRedo() {
-    if (chartComponent) chartComponent.redoDrawing();
+    chartDrawingController.redo();
   }
 
   function handleClear() {
-    if (chartComponent && confirm('Hapus semua objek gambar pada grafik saat ini?')) {
-      chartComponent.clearAllDrawings();
+    if (confirm('Hapus semua objek gambar pada grafik saat ini?')) {
+      chartDrawingController.clearAll();
       addSystemLog('Seluruh objek gambar dibersihkan.', 'warn');
     }
   }

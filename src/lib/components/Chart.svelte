@@ -16,6 +16,8 @@
     saveChartDefaultConfig,
     clearChartDefaultConfig
   } from '../services/persistence';
+  import { chartDrawingController } from '../services/chartDrawingController';
+  import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { getHistoricalCandles } from '../services/marketProvider';
   import { alertService } from '../services/alertService';
   import { replaySession, type ReplayDriver } from '../services/replay';
@@ -362,13 +364,6 @@
   }
 
   let activeDrawings = $state<any[]>([]);
-  let drawingPriceBadges = $derived(
-    showDrawingPriceLabels ? extractDrawingPriceBadges(activeDrawings) : []
-  );
-
-  let indicatorPriceBadges = $derived(
-    showIndicatorPriceLabels ? extractIndicatorPriceBadges(getActiveIndicators()) : []
-  );
 
   /**
    * Muat dan pasang gambar yang tersimpan dari SQLite untuk chart aktif
@@ -452,15 +447,13 @@
   let alertYPositions = $state<Record<string, number | null>>({});
   let drawingBadgeYPositions = $state<Record<string, number | null>>({});
   let indicatorBadgeYPositions = $state<Record<string, number | null>>({});
-  let alertPositionInterval: any = null;
-  let badgeRafId: number | null = null;
+  let drawingPriceBadges = $state<PriceScaleBadge[]>([]);
+  let indicatorPriceBadges = $state<PriceScaleBadge[]>([]);
+  let unsubOverlay: (() => void) | null = null;
   let isPointerActiveOnChart = false;
 
   function formatPrice(p: number | null): string {
-    if (p === null || p === undefined || isNaN(p)) return '--';
-    if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (p >= 1) return p.toFixed(4);
-    return p.toFixed(6);
+    return priceScaleOverlayController.formatPrice(p);
   }
 
   /**
@@ -488,133 +481,45 @@
    * Hitung harga tepat dari koordinat pixel Y mouse
    */
   function getPriceFromClientY(clientY: number): number | null {
-    if (!chartContainer || !workspace || !workspace.active) return null;
-    try {
-      const rect = chartContainer.getBoundingClientRect();
-      const localY = clientY - rect.top;
-      const activeChart = workspace.active.chart as any;
-      const coords = getChartCoords(activeChart);
-      const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
-      const pane = renderer?.pricePane || (renderer?.paneNodeAtY ? renderer.paneNodeAtY(localY) : (renderer?.panes?.[0]));
-
-      if (coords && typeof coords.yToPrice === 'function' && pane) {
-        const scale = pane.scale || activeChart.scale;
-        const bounds = pane.bounds || activeChart.bounds;
-        if (scale && bounds) {
-          const p = coords.yToPrice(localY, scale, bounds);
-          if (typeof p === 'number' && !isNaN(p) && p > 0) {
-            return p;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('Gagal menghitung harga dari koordinat Y:', err);
-    }
-    return null;
+    return priceScaleOverlayController.getPriceFromClientY(clientY);
   }
 
   /**
    * Hitung koordinat pixel Y presisi untuk harga target pada grafik
    */
   function getPriceY(targetPrice: number): number | null {
-    if (!chartContainer || !workspace || !workspace.active) return null;
-    try {
-      const activeChart = workspace.active.chart as any;
-      const coords = getChartCoords(activeChart);
-      const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
-      const pane = renderer?.pricePane || (renderer?.panes && renderer.panes[0]) || (renderer?.paneNodeAtY ? renderer.paneNodeAtY(50) : null);
-      if (coords && typeof coords.priceToY === 'function' && pane) {
-        const scale = pane.scale || activeChart.scale;
-        const bounds = pane.bounds || activeChart.bounds;
-        if (scale && bounds) {
-          const y = coords.priceToY(targetPrice, scale, bounds);
-          if (typeof y === 'number' && !isNaN(y)) {
-            const top = bounds.top ?? 0;
-            const height = bounds.height ?? 9999;
-            if (y < top - 24 || y > top + height + 24) {
-              return null;
-            }
-            return Math.round(y);
-          }
-        }
-      }
-    } catch (_) {}
-    return null;
+    return priceScaleOverlayController.getPriceY(targetPrice);
   }
 
   /**
    * Alias kompatibilitas mundur untuk alert overlays
    */
   function getAlertY(targetPrice: number): number | null {
-    return getPriceY(targetPrice);
+    return priceScaleOverlayController.getPriceY(targetPrice);
   }
 
-  /**
-   * Perbarui posisi Y dan label harga dari seluruh alert dan badges aktif secara real-time (60 FPS)
-   */
   function updateBadgePositions() {
-    if (!workspace || !workspace.active) return;
-
-    const activeChart = workspace.active.chart;
-    if (activeChart?.drawings) {
-      activeDrawings = [...(activeChart.drawings.all?.() || [])];
-    }
-
-    if (showDrawingPriceLabels && activeDrawings.length > 0) {
-      const liveBadges = extractDrawingPriceBadges(activeDrawings);
-      const drawMap: Record<string, number | null> = {};
-      for (const b of liveBadges) {
-        drawMap[b.id] = getPriceY(b.price);
-      }
-      drawingBadgeYPositions = drawMap;
-    } else if (Object.keys(drawingBadgeYPositions).length > 0) {
-      drawingBadgeYPositions = {};
-    }
-
-    if (showIndicatorPriceLabels && indicatorPriceBadges.length > 0) {
-      const indMap: Record<string, number | null> = {};
-      for (const b of indicatorPriceBadges) {
-        indMap[b.id] = getPriceY(b.price);
-      }
-      indicatorBadgeYPositions = indMap;
-    } else if (Object.keys(indicatorBadgeYPositions).length > 0) {
-      indicatorBadgeYPositions = {};
-    }
-
-    updateAlertYPositions();
+    priceScaleOverlayController.scheduleUpdate();
   }
 
-  /**
-   * Jadwalkan update posisi badge harga pada animation frame berikutnya (60 FPS smooth sync)
-   */
   function scheduleBadgePositionUpdate() {
-    if (badgeRafId !== null) return;
-    badgeRafId = requestAnimationFrame(() => {
-      badgeRafId = null;
-      updateBadgePositions();
-    });
+    priceScaleOverlayController.scheduleUpdate();
   }
 
-  /**
-   * Perbarui posisi Y dari seluruh alert aktif untuk simbol ini
-   */
   function updateAlertYPositions() {
-    if (!workspace || !workspace.active || activeSymbolAlerts.length === 0) {
-      alertYPositions = {};
-      return;
-    }
-    const pos: Record<string, number | null> = {};
-    for (const a of activeSymbolAlerts) {
-      pos[a.id] = getPriceY(a.targetPrice);
-    }
-    alertYPositions = pos;
+    priceScaleOverlayController.updateAlerts(allAlerts, symbol);
   }
 
   $effect(() => {
-    // Dengarkan perubahan badge derifatif dan picu kalkulasi posisi
-    const _d = drawingPriceBadges;
-    const _i = indicatorPriceBadges;
-    scheduleBadgePositionUpdate();
+    priceScaleOverlayController.updateAlerts(allAlerts, symbol);
+  });
+
+  $effect(() => {
+    priceScaleOverlayController.updateDrawings(activeDrawings, showDrawingPriceLabels);
+  });
+
+  $effect(() => {
+    priceScaleOverlayController.updateIndicators(getActiveIndicators(), showIndicatorPriceLabels);
   });
 
   /**
@@ -919,6 +824,7 @@
   function attachDrawingListeners(chart: any) {
     if (!chart || !chart.on) return;
     try {
+      chartDrawingController.attachChartListeners(chart);
       chart.on('drawing:created', handleDrawingMutated);
       chart.on('drawing:edited', handleDrawingMutated);
       chart.on('drawing:draft', handleDrawingDraft);
@@ -1229,6 +1135,7 @@
       });
 
       isMounted = true;
+      chartDrawingController.attachWorkspace(workspace, () => symbol, () => timeframe);
       restoreDrawingsForCurrentChart();
 
       // Muat dan terapkan preferensi konfigurasi default chart yang tersimpan
@@ -1257,23 +1164,30 @@
     // Langganan pembaruan state price alert secara real-time
     unsubAlerts = alertService.subscribe((alerts) => {
       allAlerts = alerts;
-      updateAlertYPositions();
+      priceScaleOverlayController.updateAlerts(alerts, symbol);
     });
 
-    alertPositionInterval = setInterval(updateAlertYPositions, 400);
+    unsubOverlay = priceScaleOverlayController.subscribe((snap) => {
+      alertYPositions = snap.alertYPositions;
+      drawingBadgeYPositions = snap.drawingBadgeYPositions;
+      indicatorBadgeYPositions = snap.indicatorBadgeYPositions;
+      drawingPriceBadges = snap.drawingPriceBadges;
+      indicatorPriceBadges = snap.indicatorPriceBadges;
+    });
+
+    priceScaleOverlayController.attachChart(chartContainer, workspace);
 
     // Pantau perubahan ukuran chartContainer untuk memperbarui posisi price alert
     resizeObserver = new ResizeObserver(() => {
-      updateAlertYPositions();
+      priceScaleOverlayController.scheduleUpdate();
     });
     resizeObserver.observe(chartContainer);
   });
 
   onDestroy(() => {
-    // 1. Hentikan timer interval alert
-    if (alertPositionInterval) {
-      clearInterval(alertPositionInterval);
-      alertPositionInterval = null;
+    if (unsubOverlay) {
+      unsubOverlay();
+      unsubOverlay = null;
     }
 
     // 2. Bersihkan listeners pada container dan window
@@ -1692,126 +1606,46 @@
     }
   }
 
-  // ─── Drawing Suite Public Methods ───
+  // ─── Drawing Suite Public Methods (Delegated to Deep ChartDrawingController) ───
 
   export function setDrawingTool(tool: DrawingToolType | null): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        if (tool === 'measure') {
-          activeChart.drawings.setMode('measure');
-        } else if (tool === 'cursor' || tool === null) {
-          activeChart.drawings.setMode(null);
-          activeChart.drawings.setTool(null);
-        } else {
-          activeChart.drawings.setMode(null);
-          activeChart.drawings.setTool(tool as any);
-        }
-      }
-    } catch (e) {
-      console.warn('setDrawingTool error:', e);
-    }
+    chartDrawingController.setTool(tool);
   }
 
   export function setSnapMode(mode: SnapMode): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        activeChart.drawings.setSnapMode(mode);
-      }
-    } catch (e) {
-      console.warn('setSnapMode error:', e);
-    }
+    chartDrawingController.setSnapMode(mode);
   }
 
   export function setStayMode(stay: boolean): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        activeChart.drawings.setStayMode(stay);
-      }
-    } catch (e) {
-      console.warn('setStayMode error:', e);
-    }
+    chartDrawingController.setStayMode(stay);
   }
 
   export function undoDrawing(): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        activeChart.drawings.undo();
-        handleDrawingMutated();
-      }
-    } catch (e) {
-      console.warn('undo error:', e);
-    }
+    chartDrawingController.undo();
   }
 
   export function redoDrawing(): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        activeChart.drawings.redo();
-        handleDrawingMutated();
-      }
-    } catch (e) {
-      console.warn('redo error:', e);
-    }
+    chartDrawingController.redo();
   }
 
   export async function clearAllDrawings(): Promise<void> {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        const all = activeChart.drawings.all();
-        if (all.length > 0) {
-          activeChart.drawings.removeMany(all.map((d: any) => d.id));
-        }
-      }
-      const curSym = (workspace.active as any).symbol || symbol;
-      const curTf = (workspace.active as any).timeframe || timeframe;
-      await clearDrawings(curSym, curTf);
-    } catch (e) {
-      console.warn('clearAllDrawings error:', e);
-    }
+    await chartDrawingController.clearAll();
   }
 
   export function lockAllDrawings(lock: boolean): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        const all = activeChart.drawings.all();
-        for (const d of all) {
-          activeChart.drawings.lock(d.id, lock);
-        }
-        handleDrawingMutated();
-      }
-    } catch (e) {
-      console.warn('lockAllDrawings error:', e);
-    }
+    chartDrawingController.setLock(lock);
   }
 
   export function hideAllDrawings(hide: boolean): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        const all = activeChart.drawings.all();
-        for (const d of all) {
-          activeChart.drawings.show(d.id, !hide);
-        }
-        handleDrawingMutated();
-      }
-    } catch (e) {
-      console.warn('hideAllDrawings error:', e);
-    }
+    chartDrawingController.setHide(hide);
+  }
+
+  export function setDrawingsLocked(lock: boolean): void {
+    chartDrawingController.setLock(lock);
+  }
+
+  export function setDrawingsHidden(hide: boolean): void {
+    chartDrawingController.setHide(hide);
   }
 
   // ─── Indicator Public Methods ───
@@ -2190,13 +2024,6 @@
         chartContainer.removeEventListener('pointerup', handleContainerClickCapture, true);
         chartContainer.removeEventListener('contextmenu', handleContainerContextMenu, true);
       } catch (_) {}
-    }
-    if (alertPositionInterval) {
-      clearInterval(alertPositionInterval);
-    }
-    if (badgeRafId !== null) {
-      cancelAnimationFrame(badgeRafId);
-      badgeRafId = null;
     }
     if (resizeObserver) {
       resizeObserver.disconnect();
