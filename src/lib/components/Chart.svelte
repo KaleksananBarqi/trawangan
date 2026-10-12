@@ -16,6 +16,7 @@
     saveChartDefaultConfig,
     clearChartDefaultConfig
   } from '../services/persistence';
+  import { chartDrawingController } from '../services/chartDrawingController';
   import { getHistoricalCandles } from '../services/marketProvider';
   import { alertService } from '../services/alertService';
   import { replaySession, type ReplayDriver } from '../services/replay';
@@ -919,6 +920,7 @@
   function attachDrawingListeners(chart: any) {
     if (!chart || !chart.on) return;
     try {
+      chartDrawingController.attachChartListeners(chart);
       chart.on('drawing:created', handleDrawingMutated);
       chart.on('drawing:edited', handleDrawingMutated);
       chart.on('drawing:draft', handleDrawingDraft);
@@ -1229,6 +1231,7 @@
       });
 
       isMounted = true;
+      chartDrawingController.attachWorkspace(workspace, () => symbol, () => timeframe);
       restoreDrawingsForCurrentChart();
 
       // Muat dan terapkan preferensi konfigurasi default chart yang tersimpan
@@ -1692,126 +1695,46 @@
     }
   }
 
-  // ─── Drawing Suite Public Methods ───
+  // ─── Drawing Suite Public Methods (Delegated to Deep ChartDrawingController) ───
 
   export function setDrawingTool(tool: DrawingToolType | null): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        if (tool === 'measure') {
-          activeChart.drawings.setMode('measure');
-        } else if (tool === 'cursor' || tool === null) {
-          activeChart.drawings.setMode(null);
-          activeChart.drawings.setTool(null);
-        } else {
-          activeChart.drawings.setMode(null);
-          activeChart.drawings.setTool(tool as any);
-        }
-      }
-    } catch (e) {
-      console.warn('setDrawingTool error:', e);
-    }
+    chartDrawingController.setTool(tool);
   }
 
   export function setSnapMode(mode: SnapMode): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        activeChart.drawings.setSnapMode(mode);
-      }
-    } catch (e) {
-      console.warn('setSnapMode error:', e);
-    }
+    chartDrawingController.setSnapMode(mode);
   }
 
   export function setStayMode(stay: boolean): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        activeChart.drawings.setStayMode(stay);
-      }
-    } catch (e) {
-      console.warn('setStayMode error:', e);
-    }
+    chartDrawingController.setStayMode(stay);
   }
 
   export function undoDrawing(): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        activeChart.drawings.undo();
-        handleDrawingMutated();
-      }
-    } catch (e) {
-      console.warn('undo error:', e);
-    }
+    chartDrawingController.undo();
   }
 
   export function redoDrawing(): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        activeChart.drawings.redo();
-        handleDrawingMutated();
-      }
-    } catch (e) {
-      console.warn('redo error:', e);
-    }
+    chartDrawingController.redo();
   }
 
   export async function clearAllDrawings(): Promise<void> {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        const all = activeChart.drawings.all();
-        if (all.length > 0) {
-          activeChart.drawings.removeMany(all.map((d: any) => d.id));
-        }
-      }
-      const curSym = (workspace.active as any).symbol || symbol;
-      const curTf = (workspace.active as any).timeframe || timeframe;
-      await clearDrawings(curSym, curTf);
-    } catch (e) {
-      console.warn('clearAllDrawings error:', e);
-    }
+    await chartDrawingController.clearAll();
   }
 
   export function lockAllDrawings(lock: boolean): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        const all = activeChart.drawings.all();
-        for (const d of all) {
-          activeChart.drawings.lock(d.id, lock);
-        }
-        handleDrawingMutated();
-      }
-    } catch (e) {
-      console.warn('lockAllDrawings error:', e);
-    }
+    chartDrawingController.setLock(lock);
   }
 
   export function hideAllDrawings(hide: boolean): void {
-    if (!workspace || !workspace.active) return;
-    try {
-      const activeChart = workspace.active.chart;
-      if (activeChart?.drawings) {
-        const all = activeChart.drawings.all();
-        for (const d of all) {
-          activeChart.drawings.show(d.id, !hide);
-        }
-        handleDrawingMutated();
-      }
-    } catch (e) {
-      console.warn('hideAllDrawings error:', e);
-    }
+    chartDrawingController.setHide(hide);
+  }
+
+  export function setDrawingsLocked(lock: boolean): void {
+    chartDrawingController.setLock(lock);
+  }
+
+  export function setDrawingsHidden(hide: boolean): void {
+    chartDrawingController.setHide(hide);
   }
 
   // ─── Indicator Public Methods ───

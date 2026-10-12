@@ -23,6 +23,7 @@
   import { telemetryService } from '../lib/services/telemetryService';
   import { replaySession, type ReplaySnapshot } from '../lib/services/replay';
   import { commandDispatcher } from '../lib/services/commandDispatcher';
+  import { chartDrawingController } from '../lib/services/chartDrawingController';
   import type {
     TickerInfo,
     Timeframe,
@@ -459,10 +460,19 @@
       }),
     ];
 
+    const unsubDrawingState = chartDrawingController.subscribe((state) => {
+      activeDrawingTool = state.activeTool;
+      snapMode = state.snapMode;
+      stayMode = state.stayMode;
+      isDrawingsLocked = state.isLocked;
+      isDrawingsHidden = state.isHidden;
+    });
+
     const unbindGlobalListener = commandDispatcher.attachGlobalListener(window);
 
     return () => {
       unbindGlobalListener();
+      unsubDrawingState();
       commandUnbinds.forEach((u) => u());
     };
   });
@@ -796,54 +806,38 @@
     }
   });
 
-  // ─── Drawing Tools Handlers ───
+  // ─── Drawing Tools Handlers (Didelegasikan ke Deep chartDrawingController) ───
   function handleSelectTool(tool: DrawingToolType | null) {
-    activeDrawingTool = tool;
-    if (chartComponent) {
-      chartComponent.setDrawingTool(tool);
-    }
+    chartDrawingController.setTool(tool);
   }
 
   function handleToggleSnap() {
-    const next: Record<SnapMode, SnapMode> = { off: 'weak', weak: 'strong', strong: 'off' };
-    snapMode = next[snapMode];
-    if (chartComponent) {
-      chartComponent.setSnapMode(snapMode);
-    }
+    chartDrawingController.cycleSnapMode();
   }
 
   function handleToggleStay() {
-    stayMode = !stayMode;
-    if (chartComponent) {
-      chartComponent.setStayMode(stayMode);
-    }
+    chartDrawingController.toggleStayMode();
   }
 
   function handleToggleLock() {
-    isDrawingsLocked = !isDrawingsLocked;
-    if (chartComponent) {
-      chartComponent.setDrawingsLocked(isDrawingsLocked);
-    }
+    chartDrawingController.toggleLock();
   }
 
   function handleToggleHide() {
-    isDrawingsHidden = !isDrawingsHidden;
-    if (chartComponent) {
-      chartComponent.setDrawingsHidden(isDrawingsHidden);
-    }
+    chartDrawingController.toggleHide();
   }
 
   function handleUndo() {
-    if (chartComponent) chartComponent.undoDrawing();
+    chartDrawingController.undo();
   }
 
   function handleRedo() {
-    if (chartComponent) chartComponent.redoDrawing();
+    chartDrawingController.redo();
   }
 
   function handleClear() {
-    if (chartComponent && confirm('Hapus semua objek gambar pada grafik saat ini?')) {
-      chartComponent.clearAllDrawings();
+    if (confirm('Hapus semua objek gambar pada grafik saat ini?')) {
+      chartDrawingController.clearAll();
       addSystemLog('Seluruh objek gambar dibersihkan.', 'warn');
     }
   }
