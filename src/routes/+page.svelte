@@ -14,6 +14,7 @@
   import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
   import AlertNotificationToast from '../lib/components/AlertNotificationToast.svelte';
   import RightDockRail from '../lib/components/RightDockRail.svelte';
+  import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
   import { alertService } from '../lib/services/alertService';
   import { rightDockService, type RightDockState } from '../lib/services/rightDockService';
   import { leftToolbarService, type LeftToolbarState } from '../lib/services/leftToolbarService';
@@ -105,6 +106,7 @@
   let isSettingsModalOpen = $state(false);
   let isIndicatorModalOpen = $state(false);
   let isSymbolSearchOpen = $state(false);
+  let isShortcutCheatsheetOpen = $state(false);
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
 
@@ -329,121 +331,222 @@
       if (cfg) quickSymbolsConfig = cfg;
     });
 
-    // Global keyboard shortcuts (TradingView Standard Suite)
+    // Global keyboard shortcuts (TradingView Standard Suite & OS Windows Normalized)
     const handleKeyDown = (e: KeyboardEvent) => {
       // Abaikan shortcut jika sedang fokus mengetik di input, textarea, contenteditable, atau CodeMirror
       const target = e.target as HTMLElement | null;
-      const isInput = target && (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable ||
-        Boolean(target.closest('.cm-editor'))
+      const isInput = Boolean(
+        target && (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.closest?.('input') ||
+          target.closest?.('textarea') ||
+          target.closest?.('.cm-editor') ||
+          target.closest?.('.monaco-editor') ||
+          target.closest?.('[contenteditable="true"]')
+        )
       );
 
+      const code = e.code || '';
+      const key = (e.key || '').toLowerCase();
+
       // Toggle Console Logs: Ctrl + ` or Cmd + ` (selalu aktif)
-      if ((e.ctrlKey || e.metaKey) && (e.key === '`' || e.code === 'Backquote')) {
+      if ((e.ctrlKey || e.metaKey) && (key === '`' || code === 'Backquote')) {
         e.preventDefault();
+        e.stopPropagation();
         isConsoleDrawerOpen = !isConsoleDrawerOpen;
         return;
       }
 
       // Quick Symbol Search Modal: Ctrl + K or Cmd + K (selalu aktif)
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+      if ((e.ctrlKey || e.metaKey) && (key === 'k' || code === 'KeyK')) {
         e.preventDefault();
+        e.stopPropagation();
         isSymbolSearchOpen = true;
         return;
       }
 
-      // Quick Help & Shortcuts Modal: F1 (selalu aktif) atau ? (saat tidak sedang di input)
-      if (e.key === 'F1' || (!isInput && e.key === '?')) {
+      // Quick Help & Shortcuts Cheatsheet Modal: F1 (selalu aktif) atau ? / Shift+/ (saat tidak sedang di input)
+      if (code === 'F1' || key === 'f1' || (!isInput && (key === '?' || (e.shiftKey && code === 'Slash')))) {
         e.preventDefault();
-        settingsInitialTab = 'help';
+        e.stopPropagation();
+        isShortcutCheatsheetOpen = true;
+        return;
+      }
+
+      // Quick Settings Modal: Ctrl + , or Cmd + , (selalu aktif)
+      if ((e.ctrlKey || e.metaKey) && (key === ',' || code === 'Comma')) {
+        e.preventDefault();
+        e.stopPropagation();
+        settingsInitialTab = 'general';
         isSettingsModalOpen = true;
+        return;
+      }
+
+      // Indicator Modal: Ctrl + I or Cmd + I (selalu aktif), atau / saat tidak di input
+      if (((e.ctrlKey || e.metaKey) && (key === 'i' || code === 'KeyI')) || (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey && (key === '/' || code === 'Slash'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        isIndicatorModalOpen = true;
+        return;
+      }
+
+      // Fullscreen Toggle: F11 (selalu aktif) atau Shift + F saat tidak di input
+      if (code === 'F11' || key === 'f11' || (!isInput && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (key === 'f' || code === 'KeyF'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof document !== 'undefined') {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          } else {
+            document.exitFullscreen().catch(() => {});
+          }
+        }
         return;
       }
 
       if (isInput) return;
 
       // Watchlist Navigation: Space (koin berikutnya), Shift + Space (koin sebelumnya)
-      if (e.code === 'Space') {
+      if (code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
+        e.stopPropagation();
         handleNavigateWatchlist(e.shiftKey ? -1 : 1);
         return;
       }
 
+      // Toggle Right Watchlist Panel: Alt + W
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (key === 'w' || code === 'KeyW')) {
+        e.preventDefault();
+        e.stopPropagation();
+        rightDockService.toggleTab('watchlist');
+        addSystemLog(`Shortcut: Panel Watchlist ${rightDockState.isOpen ? 'ditutup' : 'dibuka'} (Alt+W)`, 'info');
+        return;
+      }
+
+      // Toggle Pine Script Editor: Alt + E
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (key === 'e' || code === 'KeyE')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleWorkspaceModeChange(workspaceMode === 'pine' ? 'terminal' : 'pine');
+        addSystemLog(`Shortcut: Beralih ke mode ${workspaceMode === 'pine' ? 'Terminal' : 'Pine IDE'} (Alt+E)`, 'info');
+        return;
+      }
+
       // Toggle Left Drawing Toolbar Rail: Alt + T
-      if (leftToolbarService.handleKeydown(e)) {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (key === 't' || code === 'KeyT')) {
+        e.preventDefault();
+        e.stopPropagation();
+        leftToolbarService.toggleCollapse();
         addSystemLog(`Shortcut: Bilah gambar ${leftToolbarState.isCollapsed ? 'disembunyikan' : 'ditampilkan'} (Alt+T)`, 'info');
         return;
       }
 
-      // Drawing Tool Shortcuts (Alt + H, Alt + F, Alt + M, Alt + Z)
+      // Drawing Tool Shortcuts (Alt + H, Alt + F, Alt + M, Alt + Z, Alt + R, Alt + A, Alt + Panah)
       if (e.altKey && !e.ctrlKey && !e.metaKey) {
-        const k = e.key.toLowerCase();
-        if (k === 'h') {
+        if (key === 'h' || code === 'KeyH') {
           e.preventDefault();
+          e.stopPropagation();
           handleSelectTool('hline');
           addSystemLog('Shortcut: Tool Horizontal Line dipilih (Alt+H)', 'info');
           return;
         }
-        if (k === 'f') {
+        if (key === 'f' || code === 'KeyF') {
           e.preventDefault();
+          e.stopPropagation();
           handleSelectTool('fibretracement');
           addSystemLog('Shortcut: Tool Fibonacci Retracement dipilih (Alt+F)', 'info');
           return;
         }
-        if (k === 'm') {
+        if (key === 'm' || code === 'KeyM') {
           e.preventDefault();
+          e.stopPropagation();
           handleSelectTool('measure');
           addSystemLog('Shortcut: Tool Penggaris/Measure dipilih (Alt+M)', 'info');
           return;
         }
-        if (k === 'z') {
+        if (key === 'r' || code === 'KeyR') {
           e.preventDefault();
+          e.stopPropagation();
+          handleSelectTool('position');
+          addSystemLog('Shortcut: Tool Posisi Long/Short Risk/Reward dipilih (Alt+R)', 'info');
+          return;
+        }
+        if (key === 'z' || code === 'KeyZ') {
+          e.preventDefault();
+          e.stopPropagation();
           if (chartComponent?.fitChart) chartComponent.fitChart();
           addSystemLog('Shortcut: Reset skala/fit grafik (Alt+Z)', 'info');
           return;
         }
-        if (k === 'a') {
+        if (key === 'a' || code === 'KeyA') {
           e.preventDefault();
+          e.stopPropagation();
           const cursorPrice = chartComponent?.getLastHoveredPrice?.() || ticker?.price;
           handleRequestCreateAlert(activeSymbol, cursorPrice);
           addSystemLog(`Shortcut: Buat Price Alert untuk ${activeSymbol} (Alt+A)`, 'info');
           return;
         }
+        if (code === 'ArrowDown' || key === 'arrowdown') {
+          e.preventDefault();
+          e.stopPropagation();
+          handleNavigateWatchlist(1);
+          return;
+        }
+        if (code === 'ArrowUp' || key === 'arrowup') {
+          e.preventDefault();
+          e.stopPropagation();
+          handleNavigateWatchlist(-1);
+          return;
+        }
       }
 
       // Toggle Bar Replay: Shift + R
-      if (e.shiftKey && e.key.toLowerCase() === 'r') {
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (key === 'r' || code === 'KeyR')) {
         e.preventDefault();
+        e.stopPropagation();
         handleToggleReplay();
         return;
       }
 
-      // Replay Keyboard Controls (Space untuk play/pause, ArrowRight untuk step)
-      if (replaySnapshot.active && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
-        if (e.code === 'Space') {
+      // Replay Keyboard Controls (Space untuk play/pause, ArrowRight untuk maju, ArrowLeft untuk mundur 1 bar)
+      if (replaySnapshot.active) {
+        if (code === 'Space') {
           e.preventDefault();
+          e.stopPropagation();
           replaySession.togglePlay();
           return;
         }
-        if (e.code === 'ArrowRight') {
+        if (code === 'ArrowRight' || key === 'arrowright') {
           e.preventDefault();
+          e.stopPropagation();
           replaySession.step();
+          return;
+        }
+        if (code === 'ArrowLeft' || key === 'arrowleft') {
+          e.preventDefault();
+          e.stopPropagation();
+          replaySession.stepBack();
           return;
         }
       }
 
       // Quick Timeframe Shortcuts & Esc
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key === '1') { handleTimeframeChange('1m'); return; }
-        if (e.key === '5') { handleTimeframeChange('5m'); return; }
-        if (e.key === '0') { handleTimeframeChange('15m'); return; }
-        if (e.key.toLowerCase() === 'f') {
+        if (key === '1' || code === 'Digit1' || code === 'Numpad1') { handleTimeframeChange('1m'); return; }
+        if (key === '3' || code === 'Digit3' || code === 'Numpad3') { handleTimeframeChange('3m'); return; }
+        if (key === '5' || code === 'Digit5' || code === 'Numpad5') { handleTimeframeChange('5m'); return; }
+        if (key === '0' || code === 'Digit0' || code === 'Numpad0') { handleTimeframeChange('15m'); return; }
+        if (key === 'h' || code === 'KeyH') { handleTimeframeChange('1h'); return; }
+        if (key === '4' || code === 'Digit4' || code === 'Numpad4') { handleTimeframeChange('4h'); return; }
+        if (key === 'd' || code === 'KeyD') { handleTimeframeChange('1D'); return; }
+        if (key === 'w' || code === 'KeyW') { handleTimeframeChange('1W'); return; }
+        if (key === 'f' || code === 'KeyF') {
           if (chartComponent?.fitChart) chartComponent.fitChart();
           return;
         }
-        if (e.key === 'Escape') {
+        if (code === 'Escape' || key === 'escape') {
           if (replaySnapshot.isSelectingBar) {
             replaySession.cancelBarSelection();
             addSystemLog('Mode pemilihan bar dibatalkan.', 'info');
@@ -452,30 +555,32 @@
           handleSelectTool('cursor');
           return;
         }
-        if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (code === 'Delete' || key === 'delete' || code === 'Backspace' || key === 'backspace') {
           handleUndo();
           return;
         }
       }
 
       // Undo / Redo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      if ((e.ctrlKey || e.metaKey) && (key === 'z' || code === 'KeyZ')) {
+        e.preventDefault();
+        e.stopPropagation();
         if (!e.shiftKey) {
-          e.preventDefault();
           handleUndo();
         } else {
-          e.preventDefault();
           handleRedo();
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      } else if ((e.ctrlKey || e.metaKey) && (key === 'y' || code === 'KeyY')) {
         e.preventDefault();
+        e.stopPropagation();
         handleRedo();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    // Daftarkan di CAPTURE PHASE agar event ditangkap seketika sebelum ditelan kanvas WebGL
+    window.addEventListener('keydown', handleKeyDown, true);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
     };
   });
 
@@ -1059,6 +1164,9 @@
           fontSize={appSettings.fontSize || 12}
           {syncConfig}
           showWatermark={appSettings.showWatermark}
+          showCurrentPriceLine={appSettings.showCurrentPriceLine ?? true}
+          showIndicatorPriceLabels={appSettings.showIndicatorPriceLabels ?? true}
+          showDrawingPriceLabels={appSettings.showDrawingPriceLabels ?? true}
           onActiveIndicatorsChange={(list) => (activeIndicators = list)}
           onActiveCellChange={handleActiveCellChange}
           onStrategyUpdate={handleStrategyUpdate}
@@ -1235,6 +1343,12 @@
     alerts={triggeredAlertsToasts}
     onSelectSymbol={handleSymbolChange}
     onDismiss={handleDismissAlertToast}
+  />
+
+  <!-- Kamus Glosarium Keyboard Shortcuts Modal (? / F1) -->
+  <ShortcutCheatsheetModal
+    isOpen={isShortcutCheatsheetOpen}
+    onClose={() => (isShortcutCheatsheetOpen = false)}
   />
 </div>
 
