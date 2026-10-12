@@ -72,7 +72,36 @@
   }
   let isSymbolSearchOpen = $state(false);
 
-  // Watchlist state
+  // Watchlist state & Preset categories
+  let selectedPresetCategory = $state<'binance' | 'indodax'>('binance');
+
+  const BINANCE_PRESET_SYMBOLS = [
+    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
+    'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
+  ];
+
+  const INDODAX_PRESET_SYMBOLS = [
+    'BTCIDR', 'ETHIDR', 'USDTIDR', 'SOLIDR', 'DOGEIDR', 'XRPIDR', 'ADAIDR'
+  ];
+
+  async function switchPresetCategory(category: 'binance' | 'indodax') {
+    selectedPresetCategory = category;
+    if (category === 'indodax') {
+      await applyWatchlistUpdate(INDODAX_PRESET_SYMBOLS);
+    } else {
+      await applyWatchlistUpdate(BINANCE_PRESET_SYMBOLS);
+    }
+  }
+
+  function handleSelectSymbol(sym: string) {
+    if (sym.endsWith('IDR') && activeProviderId !== 'indodax') {
+      marketFeed.setActiveProvider('indodax');
+    } else if (sym.includes('USDT') && activeProviderId === 'indodax') {
+      marketFeed.setActiveProvider('binance');
+    }
+    onSelectSymbol(sym);
+  }
+
   let symbols = $state<string[]>([
     'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
     'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
@@ -286,8 +315,12 @@
     symbols.filter((s) => s.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  function formatPrice(p?: number): string {
+  function formatPrice(p?: number, sym?: string): string {
     if (!p) return '--';
+    if (sym && (sym.endsWith('IDR') || sym.includes('/IDR'))) {
+      if (p >= 1) return `Rp ${Math.round(p).toLocaleString('id-ID')}`;
+      return `Rp ${p.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+    }
     if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (p >= 1) return p.toFixed(4);
     return p.toFixed(6);
@@ -380,6 +413,24 @@
         </button>
       </div>
 
+      <!-- Preset Category Tabs: Binance USDT & Indodax IDR -->
+      <div class="preset-category-bar">
+        <button
+          type="button"
+          class="preset-cat-btn {selectedPresetCategory === 'binance' ? 'active' : ''}"
+          onclick={() => switchPresetCategory('binance')}
+        >
+          Binance USDT
+        </button>
+        <button
+          type="button"
+          class="preset-cat-btn {selectedPresetCategory === 'indodax' ? 'active' : ''}"
+          onclick={() => switchPresetCategory('indodax')}
+        >
+          Indodax IDR
+        </button>
+      </div>
+
       <!-- Feed Status & Column Headers -->
       <div class="table-head mono-nums">
         <div class="col-symbol-wrapper">
@@ -394,7 +445,7 @@
         <form class="add-form" onsubmit={handleAddSymbol}>
           <input
             type="text"
-            placeholder="Ketik simbol (e.g. BTCUSDT.P, SUI)..."
+            placeholder="Ketik simbol (e.g. BTCUSDT.P, BTCIDR)..."
             bind:value={newSymbolInput}
             class="add-input mono-nums"
           />
@@ -411,20 +462,22 @@
             <button
               type="button"
               class="row-select-btn"
-              onclick={() => onSelectSymbol(sym)}
+              onclick={() => handleSelectSymbol(sym)}
             >
               <div class="row-symbol">
                 <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                <span class="symbol-name">{sym.replace('USDT.P', '').replace('USDT', '').replace('.P', '')}</span>
+                <span class="symbol-name">{sym.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
                 {#if sym.endsWith('.P')}
                   <span class="type-tag perp mono-nums">.P</span>
+                {:else if sym.endsWith('IDR')}
+                  <span class="type-tag idr mono-nums">IDR</span>
                 {:else}
                   <span class="type-tag spot mono-nums">SPOT</span>
                 {/if}
               </div>
 
               <div class="row-price mono-nums">
-                {formatPrice(ticker?.price)}
+                {formatPrice(ticker?.price, sym)}
               </div>
 
               <div class="row-change mono-nums">
@@ -1033,10 +1086,49 @@
     line-height: 1;
   }
 
+  .preset-category-bar {
+    display: flex;
+    padding: 5px 8px;
+    background-color: var(--bg-panel);
+    border-bottom: 1px solid var(--border-hairline);
+    gap: 5px;
+  }
+
+  .preset-cat-btn {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--border-hairline);
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 6px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.12s ease;
+    text-align: center;
+  }
+
+  .preset-cat-btn:hover {
+    color: var(--text-main);
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .preset-cat-btn.active {
+    background-color: rgba(0, 240, 144, 0.12);
+    border-color: rgba(0, 240, 144, 0.35);
+    color: var(--brand-primary);
+  }
+
   .type-tag.perp {
     background-color: rgba(234, 179, 8, 0.15);
     color: #eab308;
     border: 1px solid rgba(234, 179, 8, 0.3);
+  }
+
+  .type-tag.idr {
+    background-color: rgba(37, 99, 235, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(37, 99, 235, 0.3);
   }
 
   .type-tag.spot {

@@ -209,5 +209,32 @@ describe('Deep Market Feed Module Unit Tests', () => {
     assert.ok(resultsUsdtOnly.length > 0);
     assert.ok(resultsUsdtOnly.every((r) => r.quoteAsset === 'USDT'));
   });
+
+  test('Custom Feed Provider Management: menyimpan, membaca, dan mengaktifkan kustom endpoint provider', async () => {
+    const customConfig = {
+      id: 'custom-dex-feed',
+      name: 'Custom Community Node',
+      rest_url: 'https://custom-node.example.com',
+      ws_url: 'wss://custom-node.example.com/stream',
+      is_active: false,
+    };
+
+    await feed.saveProviderConfig(customConfig);
+    const providers = await feed.getSavedProviders();
+    const found = providers.find((p) => p.id === 'custom-dex-feed');
+    assert.ok(found);
+    assert.strictEqual(found?.name, 'Custom Community Node');
+    assert.strictEqual(found?.rest_url, 'https://custom-node.example.com');
+
+    // Aktifkan custom provider
+    await feed.setActiveProvider('custom-dex-feed');
+    const activeId = await feed.getActiveProviderId();
+    assert.strictEqual(activeId, 'custom-dex-feed');
+
+    // Hapus custom provider
+    await feed.deleteProvider('custom-dex-feed');
+    const afterDelete = await feed.getSavedProviders();
+    assert.ok(!afterDelete.some((p) => p.id === 'custom-dex-feed'));
+  });
 });
 

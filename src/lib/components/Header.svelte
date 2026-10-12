@@ -9,15 +9,19 @@
     Settings,
     Maximize2,
     Layers,
-    Sparkles
+    Sparkles,
+    ChevronDown,
+    Check
   } from '@lucide/svelte';
   import type {
     Timeframe,
     MultiChartSyncConfig,
     WorkspaceMode,
-    SavedWorkspace
+    SavedWorkspace,
+    ProviderConfig
   } from '../types/market';
   import { updateService, type UpdateState } from '../services/updateService';
+  import { marketFeed } from '../services/market';
 
   // Subkomponen modular header baru yang ringkas dan terpadu
   import WorkspaceLayoutMenu from './header/WorkspaceLayoutMenu.svelte';
@@ -43,6 +47,7 @@
     onTimeframeChange: (tf: Timeframe) => void;
     onLayoutChange: (layout: string) => void;
     onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
+    onProviderChange?: (providerId: string) => void;
     activeWorkspace?: SavedWorkspace | null;
     isAutoSaveWorkspace?: boolean;
     onToggleAutoSaveWorkspace?: () => void;
@@ -86,6 +91,7 @@
     onTimeframeChange,
     onLayoutChange,
     onWorkspaceModeChange,
+    onProviderChange,
     activeWorkspace = null,
     isAutoSaveWorkspace = true,
     onToggleAutoSaveWorkspace,
@@ -108,6 +114,8 @@
 
   let updateState = $state<UpdateState>(updateService.getSnapshot());
   let unsubUpdate: (() => void) | null = null;
+  let isProviderDropdownOpen = $state(false);
+  let availableProviders = $state<ProviderConfig[]>([]);
 
   onMount(() => {
     unsubUpdate = updateService.subscribe((s) => {
@@ -162,20 +170,85 @@
 
   <div class="divider"></div>
 
-  <!-- Simbol Aktif Minimalis (Klik / Ctrl+K untuk membuka modal cari pair) -->
+  <!-- Simbol Aktif Minimalis & Quick Provider Switcher -->
   <div class="symbol-section">
     <button
       class="symbol-badge-btn"
-      title="Klik atau tekan Ctrl+K untuk mencari simbol koin & pair ({activeProviderId.toUpperCase()})"
+      title="Klik atau tekan Ctrl+K untuk mencari simbol koin & pair"
       onclick={() => onOpenSymbolSearch?.()}
     >
       <Search size={12} class="search-icon" />
       <span class="active-sym-title mono-nums">{activeSymbol}</span>
-      <span class="provider-pill {activeProviderId}">
-        {activeProviderId.toUpperCase()}
-      </span>
       <span class="kbd-hint mono-nums">Ctrl+K</span>
     </button>
+
+    <div class="provider-dropdown-container">
+      <button
+        type="button"
+        class="provider-pill-btn {activeProviderId}"
+        title="Ganti Bursa / Data Feed Aktif"
+        onclick={(e) => {
+          e.stopPropagation();
+          isProviderDropdownOpen = !isProviderDropdownOpen;
+          if (isProviderDropdownOpen) {
+            marketFeed.getSavedProviders().then((res) => (availableProviders = res));
+          }
+        }}
+      >
+        <span>{activeProviderId.toUpperCase()}</span>
+        <ChevronDown size={10} />
+      </button>
+
+      {#if isProviderDropdownOpen}
+        <!-- Backdrop klik luar -->
+        <div
+          class="provider-backdrop"
+          onclick={() => (isProviderDropdownOpen = false)}
+          role="presentation"
+        ></div>
+        <div
+          class="provider-dropdown-menu obsidian-panel"
+          onclick={(e) => e.stopPropagation()}
+          role="menu"
+        >
+          <div class="provider-dropdown-header">
+            <span>BURSA / DATA FEED</span>
+          </div>
+          <div class="provider-list">
+            {#each availableProviders as prov (prov.id)}
+              <button
+                type="button"
+                class="provider-menu-item {activeProviderId === prov.id ? 'active' : ''}"
+                onclick={() => {
+                  onProviderChange?.(prov.id);
+                  isProviderDropdownOpen = false;
+                }}
+              >
+                <div class="prov-name-col">
+                  <span class="prov-name">{prov.name}</span>
+                  <span class="prov-id mono-nums">{prov.id}</span>
+                </div>
+                {#if activeProviderId === prov.id}
+                  <Check size={12} class="check-icon" />
+                {/if}
+              </button>
+            {/each}
+          </div>
+          <div class="provider-dropdown-footer">
+            <button
+              type="button"
+              class="add-custom-feed-link"
+              onclick={() => {
+                isProviderDropdownOpen = false;
+                onOpenSettingsModal?.('feed');
+              }}
+            >
+              + Pengaturan Feed & Custom Node...
+            </button>
+          </div>
+        </div>
+      {/if}
+    </div>
   </div>
 
   <div class="divider"></div>
@@ -449,22 +522,186 @@
     letter-spacing: 0.03em;
   }
 
-  .provider-pill.binance {
+  .symbol-section {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+  }
+
+  .symbol-badge-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    height: 26px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .symbol-badge-btn:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--border-bright);
+  }
+
+  .search-icon {
+    color: var(--text-dim);
+  }
+
+  .active-sym-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: 0.02em;
+  }
+
+  .provider-dropdown-container {
+    position: relative;
+  }
+
+  .provider-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 3px 6px;
+    height: 26px;
+    border-radius: var(--radius-xs);
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-muted);
+  }
+
+  .provider-pill-btn.binance {
     background-color: rgba(243, 186, 47, 0.12);
     color: #f3ba2f;
-    border: 1px solid rgba(243, 186, 47, 0.25);
+    border-color: rgba(243, 186, 47, 0.3);
   }
 
-  .provider-pill.bitunix {
+  .provider-pill-btn.bitunix {
     background-color: rgba(14, 165, 233, 0.12);
     color: #38bdf8;
-    border: 1px solid rgba(14, 165, 233, 0.25);
+    border-color: rgba(14, 165, 233, 0.3);
   }
 
-  .provider-pill.indodax {
+  .provider-pill-btn.indodax {
     background-color: rgba(37, 99, 235, 0.15);
     color: #60a5fa;
-    border: 1px solid rgba(37, 99, 235, 0.3);
+    border-color: rgba(37, 99, 235, 0.35);
+  }
+
+  .provider-pill-btn:hover {
+    filter: brightness(1.15);
+  }
+
+  .provider-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+  }
+
+  .provider-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 240px;
+    background-color: var(--bg-surface, #121820);
+    border: 1px solid var(--border-medium, #2a3441);
+    border-radius: var(--radius-xs, 4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    z-index: 200;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .provider-dropdown-header {
+    padding: 6px 10px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text-dim, #64748b);
+    border-bottom: 1px solid var(--border-hairline, #1f2733);
+    background-color: var(--bg-panel, #0f141c);
+  }
+
+  .provider-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .provider-menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.12s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  }
+
+  .provider-menu-item:hover {
+    background-color: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  }
+
+  .provider-menu-item.active {
+    background-color: rgba(0, 240, 144, 0.08);
+  }
+
+  .prov-name-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .prov-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-main, #f1f5f9);
+  }
+
+  .prov-id {
+    font-size: 9px;
+    color: var(--text-dim, #64748b);
+  }
+
+  :global(.check-icon) {
+    color: var(--brand-primary, #00f090);
+  }
+
+  .provider-dropdown-footer {
+    padding: 6px 10px;
+    border-top: 1px solid var(--border-hairline, #1f2733);
+    background-color: var(--bg-panel, #0f141c);
+  }
+
+  .add-custom-feed-link {
+    background: none;
+    border: none;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--brand-primary, #00f090);
+    cursor: pointer;
+    padding: 0;
+    display: block;
+    width: 100%;
+    text-align: left;
+  }
+
+  .add-custom-feed-link:hover {
+    text-decoration: underline;
   }
 
   .kbd-hint {

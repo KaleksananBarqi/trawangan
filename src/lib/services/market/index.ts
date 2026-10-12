@@ -398,6 +398,8 @@ export class MarketFeedService implements IMarketFeedService {
     return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   }
 
+  private inMemoryProviders: ProviderConfig[] = [...DEFAULT_PROVIDERS];
+
   public async getActiveProviderId(): Promise<string> {
     const providers = await this.getSavedProviders();
     const active = providers.find((p) => p.is_active);
@@ -409,6 +411,11 @@ export class MarketFeedService implements IMarketFeedService {
     this.activeProviderId = id;
     this.resetConnectionError();
 
+    this.inMemoryProviders = this.inMemoryProviders.map((p) => ({
+      ...p,
+      is_active: p.id === id,
+    }));
+
     if (this.isTauri()) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
@@ -419,14 +426,16 @@ export class MarketFeedService implements IMarketFeedService {
       }
     }
 
-    try {
-      const list = await this.getSavedProviders();
-      const updated = list.map((p) => ({
-        ...p,
-        is_active: p.id === id,
-      }));
-      localStorage.setItem('trawangan_providers', JSON.stringify(updated));
-    } catch (_) {}
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const list = await this.getSavedProviders();
+        const updated = list.map((p) => ({
+          ...p,
+          is_active: p.id === id,
+        }));
+        localStorage.setItem('trawangan_providers', JSON.stringify(updated));
+      } catch (_) {}
+    }
 
     // Segera perbarui polling dengan provider baru
     this.pollTick().catch(() => {});
@@ -443,15 +452,25 @@ export class MarketFeedService implements IMarketFeedService {
       }
     }
 
-    try {
-      const raw = localStorage.getItem('trawangan_providers');
-      if (raw) return JSON.parse(raw);
-    } catch (_) {}
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('trawangan_providers');
+        if (raw) return JSON.parse(raw);
+      } catch (_) {}
+    }
 
-    return DEFAULT_PROVIDERS;
+    return this.inMemoryProviders;
   }
 
   public async saveProviderConfig(provider: ProviderConfig): Promise<void> {
+    let updated = this.inMemoryProviders.filter((p) => p.id !== provider.id);
+    if (provider.is_active) {
+      updated = updated.map((p) => ({ ...p, is_active: false }));
+      this.activeProviderId = provider.id;
+    }
+    updated.push(provider);
+    this.inMemoryProviders = updated;
+
     if (this.isTauri()) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
@@ -462,19 +481,22 @@ export class MarketFeedService implements IMarketFeedService {
       }
     }
 
-    try {
-      const list = await this.getSavedProviders();
-      let updated = list.filter((p) => p.id !== provider.id);
-      if (provider.is_active) {
-        updated = updated.map((p) => ({ ...p, is_active: false }));
-        this.activeProviderId = provider.id;
-      }
-      updated.push(provider);
-      localStorage.setItem('trawangan_providers', JSON.stringify(updated));
-    } catch (_) {}
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const list = await this.getSavedProviders();
+        let listUpdated = list.filter((p) => p.id !== provider.id);
+        if (provider.is_active) {
+          listUpdated = listUpdated.map((p) => ({ ...p, is_active: false }));
+        }
+        listUpdated.push(provider);
+        localStorage.setItem('trawangan_providers', JSON.stringify(listUpdated));
+      } catch (_) {}
+    }
   }
 
   public async deleteProvider(id: string): Promise<void> {
+    this.inMemoryProviders = this.inMemoryProviders.filter((p) => p.id !== id);
+
     if (this.isTauri()) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
@@ -485,11 +507,13 @@ export class MarketFeedService implements IMarketFeedService {
       }
     }
 
-    try {
-      const list = await this.getSavedProviders();
-      const updated = list.filter((p) => p.id !== id);
-      localStorage.setItem('trawangan_providers', JSON.stringify(updated));
-    } catch (_) {}
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const list = await this.getSavedProviders();
+        const updated = list.filter((p) => p.id !== id);
+        localStorage.setItem('trawangan_providers', JSON.stringify(updated));
+      } catch (_) {}
+    }
   }
 }
 

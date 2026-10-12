@@ -26,13 +26,14 @@
 
   let query = $state('');
   let filterType = $state<'all' | 'spot' | 'perp'>('all');
-  let selectedExchange = $state<'all' | 'indodax' | 'binance' | 'bitunix'>('all');
+  let selectedExchange = $state<string>('all');
   let selectedQuote = $state<'all' | 'IDR' | 'USDT'>('all');
   let searchResults = $state<MarketSearchResult[]>([]);
   let selectedIndex = $state(0);
   let searchInputEl = $state<HTMLInputElement | null>(null);
   let recentSearches = $state<string[]>([]);
   let liveTickerMap = $state<Record<string, { price: number; change24h: number }>>({});
+  let availableProviders = $state<import('../types/market').ProviderConfig[]>([]);
 
   function loadRecentSearches() {
     if (typeof localStorage !== 'undefined') {
@@ -86,10 +87,11 @@
   $effect(() => {
     if (isOpen) {
       loadRecentSearches();
+      marketFeed.getSavedProviders().then((res) => (availableProviders = res));
       marketFeed
         .searchSymbols(query, {
           filterType,
-          exchange: selectedExchange,
+          exchange: selectedExchange as any,
           quoteAsset: selectedQuote,
         })
         .then((res) => {
@@ -275,6 +277,15 @@
             >
               Bitunix
             </button>
+            {#each availableProviders.filter((p) => !['binance', 'indodax', 'bitunix'].includes(p.id)) as cProv (cProv.id)}
+              <button
+                type="button"
+                class="filter-chip {selectedExchange === cProv.id ? 'active' : ''}"
+                onclick={() => (selectedExchange = cProv.id)}
+              >
+                {cProv.name}
+              </button>
+            {/each}
           </div>
 
           <div class="chips-divider"></div>

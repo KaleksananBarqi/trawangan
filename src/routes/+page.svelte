@@ -984,6 +984,7 @@
     onTimeframeChange={handleTimeframeChange}
     onLayoutChange={handleLayoutChange}
     onWorkspaceModeChange={handleWorkspaceModeChange}
+    onProviderChange={handleProviderChange}
     {activeWorkspace}
     {isAutoSaveWorkspace}
     onToggleAutoSaveWorkspace={handleToggleAutoSaveWorkspace}
