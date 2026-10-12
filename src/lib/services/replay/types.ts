@@ -28,6 +28,7 @@ export interface ReplayDriver {
   play(intervalMs: number): void;
   pause(): void;
   step(): void;
+  stepBack(): void;
   stop(): void;
   getState(): { active: boolean; playing: boolean; cursorTime: number | null; remaining: number } | null;
   enableCutoffVisual(): void;
@@ -46,6 +47,7 @@ export interface IReplaySession {
   pause(): void;
   togglePlay(): void;
   step(): void;
+  stepBack(): void;
   setSpeed(speed: number): void;
   rewind(): Promise<boolean>;
   bindDriver(driver: ReplayDriver | null): void;

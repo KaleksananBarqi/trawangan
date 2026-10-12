@@ -72,6 +72,13 @@ export class MockReplayDriver implements ReplayDriver {
     }
   }
 
+  public stepBack(): void {
+    if (this.currentIndex > 0) {
+      this.currentIndex--;
+      this.onStateChanged?.();
+    }
+  }
+
   public stop(): void {
     this.pause();
     this.currentIndex = -1;

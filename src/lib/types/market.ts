@@ -224,6 +224,9 @@ export interface AppSettings {
   showWatermark: boolean;
   showGrid: boolean;
   showReplayBar: boolean;
+  showCurrentPriceLine?: boolean;
+  showIndicatorPriceLabels?: boolean;
+  showDrawingPriceLabels?: boolean;
   theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'obsidian';
   themePreset?: ThemePresetId;
   fontFamilyUi?: string;

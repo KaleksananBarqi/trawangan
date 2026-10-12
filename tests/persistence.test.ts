@@ -190,6 +190,9 @@ describe('Deep Persistence Module Unit Tests', () => {
     assert.strictEqual(resolved.soundEnabled, false);
     assert.strictEqual(resolved.autoSaveWorkspace, true, 'Default autoSaveWorkspace harus true');
     assert.strictEqual(resolved.defaultTimeframe, '15m', 'Default defaultTimeframe harus 15m');
+    assert.strictEqual(resolved.showCurrentPriceLine, true, 'Default showCurrentPriceLine harus true');
+    assert.strictEqual(resolved.showIndicatorPriceLabels, true, 'Default showIndicatorPriceLabels harus true');
+    assert.strictEqual(resolved.showDrawingPriceLabels, true, 'Default showDrawingPriceLabels harus true');
     assert.deepStrictEqual(resolved.syncConfig, {
       crosshair: true,
       viewport: true,
