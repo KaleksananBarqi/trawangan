@@ -241,15 +241,6 @@
       {/if}
     </button>
 
-    <!-- Toggle Watchlist Panel -->
-    <button
-      class="action-btn {isWatchlistOpen ? 'active' : ''}"
-      title="Tampilkan / Sembunyikan Panel Kanan"
-      onclick={onToggleWatchlist}
-    >
-      <Flame size={13} />
-      <span>Panel</span>
-    </button>
 
     <!-- Update Notification Pill (Muncul saat rilis baru tersedia) -->
     {#if updateState.status === 'available' && updateState.updateInfo}

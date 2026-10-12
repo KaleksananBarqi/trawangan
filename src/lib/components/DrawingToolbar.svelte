@@ -43,6 +43,7 @@
     Sparkles,
     GitFork,
     GripVertical,
+    ChevronLeft,
   } from '@lucide/svelte';
   import type { DrawingToolType, SnapMode } from '../types/market.js';
   import {
@@ -77,6 +78,8 @@
     onUndo: () => void;
     onRedo: () => void;
     onClear: () => void;
+    isCollapsed?: boolean;
+    onToggleCollapse?: () => void;
   }
 
   let {
@@ -95,6 +98,8 @@
     onUndo,
     onRedo,
     onClear,
+    isCollapsed = false,
+    onToggleCollapse,
   }: Props = $props();
 
   // State flyout menu
@@ -260,12 +265,20 @@
     }
   }
 
-  function toggleFlyout(groupId: DrawingGroupId) {
+  let flyoutTop = $state(100);
+
+  function toggleFlyout(groupId: DrawingGroupId, e?: MouseEvent | Event) {
     if (openFlyout === groupId) {
       openFlyout = null;
     } else {
       openFlyout = groupId;
       searchQuery = '';
+      if (e && e.currentTarget) {
+        const target = e.currentTarget as HTMLElement;
+        const toolItem = target.closest('.tool-item') || target;
+        const rect = toolItem.getBoundingClientRect();
+        flyoutTop = Math.max(8, Math.min(rect.top - 4, window.innerHeight - 440));
+      }
     }
   }
 
@@ -285,11 +298,11 @@
     openFlyout = null;
   }
 
-  function handleDirectGroupClick(group: (typeof DRAWING_TOOL_GROUPS)[0]) {
+  function handleDirectGroupClick(group: (typeof DRAWING_TOOL_GROUPS)[0], e?: MouseEvent) {
     const currentLastUsed = lastUsedPerGroup[group.id] || group.defaultTool;
     if (activeTool === currentLastUsed) {
       // Jika sudah aktif, klik tombol akan membuka flyout
-      toggleFlyout(group.id);
+      toggleFlyout(group.id, e);
     } else {
       // Jika belum aktif, aktifkan tool terakhir dari grup tersebut
       handleSelectToolItem(currentLastUsed, group.id);
@@ -307,10 +320,10 @@
     return group.tools.some((t) => t.id === activeTool);
   }
 
-  // Menutup flyout jika pengguna mengklik di luar area toolbar
+  // Menutup flyout jika pengguna mengklik di luar area toolbar atau flyout
   function handleDocumentClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    if (!target.closest('.drawing-toolbar') && !target.closest('.favorites-bar')) {
+    if (!target.closest('.drawing-toolbar') && !target.closest('.favorites-bar') && !target.closest('.flyout-menu')) {
       openFlyout = null;
     }
   }
@@ -325,8 +338,9 @@
 
 <svelte:window onclick={handleDocumentClick} onkeydown={handleKeyDown} />
 
-<!-- Toolbar Vertikal Utama Trawangan -->
-<aside class="drawing-toolbar glass-panel" aria-label="Bilah Alat Gambar Teknikal">
+<!-- Toolbar Vertikal Utama Trawangan (Docked Structural Rail) -->
+<aside class="drawing-toolbar glass-panel {isCollapsed ? 'collapsed' : ''}" aria-label="Bilah Alat Gambar Teknikal">
+  <div class="toolbar-scroll-container" onscroll={() => { if (openFlyout) openFlyout = null; }}>
   <!-- 1. Cursor / Selection Tool -->
   <div class="tool-item">
     <button
@@ -353,14 +367,14 @@
         class="tool-btn-wrapper {activeInThisGroup ? 'active' : ''} {isThisFlyoutOpen ? 'flyout-open' : ''}"
         oncontextmenu={(e) => {
           e.preventDefault();
-          toggleFlyout(group.id);
+          toggleFlyout(group.id, e);
         }}
       >
         <button
           type="button"
           class="tool-btn"
           title="{group.label} (Klik untuk aktifkan, klik kanan atau panah untuk pilihan)"
-          onclick={() => handleDirectGroupClick(group)}
+          onclick={(e) => handleDirectGroupClick(group, e)}
         >
           <CurrentIcon size={15} />
         </button>
@@ -370,7 +384,7 @@
           title="Buka pilihan {group.label}"
           onclick={(e) => {
             e.stopPropagation();
-            toggleFlyout(group.id);
+            toggleFlyout(group.id, e);
           }}
         >
           <span class="sub-arrow">▸</span>
@@ -379,7 +393,11 @@
 
       <!-- Submenu Flyout -->
       {#if isThisFlyoutOpen}
-        <div class="flyout-menu obsidian-panel" onclick={(e) => e.stopPropagation()}>
+        <div
+          class="flyout-menu obsidian-panel"
+          style="top: {flyoutTop}px;"
+          onclick={(e) => e.stopPropagation()}
+        >
           <div class="flyout-header-row">
             <span class="flyout-header-title">{group.label}</span>
             <span class="flyout-count-badge mono-nums">{group.tools.length}</span>
@@ -558,6 +576,19 @@
       <Trash2 size={15} />
     </button>
   </div>
+  </div>
+
+  <!-- Dock Rail Footer (Tombol Collapse Alt+T) -->
+  <div class="dock-collapse-footer">
+    <button
+      type="button"
+      class="tool-btn collapse-toggle-btn"
+      title="Sembunyikan Bilah Gambar (Alt+T)"
+      onclick={() => onToggleCollapse?.()}
+    >
+      <ChevronLeft size={14} />
+    </button>
+  </div>
 </aside>
 
 <!-- Bilah Alat Favorit Melayang (Quick Floating Favorites Bar ala TradingView) -->
@@ -605,25 +636,68 @@
 {/if}
 
 <style>
-  /* ─── Main Vertical Toolbar ─── */
+  /* ─── Main Vertical Toolbar (Docked Structural Rail) ─── */
   .drawing-toolbar {
-    position: absolute;
-    left: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 35;
+    width: 44px;
+    min-width: 44px;
+    height: 100%;
+    background-color: var(--bg-surface, #121721);
+    border-right: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.08));
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 5px 3px;
-    border-radius: var(--radius-sm, 6px);
-    gap: 3px;
-    width: 36px;
-    background-color: rgba(16, 16, 18, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(8px);
+    justify-content: space-between;
+    padding: 6px 0;
     user-select: none;
+    z-index: 35;
+    flex-shrink: 0;
+    box-shadow: none;
+    border-radius: 0;
+    transition: width 0.15s ease, min-width 0.15s ease;
+  }
+
+  .drawing-toolbar.collapsed {
+    display: none;
+    width: 0px;
+    min-width: 0px;
+    padding: 0;
+    border-right: none;
+    overflow: hidden;
+  }
+
+  .toolbar-scroll-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    width: 100%;
+    overflow-y: auto;
+    overflow-x: visible;
+    scrollbar-width: none;
+    padding: 0 4px;
+  }
+
+  .toolbar-scroll-container::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dock-collapse-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    padding-top: 4px;
+    border-top: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.08));
+    flex-shrink: 0;
+  }
+
+  .collapse-toggle-btn {
+    color: var(--text-muted, #71767b);
+  }
+
+  .collapse-toggle-btn:hover {
+    color: var(--text-main, #ffffff);
+    background-color: rgba(255, 255, 255, 0.08);
   }
 
   .tool-item {
@@ -779,23 +853,22 @@
     color: #e5a93c;
   }
 
-  /* ─── Submenu Flyout Menu ─── */
+  /* ─── Submenu Flyout Menu (Fixed Viewport Clamped) ─── */
   .flyout-menu {
-    position: absolute;
-    left: 42px;
-    top: -4px;
+    position: fixed;
+    left: 44px;
     width: 240px;
-    max-height: 440px;
+    max-height: min(440px, calc(100vh - 40px));
     padding: 6px;
     border-radius: 8px;
     background-color: rgba(18, 18, 22, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.85);
     display: flex;
     flex-direction: column;
     gap: 4px;
-    z-index: 60;
-    backdrop-filter: blur(12px);
+    z-index: 1000;
+    backdrop-filter: blur(16px);
     animation: flyoutSlideIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
@@ -971,7 +1044,7 @@
   /* ─── Floating Favorites Bar ─── */
   .favorites-bar {
     position: fixed;
-    z-index: 45;
+    z-index: 60;
     display: flex;
     align-items: center;
     gap: 3px;

@@ -5,6 +5,42 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.7.0] - 2026-10-12
+
+### 🚀 Ditambahkan (Added)
+- **Arsitektur UI/UX Docked Structural Shell (ADR 0004):**
+  - **Docked Left Rail (44px) (`src/lib/components/DrawingToolbar.svelte`):**
+    - Mengubah bilah alat gambar kiri dari komponen melayang (*floating overlay*) menjadi rel struktural *docked* (lebar 44px) yang mendorong kanvas WebGL2 ke kanan, menjamin lilin grafik (*candlestick wicks*) bersih dan tidak pernah tertutup oleh tombol toolbar.
+    - Dilengkapi tombol *collapse* halus di footer rel dan shortcut keyboard global <kbd>Alt+T</kbd> melalui modul layanan baru `src/lib/services/leftToolbarService.ts`.
+    - Bilah bintang favorit (*Draggable Floating Favorites Bar*) tetap melayang bebas di atas grafik untuk fleksibilitas pengguna.
+  - **Permanent Right Dock Rail (38px) (`src/lib/components/RightDockRail.svelte`):**
+    - Menghadirkan rel ikon vertikal permanen selebar 38px di tepi paling kanan jendela terminal, selaras dengan standar profesional TradingView.
+    - Memuat kluster ikon 32x32px untuk navigasi cepat: Watchlist (Flame), Price Alerts (Bell + badge counter aktif), Object Tree/Layers (Layers + count indikator), Pine IDE shortcut toggle (Code), serta tombol hider chevron di bagian bawah.
+  - **Layanan Manajemen State Rel Kanan (`src/lib/services/rightDockService.ts`):**
+    - Mengelola status rel kanan (`isOpen`, `activeTab`, `lastOpenedTab`) dengan dukungan navigasi 1-klik untuk membuka/mengganti tab, *click-to-close* saat tab aktif diklik ulang, dan persistensi otomatis ke `localStorage`.
+  - **Fixed Viewport-Clamped Flyout Submenu:**
+    - Merekayasa ulang posisi submenu flyout alat gambar menggunakan `position: fixed` dengan `z-index: 1000` dan kalkulasi koordinat dinamis dari `getBoundingClientRect()`, membebaskan menu dari batasan pemotongan kontainer scroll (`overflow-y: auto`) sehingga seluruh 70+ alat gambar dapat dipilih dengan mudah.
+- **Pengembangan Test Suite Komprehensif (Total 85 Passing Tests):**
+    - Penambahan test suite `tests/leftToolbarDock.test.ts` (6 tests) untuk pengujian rel kiri, collapse, dan shortcut <kbd>Alt+T</kbd>.
+    - Penambahan test suite `tests/rightDockService.test.ts` (8 tests) untuk pengujian siklus hidup dock rail kanan, click-to-close, canonical control seam, dan rapid multi-tab toggle.
+
+### 🔄 Diubah (Changed)
+- **Pembersihan Pusat Kendali Drawer Kanan:**
+  - Menghapus tombol canggung melayang dengan teks berotasi `"PANEL"` pada `src/lib/components/WatchlistPanel.svelte`.
+  - Menghapus tombol redundan `"Panel"` pada header bilah navigasi atas (`src/lib/components/Header.svelte`), memusatkan seluruh kontrol panel kanan secara kanonikal ke rel dock kanan.
+- **Mempertahankan Nilai Inti Terminal Trawangan:**
+  - Mempertahankan posisi Pine Script v6 IDE di sisi kanan berdampingan dengan grafik (*side-by-side*), sehingga tinggi vertikal kanvas chart tetap maksimal 100% untuk eksekusi visual strategi secara langsung.
+  - Mempertahankan integritas bilah status telemetri ultra-ringan di footer (RAM, FPS, ping RTT, SQLite lokal).
+
+### 🐛 Diperbaiki (Fixed)
+- **Resolusi Runtime Error `effect_update_depth_exceeded` di Svelte 5:**
+  - Mengganti sinkronisasi dua arah `$effect` pada `WatchlistPanel.svelte` dengan rumus reaktif murni `$derived(propActiveTab ?? internalTab)`.
+  - Membungkus registrasi pembaruan feed awal pada `subscribeWatchlistTickers` dan `subscribeActiveTicker` dengan `untrack()` dari Svelte 5, mencegah emisi data cache sinkron memicu rekursi loop reaktif tanpa akhir.
+- **Pembersihan Resize Recursion pada Chart:**
+  - Menghapus pemanggilan redundan `window.dispatchEvent(resize)` di dalam ResizeObserver `src/lib/components/Chart.svelte` untuk mencegah cascading render loop pada kanvas WebGL2.
+
+---
+
 ## [0.6.0] - 2026-10-11
 
 ### 🚀 Ditambahkan (Added)

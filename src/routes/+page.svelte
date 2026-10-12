@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import Header from '../lib/components/Header.svelte';
   import Chart from '../lib/components/Chart.svelte';
   import DrawingToolbar from '../lib/components/DrawingToolbar.svelte';
@@ -13,7 +13,10 @@
   import SymbolSearchModal from '../lib/components/SymbolSearchModal.svelte';
   import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
   import AlertNotificationToast from '../lib/components/AlertNotificationToast.svelte';
+  import RightDockRail from '../lib/components/RightDockRail.svelte';
   import { alertService } from '../lib/services/alertService';
+  import { rightDockService, type RightDockState } from '../lib/services/rightDockService';
+  import { leftToolbarService, type LeftToolbarState } from '../lib/services/leftToolbarService';
   import { ensureNotificationPermission } from '../lib/services/systemNotificationService';
   import { marketFeed } from '../lib/services/market';
   import { telemetryService } from '../lib/services/telemetryService';
@@ -103,9 +106,15 @@
   let isIndicatorModalOpen = $state(false);
   let isSymbolSearchOpen = $state(false);
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
-  let isDrawingToolbarVisible = $state(true);
-  let isWatchlistOpen = $state(true);
   let isConsoleDrawerOpen = $state(false);
+
+  // Docked Structural Shell Reactive States
+  let rightDockState = $state<RightDockState>(rightDockService.getSnapshot());
+  let leftToolbarState = $state<LeftToolbarState>(leftToolbarService.getSnapshot());
+  let allAlerts = $state<PriceAlert[]>(alertService.getAlerts());
+  let unsubRightDock: (() => void) | null = null;
+  let unsubLeftToolbar: (() => void) | null = null;
+  let unsubAlertsList: (() => void) | null = null;
 
   // Price Alerts Modals & Toast State
   let isCreateAlertModalOpen = $state(false);
@@ -188,17 +197,40 @@
   let unsubReplay: (() => void) | null = null;
 
   $effect(() => {
-    if (activeSymbol) {
+    const sym = activeSymbol;
+    if (sym) {
       if (unsubTicker) unsubTicker();
-      unsubTicker = marketFeed.subscribeActiveTicker(activeSymbol, (newTicker) => {
-        ticker = newTicker;
+      unsubTicker = untrack(() => {
+        return marketFeed.subscribeActiveTicker(sym, (newTicker) => {
+          ticker = newTicker;
+        });
       });
+      return () => {
+        if (unsubTicker) {
+          unsubTicker();
+          unsubTicker = null;
+        }
+      };
     }
   });
 
   onMount(() => {
     unsubReplay = replaySession.subscribe((snap) => {
       replaySnapshot = snap;
+    });
+
+    unsubRightDock = rightDockService.subscribe((s) => {
+      rightDockState = s;
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 40);
+    });
+
+    unsubLeftToolbar = leftToolbarService.subscribe((s) => {
+      leftToolbarState = s;
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 40);
+    });
+
+    unsubAlertsList = alertService.subscribe((list) => {
+      allAlerts = list;
     });
 
     // Muat preferensi aplikasi tersimpan dari localStorage
@@ -339,15 +371,15 @@
         return;
       }
 
-      // Drawing Tool Shortcuts (Alt + T, Alt + H, Alt + F, Alt + M, Alt + Z)
+      // Toggle Left Drawing Toolbar Rail: Alt + T
+      if (leftToolbarService.handleKeydown(e)) {
+        addSystemLog(`Shortcut: Bilah gambar ${leftToolbarState.isCollapsed ? 'disembunyikan' : 'ditampilkan'} (Alt+T)`, 'info');
+        return;
+      }
+
+      // Drawing Tool Shortcuts (Alt + H, Alt + F, Alt + M, Alt + Z)
       if (e.altKey && !e.ctrlKey && !e.metaKey) {
         const k = e.key.toLowerCase();
-        if (k === 't') {
-          e.preventDefault();
-          handleSelectTool('trendline');
-          addSystemLog('Shortcut: Tool Trendline dipilih (Alt+T)', 'info');
-          return;
-        }
         if (k === 'h') {
           e.preventDefault();
           handleSelectTool('hline');
@@ -451,6 +483,9 @@
     if (unsubTicker) unsubTicker();
     if (unsubAlertTrigger) unsubAlertTrigger();
     if (unsubReplay) unsubReplay();
+    if (unsubRightDock) unsubRightDock();
+    if (unsubLeftToolbar) unsubLeftToolbar();
+    if (unsubAlertsList) unsubAlertsList();
   });
 
   function handleSymbolChange(newSym: string) {
@@ -911,8 +946,7 @@
     {workspaceMode}
     {syncConfig}
     {activeIndicators}
-    {isDrawingToolbarVisible}
-    {isWatchlistOpen}
+    isDrawingToolbarVisible={!leftToolbarState.isCollapsed}
     isReplayActive={replaySnapshot.active}
     {watchlistSymbols}
     {quickSymbolsConfig}
@@ -932,8 +966,7 @@
     onToggleSyncSymbol={handleToggleSyncSymbol}
     onToggleSyncDrawings={handleToggleSyncDrawings}
     onToggleSyncIndicators={handleToggleSyncIndicators}
-    onToggleDrawingToolbar={() => (isDrawingToolbarVisible = !isDrawingToolbarVisible)}
-    onToggleWatchlist={() => (isWatchlistOpen = !isWatchlistOpen)}
+    onToggleDrawingToolbar={() => leftToolbarService.toggleCollapse()}
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
     onOpenSettingsModal={(tab = 'general') => {
@@ -961,9 +994,30 @@
       />
     {/if}
 
-    <!-- WORKSPACE UNIFIED VIEWPORT (TradingView Side-by-Side: Chart | Resizer | Pine IDE or Watchlist) -->
+    <!-- WORKSPACE UNIFIED VIEWPORT (Docked Structural Shell: Left Rail | Chart Canvas | Drawer Panel | Right Dock Rail) -->
     <div class="workspace-viewport mode-{workspaceMode}">
-      <!-- Left: Chart Canvas Area (Fluid 100% minus right panel) -->
+      <!-- 1. DOCKED LEFT RAIL: Drawing Toolbar (Lebar 44px struktural, zero overlap lilin) -->
+      {#if workspaceMode === 'terminal'}
+        <DrawingToolbar
+          isCollapsed={leftToolbarState.isCollapsed}
+          onToggleCollapse={() => leftToolbarService.toggleCollapse()}
+          activeTool={activeDrawingTool}
+          {snapMode}
+          {stayMode}
+          isLocked={isDrawingsLocked}
+          isHidden={isDrawingsHidden}
+          onSelectTool={handleSelectTool}
+          onToggleSnap={handleToggleSnap}
+          onToggleStay={handleToggleStay}
+          onToggleLock={handleToggleLock}
+          onToggleHide={handleToggleHide}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onClear={handleClear}
+        />
+      {/if}
+
+      <!-- 2. FLUID CENTER: Chart Canvas Area (Mulai tepat di sebelah kanan toolbar kiri) -->
       <div class="chart-canvas-area">
         <!-- Dynamic Floating Signal Badge (Tampil hanya saat mode Pine IDE dan ada strategi) -->
         {#if workspaceMode === 'pine' && activeStrategySummary}
@@ -1010,28 +1064,9 @@
           onStrategyUpdate={handleStrategyUpdate}
           onRequestCreateAlert={handleRequestCreateAlert}
         />
-
-        <!-- Left Utility Ribbon (Drawing Tools - Hanya aktif saat mode terminal) -->
-        {#if isDrawingToolbarVisible && workspaceMode === 'terminal'}
-          <DrawingToolbar
-            activeTool={activeDrawingTool}
-            {snapMode}
-            {stayMode}
-            isLocked={isDrawingsLocked}
-            isHidden={isDrawingsHidden}
-            onSelectTool={handleSelectTool}
-            onToggleSnap={handleToggleSnap}
-            onToggleStay={handleToggleStay}
-            onToggleLock={handleToggleLock}
-            onToggleHide={handleToggleHide}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            onClear={handleClear}
-          />
-        {/if}
       </div>
 
-      <!-- Right Column: Mutually Exclusive (Pine Editor vs Watchlist) -->
+      <!-- 3. RIGHT DRAWER COLUMN: Side-by-side Pine Editor atau Drawer Watchlist -->
       {#if workspaceMode === 'pine'}
         <!-- Draggable Resizer Splitter -->
         <div
@@ -1056,22 +1091,49 @@
             onStrategyUpdate={handleStrategyUpdate}
           />
         </div>
-      {:else if isWatchlistOpen}
+      {:else if rightDockState.isOpen}
         <WatchlistPanel
-          isOpen={isWatchlistOpen}
+          isOpen={rightDockState.isOpen}
+          activeTab={rightDockState.activeTab || rightDockState.lastOpenedTab}
+          onTabChange={(tab) => rightDockService.openTab(tab)}
           {activeSymbol}
           {activeProviderId}
           {watchlistSymbols}
           {activeIndicators}
           onSelectSymbol={handleSymbolChange}
           onWatchlistChange={handleWatchlistChange}
-          onToggleCollapse={() => (isWatchlistOpen = !isWatchlistOpen)}
+          onToggleCollapse={() => rightDockService.close()}
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
           onRemoveIndicator={handleRemoveIndicator}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
           onOpenSymbolSearch={() => (isSymbolSearchOpen = true)}
         />
       {/if}
+
+      <!-- 4. PERMANENT RIGHT DOCK RAIL: Ikon Vertikal 38px selalu hadir di tepi kanan -->
+      <RightDockRail
+        isOpen={rightDockState.isOpen}
+        activeTab={rightDockState.activeTab}
+        {workspaceMode}
+        activeAlertsCount={allAlerts.filter((a) => a.active && !a.triggered).length}
+        activeIndicatorsCount={activeIndicators.length}
+        onToggleTab={(tab) => {
+          if (workspaceMode === 'pine') {
+            handleWorkspaceModeChange('terminal');
+          }
+          rightDockService.toggleTab(tab);
+        }}
+        onToggleHider={() => {
+          if (workspaceMode === 'pine') {
+            handleWorkspaceModeChange('terminal');
+          } else {
+            rightDockService.toggleHider();
+          }
+        }}
+        onTogglePineMode={() => {
+          handleWorkspaceModeChange(workspaceMode === 'pine' ? 'terminal' : 'pine');
+        }}
+      />
     </div>
   </main>
 
@@ -1163,7 +1225,7 @@
     initialPrice={createAlertTargetPrice}
     currentMarketPrice={ticker?.price || 0}
     onClose={() => (isCreateAlertModalOpen = false)}
-    onCreated={(newAlert) => {
+    onCreated={(newAlert: any) => {
       addSystemLog(`Price Alert dibuat: ${newAlert.symbol} @ $${newAlert.targetPrice}`, 'success');
     }}
   />

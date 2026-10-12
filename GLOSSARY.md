@@ -32,3 +32,12 @@ _Avoid_: Generic sans-serif, Serif, All-caps styling
 Prinsip penyediaan kapabilitas analisis teknikal tingkat lanjut—termasuk jumlah indikator aktif tanpa batas pada satu kanvas, watchlist kustom tanpa kuota, dan eksekusi Pine Script v6 lokal—tanpa pungutan biaya langganan atau restriksi fitur berbayar.
 _Avoid_: Freemium, Trial period, Paywalled indicators
 
+**Docked Structural Shell**:
+Pola tata letak antarmuka di mana bilah alat gambar kiri dan bilah widget kanan terpasang secara struktural pada tepi jendela aplikasi, bukan sebagai widget yang melayang di atas kanvas candlestick.
+_Avoid_: Floating toolbar overlay, Floating tool pill
+
+**Right Dock Rail**:
+Bilah rel ikon vertikal permanen di sisi kanan layar untuk navigasi instan satu klik antara Watchlist, Price Alerts, Object Tree, dan Pine IDE.
+_Avoid_: Floating panel button, Rotating label button, Collapsed panel toggle
+
+

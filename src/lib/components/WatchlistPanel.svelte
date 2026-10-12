@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import {
     Plus,
     X,
@@ -31,6 +31,8 @@
 
   interface Props {
     isOpen: boolean;
+    activeTab?: 'watchlist' | 'alerts' | 'objects';
+    onTabChange?: (tab: 'watchlist' | 'alerts' | 'objects') => void;
     activeSymbol: string;
     activeProviderId?: string;
     watchlistSymbols?: string[];
@@ -46,6 +48,8 @@
 
   let {
     isOpen,
+    activeTab: propActiveTab,
+    onTabChange,
     activeSymbol,
     activeProviderId = 'binance',
     watchlistSymbols: propSymbols,
@@ -59,7 +63,13 @@
     onOpenSymbolSearch,
   }: Props = $props();
 
-  let activeTab = $state<'watchlist' | 'alerts' | 'objects'>('watchlist');
+  let internalTab = $state<'watchlist' | 'alerts' | 'objects'>('watchlist');
+  let activeTab = $derived(propActiveTab ?? internalTab);
+
+  function switchTab(tab: 'watchlist' | 'alerts' | 'objects') {
+    internalTab = tab;
+    onTabChange?.(tab);
+  }
   let isSymbolSearchOpen = $state(false);
 
   // Watchlist state
@@ -96,7 +106,7 @@
   $effect(() => {
     if (propSymbols && propSymbols.length > 0) {
       const h = JSON.stringify(propSymbols);
-      if (h !== lastSyncedHash && h !== JSON.stringify(symbols)) {
+      if (h !== lastSyncedHash) {
         lastSyncedHash = h;
         symbols = [...propSymbols];
       }
@@ -133,11 +143,20 @@
   }
 
   $effect(() => {
-    if (symbols && symbols.length > 0) {
+    const syms = symbols;
+    if (syms && syms.length > 0) {
       if (unsubWatchlistFeed) unsubWatchlistFeed();
-      unsubWatchlistFeed = marketFeed.subscribeWatchlistTickers(symbols, (newMap) => {
-        tickerMap = { ...tickerMap, ...newMap };
+      unsubWatchlistFeed = untrack(() => {
+        return marketFeed.subscribeWatchlistTickers(syms, (newMap) => {
+          tickerMap = { ...tickerMap, ...newMap };
+        });
       });
+      return () => {
+        if (unsubWatchlistFeed) {
+          unsubWatchlistFeed();
+          unsubWatchlistFeed = null;
+        }
+      };
     }
   });
 
@@ -275,18 +294,6 @@
   }
 </script>
 
-<!-- Collapsed Tab Toggle Button -->
-{#if !isOpen}
-  <button
-    class="collapsed-toggle-btn obsidian-panel"
-    title="Buka Panel Kanan"
-    onclick={onToggleCollapse}
-  >
-    <ChevronLeft size={14} />
-    <span class="vertical-label">PANEL</span>
-  </button>
-{/if}
-
 <!-- Watchlist & Telemetry Right Drawer Panel -->
 {#if isOpen}
   <aside class="right-panel obsidian-panel">
@@ -295,7 +302,7 @@
       <nav class="panel-tabs">
         <button
           class="tab-btn {activeTab === 'watchlist' ? 'active' : ''}"
-          onclick={() => (activeTab = 'watchlist')}
+          onclick={() => switchTab('watchlist')}
         >
           <Flame size={13} />
           <span>Watchlist</span>
@@ -304,7 +311,7 @@
 
         <button
           class="tab-btn {activeTab === 'alerts' ? 'active' : ''}"
-          onclick={() => (activeTab = 'alerts')}
+          onclick={() => switchTab('alerts')}
         >
           <Bell size={13} />
           <span>Alerts</span>
@@ -313,7 +320,7 @@
 
         <button
           class="tab-btn {activeTab === 'objects' ? 'active' : ''}"
-          onclick={() => (activeTab = 'objects')}
+          onclick={() => switchTab('objects')}
         >
           <Layers size={13} />
           <span>Layers</span>

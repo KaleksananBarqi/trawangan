@@ -1105,9 +1105,8 @@
 
     alertPositionInterval = setInterval(updateAlertYPositions, 400);
 
-    // Pantau perubahan ukuran jendela agar chart responsif
+    // Pantau perubahan ukuran chartContainer untuk memperbarui posisi price alert
     resizeObserver = new ResizeObserver(() => {
-      window.dispatchEvent(new Event('resize'));
       updateAlertYPositions();
     });
     resizeObserver.observe(chartContainer);
