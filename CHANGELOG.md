@@ -5,6 +5,36 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.10.0] - 2026-10-12
+
+### 🚀 Ditambahkan (Added)
+- **Integrasi Provider Native Indodax & Pemformatan Rupiah (IDR) (#15):**
+  - Penyedia data pasar bawaan untuk bursa lokal Indonesia (Indodax) dengan modul `IndodaxProvider` (kontrak grafik Vela) dan `IndodaxAdapter` (konektor REST ticker/kline).
+  - Standarisasi pemformatan angka nominal Rupiah (IDR) dengan tanda pemisah ribuan titik (contoh: `Rp 1.480.000.000`) pada skala harga grafik (`priceScaleLabelService.ts`) serta badge status.
+  - Penanganan khusus untuk kripto bernilai mikro (PEPE, SHIB) dalam denominasi IDR tanpa pemotongan desimal signifikan.
+- **Subsistem Feed Connection Guard & Banner Peringatan ISP (#16):**
+  - Subsistem pengawas proaktif `FeedConnectionGuard` pada `MarketFeedService` untuk mendeteksi kegagalan beruntun, batas waktu koneksi, dan pemblokiran jaringan/ISP (misal blokir Binance di Indonesia).
+  - Banner peringatan mengambang non-intrusif pada kanvas grafik (`Chart.svelte`) yang menyediakan aksi satu klik untuk beralih instan ke Indodax atau membuka dialog pengaturan.
+  - Indikator status koneksi adaptif pada bilah status bawah (`StatusBar.svelte`).
+- **Pencarian Simbol Multi-Quote & Filter Bursa dengan Riwayat Pencarian (#17):**
+  - Modal pencarian simbol multi-bursa (`SymbolSearchModal.svelte`) dengan filter bursa (Semua, Binance, Indodax, Custom) dan filter quote currency (Semua, USDT, IDR, USD).
+  - Penyimpanan 5 riwayat pencarian terakhir (*recent searches*) secara persisten pada penyimpanan lokal.
+  - Normalisasi simbol komprehensif (`BTC/IDR`, `BTCUSDT`, dsb) dengan agregasi data harga live 24h ticker badge.
+  - Dukungan navigasi keyboard penuh (Up, Down, Enter, Escape) dan debounce query instan.
+- **Watchlist Preset Tab Indodax IDR & Dukungan Endpoint Kustom (#18):**
+  - Bilah tab preset kategori pada `WatchlistPanel.svelte`: tab `[Binance USDT]` dan `[Indodax IDR]` untuk navigasi cepat daftar pantauan pasar lokal dan global.
+  - Dropdown pemilih provider instan di bilah navigasi utama (`Header.svelte`) untuk berganti penyedia feed secara langsung tanpa membuka pengaturan.
+  - Dukungan penambahan endpoint node kustom dengan mekanisme fallback penyimpanan in-memory yang tangguh pada lingkungan pengujian headless.
+- **Deep Workspace Layout & Sub-Pane Persistence (#14):**
+  - Persistensi mendalam konfigurasi tata letak terminal ke penyimpanan lokal.
+  - Menyimpan dan memulihkan proporsi pembagian vertikal sub-pane osilator (`paneWeights`), konfigurasi skala harga (`priceScaleState`), style grafik, bar spacing, panel aktif right dock rail, dan status sinkronisasi layout multi-chart.
+
+### 🔄 Diubah (Changed)
+- **Optimasi Kecepatan Eksekusi Test Runner:**
+  - Integrasi paket `tsx` ke dalam `devDependencies` dan optimasi npm script sehingga waktu eksekusi unit test terpangkas menjadi ~850 ms.
+  - Penambahan unref timer background interval pada provider pasar untuk memastikan proses Node.js langsung keluar tanpa delay setelah assertion pengujian selesai.
+  - Peningkatan cakupan unit test suite menjadi 130 tests (16 test suites) yang lolos 100%.
+
 ## [0.9.0] - 2026-10-12
 
 ### 🚀 Ditambahkan (Added)
