@@ -153,50 +153,14 @@
     }
   });
 
-  const SHORTCUT_ITEMS = [
-    { category: 'Navigasi & Simbol', keys: ['Ctrl', 'K'], desc: 'Buka modal pencarian simbol & pair pasar' },
-    { category: 'Navigasi & Simbol', keys: ['Space'], desc: 'Pindah ke koin berikutnya di daftar Watchlist' },
-    { category: 'Navigasi & Simbol', keys: ['Shift', 'Space'], desc: 'Pindah ke koin sebelumnya di daftar Watchlist' },
-
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'T'], desc: 'Aktifkan alat Garis Tren (Trendline)' },
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'H'], desc: 'Aktifkan alat Garis Horisontal (Horizontal Line)' },
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'F'], desc: 'Aktifkan alat Fibonacci Retracement' },
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'M'], desc: 'Aktifkan Penggaris Ukur Jarak & Persentase (Measure)' },
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['Alt', 'Z'], desc: 'Reset skala & paskan grafik ke layar penuh (Fit Chart)' },
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['F'], desc: 'Shortcut alternatif untuk Fit Chart' },
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['Escape'], desc: 'Batalkan alat aktif / kembali ke kursor default' },
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['Delete / Backspace'], desc: 'Hapus objek terpilih / batalkan gambar terakhir' },
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['Ctrl', 'Z'], desc: 'Urungkan tindakan gambar terakhir (Undo)' },
-    { category: 'Alat Gambar (Drawing Tools)', keys: ['Ctrl', 'Y'], desc: 'Ulangi tindakan gambar (Redo)' },
-
-    { category: 'Timeframe Cepat', keys: ['1'], desc: 'Beralih ke Timeframe 1 Menit (1m)' },
-    { category: 'Timeframe Cepat', keys: ['5'], desc: 'Beralih ke Timeframe 5 Menit (5m)' },
-    { category: 'Timeframe Cepat', keys: ['0'], desc: 'Beralih ke Timeframe 15 Menit (15m)' },
-
-    { category: 'Bar Replay (Simulasi)', keys: ['Shift', 'R'], desc: 'Buka atau tutup mode simulasi Bar Replay' },
-    { category: 'Bar Replay (Simulasi)', keys: ['Space'], desc: 'Putar otomatis atau jeda lilin (saat replay aktif)' },
-    { category: 'Bar Replay (Simulasi)', keys: ['→'], desc: 'Langkah maju satu candle ke depan (Step)' },
-    { category: 'Bar Replay (Simulasi)', keys: ['Escape'], desc: 'Batalkan mode pemilihan lilin awal cutline' },
-
-    { category: 'Price Alert', keys: ['Alt', 'A'], desc: 'Buat Price Alert baru pada harga kursor terakhir' },
-
-    { category: 'Sistem & Bantuan', keys: ['Ctrl', '`'], desc: 'Buka atau tutup laci Terminal Console Logs' },
-    { category: 'Sistem & Bantuan', keys: ['F1 / ?'], desc: 'Buka pusat bantuan & panduan tombol shortcut ini' },
-  ];
+  import { SHORTCUT_GLOSSARY, filterShortcuts } from '../services/shortcutService';
 
   let filteredShortcuts = $derived.by(() => {
-    const q = helpSearchQuery.trim().toLowerCase();
-    if (!q) return SHORTCUT_ITEMS;
-    return SHORTCUT_ITEMS.filter(
-      (item) =>
-        item.keys.some((k) => k.toLowerCase().includes(q)) ||
-        item.desc.toLowerCase().includes(q) ||
-        item.category.toLowerCase().includes(q)
-    );
+    return filterShortcuts(helpSearchQuery);
   });
 
   let groupedShortcuts = $derived.by(() => {
-    const groups: Record<string, typeof SHORTCUT_ITEMS> = {};
+    const groups: Record<string, typeof SHORTCUT_GLOSSARY> = {};
     for (const item of filteredShortcuts) {
       if (!groups[item.category]) groups[item.category] = [];
       groups[item.category].push(item);
@@ -809,6 +773,59 @@
                   onclick={() => onUpdateSettings({ showReplayBar: !settings.showReplayBar })}
                 >
                   {settings.showReplayBar ? 'Tampil' : 'Sembunyi'}
+                </button>
+              </div>
+            </div>
+
+            <!-- Skala Harga & Label Sumbu Kanan (Baru) -->
+            <div class="section-group">
+              <h4 class="section-title">Skala Harga & Label Sumbu Kanan</h4>
+              <p class="section-subtitle">
+                Atur visibilitas garis harga horizontal dan label badge harga pada skala sumbu kanan.
+              </p>
+
+              <!-- Garis Harga Terakhir (Current Price Line) -->
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-label">Garis Harga Terakhir (Current Price Line)</span>
+                  <span class="setting-desc">Tampilkan garis horizontal dinamis yang membentang dari harga lilin aktif ke skala kanan</span>
+                </div>
+                <button
+                  type="button"
+                  class="toggle-btn {settings.showCurrentPriceLine !== false ? 'active' : ''}"
+                  onclick={() => onUpdateSettings({ showCurrentPriceLine: settings.showCurrentPriceLine === false })}
+                >
+                  {settings.showCurrentPriceLine !== false ? 'Aktif' : 'Nonaktif'}
+                </button>
+              </div>
+
+              <!-- Label Nilai Indikator di Skala Harga -->
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-label">Label Nilai Indikator di Skala Kanan</span>
+                  <span class="setting-desc">Tampilkan badge angka nilai terakhir dari indikator teknikal aktif pada sumbu harga kanan</span>
+                </div>
+                <button
+                  type="button"
+                  class="toggle-btn {settings.showIndicatorPriceLabels !== false ? 'active' : ''}"
+                  onclick={() => onUpdateSettings({ showIndicatorPriceLabels: settings.showIndicatorPriceLabels === false })}
+                >
+                  {settings.showIndicatorPriceLabels !== false ? 'Aktif' : 'Nonaktif'}
+                </button>
+              </div>
+
+              <!-- Label Harga Posisi Long/Short & Gambar -->
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-label">Label Harga Posisi Long/Short & Gambar</span>
+                  <span class="setting-desc">Tampilkan badge harga entry, target keuntungan (TP), dan batas rugi (SL) di sumbu kanan</span>
+                </div>
+                <button
+                  type="button"
+                  class="toggle-btn {settings.showDrawingPriceLabels !== false ? 'active' : ''}"
+                  onclick={() => onUpdateSettings({ showDrawingPriceLabels: settings.showDrawingPriceLabels === false })}
+                >
+                  {settings.showDrawingPriceLabels !== false ? 'Aktif' : 'Nonaktif'}
                 </button>
               </div>
             </div>

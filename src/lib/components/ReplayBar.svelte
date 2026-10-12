@@ -5,6 +5,7 @@
     Play,
     Pause,
     SkipForward,
+    SkipBack,
     RotateCcw,
     Scissors,
     Calendar,
@@ -25,6 +26,7 @@
     remainingBars?: number;
     onToggleSelectBar?: () => void;
     onTogglePlay?: () => void;
+    onStepBackward?: () => void;
     onStepForward?: () => void;
     onSelectSpeed?: (speed: number) => void;
     onRewind?: () => void;
@@ -40,6 +42,7 @@
     remainingBars: propRemainingBars,
     onToggleSelectBar: propOnToggleSelectBar,
     onTogglePlay: propOnTogglePlay,
+    onStepBackward: propOnStepBackward,
     onStepForward: propOnStepForward,
     onSelectSpeed: propOnSelectSpeed,
     onRewind: propOnRewind,
@@ -96,6 +99,14 @@
       propOnTogglePlay();
     } else {
       replaySession.togglePlay();
+    }
+  }
+
+  function handleStepBackward() {
+    if (propOnStepBackward) {
+      propOnStepBackward();
+    } else {
+      replaySession.stepBack();
     }
   }
 
@@ -199,6 +210,14 @@
         onclick={handleRewind}
       >
         <RotateCcw size={12} />
+      </button>
+
+      <button
+        class="step-btn"
+        title="Langkah -1 Bar ke belakang (Panah Kiri)"
+        onclick={handleStepBackward}
+      >
+        <SkipBack size={12} />
       </button>
 
       <button

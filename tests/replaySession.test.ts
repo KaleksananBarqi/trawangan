@@ -89,6 +89,25 @@ test('Deep Replay Session Module Unit Tests', async (t) => {
     assert.equal(session.getSnapshot().status, 'ended');
     assert.equal(session.getSnapshot().isPlaying, false);
 
+    // Step Back 1 bar mundur (dari 4000 kembali ke 3000, sisa 1 -> status ready/paused)
+    session.stepBack();
+    assert.equal(session.getSnapshot().cursorTime, 3000);
+    assert.equal(session.getSnapshot().remainingBars, 1);
+    assert.equal(session.getSnapshot().status, 'paused');
+
+    // Step Back 1 bar mundur lagi (dari 3000 kembali ke 2000, sisa 2)
+    session.stepBack();
+    assert.equal(session.getSnapshot().cursorTime, 2000);
+    assert.equal(session.getSnapshot().remainingBars, 2);
+
+    // Play lalu Step Back: otomatis jeda playback
+    session.play();
+    assert.equal(session.getSnapshot().isPlaying, true);
+    session.stepBack();
+    assert.equal(session.getSnapshot().isPlaying, false);
+    assert.equal(session.getSnapshot().cursorTime, 1000);
+    assert.equal(session.getSnapshot().remainingBars, 3);
+
     // Rewind kembali ke 2000
     await session.rewind();
     assert.equal(session.getSnapshot().cursorTime, 2000);

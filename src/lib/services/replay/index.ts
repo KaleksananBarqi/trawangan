@@ -205,6 +205,24 @@ export class ReplaySession implements IReplaySession {
     this.emit();
   }
 
+  public stepBack(): void {
+    if (this.isPlaying) {
+      this.pause();
+    }
+    if (this.driver) {
+      this.driver.stepBack();
+      const state = this.driver.getState();
+      if (state) {
+        this.cursorTime = state.cursorTime;
+        this.remainingBars = state.remaining;
+        if (this.status === 'ended') {
+          this.status = 'paused';
+        }
+      }
+    }
+    this.emit();
+  }
+
   public setSpeed(speed: number): void {
     this.playbackSpeed = speed;
     if (this.isPlaying && this.driver) {

@@ -19,6 +19,7 @@
   import { getHistoricalCandles } from '../services/marketProvider';
   import { alertService } from '../services/alertService';
   import { replaySession, type ReplayDriver } from '../services/replay';
+  import { getTimeframeDurationMs } from '../services/replay/historicalRange';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import type {
     Timeframe,
@@ -35,6 +36,11 @@
   import { THEME_PRESETS } from '../constants/themes';
   import { applyLayoutTimeframePolicy } from '../constants/defaults';
   import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
+  import {
+    extractDrawingPriceBadges,
+    extractIndicatorPriceBadges,
+    type PriceScaleBadge
+  } from '../services/priceScaleLabelService';
 
 
   export interface ReplayStateInfo {
@@ -53,6 +59,9 @@
     providerId?: string;
     syncConfig?: MultiChartSyncConfig;
     showWatermark?: boolean;
+    showCurrentPriceLine?: boolean;
+    showIndicatorPriceLabels?: boolean;
+    showDrawingPriceLabels?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
     onReplayStateChange?: (state: ReplayStateInfo) => void;
@@ -74,6 +83,9 @@
     fontSize = 12,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true,
+    showCurrentPriceLine = true,
+    showIndicatorPriceLabels = true,
+    showDrawingPriceLabels = true,
     onActiveIndicatorsChange,
     onActiveCellChange,
     onReplayStateChange,
@@ -349,6 +361,15 @@
     checkAndInjectButton();
   }
 
+  let activeDrawings = $state<any[]>([]);
+  let drawingPriceBadges = $derived(
+    showDrawingPriceLabels ? extractDrawingPriceBadges(activeDrawings) : []
+  );
+
+  let indicatorPriceBadges = $derived(
+    showIndicatorPriceLabels ? extractIndicatorPriceBadges(getActiveIndicators()) : []
+  );
+
   /**
    * Muat dan pasang gambar yang tersimpan dari SQLite untuk chart aktif
    * Prioritaskan slot 'GLOBAL' agar key levels terlihat lintas seluruh timeframe (standar TradingView)
@@ -367,6 +388,7 @@
       }
       if (doc && activeChart?.drawings) {
         activeChart.drawings.fromJSON(doc);
+        activeDrawings = activeChart.drawings.all?.() || [];
       }
     } catch (err) {
       console.warn('Gagal me-restore drawings:', err);
@@ -382,6 +404,7 @@
     try {
       const activeChart = workspace.active.chart;
       if (activeChart?.drawings) {
+        activeDrawings = activeChart.drawings.all?.() || [];
         const doc = activeChart.drawings.toJSON();
         const curSym = (workspace.active as any).symbol || symbol;
         saveDrawingsDebounced(curSym, 'GLOBAL', doc);
@@ -405,14 +428,18 @@
   let contextMenuPrice = $state<number | null>(null);
   let contextMenuTime = $state<number | null>(null);
 
-  // Price Alert Visual Overlays
+  // Price Alert Visual Overlays & Scale Badges Real-Time Positions
   let allAlerts = $state<PriceAlert[]>([]);
   let activeSymbolAlerts = $derived.by(() => {
     const clean = symbol.replace('.P', '').toUpperCase();
     return allAlerts.filter((a) => a.symbol.replace('.P', '').toUpperCase() === clean);
   });
   let alertYPositions = $state<Record<string, number | null>>({});
+  let drawingBadgeYPositions = $state<Record<string, number | null>>({});
+  let indicatorBadgeYPositions = $state<Record<string, number | null>>({});
   let alertPositionInterval: any = null;
+  let badgeRafId: number | null = null;
+  let isPointerActiveOnChart = false;
 
   function formatPrice(p: number | null): string {
     if (p === null || p === undefined || isNaN(p)) return '--';
@@ -453,7 +480,7 @@
       const activeChart = workspace.active.chart as any;
       const coords = getChartCoords(activeChart);
       const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
-      const pane = renderer?.paneNodeAtY ? renderer.paneNodeAtY(localY) : (renderer?.panes?.[0] || renderer?.pricePane);
+      const pane = renderer?.pricePane || (renderer?.paneNodeAtY ? renderer.paneNodeAtY(localY) : (renderer?.panes?.[0]));
 
       if (coords && typeof coords.yToPrice === 'function' && pane) {
         const scale = pane.scale || activeChart.scale;
@@ -472,27 +499,79 @@
   }
 
   /**
-   * Hitung koordinat pixel Y untuk target harga tertentu pada grafik
+   * Hitung koordinat pixel Y presisi untuk harga target pada grafik
    */
-  function getAlertY(targetPrice: number): number | null {
+  function getPriceY(targetPrice: number): number | null {
     if (!chartContainer || !workspace || !workspace.active) return null;
     try {
       const activeChart = workspace.active.chart as any;
       const coords = getChartCoords(activeChart);
       const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
-      const pane = renderer?.paneNodeAtY ? renderer.paneNodeAtY(50) : (renderer?.panes?.[0] || renderer?.pricePane);
+      const pane = renderer?.pricePane || (renderer?.panes && renderer.panes[0]) || (renderer?.paneNodeAtY ? renderer.paneNodeAtY(50) : null);
       if (coords && typeof coords.priceToY === 'function' && pane) {
         const scale = pane.scale || activeChart.scale;
         const bounds = pane.bounds || activeChart.bounds;
         if (scale && bounds) {
           const y = coords.priceToY(targetPrice, scale, bounds);
           if (typeof y === 'number' && !isNaN(y)) {
-            return y;
+            const top = bounds.top ?? 0;
+            const height = bounds.height ?? 9999;
+            if (y < top - 24 || y > top + height + 24) {
+              return null;
+            }
+            return Math.round(y);
           }
         }
       }
     } catch (_) {}
     return null;
+  }
+
+  /**
+   * Alias kompatibilitas mundur untuk alert overlays
+   */
+  function getAlertY(targetPrice: number): number | null {
+    return getPriceY(targetPrice);
+  }
+
+  /**
+   * Perbarui posisi Y dari seluruh alert dan badges aktif secara real-time
+   */
+  function updateBadgePositions() {
+    if (!workspace || !workspace.active) return;
+
+    if (showDrawingPriceLabels && drawingPriceBadges.length > 0) {
+      const drawMap: Record<string, number | null> = {};
+      for (const b of drawingPriceBadges) {
+        drawMap[b.id] = getPriceY(b.price);
+      }
+      drawingBadgeYPositions = drawMap;
+    } else if (Object.keys(drawingBadgeYPositions).length > 0) {
+      drawingBadgeYPositions = {};
+    }
+
+    if (showIndicatorPriceLabels && indicatorPriceBadges.length > 0) {
+      const indMap: Record<string, number | null> = {};
+      for (const b of indicatorPriceBadges) {
+        indMap[b.id] = getPriceY(b.price);
+      }
+      indicatorBadgeYPositions = indMap;
+    } else if (Object.keys(indicatorBadgeYPositions).length > 0) {
+      indicatorBadgeYPositions = {};
+    }
+
+    updateAlertYPositions();
+  }
+
+  /**
+   * Jadwalkan update posisi badge harga pada animation frame berikutnya (60 FPS smooth sync)
+   */
+  function scheduleBadgePositionUpdate() {
+    if (badgeRafId !== null) return;
+    badgeRafId = requestAnimationFrame(() => {
+      badgeRafId = null;
+      updateBadgePositions();
+    });
   }
 
   /**
@@ -505,10 +584,17 @@
     }
     const pos: Record<string, number | null> = {};
     for (const a of activeSymbolAlerts) {
-      pos[a.id] = getAlertY(a.targetPrice);
+      pos[a.id] = getPriceY(a.targetPrice);
     }
     alertYPositions = pos;
   }
+
+  $effect(() => {
+    // Dengarkan perubahan badge derifatif dan picu kalkulasi posisi
+    const _d = drawingPriceBadges;
+    const _i = indicatorPriceBadges;
+    scheduleBadgePositionUpdate();
+  });
 
   /**
    * Handler event klik kanan (context menu) pada canvas grafik
@@ -746,6 +832,33 @@
     step: () => {
       if (workspace?.replay) workspace.replay.step();
     },
+    stepBack: () => {
+      if (!workspace?.replay) return;
+      const s = workspace.replay.state;
+      const cursor = s?.cursorTime;
+      if (!cursor) return;
+
+      const activeChart = workspace.active?.chart as any;
+      const innerRenderer = activeChart?.renderer?.renderer;
+      const rawBars = activeChart?.rawBars || innerRenderer?.bars || (workspace as any)?.active?.rawBars;
+
+      if (Array.isArray(rawBars) && rawBars.length > 0) {
+        const curIdx = rawBars.findIndex((b: any) => b.time >= cursor);
+        if (curIdx > 0) {
+          const prevBar = rawBars[curIdx - 1];
+          workspace.replay.start({ from: prevBar.time });
+          return;
+        }
+      }
+
+      // Fallback kalkulasi berbasis durasi timeframe jika array lilin tidak langsung diakses
+      const bounds = workspace.replay.bounds;
+      const dur = getTimeframeDurationMs(timeframe);
+      const targetTime = cursor - dur;
+      if (!bounds || targetTime >= bounds.first) {
+        workspace.replay.start({ from: targetTime });
+      }
+    },
     stop: () => {
       stopReplay();
     },
@@ -900,6 +1013,25 @@
     }
   });
 
+  // Reaktif sinkronisasi garis harga sekarang (Current Price Line)
+  $effect(() => {
+    if (workspace) {
+      const isVisible = Boolean(showCurrentPriceLine);
+      for (const cell of getAllWorkspaceCells()) {
+        try {
+          const renderer = (cell as any)?.chart?.renderer;
+          const native = renderer?.renderer || renderer;
+          if (native?.scene) {
+            native.scene.showPriceLine = isVisible;
+          }
+          if (typeof native?.set === 'function') {
+            native.set('currentPriceLine', isVisible);
+          }
+        } catch (_) {}
+      }
+    }
+  });
+
 
   onMount(() => {
     if (!chartContainer) return;
@@ -928,6 +1060,7 @@
         drawingToolbar: false, // Gunakan toolbar kustom Trawangan agar tidak tumpang tindih
         topbar: { left: [], right: [] }, // Sembunyikan topbar bawaan Vela agar tidak tumpang tindih dengan header kustom
         live: true,
+        currentPriceLine: showCurrentPriceLine,
         theme: velaTheme as any,
         providers: {
           binance: () => new BinanceProvider(),
@@ -2028,6 +2161,10 @@
     if (alertPositionInterval) {
       clearInterval(alertPositionInterval);
     }
+    if (badgeRafId !== null) {
+      cancelAnimationFrame(badgeRafId);
+      badgeRafId = null;
+    }
     if (resizeObserver) {
       resizeObserver.disconnect();
     }
@@ -2048,12 +2185,16 @@
 <div 
   class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''}"
   oncontextmenu={handleContainerContextMenu}
+  onwheel={scheduleBadgePositionUpdate}
+  onpointerdown={() => { isPointerActiveOnChart = true; scheduleBadgePositionUpdate(); }}
+  onpointermove={(e) => { if (e.buttons > 0 || isPointerActiveOnChart) scheduleBadgePositionUpdate(); }}
+  onpointerup={() => { isPointerActiveOnChart = false; scheduleBadgePositionUpdate(); }}
 >
   <div bind:this={chartContainer} class="vela-container"></div>
 
   <!-- Visual Price Alert Overlays -->
   {#each activeSymbolAlerts as a (a.id)}
-    {@const yPos = alertYPositions[a.id]}
+    {@const yPos = alertYPositions[a.id] ?? getPriceY(a.targetPrice)}
     {#if yPos !== null && yPos >= 0}
       <div
         class="chart-alert-line {a.triggered ? 'triggered' : ''} {a.active ? 'active' : 'paused'}"
@@ -2080,6 +2221,44 @@
       </div>
     {/if}
   {/each}
+
+  <!-- Visual Price Scale Badges (Long/Short Posisi & Objek Gambar) -->
+  {#if showDrawingPriceLabels}
+    {#each drawingPriceBadges as badge (badge.id)}
+      {@const yPos = drawingBadgeYPositions[badge.id] ?? getPriceY(badge.price)}
+      {#if yPos !== null && yPos >= 0}
+        <div
+          class="price-scale-badge-item mono-nums"
+          style="top: {yPos}px; background-color: {badge.bgColor || badge.color}; color: #ffffff; border: 1px solid {badge.color}66;"
+          title="{badge.title || badge.label}: ${formatPrice(badge.price)}"
+        >
+          {#if badge.title}
+            <span class="badge-tag">{badge.title}</span>
+          {/if}
+          <span class="badge-num">${formatPrice(badge.price)}</span>
+        </div>
+      {/if}
+    {/each}
+  {/if}
+
+  <!-- Visual Price Scale Badges (Indikator Aktif) -->
+  {#if showIndicatorPriceLabels}
+    {#each indicatorPriceBadges as badge (badge.id)}
+      {@const yPos = indicatorBadgeYPositions[badge.id] ?? getPriceY(badge.price)}
+      {#if yPos !== null && yPos >= 0}
+        <div
+          class="price-scale-badge-item indicator-badge mono-nums"
+          style="top: {yPos}px; border-left: 3px solid {badge.color}; background-color: {badge.bgColor || '#0f172a'}; color: {badge.color}; border-top: 1px solid rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.08);"
+          title="{badge.title || badge.label}: ${formatPrice(badge.price)}"
+        >
+          {#if badge.title}
+            <span class="badge-tag">{badge.title}</span>
+          {/if}
+          <span class="badge-num">${formatPrice(badge.price)}</span>
+        </div>
+      {/if}
+    {/each}
+  {/if}
 
   {#if isSelectingCutoff}
     <!-- Panduan Garis Vertikal Pemotong Lilin (Vertical Cutline Guide) -->
@@ -2407,6 +2586,40 @@
     border-color: rgba(16, 185, 129, 0.85) !important;
     color: #10b981 !important;
     box-shadow: 0 0 12px rgba(16, 185, 129, 0.4) !important;
+  }
+
+  /* Visual Badge Skala Harga Sumbu Kanan (TradingView Parity) */
+  .price-scale-badge-item {
+    position: absolute;
+    right: 0;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    font-size: 9px;
+    font-weight: 700;
+    border-radius: 3px 0 0 3px;
+    z-index: 22;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+    white-space: nowrap;
+    user-select: none;
+    line-height: 1.2;
+    animation: fadeIn 0.12s ease-out;
+  }
+
+  .price-scale-badge-item .badge-tag {
+    font-size: 7.5px;
+    font-weight: 800;
+    opacity: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .price-scale-badge-item .badge-num {
+    font-size: 9px;
+    letter-spacing: 0.02em;
   }
 </style>
 
