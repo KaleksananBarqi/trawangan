@@ -404,7 +404,8 @@
     try {
       const activeChart = workspace.active.chart;
       if (activeChart?.drawings) {
-        activeDrawings = activeChart.drawings.all?.() || [];
+        activeDrawings = [...(activeChart.drawings.all?.() || [])];
+        scheduleBadgePositionUpdate();
         const doc = activeChart.drawings.toJSON();
         const curSym = (workspace.active as any).symbol || symbol;
         saveDrawingsDebounced(curSym, 'GLOBAL', doc);
@@ -412,6 +413,20 @@
     } catch (err) {
       console.warn('Gagal memproses auto-save drawing:', err);
     }
+  }
+
+  /**
+   * Tangani event drawing:draft dari Vela saat interaksi penempatan atau drag aktif berlangsung
+   */
+  function handleDrawingDraft() {
+    if (!workspace || !workspace.active) return;
+    try {
+      const activeChart = workspace.active.chart;
+      if (activeChart?.drawings) {
+        activeDrawings = [...(activeChart.drawings.all?.() || [])];
+        scheduleBadgePositionUpdate();
+      }
+    } catch (_) {}
   }
 
   let isSelectingCutoff = $state(false);
@@ -535,14 +550,20 @@
   }
 
   /**
-   * Perbarui posisi Y dari seluruh alert dan badges aktif secara real-time
+   * Perbarui posisi Y dan label harga dari seluruh alert dan badges aktif secara real-time (60 FPS)
    */
   function updateBadgePositions() {
     if (!workspace || !workspace.active) return;
 
-    if (showDrawingPriceLabels && drawingPriceBadges.length > 0) {
+    const activeChart = workspace.active.chart;
+    if (activeChart?.drawings) {
+      activeDrawings = [...(activeChart.drawings.all?.() || [])];
+    }
+
+    if (showDrawingPriceLabels && activeDrawings.length > 0) {
+      const liveBadges = extractDrawingPriceBadges(activeDrawings);
       const drawMap: Record<string, number | null> = {};
-      for (const b of drawingPriceBadges) {
+      for (const b of liveBadges) {
         drawMap[b.id] = getPriceY(b.price);
       }
       drawingBadgeYPositions = drawMap;
@@ -893,14 +914,16 @@
   }
 
   /**
-   * Pasang event listeners untuk mendeteksi perubahan gambar
+   * Pasang event listeners untuk mendeteksi perubahan gambar (event resmi Vela)
    */
   function attachDrawingListeners(chart: any) {
     if (!chart || !chart.on) return;
     try {
       chart.on('drawing:created', handleDrawingMutated);
-      chart.on('drawing:updated', handleDrawingMutated);
+      chart.on('drawing:edited', handleDrawingMutated);
+      chart.on('drawing:draft', handleDrawingDraft);
       chart.on('drawing:removed', handleDrawingMutated);
+      chart.on('drawing:settings', handleDrawingMutated);
     } catch (e) {
       console.warn('Error saat attach drawing listeners:', e);
     }
@@ -1229,6 +1252,7 @@
 
     // Global Window Capture Phase: Menjamin 100% event klik kanan di area grafik tertangkap tanpa di-swallow oleh WebGL canvas
     window.addEventListener('contextmenu', handleContainerContextMenu, true);
+    window.addEventListener('pointerup', handleGlobalPointerUp);
 
     // Langganan pembaruan state price alert secara real-time
     unsubAlerts = alertService.subscribe((alerts) => {
@@ -2147,8 +2171,17 @@
     return lastHoveredPrice;
   }
 
+  function handleGlobalPointerUp() {
+    if (isPointerActiveOnChart) {
+      isPointerActiveOnChart = false;
+      handleDrawingMutated();
+      scheduleBadgePositionUpdate();
+    }
+  }
+
   onDestroy(() => {
     window.removeEventListener('contextmenu', handleContainerContextMenu, true);
+    window.removeEventListener('pointerup', handleGlobalPointerUp);
     if (chartContainer) {
       try {
         chartContainer.removeEventListener('mousemove', handleContainerPointerMove);
@@ -2188,7 +2221,7 @@
   onwheel={scheduleBadgePositionUpdate}
   onpointerdown={() => { isPointerActiveOnChart = true; scheduleBadgePositionUpdate(); }}
   onpointermove={(e) => { if (e.buttons > 0 || isPointerActiveOnChart) scheduleBadgePositionUpdate(); }}
-  onpointerup={() => { isPointerActiveOnChart = false; scheduleBadgePositionUpdate(); }}
+  onpointerup={handleGlobalPointerUp}
 >
   <div bind:this={chartContainer} class="vela-container"></div>
 
