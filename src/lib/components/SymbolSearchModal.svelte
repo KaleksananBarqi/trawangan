@@ -166,8 +166,8 @@
 
         <div class="active-feed-info">
           <span class="feed-label">Sumber Data:</span>
-          <span class="feed-badge {activeProviderId === 'bitunix' ? 'bitunix' : 'binance'}">
-            {activeProviderId === 'bitunix' ? 'BITUNIX FUTURES' : 'BINANCE SPOT/FUTURES'}
+          <span class="feed-badge {activeProviderId}">
+            {activeProviderId === 'indodax' ? 'INDODAX SPOT (IDR)' : activeProviderId === 'bitunix' ? 'BITUNIX FUTURES' : 'BINANCE SPOT/FUTURES'}
           </span>
         </div>
       </div>
@@ -436,6 +436,12 @@
     padding: 1px 5px;
     border-radius: 3px;
     letter-spacing: 0.04em;
+  }
+
+  .feed-badge.indodax {
+    background-color: rgba(37, 99, 235, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(37, 99, 235, 0.3);
   }
 
   .feed-badge.bitunix {

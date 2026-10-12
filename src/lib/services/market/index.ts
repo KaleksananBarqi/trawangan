@@ -2,6 +2,7 @@
 import type { Candle, ProviderConfig, TickerInfo, MarketSearchResult } from '../../types/market';
 import type { IMarketFeedService, MarketProviderAdapter, TickerListener, WatchlistTickersListener } from './types';
 import { BinanceAdapter } from './adapters/binanceAdapter';
+import { IndodaxAdapter } from './adapters/indodaxAdapter';
 import { BitunixAdapter } from './adapters/bitunixAdapter';
 import { MockMarketAdapter } from './adapters/mockAdapter';
 import { DEFAULT_PROVIDERS, normalizeTicker } from './constants';
@@ -22,6 +23,7 @@ export class MarketFeedService implements IMarketFeedService {
 
   constructor() {
     this.registerAdapter(new BinanceAdapter());
+    this.registerAdapter(new IndodaxAdapter());
     this.registerAdapter(new BitunixAdapter());
     this.registerAdapter(new MockMarketAdapter());
   }

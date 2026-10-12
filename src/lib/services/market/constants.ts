@@ -10,6 +10,13 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     is_active: true,
   },
   {
+    id: 'indodax',
+    name: 'Indodax Official Spot (IDR)',
+    rest_url: 'https://indodax.com',
+    ws_url: '',
+    is_active: false,
+  },
+  {
     id: 'bitunix',
     name: 'Bitunix Futures (USDT-M)',
     rest_url: 'https://fapi.bitunix.com',

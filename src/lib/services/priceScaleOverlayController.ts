@@ -2,6 +2,7 @@ import type { PriceAlert, ActiveIndicatorInfo } from '../types/market';
 import {
   extractDrawingPriceBadges,
   extractIndicatorPriceBadges,
+  formatPriceLabel,
   type PriceScaleBadge
 } from './priceScaleLabelService';
 
@@ -65,18 +66,21 @@ export class PriceScaleOverlayController {
   }
 
   /**
-   * Format harga dengan mikro-presisi kripto yang tepat
+   * Mengambil quote currency dari simbol aktif
    */
-  formatPrice(p: number | null): string {
+  private getQuoteCurrency(): string {
+    const s = (this.activeSymbol || '').toUpperCase();
+    if (s.endsWith('IDR') || s.includes('/IDR')) return 'IDR';
+    return 'USDT';
+  }
+
+  /**
+   * Format harga dengan mikro-presisi kripto yang tepat dan lokalisasi mata uang
+   */
+  formatPrice(p: number | null, quoteCurrency?: string): string {
     if (p === null || p === undefined || isNaN(p)) return '--';
-    if (p >= 1000) {
-      return p.toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      });
-    }
-    if (p >= 1) return p.toFixed(4);
-    return p.toFixed(6);
+    const quote = quoteCurrency || this.getQuoteCurrency();
+    return formatPriceLabel(p, quote);
   }
 
   /**
@@ -212,9 +216,11 @@ export class PriceScaleOverlayController {
    * Komputasi posisi seluruh badge dan alert
    */
   private computeAllPositions(): void {
+    const quote = this.getQuoteCurrency();
+
     // 1. Drawing price badges
     if (this.showDrawingLabels && this.activeDrawings.length > 0) {
-      this.drawingPriceBadges = extractDrawingPriceBadges(this.activeDrawings);
+      this.drawingPriceBadges = extractDrawingPriceBadges(this.activeDrawings, undefined, quote);
       const drawMap: Record<string, number | null> = {};
       for (const b of this.drawingPriceBadges) {
         drawMap[b.id] = this.getPriceY(b.price);
@@ -227,7 +233,7 @@ export class PriceScaleOverlayController {
 
     // 2. Indicator price badges
     if (this.showIndicatorLabels && this.activeIndicators.length > 0) {
-      this.indicatorPriceBadges = extractIndicatorPriceBadges(this.activeIndicators);
+      this.indicatorPriceBadges = extractIndicatorPriceBadges(this.activeIndicators, undefined, quote);
       const indMap: Record<string, number | null> = {};
       for (const b of this.indicatorPriceBadges) {
         indMap[b.id] = this.getPriceY(b.price);

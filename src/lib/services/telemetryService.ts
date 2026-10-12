@@ -229,6 +229,9 @@ export class TelemetryService {
   }
 
   private getPingUrl(providerId: string): string {
+    if (providerId === 'indodax') {
+      return 'https://indodax.com/api/ticker/btc_idr';
+    }
     if (providerId === 'bitunix') {
       return 'https://fapi.bitunix.com/api/v1/futures/market/trading_pairs';
     }
@@ -240,6 +243,8 @@ export class TelemetryService {
     switch (providerId) {
       case 'binance':
         return 'Binance';
+      case 'indodax':
+        return 'Indodax';
       case 'bitunix':
         return 'Bitunix';
       case 'hyperliquid':

@@ -171,7 +171,7 @@
     >
       <Search size={12} class="search-icon" />
       <span class="active-sym-title mono-nums">{activeSymbol}</span>
-      <span class="provider-pill {activeProviderId === 'bitunix' ? 'bitunix' : 'binance'}">
+      <span class="provider-pill {activeProviderId}">
         {activeProviderId.toUpperCase()}
       </span>
       <span class="kbd-hint mono-nums">Ctrl+K</span>
@@ -459,6 +459,12 @@
     background-color: rgba(14, 165, 233, 0.12);
     color: #38bdf8;
     border: 1px solid rgba(14, 165, 233, 0.25);
+  }
+
+  .provider-pill.indodax {
+    background-color: rgba(37, 99, 235, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(37, 99, 235, 0.3);
   }
 
   .kbd-hint {

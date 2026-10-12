@@ -54,11 +54,12 @@
   });
 
   let customProviders = $derived(
-    providersList.filter((p) => !['binance', 'bitunix', 'hyperliquid', 'coinbase'].includes(p.id))
+    providersList.filter((p) => !['binance', 'indodax', 'bitunix', 'hyperliquid', 'coinbase'].includes(p.id))
   );
 
   let selectedProviderName = $derived.by(() => {
     if (selectedProviderId === 'binance') return 'Binance Official Public';
+    if (selectedProviderId === 'indodax') return 'Indodax Official Spot (IDR)';
     if (selectedProviderId === 'bitunix') return 'Bitunix Futures (USDT-M)';
     if (selectedProviderId === 'hyperliquid') return 'Hyperliquid DEX Perpetuals';
     if (selectedProviderId === 'coinbase') return 'Coinbase Exchange Spot';
@@ -189,6 +190,35 @@
       <div class="card-meta">
         <span class="meta-pill">Global Liquid</span>
         <span class="meta-pill highlight">Rekomendasi</span>
+      </div>
+    </button>
+
+    <!-- Indodax Spot IDR Preset Card -->
+    <button
+      type="button"
+      class="provider-card {selectedProviderId === 'indodax' ? 'selected' : ''}"
+      onclick={() => handleSwitchProvider('indodax')}
+    >
+      <div class="card-header">
+        <div class="brand-box">
+          <div class="avatar indodax">IDX</div>
+          <div>
+            <div class="brand-title">Indodax Official</div>
+            <div class="brand-subtitle">Spot IDR & USDT Pairs</div>
+          </div>
+        </div>
+        {#if selectedProviderId === 'indodax'}
+          <span class="badge-active"><Check size={11} /> Aktif</span>
+        {:else}
+          <span class="badge-choose">Pilih</span>
+        {/if}
+      </div>
+      <p class="card-caption">
+        Bursa kripto berlisensi Bappebti Indonesia dengan kuotasi Rupiah (IDR) asli tanpa pemblokiran ISP.
+      </p>
+      <div class="card-meta">
+        <span class="meta-pill">IDR Spot</span>
+        <span class="meta-pill highlight">Lokal ID</span>
       </div>
     </button>
 
@@ -556,6 +586,7 @@
   }
 
   .avatar.binance { background-color: #F0B90B; color: #000; }
+  .avatar.indodax { background-color: #2563EB; color: #fff; }
   .avatar.bitunix { background-color: #06B6D4; color: #000; }
   .avatar.hyperliquid { background-color: #50E3C2; color: #000; }
   .avatar.coinbase { background-color: #0052FF; color: #fff; }

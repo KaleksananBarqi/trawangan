@@ -6,6 +6,7 @@
   import { HyperliquidProvider } from '@luxalgo/vela/providers/hyperliquid';
   import { CoinbaseProvider } from '@luxalgo/vela/providers/coinbase';
   import { BitunixProvider } from '../services/bitunixProvider';
+  import { IndodaxProvider } from '../services/indodaxProvider';
   import { registerDefaultEngine } from '@luxalgo/vela';
   import { PineWorkerEngine } from '@luxalgo/vela-pinets';
   import {
@@ -1088,7 +1089,10 @@
    */
   function resolveVelaSymbol(sym: string, pId: string): string {
     const clean = sym.includes(':') ? sym.split(':')[1] : sym;
-    if (pId === 'hyperliquid') {
+    if (pId === 'indodax' || clean.toUpperCase().endsWith('IDR')) {
+      const pair = clean.replace(/[\/\-_]/g, '').toUpperCase();
+      return `indodax:${pair}`;
+    } else if (pId === 'hyperliquid') {
       const coin = clean.replace(/USDT$/, '').replace(/\.P$/, '');
       return `hyperliquid:${coin}`;
     } else if (pId === 'coinbase') {
@@ -1177,6 +1181,7 @@
         theme: velaTheme as any,
         providers: {
           binance: () => new BinanceProvider(),
+          indodax: () => new IndodaxProvider(),
           hyperliquid: () => new HyperliquidProvider(),
           coinbase: () => new CoinbaseProvider(),
           bitunix: () => new BitunixProvider(),

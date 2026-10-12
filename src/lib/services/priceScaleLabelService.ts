@@ -13,9 +13,36 @@ export interface PriceScaleBadge {
 
 /**
  * Format angka harga dengan pemisah ribuan dan desimal presisi
+ * Mendukung pemformatan standar internasional (USDT/USD) dan standar lokal Rupiah Indonesia (IDR).
  */
-export function formatPriceLabel(price: number): string {
+export function formatPriceLabel(price: number, quoteCurrency?: string): string {
   if (typeof price !== 'number' || isNaN(price)) return '0.00';
+
+  const isIdr = quoteCurrency?.toUpperCase() === 'IDR';
+
+  if (isIdr) {
+    if (price >= 100) {
+      if (Number.isInteger(price) || Math.abs(price - Math.round(price)) < 1e-4) {
+        return Math.round(price).toLocaleString('id-ID');
+      }
+      return price.toLocaleString('id-ID', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      });
+    }
+    if (price >= 1) {
+      return price.toLocaleString('id-ID', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4,
+      });
+    }
+    return price.toLocaleString('id-ID', {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 6,
+    });
+  }
+
+  // Format default (USDT / USD / internasional)
   if (price >= 1000) {
     return price.toLocaleString('en-US', {
       minimumFractionDigits: 2,
@@ -33,7 +60,8 @@ export function formatPriceLabel(price: number): string {
  */
 export function extractDrawingPriceBadges(
   drawings: any[],
-  priceToY?: (price: number) => number | null
+  priceToY?: (price: number) => number | null,
+  quoteCurrency?: string
 ): PriceScaleBadge[] {
   if (!Array.isArray(drawings) || drawings.length === 0) return [];
 
@@ -59,7 +87,7 @@ export function extractDrawingPriceBadges(
         badges.push({
           id: `draw_${d.id}_entry`,
           price: entryPrice,
-          label: formatPriceLabel(entryPrice),
+          label: formatPriceLabel(entryPrice, quoteCurrency),
           color: col,
           bgColor: col,
           kind: 'entry',
@@ -72,7 +100,7 @@ export function extractDrawingPriceBadges(
         badges.push({
           id: `draw_${d.id}_tp`,
           price: targetPrice,
-          label: formatPriceLabel(targetPrice),
+          label: formatPriceLabel(targetPrice, quoteCurrency),
           color: '#10b981', // Hijau Bullish Take Profit
           bgColor: '#10b981',
           kind: 'take_profit',
@@ -85,7 +113,7 @@ export function extractDrawingPriceBadges(
         badges.push({
           id: `draw_${d.id}_sl`,
           price: stopPrice,
-          label: formatPriceLabel(stopPrice),
+          label: formatPriceLabel(stopPrice, quoteCurrency),
           color: '#ef4444', // Merah Bearish Stop Loss
           bgColor: '#ef4444',
           kind: 'stop_loss',
@@ -105,7 +133,7 @@ export function extractDrawingPriceBadges(
         badges.push({
           id: `draw_${d.id}`,
           price: p,
-          label: formatPriceLabel(p),
+          label: formatPriceLabel(p, quoteCurrency),
           color: col,
           bgColor: col,
           kind: 'drawing',
@@ -124,7 +152,8 @@ export function extractDrawingPriceBadges(
  */
 export function extractIndicatorPriceBadges(
   indicators: any[],
-  priceToY?: (price: number) => number | null
+  priceToY?: (price: number) => number | null,
+  quoteCurrency?: string
 ): PriceScaleBadge[] {
   if (!Array.isArray(indicators) || indicators.length === 0) return [];
 
@@ -137,7 +166,7 @@ export function extractIndicatorPriceBadges(
       badges.push({
         id: `ind_${ind.id}`,
         price: val,
-        label: formatPriceLabel(val),
+        label: formatPriceLabel(val, quoteCurrency),
         color: ind.color || '#f97316',
         bgColor: 'rgba(15, 23, 42, 0.94)',
         kind: 'indicator',
