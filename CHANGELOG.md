@@ -5,6 +5,30 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.8.0] - 2026-10-12
+
+### 🚀 Ditambahkan (Added)
+- **Live Drag Real-Time Synchronization untuk Label Skala Harga Sumbu Kanan:**
+  - Sinkronisasi dinamis 60 FPS pada badge harga posisi Risk/Reward (Long & Short) serta garis gambar saat anchor target atau stop digeser secara interaktif.
+  - Nilai teks harga numerik dan koordinat vertikal (Y) bergerak sejajar dan menempel mulus pada gambar saat proses drag mouse berlangsung.
+  - Pendaftaran event resmi engine Vela (`drawing:edited`, `drawing:draft`, `drawing:created`, `drawing:removed`, `drawing:settings`).
+  - Mekanisme auto-save SQLite yang hemat I/O hanya saat mutasi selesai (pada `pointerup` / `drawing:edited`).
+  - Peningkatan fungsi `formatPriceLabel` untuk presisi multi-desimal aset kripto mikro (< $1) tanpa pembulatan ke `$0.00`.
+- **Capture-Phase Global Windows Keyboard Shortcut Dispatcher:**
+  - Registrasi listener keyboard global pada `window` Capture Phase (`{ capture: true }`) dengan normalisasi kode fisik tombol (`e.code` dan `e.key`).
+  - Menjamin hotkey esensial (`Alt+W`, `Alt+R`, `Alt+E`, `Alt+H`, `Alt+T`, `/`, `F11`, `Shift+F`, `Space`, timeframe chords) merespons seketika tanpa tertelan oleh kanvas WebGL Vela di OS Windows.
+  - Dilengkapi *focus guard* yang aman agar tidak mengganggu pengetikan pada input, modal, atau editor Pine Script.
+- **Kamus Data & Modal Glosarium Shortcut Keyboard (`F1` / `?`):**
+  - Modal panduan interaktif baru (`src/lib/components/ShortcutCheatsheetModal.svelte`) dengan pencarian instan dan 30+ kombinasi tombol terorganisir rapi dalam 6 kategori kerja terminal.
+- **Tombol & Shortcut Mundur 1 Bar pada Bar Replay:**
+  - Menambahkan kapabilitas mundur 1 lilin (`stepBack`) pada sesi Bar Replay melalui tombol baru di `ReplayBar.svelte` dan shortcut <kbd>ArrowLeft</kbd>.
+
+### 🐛 Diperbaiki (Fixed)
+- **Resolusi Inversi Level & Warna Posisi Risk/Reward:**
+  - Memperbaiki pemetaan indeks anchor posisi Vela sehingga Take Profit (TP) selalu konsisten berwarna hijau bullish (`#10b981`) dan Stop Loss (SL) selalu konsisten berwarna merah bearish (`#ef4444`) untuk posisi Long maupun Short.
+- **Resolusi Badge Harga yang Membeku Saat Pan/Zoom:**
+  - Menghubungkan kalkulasi koordinat `getPriceY()` ke event viewport (`wheel`, `pointermove`, `ResizeObserver`, `requestAnimationFrame`), sehingga badge selalu menempel sejajar saat kanvas grafik digeser atau di-zoom.
+
 ## [0.7.0] - 2026-10-12
 
 ### 🚀 Ditambahkan (Added)
