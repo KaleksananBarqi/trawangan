@@ -5,6 +5,40 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.9.0] - 2026-10-12
+
+### 🚀 Ditambahkan (Added)
+- **Deep Keyboard Command Dispatcher (`src/lib/services/commandDispatcher.ts`):**
+  - Mengenkapsulasi matching shortcut keyboard, normalisasi modifier lintas platform (Windows/macOS: Ctrl/Cmd, Alt, Shift), input focus guards (mencegah bentrok saat mengetik di input/textarea), dan eksekusi handler.
+  - Memusatkan kamus shortcut glosarium ke dalam registry tunggal (*single source of truth*), menggantikan 22+ percabangan `if-else` imperatif di `+page.svelte`.
+  - Penambahan unit test suite `tests/commandDispatcher.test.ts`.
+- **Modularisasi Komponen Pengaturan ke 7 Submodul Domain (`src/lib/components/settings/`):**
+  - Memecah berkas monolitik `SettingsModal.svelte` (sebelumnya 3.871 baris) menjadi modul-modul independen yang bersih:
+    - `GeneralTab.svelte`: Notifikasi sistem operasi, audio alert synth, bahasa antarmuka.
+    - `AppearanceTab.svelte`: Preset tema (Cyber-Monochrome, Vela, dll), tipografi font UI & monospace, density layout.
+    - `ChartTab.svelte`: Sinkronisasi multi-chart layout, timeframe default, countdown bar.
+    - `FeedTab.svelte`: Konfigurasi penyedia feed data kripto dan interval polling.
+    - `SystemTab.svelte`: Auto-load workspace startup dan manajemen cache lokal.
+    - `AboutTab.svelte`: Informasi rilis, platform OS, status updater aplikasi.
+    - `HelpTab.svelte`: Glosarium shortcut interaktif dan dokumentasi terminal.
+  - Mengurangi ukuran `SettingsModal.svelte` menjadi shell koordinasi ramping (<240 baris).
+  - Penambahan unit test suite `tests/settingsModal.test.ts`.
+- **Deep Chart Drawing Controller (`src/lib/services/chartDrawingController.ts`):**
+  - Mengonsolidasikan pengelolaan tool gambar aktif, adapter kanvas chart aktif, mutasi riwayat undo/redo, penghapusan gambar, dan event hooks ke dalam satu layanan terpadu.
+  - Mengeliminasi 15 metode passthrough di `Chart.svelte` dan `+page.svelte`.
+  - Terintegrasi langsung dengan `CommandDispatcher` (Alt+H, Alt+F, Alt+M, Alt+R, Alt+B, Ctrl+Z, Ctrl+Y, Esc).
+  - Penambahan unit test suite `tests/chartDrawingController.test.ts`.
+- **Real-Time Price Scale Overlay Controller (`src/lib/services/priceScaleOverlayController.ts`):**
+  - Mengekstrak kalkulasi matematis harga-ke-koordinat-pixel (`priceToY`, `yToPrice`), pelacakan live pointer drag, dan mikro-presisi kripto dari `Chart.svelte`.
+  - Mengeliminasi timer polling interval 400ms yang boros daya CPU, digantikan dengan RAF batching scheduler yang sinkron 60 FPS saat terjadi interaksi aktif pengguna (drag pointer, zoom, pan).
+  - Penambahan unit test suite `tests/priceScaleOverlayController.test.ts`.
+
+### 🔄 Diubah (Changed)
+- **Refactoring Arsitektur Deep Modules (Codebase Design):**
+  - Merampingkan antarmuka publik antar komponen terminal dan memperdalam implementasi logika internal sesuai standar *Deep Modules vs Shallow Modules*.
+  - Meningkatkan stabilitas dan skalabilitas basis kode secara menyeluruh tanpa regresi fungsionalitas.
+  - Menambah total unit test passing menjadi 120 tests (15 test suites).
+
 ## [0.8.0] - 2026-10-12
 
 ### 🚀 Ditambahkan (Added)
