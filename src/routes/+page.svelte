@@ -665,6 +665,13 @@
       timeframe: activeTimeframe,
       layout: currentLayout,
       indicators: indicatorsData,
+      paneWeights: chartComponent?.getPaneWeights?.() || [],
+      priceScaleState: chartComponent?.getPriceScaleState?.() || null,
+      priceStyle: chartComponent?.getPriceStyle?.() || 'candles',
+      barSpacing: chartComponent?.getBarSpacing?.() || 8,
+      providerId: activeProviderId,
+      activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
+      syncConfig: { ...syncConfig },
     });
     activeWorkspace = saved;
     if (saved && saved.id) {
@@ -695,10 +702,25 @@
         chartComponent.clearAllIndicators();
       }
 
-      // 2. Terapkan konfigurasi simbol, timeframe, dan layout baru
+      // 2. Terapkan konfigurasi provider, simbol, timeframe, dan layout baru
+      if (w.providerId && w.providerId !== activeProviderId) {
+        handleProviderChange(w.providerId);
+      }
       handleSymbolChange(w.symbol);
       handleTimeframeChange(w.timeframe as Timeframe);
       handleLayoutChange(w.layout);
+
+      if (w.syncConfig) {
+        syncConfig = { ...DEFAULT_SYNC_CONFIG, ...w.syncConfig };
+      }
+
+      if (w.activeRightDockPanel !== undefined) {
+        if (w.activeRightDockPanel === null) {
+          rightDockService.close();
+        } else {
+          rightDockService.openTab(w.activeRightDockPanel as any);
+        }
+      }
 
       // Tunggu layout grid dan WebGL render settle secara penuh
       await new Promise((resolve) => setTimeout(resolve, 150));
@@ -731,6 +753,24 @@
 
       // 5. Sinkronkan state indikator akhir ke Svelte UI
       syncActiveIndicators();
+
+      // 6. Pulihkan gaya lilin, zoom barSpacing, skala harga, dan bobot pane indikator
+      if (chartComponent) {
+        if (w.priceStyle) {
+          chartComponent.setPriceStyle(w.priceStyle);
+        }
+        if (w.barSpacing) {
+          chartComponent.setBarSpacing(w.barSpacing);
+        }
+        if (w.priceScaleState) {
+          chartComponent.applyPriceScaleState(w.priceScaleState);
+        }
+        if (w.paneWeights && w.paneWeights.length > 0) {
+          setTimeout(() => {
+            chartComponent.applyPaneWeights(w.paneWeights!);
+          }, 100);
+        }
+      }
 
       const indCount = w.indicators?.length || 0;
       const indTitles = w.indicators && w.indicators.length > 0
@@ -783,6 +823,13 @@
           timeframe: activeTimeframe,
           layout: currentLayout,
           indicators: indicatorsData,
+          paneWeights: chartComponent?.getPaneWeights?.() || [],
+          priceScaleState: chartComponent?.getPriceScaleState?.() || null,
+          priceStyle: chartComponent?.getPriceStyle?.() || 'candles',
+          barSpacing: chartComponent?.getBarSpacing?.() || 8,
+          providerId: activeProviderId,
+          activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
+          syncConfig: { ...syncConfig },
         });
         activeWorkspace = saved;
         if (saved && saved.id) {

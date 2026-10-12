@@ -298,6 +298,17 @@ export interface SavedWorkspace {
   symbol: string;
   timeframe: string;
   layout: string;
+  providerId?: string;
+  paneWeights?: number[];
+  priceScaleState?: {
+    mode?: 'price' | 'log' | 'percent';
+    auto?: boolean;
+    manualScale?: { min: number; max: number } | null;
+  };
+  priceStyle?: string;
+  barSpacing?: number;
+  activeRightDockPanel?: string | null;
+  syncConfig?: MultiChartSyncConfig;
   indicators: {
     title: string;
     source?: string;
@@ -307,6 +318,7 @@ export interface SavedWorkspace {
   }[];
   timestamp: number;
 }
+
 
 export interface MarketSearchResult {
   symbol: string;

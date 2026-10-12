@@ -247,6 +247,190 @@
   }
 
   /**
+   * Mengambil bobot tinggi (heightWeight) dari seluruh pane aktif (grafik lilin + sub-pane indikator)
+   */
+  export function getPaneWeights(): number[] {
+    try {
+      const activeCell = (workspace?.active || Array.from(workspace?.cells?.() || [])[0]) as any;
+      const chart = activeCell?.chart;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (native?.scene?.orderedPanes) {
+        const panes = native.scene.orderedPanes();
+        return panes.map((p: any) => typeof p.heightWeight === 'number' ? p.heightWeight : (p.kind === 'price' ? 3 : 1));
+      }
+    } catch (err) {
+      console.warn('Gagal membaca paneWeights:', err);
+    }
+    return [];
+  }
+
+  /**
+   * Menerapkan bobot tinggi tersimpan ke sub-pane indikator dan grafik utama
+   */
+  export function applyPaneWeights(weights: number[]): boolean {
+    if (!weights || weights.length === 0) return false;
+    try {
+      const activeCell = (workspace?.active || Array.from(workspace?.cells?.() || [])[0]) as any;
+      const chart = activeCell?.chart;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (native?.scene?.orderedPanes) {
+        const panes = native.scene.orderedPanes();
+        panes.forEach((p: any, i: number) => {
+          if (weights[i] !== undefined && weights[i] > 0) {
+            p.heightWeight = weights[i];
+          }
+        });
+        if (typeof native.layoutPanes === 'function') {
+          native.layoutPanes();
+        }
+        if (native.scheduler?.invalidate) {
+          native.scheduler.invalidate(4);
+        }
+        return true;
+      }
+    } catch (err) {
+      console.warn('Gagal menerapkan paneWeights:', err);
+    }
+    return false;
+  }
+
+  /**
+   * Membaca status mode skala sumbu harga kanan (Linier/Log/Manual range offset)
+   */
+  export function getPriceScaleState(): any {
+    try {
+      const activeCell = (workspace?.active || Array.from(workspace?.cells?.() || [])[0]) as any;
+      const chart = activeCell?.chart;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      const pricePane = native?.scene?.panes?.get?.('price') || native?.scene?.orderedPanes?.().find((p: any) => p.kind === 'price');
+      const cfg = native?.getConfig?.();
+      return {
+        mode: cfg?.priceScale?.mode || (cfg?.priceScale?.log ? 'log' : 'price'),
+        log: Boolean(cfg?.priceScale?.log),
+        invert: Boolean(cfg?.priceScale?.invert),
+        auto: pricePane ? pricePane.manualScale == null : true,
+        manualScale: pricePane?.manualScale ? { ...pricePane.manualScale } : null,
+      };
+    } catch (err) {
+      console.warn('Gagal membaca priceScaleState:', err);
+    }
+    return null;
+  }
+
+  /**
+   * Menerapkan status skala harga tersimpan ke sumbu kanan grafik
+   */
+  export function applyPriceScaleState(state: any): boolean {
+    if (!state) return false;
+    try {
+      const activeCell = (workspace?.active || Array.from(workspace?.cells?.() || [])[0]) as any;
+      const chart = activeCell?.chart;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (!native) return false;
+
+      // 1. Terapkan config mode (Linier vs Logaritmik) atau invert
+      if (state.log !== undefined || state.mode !== undefined || state.invert !== undefined) {
+        const patch: any = { priceScale: {} };
+        if (state.mode === 'log' || state.log === true) {
+          patch.priceScale.log = true;
+          patch.priceScale.mode = 'price';
+        } else if (state.mode) {
+          patch.priceScale.mode = state.mode;
+          patch.priceScale.log = false;
+        }
+        if (state.invert !== undefined) {
+          patch.priceScale.invert = state.invert;
+        }
+        native.applyConfig?.(patch);
+      }
+
+      // 2. Terapkan manual drag range jika mode auto nonaktif
+      const pricePane = native.scene?.panes?.get?.('price') || native.scene?.orderedPanes?.().find((p: any) => p.kind === 'price');
+      if (pricePane) {
+        if (state.auto === false && state.manualScale) {
+          if (typeof native.setManualScale === 'function') {
+            native.setManualScale(pricePane, state.manualScale);
+          } else {
+            pricePane.manualScale = { ...state.manualScale };
+            pricePane.scale = { ...state.manualScale };
+          }
+        } else if (state.auto === true) {
+          pricePane.manualScale = null;
+        }
+        if (native.scheduler?.invalidate) {
+          native.scheduler.invalidate(4);
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('Gagal menerapkan priceScaleState:', err);
+    }
+    return false;
+  }
+
+  /**
+   * Mengambil gaya visual lilin aktif (candles, heikinashi, bars, line)
+   */
+  export function getPriceStyle(): string {
+    try {
+      const activeCell = (workspace?.active || Array.from(workspace?.cells?.() || [])[0]) as any;
+      const chart = activeCell?.chart;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      return native?.getConfig?.()?.series?.style || activeCell?.priceStyle || 'candles';
+    } catch (_) {}
+    return 'candles';
+  }
+
+  /**
+   * Menyetel gaya visual lilin
+   */
+  export function setPriceStyle(style: string): void {
+    if (!style) return;
+    try {
+      const activeCell = (workspace?.active || Array.from(workspace?.cells?.() || [])[0]) as any;
+      const chart = activeCell?.chart;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (native?.applyConfig) {
+        native.applyConfig({ series: { style } });
+      }
+      if (typeof activeCell?.setPriceStyle === 'function') {
+        activeCell.setPriceStyle(style);
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * Mengambil kerapatan zoom horizontal terakhir (barSpacing)
+   */
+  export function getBarSpacing(): number {
+    try {
+      const activeCell = (workspace?.active || Array.from(workspace?.cells?.() || [])[0]) as any;
+      const chart = activeCell?.chart;
+      const coords = getChartCoords(chart);
+      return coords?.getViewport?.()?.barSpacing ?? 8;
+    } catch (_) {}
+    return 8;
+  }
+
+  /**
+   * Menyetel kerapatan zoom horizontal (barSpacing)
+   */
+  export function setBarSpacing(spacing: number): void {
+    if (!spacing || spacing <= 0) return;
+    try {
+      const activeCell = (workspace?.active || Array.from(workspace?.cells?.() || [])[0]) as any;
+      const chart = activeCell?.chart;
+      const coords = getChartCoords(chart);
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (coords && typeof coords.setViewport === 'function') {
+        const vp = coords.getViewport();
+        coords.setViewport({ ...vp, barSpacing: spacing });
+        native?.scheduler?.invalidate?.(4);
+      }
+    } catch (_) {}
+  }
+
+  /**
    * Buka modal dialog pengaturan grafik Vela (Warna bar, lilin, canvas, skala, dll)
    * Memastikan dialog terbuka dan fokus pada tab yang sesuai (default: 'Symbol')
    */

@@ -40,4 +40,17 @@ _Avoid_: Floating toolbar overlay, Floating tool pill
 Bilah rel ikon vertikal permanen di sisi kanan layar untuk navigasi instan satu klik antara Watchlist, Price Alerts, Object Tree, dan Pine IDE.
 _Avoid_: Floating panel button, Rotating label button, Collapsed panel toggle
 
+**Pane Proportion**:
+Rasio vertikal antara kanvas grafik lilin utama dan sub-pane indikator osilator di bawahnya yang diatur via bilah pemisah dan tersimpan di workspace.
+_Avoid_: Panel split ratio, Chart height percent
+
+**Feed Connection Guard**:
+Subsistem pengawas konektivitas data feed yang mendeteksi kegagalan jaringan atau pemblokiran ISP secara proaktif dan menyediakan mekanisme pengalihan bursa cadangan.
+_Avoid_: Network monitor, Error catcher
+
+**Multi-Quote Pair**:
+Pasangan perdagangan aset kripto dengan berbagai mata uang kuotasi (seperti IDR, USDT, USD) yang dapat dicari dan dianalisis lintas bursa.
+_Avoid_: Fiat pair, Non-USDT pair
+
+
 
