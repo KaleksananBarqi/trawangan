@@ -27,7 +27,15 @@ export class MockMarketAdapter implements MarketProviderAdapter {
     this.mockPrices.set(clean, { price, change24h, high24h, low24h, volume24h });
   }
 
+  public simulateFailure = false;
+  public setSimulateFailure(fail: boolean): void {
+    this.simulateFailure = fail;
+  }
+
   async fetchTicker(symbol: string): Promise<TickerInfo> {
+    if (this.simulateFailure) {
+      throw new Error('Network connection failed (simulated ISP block)');
+    }
     const clean = normalizeTicker(symbol);
     const data = this.mockPrices.get(clean) || {
       price: 100,

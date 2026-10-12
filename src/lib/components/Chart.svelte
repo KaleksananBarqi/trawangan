@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Scissors, Bell, X } from '@lucide/svelte';
+  import { Scissors, Bell, X, WifiOff } from '@lucide/svelte';
   import { VelaWorkspace } from '@luxalgo/vela/workspace';
   import { BinanceProvider } from '@luxalgo/vela/providers/binance';
   import { HyperliquidProvider } from '@luxalgo/vela/providers/hyperliquid';
@@ -20,6 +20,8 @@
   import { chartDrawingController } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { getHistoricalCandles } from '../services/marketProvider';
+  import { marketFeed } from '../services/market';
+  import type { FeedConnectionStatus } from '../services/market/types';
   import { alertService } from '../services/alertService';
   import { replaySession, type ReplayDriver } from '../services/replay';
   import { getTimeframeDurationMs } from '../services/replay/historicalRange';
@@ -108,6 +110,24 @@
   let activeChartDefaultConfig: any = null;
   let isApplyingLayout = false;
   let lastAppliedLayout = '';
+
+  // Feed Connection Guard state
+  let feedConnectionStatus = $state<FeedConnectionStatus>(marketFeed.getConnectionStatus());
+  let isDismissedConnectionWarning = $state(false);
+  let unsubFeedConnection: (() => void) | null = null;
+
+  function handleRetryConnection() {
+    marketFeed.resetConnectionError();
+  }
+
+  function handleSwitchToIndodax() {
+    marketFeed.setActiveProvider('indodax');
+    if (onActiveCellChange) {
+      const nextSym = symbol.toUpperCase().endsWith('IDR') ? symbol : 'BTCIDR';
+      onActiveCellChange({ symbol: nextSym, timeframe });
+    }
+    isDismissedConnectionWarning = true;
+  }
 
   // Koleksi handle indikator aktif
   const indicatorHandles = new Map<string, any>();
@@ -1371,9 +1391,22 @@
       priceScaleOverlayController.scheduleUpdate();
     });
     resizeObserver.observe(chartContainer);
+
+    // Pantau status kesehatan konektivitas feed (Feed Connection Guard)
+    unsubFeedConnection = marketFeed.onConnectionChange((status) => {
+      feedConnectionStatus = status;
+      if (status.state === 'connected') {
+        isDismissedConnectionWarning = false;
+      }
+    });
   });
 
   onDestroy(() => {
+    if (unsubFeedConnection) {
+      unsubFeedConnection();
+      unsubFeedConnection = null;
+    }
+
     if (unsubOverlay) {
       unsubOverlay();
       unsubOverlay = null;
@@ -2241,6 +2274,42 @@
 >
   <div bind:this={chartContainer} class="vela-container"></div>
 
+  <!-- Feed Connection Guard: Floating Warning Banner (ISP Block / Offline Detection) -->
+  {#if (feedConnectionStatus.state === 'blocked' || feedConnectionStatus.state === 'stalled') && !isDismissedConnectionWarning}
+    <div class="feed-connection-warning-banner obsidian-card" role="alert">
+      <div class="warning-left">
+        <WifiOff size={16} class="warning-icon" />
+        <span class="warning-text">
+          Koneksi feed ke <b>{feedConnectionStatus.providerId.toUpperCase()}</b> {feedConnectionStatus.state === 'blocked' ? 'terhambat (kemungkinan diblokir ISP)' : 'tersendat'}. Ingin beralih ke Indodax atau coba lagi?
+        </span>
+      </div>
+      <div class="warning-actions">
+        <button
+          type="button"
+          class="btn-switch-indodax"
+          onclick={handleSwitchToIndodax}
+        >
+          Beralih ke Indodax
+        </button>
+        <button
+          type="button"
+          class="btn-retry-feed"
+          onclick={handleRetryConnection}
+        >
+          Coba Ulang
+        </button>
+        <button
+          type="button"
+          class="btn-dismiss-warning"
+          title="Tutup pemberitahuan ini"
+          onclick={() => (isDismissedConnectionWarning = true)}
+        >
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  {/if}
+
   <!-- Visual Price Alert Overlays -->
   {#each activeSymbolAlerts as a (a.id)}
     {@const yPos = alertYPositions[a.id] ?? getPriceY(a.targetPrice)}
@@ -2448,6 +2517,101 @@
       opacity: 1;
       transform: translate(-50%, 0);
     }
+  }
+
+  .feed-connection-warning-banner {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 35;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: rgba(26, 17, 16, 0.96);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.75), 0 0 15px rgba(239, 68, 68, 0.25);
+    padding: 8px 16px;
+    border-radius: var(--radius-sm, 6px);
+    color: #ffffff;
+    max-width: 90%;
+    animation: fadeInDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .warning-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .warning-icon {
+    color: #ef4444;
+    flex-shrink: 0;
+  }
+
+  .warning-text {
+    font-size: 11.5px;
+    color: #fca5a5;
+  }
+
+  .warning-text b {
+    color: #ffffff;
+  }
+
+  .warning-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .btn-switch-indodax {
+    background: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-xs, 4px);
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .btn-switch-indodax:hover {
+    background: #1d4ed8;
+  }
+
+  .btn-retry-feed {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-xs, 4px);
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .btn-retry-feed:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-dismiss-warning {
+    background: transparent;
+    color: #94a3b8;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-dismiss-warning:hover {
+    color: #ffffff;
   }
 
   .hint-pill {

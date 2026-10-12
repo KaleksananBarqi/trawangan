@@ -17,6 +17,8 @@
   import { telemetryService, type TelemetryData } from '../services/telemetryService';
   import { updateService, type UpdateState } from '../services/updateService';
   import { openExternalUrl } from '../services/urlService';
+  import { marketFeed } from '../services/market';
+  import type { FeedConnectionStatus } from '../services/market/types';
 
   interface Props {
     isConsoleOpen: boolean;
@@ -32,6 +34,8 @@
   let unsubTelemetry: (() => void) | null = null;
   let updateState = $state<UpdateState>(updateService.getSnapshot());
   let unsubUpdate: (() => void) | null = null;
+  let feedStatus = $state<FeedConnectionStatus>(marketFeed.getConnectionStatus());
+  let unsubFeed: (() => void) | null = null;
 
   function updateClock() {
     const now = new Date();
@@ -47,12 +51,16 @@
     unsubUpdate = updateService.subscribe((data) => {
       updateState = data;
     });
+    unsubFeed = marketFeed.onConnectionChange((st) => {
+      feedStatus = st;
+    });
   });
 
   onDestroy(() => {
     if (timeInterval) clearInterval(timeInterval);
     if (unsubTelemetry) unsubTelemetry();
     if (unsubUpdate) unsubUpdate();
+    if (unsubFeed) unsubFeed();
   });
 </script>
 
@@ -107,14 +115,18 @@
 
     <div class="divider"></div>
 
-    <!-- Real-Time Network Latency (Ping) Metric -->
+    <!-- Real-Time Network Latency (Ping) Metric & Feed Connection Guard Indicator -->
     <div
       class="telemetry-pill interactive mono-nums"
-      title="Round-Trip Ping ke {telemetry.providerName}: {telemetry.latencyMs !== null ? `${telemetry.latencyMs} ms` : 'Offline / Timeout'} (Packet Drops: {telemetry.packetDrops})"
+      title="Status Feed: {feedStatus.state === 'blocked' ? 'Koneksi Terhambat / Diblokir ISP' : feedStatus.state === 'stalled' ? 'Koneksi Tersendat' : 'Terkoneksi Stabil'}. Round-Trip Ping ke {telemetry.providerName}: {telemetry.latencyMs !== null ? `${telemetry.latencyMs} ms` : 'Offline / Timeout'} (Packet Drops: {telemetry.packetDrops})"
     >
-      <span class="icon-dim"><Wifi size={11} class={!telemetry.isOnline ? 'text-bear' : (telemetry.latencyMs || 0) > 150 ? 'text-amber' : 'text-cyan'} /></span>
-      {#if telemetry.isOnline && telemetry.latencyMs !== null}
-        <span class="pill-text {telemetry.latencyMs > 150 ? 'text-amber' : 'text-cyan'}">
+      <span class="icon-dim"><Wifi size={11} class={feedStatus.state === 'blocked' || !telemetry.isOnline ? 'text-bear' : feedStatus.state === 'stalled' || (telemetry.latencyMs || 0) > 150 ? 'text-amber' : 'text-bull'} /></span>
+      {#if feedStatus.state === 'blocked'}
+        <span class="pill-badge badge-bear">FEED BLOCKED</span>
+      {:else if feedStatus.state === 'stalled'}
+        <span class="pill-badge badge-amber">FEED STALLED</span>
+      {:else if telemetry.isOnline && telemetry.latencyMs !== null}
+        <span class="pill-text {telemetry.latencyMs > 150 ? 'text-amber' : 'text-bull'}">
           {telemetry.latencyMs}ms
         </span>
       {:else}

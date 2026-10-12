@@ -4,6 +4,17 @@ import type { Candle, ProviderConfig, TickerInfo, MarketSearchResult } from '../
 export type TickerListener = (ticker: TickerInfo) => void;
 export type WatchlistTickersListener = (tickers: Record<string, TickerInfo>) => void;
 
+export type FeedConnectionState = 'connected' | 'stalled' | 'blocked';
+
+export interface FeedConnectionStatus {
+  state: FeedConnectionState;
+  providerId: string;
+  errorCount: number;
+  message?: string;
+}
+
+export type FeedConnectionListener = (status: FeedConnectionStatus) => void;
+
 /**
  * Adapter tingkat rendah di balik Seam Market Feed.
  * Mengabstraksi komunikasi teknis dengan bursa kripto (Binance, Bitunix, Mock).
@@ -33,6 +44,12 @@ export interface IMarketFeedService {
   // ─── Langganan Ticker Real-Time (Multiplexed) ───
   subscribeActiveTicker(symbol: string, listener: TickerListener): () => void;
   subscribeWatchlistTickers(symbols: string[], listener: WatchlistTickersListener): () => void;
+
+  // ─── Feed Connection Guard ───
+  getConnectionStatus(): FeedConnectionStatus;
+  onConnectionChange(listener: FeedConnectionListener): () => void;
+  resetConnectionError(): void;
+  destroy?(): void;
 
   // ─── Pembacaan Langsung (Direct Read) ───
   getTicker(symbol: string): Promise<TickerInfo>;

@@ -16,6 +16,10 @@ describe('Deep Market Feed Module Unit Tests', () => {
     feed.setActiveProvider('mock');
   });
 
+  afterEach(() => {
+    feed.destroy();
+  });
+
   test('Active Ticker: langganan simbol aktif menerima pembaruan harga', async () => {
     mockAdapter.setMockPrice('BTCUSDT', 67500, 1.5);
 
@@ -113,5 +117,49 @@ describe('Deep Market Feed Module Unit Tests', () => {
     unsub();
     await feed.pollTick();
     assert.strictEqual(callCount, countBeforeUnsub);
+  });
+
+  test('Feed Connection Guard: kegagalan berturut-turut memicu status stalled dan blocked (ISP block detection)', async () => {
+    let latestStatus: any = null;
+    const unsub = feed.onConnectionChange((status) => {
+      latestStatus = status;
+    });
+
+    assert.ok(latestStatus);
+    assert.strictEqual(latestStatus.state, 'connected');
+    assert.strictEqual(latestStatus.errorCount, 0);
+
+    // Pasang subscriber aktif agar pollTick melakukan eksekusi
+    const unsubTicker = feed.subscribeActiveTicker('BTCUSDT', () => {});
+
+    // Simulasi kegagalan 1: beralih ke 'stalled'
+    mockAdapter.setSimulateFailure(true);
+    await feed.pollTick();
+    assert.strictEqual(latestStatus.state, 'stalled');
+    assert.strictEqual(latestStatus.errorCount, 1);
+
+    // Simulasi kegagalan 2: tetap 'stalled'
+    await feed.pollTick();
+    assert.strictEqual(latestStatus.state, 'stalled');
+    assert.strictEqual(latestStatus.errorCount, 2);
+
+    // Simulasi kegagalan 3: mencapai ambang batas (threshold=3) -> beralih ke 'blocked'
+    await feed.pollTick();
+    assert.strictEqual(latestStatus.state, 'blocked');
+    assert.strictEqual(latestStatus.errorCount, 3);
+    assert.ok(latestStatus.message?.includes('terhambat'));
+
+    // Pemulihan 1: resetConnectionError
+    feed.resetConnectionError();
+    assert.strictEqual(latestStatus.state, 'connected');
+    assert.strictEqual(latestStatus.errorCount, 0);
+
+    // Pemulihan 2: saat jaringan kembali normal dan pollTick sukses
+    mockAdapter.setSimulateFailure(false);
+    await feed.pollTick();
+    assert.strictEqual(latestStatus.state, 'connected');
+
+    unsubTicker();
+    unsub();
   });
 });

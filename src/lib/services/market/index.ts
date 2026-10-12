@@ -1,6 +1,14 @@
 // Modul Deep Market Feed Trawangan: Mengabstraksi Polling Ticker, Evaluasi Alert, dan Routing Provider
 import type { Candle, ProviderConfig, TickerInfo, MarketSearchResult } from '../../types/market';
-import type { IMarketFeedService, MarketProviderAdapter, TickerListener, WatchlistTickersListener } from './types';
+import type {
+  IMarketFeedService,
+  MarketProviderAdapter,
+  TickerListener,
+  WatchlistTickersListener,
+  FeedConnectionState,
+  FeedConnectionStatus,
+  FeedConnectionListener
+} from './types';
 import { BinanceAdapter } from './adapters/binanceAdapter';
 import { IndodaxAdapter } from './adapters/indodaxAdapter';
 import { BitunixAdapter } from './adapters/bitunixAdapter';
@@ -21,6 +29,12 @@ export class MarketFeedService implements IMarketFeedService {
   // Cache ticker terkini dalam memori
   private tickerCache = new Map<string, TickerInfo>();
 
+  // Feed Connection Guard state
+  private consecutiveErrors = 0;
+  private readonly maxErrorThreshold = 3;
+  private connectionState: FeedConnectionState = 'connected';
+  private connectionListeners = new Set<FeedConnectionListener>();
+
   constructor() {
     this.registerAdapter(new BinanceAdapter());
     this.registerAdapter(new IndodaxAdapter());
@@ -30,6 +44,68 @@ export class MarketFeedService implements IMarketFeedService {
 
   public registerAdapter(adapter: MarketProviderAdapter): void {
     this.adapters.set(adapter.id, adapter);
+  }
+
+  public getConnectionStatus(): FeedConnectionStatus {
+    return {
+      state: this.connectionState,
+      providerId: this.activeProviderId,
+      errorCount: this.consecutiveErrors,
+      message:
+        this.connectionState === 'blocked'
+          ? `Koneksi feed ke ${this.activeProviderId.toUpperCase()} terhambat (kemungkinan diblokir ISP).`
+          : undefined,
+    };
+  }
+
+  public onConnectionChange(listener: FeedConnectionListener): () => void {
+    this.connectionListeners.add(listener);
+    listener(this.getConnectionStatus());
+    return () => {
+      this.connectionListeners.delete(listener);
+    };
+  }
+
+  private notifyConnectionChange(): void {
+    const status = this.getConnectionStatus();
+    for (const listener of this.connectionListeners) {
+      listener(status);
+    }
+  }
+
+  public recordSuccess(): void {
+    if (this.consecutiveErrors > 0 || this.connectionState !== 'connected') {
+      this.consecutiveErrors = 0;
+      this.connectionState = 'connected';
+      this.notifyConnectionChange();
+    }
+  }
+
+  public recordFailure(_err?: any): void {
+    this.consecutiveErrors++;
+    const oldState = this.connectionState;
+    if (this.consecutiveErrors >= this.maxErrorThreshold) {
+      this.connectionState = 'blocked';
+    } else {
+      this.connectionState = 'stalled';
+    }
+    this.notifyConnectionChange();
+  }
+
+  public resetConnectionError(): void {
+    this.consecutiveErrors = 0;
+    this.connectionState = 'connected';
+    this.notifyConnectionChange();
+  }
+
+  public destroy(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+    this.activeSymbolSubscribers.clear();
+    this.watchlistSubscribers.clear();
+    this.connectionListeners.clear();
   }
 
   public setPollingInterval(ms: number): void {
@@ -148,50 +224,67 @@ export class MarketFeedService implements IMarketFeedService {
 
     const symbolsList = Array.from(allSymbolsSet);
     const adapter = this.getAdapter();
-    const batchData = await adapter.fetchBatchTickers(symbolsList);
 
-    // 1. Simpan ke cache & lakukan evaluasi alert terpusat
-    for (const [sym, ticker] of Object.entries(batchData)) {
-      if (ticker && ticker.price > 0) {
-        this.tickerCache.set(normalizeTicker(sym), ticker);
-        // Locality: Evaluasi alert harga otomatis di satu tempat
-        alertService.evaluateAlerts(sym, ticker.price);
+    try {
+      const batchData = await adapter.fetchBatchTickers(symbolsList);
+      const keys = Object.keys(batchData || {});
+      if (keys.length === 0 && symbolsList.length > 0) {
+        this.recordFailure(new Error('Batch tickers returned empty'));
+        return;
       }
-    }
 
-    // 2. Beritahu active symbol listeners
-    for (const [sym, listeners] of this.activeSymbolSubscribers.entries()) {
-      const t = batchData[sym] || this.tickerCache.get(sym);
-      if (t) {
-        for (const l of listeners) {
-          l(t);
+      this.recordSuccess();
+
+      // 1. Simpan ke cache & lakukan evaluasi alert terpusat
+      for (const [sym, ticker] of Object.entries(batchData)) {
+        if (ticker && ticker.price > 0) {
+          this.tickerCache.set(normalizeTicker(sym), ticker);
+          // Locality: Evaluasi alert harga otomatis di satu tempat
+          alertService.evaluateAlerts(sym, ticker.price);
         }
       }
-    }
 
-    // 3. Beritahu watchlist subscribers
-    for (const sub of this.watchlistSubscribers) {
-      const subMap: Record<string, TickerInfo> = {};
-      for (const s of sub.symbols) {
-        const t = batchData[s] || this.tickerCache.get(normalizeTicker(s));
-        if (t) subMap[s] = t;
+      // 2. Beritahu active symbol listeners
+      for (const [sym, listeners] of this.activeSymbolSubscribers.entries()) {
+        const t = batchData[sym] || this.tickerCache.get(sym);
+        if (t) {
+          for (const l of listeners) {
+            l(t);
+          }
+        }
       }
-      sub.listener(subMap);
+
+      // 3. Beritahu watchlist subscribers
+      for (const sub of this.watchlistSubscribers) {
+        const subMap: Record<string, TickerInfo> = {};
+        for (const s of sub.symbols) {
+          const t = batchData[s] || this.tickerCache.get(normalizeTicker(s));
+          if (t) subMap[s] = t;
+        }
+        sub.listener(subMap);
+      }
+    } catch (err) {
+      this.recordFailure(err);
     }
   }
 
   private async fetchAndDispatchSingle(symbol: string): Promise<void> {
-    const adapter = this.getAdapter();
-    const ticker = await adapter.fetchTicker(symbol);
-    if (ticker && ticker.price > 0) {
-      this.tickerCache.set(symbol, ticker);
-      alertService.evaluateAlerts(symbol, ticker.price);
-      const listeners = this.activeSymbolSubscribers.get(symbol);
-      if (listeners) {
-        for (const l of listeners) {
-          l(ticker);
+    try {
+      const adapter = this.getAdapter();
+      const ticker = await adapter.fetchTicker(symbol);
+      if (ticker && ticker.price > 0) {
+        this.recordSuccess();
+        this.tickerCache.set(symbol, ticker);
+        alertService.evaluateAlerts(symbol, ticker.price);
+        const listeners = this.activeSymbolSubscribers.get(symbol);
+        if (listeners) {
+          for (const l of listeners) {
+            l(ticker);
+          }
         }
       }
+    } catch (err) {
+      this.recordFailure(err);
     }
   }
 
@@ -234,6 +327,7 @@ export class MarketFeedService implements IMarketFeedService {
 
   public async setActiveProvider(id: string): Promise<void> {
     this.activeProviderId = id;
+    this.resetConnectionError();
 
     if (this.isTauri()) {
       try {
