@@ -26,17 +26,86 @@
 
   let query = $state('');
   let filterType = $state<'all' | 'spot' | 'perp'>('all');
+  let selectedExchange = $state<'all' | 'indodax' | 'binance' | 'bitunix'>('all');
+  let selectedQuote = $state<'all' | 'IDR' | 'USDT'>('all');
   let searchResults = $state<MarketSearchResult[]>([]);
   let selectedIndex = $state(0);
   let searchInputEl = $state<HTMLInputElement | null>(null);
+  let recentSearches = $state<string[]>([]);
+  let liveTickerMap = $state<Record<string, { price: number; change24h: number }>>({});
 
-  // Perbarui hasil pencarian saat query, filter, atau provider berubah
+  function loadRecentSearches() {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('trawangan_recent_searches');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            recentSearches = parsed.slice(0, 5);
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  function addRecentSearch(sym: string) {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const clean = sym.toUpperCase();
+        const filtered = recentSearches.filter((s) => s.toUpperCase() !== clean);
+        const next = [clean, ...filtered].slice(0, 5);
+        recentSearches = next;
+        localStorage.setItem('trawangan_recent_searches', JSON.stringify(next));
+      } catch (_) {}
+    }
+  }
+
+  function clearRecentSearches() {
+    recentSearches = [];
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.removeItem('trawangan_recent_searches');
+      } catch (_) {}
+    }
+  }
+
+  function formatPricePreview(price: number, quoteAsset = 'USDT'): string {
+    if (!price || isNaN(price)) return '-';
+    if (quoteAsset.toUpperCase() === 'IDR') {
+      if (price >= 1) {
+        return `Rp ${Math.round(price).toLocaleString('id-ID')}`;
+      }
+      return `Rp ${price.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+    }
+    if (price < 0.0001) return `$${price.toFixed(8)}`;
+    if (price < 1) return `$${price.toFixed(4)}`;
+    return `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  // Perbarui hasil pencarian saat query, filter, exchange, atau quote berubah
   $effect(() => {
     if (isOpen) {
-      marketFeed.searchSymbols(query, filterType).then((res) => {
-        searchResults = res;
-        selectedIndex = 0;
-      });
+      loadRecentSearches();
+      marketFeed
+        .searchSymbols(query, {
+          filterType,
+          exchange: selectedExchange,
+          quoteAsset: selectedQuote,
+        })
+        .then((res) => {
+          searchResults = res;
+          selectedIndex = 0;
+          // Ambil preview ticker 24h untuk 20 item pertama
+          const symbols = res.slice(0, 20).map((r) => r.symbol);
+          if (symbols.length > 0) {
+            marketFeed
+              .getWatchlistTickers(symbols)
+              .then((tickers) => {
+                liveTickerMap = { ...liveTickerMap, ...tickers };
+              })
+              .catch(() => {});
+          }
+        });
     }
   });
 
@@ -75,6 +144,7 @@
   }
 
   function handlePickSymbol(sym: string) {
+    addRecentSearch(sym);
     onSelectSymbol(sym);
     onClose();
   }
@@ -140,40 +210,131 @@
 
       <!-- Filter Tabs & Provider Context -->
       <div class="filter-toolbar">
-        <div class="filter-tabs">
-          <button
-            type="button"
-            class="filter-tab-btn {filterType === 'all' ? 'active' : ''}"
-            onclick={() => (filterType = 'all')}
-          >
-            Semua
-          </button>
-          <button
-            type="button"
-            class="filter-tab-btn {filterType === 'spot' ? 'active' : ''}"
-            onclick={() => (filterType = 'spot')}
-          >
-            Spot
-          </button>
-          <button
-            type="button"
-            class="filter-tab-btn {filterType === 'perp' ? 'active' : ''}"
-            onclick={() => (filterType = 'perp')}
-          >
-            <span class="perp-dot"></span> Perpetuals (.P)
-          </button>
+        <div class="filter-primary-row">
+          <div class="filter-tabs">
+            <button
+              type="button"
+              class="filter-tab-btn {filterType === 'all' ? 'active' : ''}"
+              onclick={() => (filterType = 'all')}
+            >
+              Semua Tipe
+            </button>
+            <button
+              type="button"
+              class="filter-tab-btn {filterType === 'spot' ? 'active' : ''}"
+              onclick={() => (filterType = 'spot')}
+            >
+              Spot
+            </button>
+            <button
+              type="button"
+              class="filter-tab-btn {filterType === 'perp' ? 'active' : ''}"
+              onclick={() => (filterType = 'perp')}
+            >
+              <span class="perp-dot"></span> Perpetuals (.P)
+            </button>
+          </div>
+
+          <div class="active-feed-info">
+            <span class="feed-label">Sumber:</span>
+            <span class="feed-badge {activeProviderId}">
+              {activeProviderId === 'indodax' ? 'INDODAX SPOT (IDR)' : activeProviderId === 'bitunix' ? 'BITUNIX FUTURES' : 'BINANCE SPOT/FUTURES'}
+            </span>
+          </div>
         </div>
 
-        <div class="active-feed-info">
-          <span class="feed-label">Sumber Data:</span>
-          <span class="feed-badge {activeProviderId}">
-            {activeProviderId === 'indodax' ? 'INDODAX SPOT (IDR)' : activeProviderId === 'bitunix' ? 'BITUNIX FUTURES' : 'BINANCE SPOT/FUTURES'}
-          </span>
+        <!-- Baris Kedua: Exchange & Quote Filter Chips -->
+        <div class="sub-filters-row">
+          <div class="chips-group">
+            <span class="chips-label">Bursa:</span>
+            <button
+              type="button"
+              class="filter-chip {selectedExchange === 'all' ? 'active' : ''}"
+              onclick={() => (selectedExchange = 'all')}
+            >
+              Semua
+            </button>
+            <button
+              type="button"
+              class="filter-chip {selectedExchange === 'indodax' ? 'active' : ''}"
+              onclick={() => (selectedExchange = 'indodax')}
+            >
+              Indodax
+            </button>
+            <button
+              type="button"
+              class="filter-chip {selectedExchange === 'binance' ? 'active' : ''}"
+              onclick={() => (selectedExchange = 'binance')}
+            >
+              Binance
+            </button>
+            <button
+              type="button"
+              class="filter-chip {selectedExchange === 'bitunix' ? 'active' : ''}"
+              onclick={() => (selectedExchange = 'bitunix')}
+            >
+              Bitunix
+            </button>
+          </div>
+
+          <div class="chips-divider"></div>
+
+          <div class="chips-group">
+            <span class="chips-label">Quote:</span>
+            <button
+              type="button"
+              class="filter-chip {selectedQuote === 'all' ? 'active' : ''}"
+              onclick={() => (selectedQuote = 'all')}
+            >
+              Semua
+            </button>
+            <button
+              type="button"
+              class="filter-chip {selectedQuote === 'IDR' ? 'active' : ''}"
+              onclick={() => (selectedQuote = 'IDR')}
+            >
+              IDR (Rp)
+            </button>
+            <button
+              type="button"
+              class="filter-chip {selectedQuote === 'USDT' ? 'active' : ''}"
+              onclick={() => (selectedQuote = 'USDT')}
+            >
+              USDT ($)
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- Results List Container -->
       <div class="results-container">
+        {#if !query.trim() && recentSearches.length > 0}
+          <div class="recent-searches-box">
+            <div class="recent-header">
+              <span class="recent-label">Terakhir Dicari</span>
+              <button
+                type="button"
+                class="clear-recent-btn"
+                onclick={clearRecentSearches}
+              >
+                Hapus
+              </button>
+            </div>
+            <div class="recent-chips">
+              {#each recentSearches as rSym}
+                <button
+                  type="button"
+                  class="recent-chip mono-nums"
+                  onclick={() => handlePickSymbol(rSym)}
+                >
+                  <span>{rSym}</span>
+                  <ArrowRight size={10} class="recent-arrow" />
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
         {#if searchResults.length > 0}
           <div class="results-list" role="listbox">
             {#each searchResults as item, index (item.symbol)}
@@ -209,11 +370,23 @@
                   </div>
                 </div>
 
-                <!-- Right: Action Button & Active Marker -->
+                <!-- Right: Live Ticker Preview, Action Button & Active Marker -->
                 <div class="item-right">
+                  {#if liveTickerMap[item.symbol]}
+                    {@const ticker = liveTickerMap[item.symbol]}
+                    <div class="ticker-preview-col">
+                      <span class="preview-price mono-nums">
+                        {formatPricePreview(ticker.price, item.quoteAsset)}
+                      </span>
+                      <span class="preview-change mono-nums {ticker.change24h >= 0 ? 'pos' : 'neg'}">
+                        {ticker.change24h >= 0 ? '+' : ''}{ticker.change24h.toFixed(2)}%
+                      </span>
+                    </div>
+                  {/if}
+
                   {#if isCurrentChart}
                     <span class="active-chart-badge">
-                      <span class="live-dot"></span> Aktif di Chart
+                      <span class="live-dot"></span> Aktif
                     </span>
                   {/if}
 
@@ -245,7 +418,7 @@
             <Search size={28} class="empty-icon" />
             <span class="empty-title">Tidak ada pair kripto yang cocok</span>
             <span class="empty-subtitle">
-              Coba cari ticker lain atau gunakan format simbol seperti <code>BTCUSDT.P</code>
+              Coba cari ticker lain atau gunakan format simbol seperti <code>BTC/IDR</code> atau <code>BTCUSDT.P</code>
             </span>
           </div>
         {/if}
@@ -374,11 +547,69 @@
   /* Filter Toolbar */
   .filter-toolbar {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 14px;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 14px;
     background-color: var(--bg-container, #161e29);
     border-bottom: 1px solid var(--border-hairline, #1f2733);
+  }
+
+  .filter-primary-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .sub-filters-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .chips-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .chips-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-dim, #64748b);
+    margin-right: 2px;
+  }
+
+  .chips-divider {
+    width: 1px;
+    height: 14px;
+    background-color: var(--border-hairline, #2a3441);
+  }
+
+  .filter-chip {
+    background: none;
+    border: 1px solid var(--border-hairline, #2a3441);
+    color: var(--text-muted, #94a3b8);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: var(--radius-xs, 4px);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .filter-chip:hover {
+    color: var(--text-main, #f1f5f9);
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .filter-chip.active {
+    background-color: rgba(0, 240, 144, 0.12);
+    border-color: rgba(0, 240, 144, 0.35);
+    color: var(--brand-primary, #00f090);
+    font-weight: 600;
   }
 
   .filter-tabs {
@@ -454,6 +685,100 @@
     background-color: rgba(245, 158, 11, 0.15);
     color: #f59e0b;
     border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+
+  /* Recent Searches */
+  .recent-searches-box {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background-color: rgba(0, 0, 0, 0.2);
+  }
+
+  .recent-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
+  }
+
+  .recent-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim, #64748b);
+  }
+
+  .clear-recent-btn {
+    background: none;
+    border: none;
+    font-size: 10px;
+    color: var(--text-dim, #64748b);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .clear-recent-btn:hover {
+    color: #f87171;
+  }
+
+  .recent-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .recent-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background-color: var(--bg-container, #161e29);
+    border: 1px solid var(--border-hairline, #2a3441);
+    color: var(--text-main, #f1f5f9);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: var(--radius-xs, 4px);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .recent-chip:hover {
+    background-color: rgba(0, 240, 144, 0.12);
+    border-color: rgba(0, 240, 144, 0.3);
+    color: var(--brand-primary, #00f090);
+  }
+
+  :global(.recent-arrow) {
+    color: var(--text-dim, #64748b);
+  }
+
+  /* Ticker Preview Column */
+  .ticker-preview-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    margin-right: 4px;
+    line-height: 1.2;
+  }
+
+  .preview-price {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-main, #f1f5f9);
+  }
+
+  .preview-change {
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .preview-change.pos {
+    color: var(--brand-primary, #00f090);
+  }
+
+  .preview-change.neg {
+    color: #ef4444;
   }
 
   /* Results List */

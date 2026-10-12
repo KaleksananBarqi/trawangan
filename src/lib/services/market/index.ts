@@ -7,7 +7,8 @@ import type {
   WatchlistTickersListener,
   FeedConnectionState,
   FeedConnectionStatus,
-  FeedConnectionListener
+  FeedConnectionListener,
+  SearchSymbolsOptions,
 } from './types';
 import { BinanceAdapter } from './adapters/binanceAdapter';
 import { IndodaxAdapter } from './adapters/indodaxAdapter';
@@ -185,6 +186,11 @@ export class MarketFeedService implements IMarketFeedService {
         console.warn('[MarketFeedService] Error pada polling loop:', err);
       });
     }, this.pollingIntervalMs);
+
+    // Pastikan timer tidak menahan event loop Node.js pada test runner
+    if (typeof (this.pollTimer as any)?.unref === 'function') {
+      (this.pollTimer as any).unref();
+    }
   }
 
   private restartPollingLoop(): void {
@@ -307,9 +313,83 @@ export class MarketFeedService implements IMarketFeedService {
 
   public async searchSymbols(
     query: string,
-    filterType: 'all' | 'spot' | 'perp' = 'all'
+    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
   ): Promise<MarketSearchResult[]> {
-    return this.getAdapter().searchSymbols(query, filterType);
+    // Normalisasi opsi
+    let filterType: 'all' | 'spot' | 'perp' = 'all';
+    let exchange: 'all' | 'binance' | 'indodax' | 'bitunix' | string = 'all';
+    let quoteAsset: 'all' | 'IDR' | 'USDT' | string = 'all';
+
+    if (options === 'all' || options === 'spot' || options === 'perp') {
+      filterType = options;
+    } else if (options && typeof options === 'object') {
+      if (options.filterType) filterType = options.filterType;
+      if (options.exchange) exchange = options.exchange;
+      if (options.quoteAsset) quoteAsset = options.quoteAsset;
+    }
+
+    // Normalisasi query: bersihkan pemisah jika ada slash/hyphen (misal: "BTC/IDR" -> "BTCIDR")
+    const rawQ = query.trim();
+    const slashMatch = rawQ.match(/^([A-Za-z0-9]+)[\/\-_]([A-Za-z0-9]+)$/);
+    let effectiveQuery = rawQ;
+    if (slashMatch) {
+      effectiveQuery = slashMatch[1] + slashMatch[2];
+      if (quoteAsset === 'all') {
+        const detectedQuote = slashMatch[2].toUpperCase();
+        if (detectedQuote === 'IDR' || detectedQuote === 'USDT') {
+          quoteAsset = detectedQuote;
+        }
+      }
+    }
+
+    // Tentukan adapter mana saja yang akan dipanggil
+    let targetAdapters: MarketProviderAdapter[] = [];
+    if (exchange !== 'all') {
+      const adapter = this.adapters.get(exchange);
+      if (adapter) {
+        targetAdapters.push(adapter);
+      } else {
+        // Fallback ke adapter aktif jika ID bursa tidak ditemukan secara spesifik
+        targetAdapters.push(this.getAdapter());
+      }
+    } else {
+      // Agregasi dari seluruh adapter yang terdaftar (Binance, Indodax, Bitunix, Mock)
+      targetAdapters = Array.from(this.adapters.values());
+    }
+
+    // Eksekusi pencarian paralel ke seluruh target adapter
+    const promises = targetAdapters.map(async (ad) => {
+      try {
+        return await ad.searchSymbols(effectiveQuery, filterType);
+      } catch (err) {
+        console.warn(`[MarketFeedService] Error searchSymbols pada adapter ${ad.id}:`, err);
+        return [];
+      }
+    });
+
+    const nestedResults = await Promise.all(promises);
+    const combined: MarketSearchResult[] = [];
+    const seenKeys = new Set<string>();
+
+    for (const list of nestedResults) {
+      for (const item of list) {
+        // Filter quoteAsset jika ditentukan (IDR atau USDT)
+        if (quoteAsset !== 'all') {
+          if ((item.quoteAsset || '').toUpperCase() !== quoteAsset.toUpperCase()) {
+            continue;
+          }
+        }
+
+        // Kunci deduplikasi: symbol + provider
+        const key = `${item.symbol}_${item.provider}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          combined.push(item);
+        }
+      }
+    }
+
+    return combined;
   }
 
   // ─── Provider Configuration Management ───

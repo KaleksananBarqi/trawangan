@@ -57,10 +57,10 @@ export async function fetchWatchlistTickers(
 
 export async function searchMarketSymbols(
   query: string,
-  filterType: 'all' | 'spot' | 'perp' = 'all',
+  options?: import('./market/types').SearchSymbolsOptions | ('all' | 'spot' | 'perp'),
   _activeProviderId = 'binance'
 ): Promise<MarketSearchResult[]> {
-  return marketFeed.searchSymbols(query, filterType);
+  return marketFeed.searchSymbols(query, options);
 }
 
 export async function getSavedScripts(): Promise<PineScriptRecord[]> {

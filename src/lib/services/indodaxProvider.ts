@@ -212,6 +212,10 @@ export class IndodaxProvider {
       }
     }, 4000);
 
+    if (typeof (timer as any)?.unref === 'function') {
+      (timer as any).unref();
+    }
+
     this.activeSubscriptions.set(subKey, { timer, callback: onBar });
 
     return () => {

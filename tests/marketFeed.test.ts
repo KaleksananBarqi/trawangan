@@ -162,4 +162,52 @@ describe('Deep Market Feed Module Unit Tests', () => {
     unsubTicker();
     unsub();
   });
+
+  test('Multi-Quote & Exchange-Aware Symbol Search: mendukung BTC/IDR, exchange chips, dan quoteAsset filters', async () => {
+    // Daftarkan mock adapter kedua yang bertindak sebagai Indodax
+    const indodaxMock = {
+      id: 'indodax',
+      name: 'Indodax Spot',
+      fetchTicker: async () => ({ symbol: 'BTCIDR', name: 'BTCIDR', price: 1500000000, change24h: 1.5, high24h: 1510000000, low24h: 1480000000, volume24h: 100 }),
+      fetchBatchTickers: async () => ({}),
+      fetchCandles: async () => [],
+      searchSymbols: async (q: string) => {
+        const clean = q.toUpperCase().replace(/[\/\-_]/g, '');
+        const items = [
+          { symbol: 'BTCIDR', baseAsset: 'BTC', quoteAsset: 'IDR', displayName: 'Bitcoin Rupiah', type: 'spot' as const, provider: 'Indodax Spot' },
+          { symbol: 'ETHIDR', baseAsset: 'ETH', quoteAsset: 'IDR', displayName: 'Ethereum Rupiah', type: 'spot' as const, provider: 'Indodax Spot' },
+        ];
+        return items.filter((i) => !clean || i.symbol.includes(clean) || i.baseAsset.includes(clean));
+      },
+    };
+    feed.registerAdapter(indodaxMock);
+
+    // 1. Pencarian dengan format garis miring "BTC/IDR"
+    const resultsSlash = await feed.searchSymbols('BTC/IDR', { exchange: 'all' });
+    assert.ok(resultsSlash.length > 0);
+    const btcIdr = resultsSlash.find((r) => r.symbol === 'BTCIDR');
+    assert.ok(btcIdr, 'Hasil harus memuat BTCIDR');
+    assert.strictEqual(btcIdr?.quoteAsset, 'IDR');
+
+    // 2. Pencarian dengan format tanda hubung "BTC-IDR"
+    const resultsHyphen = await feed.searchSymbols('BTC-IDR', { exchange: 'all' });
+    assert.ok(resultsHyphen.some((r) => r.symbol === 'BTCIDR'));
+
+    // 3. Filter berdasarkan bursa (exchange: 'indodax')
+    const resultsIndodaxOnly = await feed.searchSymbols('BTC', { exchange: 'indodax' });
+    assert.ok(resultsIndodaxOnly.length > 0);
+    assert.ok(resultsIndodaxOnly.every((r) => r.provider.includes('Indodax')));
+
+    // 4. Filter berdasarkan quote currency (quoteAsset: 'IDR')
+    const resultsIdrOnly = await feed.searchSymbols('BTC', { exchange: 'all', quoteAsset: 'IDR' });
+    assert.ok(resultsIdrOnly.length > 0);
+    assert.ok(resultsIdrOnly.every((r) => r.quoteAsset === 'IDR'));
+    assert.ok(!resultsIdrOnly.some((r) => r.quoteAsset === 'USDT'));
+
+    // 5. Filter berdasarkan quote currency (quoteAsset: 'USDT')
+    const resultsUsdtOnly = await feed.searchSymbols('BTC', { exchange: 'all', quoteAsset: 'USDT' });
+    assert.ok(resultsUsdtOnly.length > 0);
+    assert.ok(resultsUsdtOnly.every((r) => r.quoteAsset === 'USDT'));
+  });
 });
+

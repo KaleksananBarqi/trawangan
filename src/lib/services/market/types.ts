@@ -36,6 +36,12 @@ export interface MarketProviderAdapter {
   searchSymbols(query: string, filterType?: 'all' | 'spot' | 'perp'): Promise<MarketSearchResult[]>;
 }
 
+export interface SearchSymbolsOptions {
+  filterType?: 'all' | 'spot' | 'perp';
+  exchange?: 'all' | 'binance' | 'indodax' | 'bitunix';
+  quoteAsset?: 'all' | 'IDR' | 'USDT';
+}
+
 /**
  * Interface Domain Layanan Market Feed Trawangan.
  * Memberikan leverage tinggi bagi pemanggil (callers) tanpa perlu mengelola timer loop sendiri.
@@ -55,7 +61,10 @@ export interface IMarketFeedService {
   getTicker(symbol: string): Promise<TickerInfo>;
   getWatchlistTickers(symbols: string[]): Promise<Record<string, TickerInfo>>;
   getCandles(symbol: string, interval: string, limit?: number): Promise<Candle[]>;
-  searchSymbols(query: string, filterType?: 'all' | 'spot' | 'perp'): Promise<MarketSearchResult[]>;
+  searchSymbols(
+    query: string,
+    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
+  ): Promise<MarketSearchResult[]>;
 
   // ─── Manajemen Provider ───
   getActiveProviderId(): Promise<string>;
