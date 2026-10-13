@@ -65,6 +65,10 @@ export interface IMarketFeedService {
     query: string,
     options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
   ): Promise<MarketSearchResult[]>;
+  searchLocalSymbols?(
+    query: string,
+    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
+  ): MarketSearchResult[];
 
   // ─── Manajemen Provider ───
   getActiveProviderId(): Promise<string>;

@@ -16,12 +16,16 @@ import { BitunixAdapter } from './adapters/bitunixAdapter';
 import { MockMarketAdapter } from './adapters/mockAdapter';
 import { DEFAULT_PROVIDERS, normalizeTicker } from './constants';
 import { alertService } from '../alertService';
+import { SymbolSearchEngine } from './symbolSearchService';
 
 export class MarketFeedService implements IMarketFeedService {
   private adapters = new Map<string, MarketProviderAdapter>();
   private activeProviderId = 'binance';
   private pollingIntervalMs = 4000;
   private pollTimer: any = null;
+
+  // Mesin pencarian simbol terpadu multi-tier
+  private searchEngine = new SymbolSearchEngine();
 
   // Koleksi subscriber
   private activeSymbolSubscribers = new Map<string, Set<TickerListener>>();
@@ -45,6 +49,7 @@ export class MarketFeedService implements IMarketFeedService {
 
   public registerAdapter(adapter: MarketProviderAdapter): void {
     this.adapters.set(adapter.id, adapter);
+    this.searchEngine.registerAdapter(adapter);
   }
 
   public getConnectionStatus(): FeedConnectionStatus {
@@ -315,81 +320,14 @@ export class MarketFeedService implements IMarketFeedService {
     query: string,
     options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
   ): Promise<MarketSearchResult[]> {
-    // Normalisasi opsi
-    let filterType: 'all' | 'spot' | 'perp' = 'all';
-    let exchange: 'all' | 'binance' | 'indodax' | 'bitunix' | string = 'all';
-    let quoteAsset: 'all' | 'IDR' | 'USDT' | string = 'all';
+    return this.searchEngine.search(query, options);
+  }
 
-    if (options === 'all' || options === 'spot' || options === 'perp') {
-      filterType = options;
-    } else if (options && typeof options === 'object') {
-      if (options.filterType) filterType = options.filterType;
-      if (options.exchange) exchange = options.exchange;
-      if (options.quoteAsset) quoteAsset = options.quoteAsset;
-    }
-
-    // Normalisasi query: bersihkan pemisah jika ada slash/hyphen (misal: "BTC/IDR" -> "BTCIDR")
-    const rawQ = query.trim();
-    const slashMatch = rawQ.match(/^([A-Za-z0-9]+)[\/\-_]([A-Za-z0-9]+)$/);
-    let effectiveQuery = rawQ;
-    if (slashMatch) {
-      effectiveQuery = slashMatch[1] + slashMatch[2];
-      if (quoteAsset === 'all') {
-        const detectedQuote = slashMatch[2].toUpperCase();
-        if (detectedQuote === 'IDR' || detectedQuote === 'USDT') {
-          quoteAsset = detectedQuote;
-        }
-      }
-    }
-
-    // Tentukan adapter mana saja yang akan dipanggil
-    let targetAdapters: MarketProviderAdapter[] = [];
-    if (exchange !== 'all') {
-      const adapter = this.adapters.get(exchange);
-      if (adapter) {
-        targetAdapters.push(adapter);
-      } else {
-        // Fallback ke adapter aktif jika ID bursa tidak ditemukan secara spesifik
-        targetAdapters.push(this.getAdapter());
-      }
-    } else {
-      // Agregasi dari seluruh adapter yang terdaftar (Binance, Indodax, Bitunix, Mock)
-      targetAdapters = Array.from(this.adapters.values());
-    }
-
-    // Eksekusi pencarian paralel ke seluruh target adapter
-    const promises = targetAdapters.map(async (ad) => {
-      try {
-        return await ad.searchSymbols(effectiveQuery, filterType);
-      } catch (err) {
-        console.warn(`[MarketFeedService] Error searchSymbols pada adapter ${ad.id}:`, err);
-        return [];
-      }
-    });
-
-    const nestedResults = await Promise.all(promises);
-    const combined: MarketSearchResult[] = [];
-    const seenKeys = new Set<string>();
-
-    for (const list of nestedResults) {
-      for (const item of list) {
-        // Filter quoteAsset jika ditentukan (IDR atau USDT)
-        if (quoteAsset !== 'all') {
-          if ((item.quoteAsset || '').toUpperCase() !== quoteAsset.toUpperCase()) {
-            continue;
-          }
-        }
-
-        // Kunci deduplikasi: symbol + provider
-        const key = `${item.symbol}_${item.provider}`;
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          combined.push(item);
-        }
-      }
-    }
-
-    return combined;
+  public searchLocalSymbols(
+    query: string,
+    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
+  ): MarketSearchResult[] {
+    return this.searchEngine.searchLocal(query, options);
   }
 
   // ─── Provider Configuration Management ───
