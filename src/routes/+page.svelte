@@ -735,22 +735,24 @@
 
       // 4. Muat indikator dari workspace secara deterministik dengan inputs & props lengkap
       if (w.indicators && w.indicators.length > 0 && chartComponent) {
-        for (const ind of w.indicators) {
-          if (ind.source) {
-            try {
-              await chartComponent.addPineIndicator(ind.source, ind.title, ind.inputs, ind.props);
-              if (ind.visible === false) {
-                const active = chartComponent.getActiveIndicators();
-                const target = active.find((a: any) => a.title === ind.title);
-                if (target && target.visible) {
-                  chartComponent.toggleIndicatorVisibility(target.id);
+        await Promise.all(
+          w.indicators.map(async (ind: any) => {
+            if (ind.source) {
+              try {
+                await chartComponent.addPineIndicator(ind.source, ind.title, ind.inputs, ind.props);
+                if (ind.visible === false) {
+                  const active = chartComponent.getActiveIndicators();
+                  const target = active.find((a: any) => a.title === ind.title);
+                  if (target && target.visible) {
+                    chartComponent.toggleIndicatorVisibility(target.id);
+                  }
                 }
+              } catch (e) {
+                console.warn(`Gagal memuat indikator ${ind.title}:`, e);
               }
-            } catch (e) {
-              console.warn(`Gagal memuat indikator ${ind.title}:`, e);
             }
-          }
-        }
+          })
+        );
       }
 
       // 5. Sinkronkan state indikator akhir ke Svelte UI
