@@ -43,6 +43,7 @@
     onRemoveIndicator?: (id: string) => void;
     onWatchlistChange?: (symbols: string[]) => void;
     onRequestCreateAlert?: () => void;
+    onRequestEditAlert?: (alert: PriceAlert) => void;
     onOpenSymbolSearch?: () => void;
   }
 
@@ -60,6 +61,7 @@
     onRemoveIndicator,
     onWatchlistChange,
     onRequestCreateAlert,
+    onRequestEditAlert,
     onOpenSymbolSearch,
   }: Props = $props();
 
@@ -637,6 +639,15 @@
                   {/if}
                 </button>
               {/if}
+
+              <button
+                type="button"
+                class="icon-alert-btn edit"
+                title="Sunting Alert Ini (Ubah Target & Kondisi)"
+                onclick={() => onRequestEditAlert?.(a)}
+              >
+                <SlidersHorizontal size={12} />
+              </button>
 
               <button
                 type="button"

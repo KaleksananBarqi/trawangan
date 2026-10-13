@@ -1,25 +1,29 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
-  import { Bell, X, ArrowUpRight, ArrowDownRight, MoveHorizontal, Check, Zap } from '@lucide/svelte';
-  import type { AlertCondition, AlertFrequency } from '../types/market';
+  import { onMount, tick, untrack } from 'svelte';
+  import { Bell, X, ArrowUpRight, ArrowDownRight, MoveHorizontal, Check, Zap, Edit3, Percent } from '@lucide/svelte';
+  import type { AlertCondition, AlertFrequency, PriceAlert } from '../types/market';
   import { alertService } from '../services/alertService';
 
   interface Props {
     isOpen: boolean;
-    initialSymbol: string;
+    initialSymbol?: string;
     initialPrice?: number;
     currentMarketPrice?: number;
+    editingAlert?: PriceAlert | null;
     onClose: () => void;
     onCreated?: (alert: any) => void;
+    onUpdated?: (alert: PriceAlert) => void;
   }
 
   let {
     isOpen,
-    initialSymbol,
+    initialSymbol = 'BTCUSDT',
     initialPrice,
     currentMarketPrice = 0,
+    editingAlert = null,
     onClose,
     onCreated,
+    onUpdated,
   }: Props = $props();
 
   let symbol = $state('');
@@ -117,8 +121,14 @@
       <!-- Header -->
       <div class="modal-header">
         <div class="header-title">
-          <span class="bell-pill"><Bell size={14} /></span>
-          <h3>Buat Price Alert</h3>
+          <span class="bell-pill">
+            {#if editingAlert}
+              <Edit3 size={14} />
+            {:else}
+              <Bell size={14} />
+            {/if}
+          </span>
+          <h3>{editingAlert ? 'Sunting Price Alert' : 'Buat Price Alert'}</h3>
           <span class="symbol-pill mono-nums">{symbol}</span>
         </div>
         <button type="button" class="close-btn" onclick={onClose} title="Tutup (Esc)">
@@ -149,6 +159,18 @@
               class="text-input mono-nums price-large"
               required
             />
+          </div>
+
+          <!-- Tombol Shortcut Jarak Persentase Cepat -->
+          <div class="percentage-presets">
+            <span class="preset-label">Offset Cepat:</span>
+            <button type="button" class="preset-btn bear" onclick={() => applyPercentageOffset(-5)}>-5%</button>
+            <button type="button" class="preset-btn bear" onclick={() => applyPercentageOffset(-2)}>-2%</button>
+            <button type="button" class="preset-btn bear" onclick={() => applyPercentageOffset(-1)}>-1%</button>
+            <button type="button" class="preset-btn neutral" onclick={() => applyPercentageOffset(0)}>Pasar</button>
+            <button type="button" class="preset-btn bull" onclick={() => applyPercentageOffset(1)}>+1%</button>
+            <button type="button" class="preset-btn bull" onclick={() => applyPercentageOffset(2)}>+2%</button>
+            <button type="button" class="preset-btn bull" onclick={() => applyPercentageOffset(5)}>+5%</button>
           </div>
 
           <!-- Jarak Persentase -->
@@ -270,9 +292,14 @@
           <button type="button" class="btn-cancel" onclick={onClose}>
             Batal
           </button>
-          <button type="submit" class="btn-submit">
-            <Zap size={13} />
-            <span>Pasang Price Alert</span>
+          <button type="submit" class="btn-submit {editingAlert ? 'btn-update' : ''}">
+            {#if editingAlert}
+              <Edit3 size={13} />
+              <span>Simpan Perubahan Alert</span>
+            {:else}
+              <Zap size={13} />
+              <span>Pasang Price Alert</span>
+            {/if}
           </button>
         </div>
       </form>
@@ -416,9 +443,52 @@
     letter-spacing: 0.02em;
   }
 
+  .percentage-presets {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  .preset-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-right: 2px;
+  }
+
+  .preset-btn {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    font-size: 10px;
+    font-family: var(--font-mono, monospace);
+    padding: 3px 6px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .preset-btn:hover {
+    border-color: var(--border-focus);
+    background-color: var(--bg-hover);
+  }
+
+  .preset-btn.bear {
+    color: var(--bear-color);
+  }
+
+  .preset-btn.bull {
+    color: var(--bull-color);
+  }
+
+  .preset-btn.neutral {
+    color: var(--brand-cyan);
+    font-weight: 600;
+  }
+
   .price-diff-hint {
     font-size: 10px;
-    margin-top: 2px;
+    margin-top: 4px;
   }
 
   .text-bull { color: var(--bull-color); }
