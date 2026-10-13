@@ -5,7 +5,7 @@ import {
   rankSearchResults,
   SymbolSearchEngine,
 } from '../src/lib/services/market/symbolSearchService';
-import type { MarketSearchResult } from '../src/types/market';
+import type { MarketSearchResult } from '../src/lib/types/market';
 import type { MarketProviderAdapter } from '../src/lib/services/market/types';
 
 describe('Multi-Tier Symbol Search Engine Suite (Tiket #23)', () => {

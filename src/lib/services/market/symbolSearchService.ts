@@ -1,5 +1,4 @@
-// Modul Deep Search Multi-Tier untuk Simbol Pasar Kripto (Trawangan Omni-Search)
-import type { MarketSearchResult } from '../../../types/market';
+import type { MarketSearchResult } from '../../types/market';
 import type { MarketProviderAdapter, SearchSymbolsOptions } from './types';
 import { VERIFIED_CRYPTO_ASSETS } from './constants';
 

@@ -5,7 +5,7 @@ test.describe('Persistent Price Line Guard Seam Suite (#22)', () => {
   test('1. Patch priceScale harus menyertakan currentPriceLine agar Vela tidak menimpa showPriceLine', () => {
     // Simulasi konfigurasi patch yang dibuat oleh kontrol skala harga
     const state = { mode: 'log', invert: true };
-    const showCurrentPriceLine = true;
+    let showCurrentPriceLine: any = true;
 
     const patch: any = { priceScale: {} };
     if (state.mode === 'log') {
