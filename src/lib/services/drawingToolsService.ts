@@ -330,3 +330,68 @@ export function saveFavoritesBarPosition(pos: FavoritesBarPosition): void {
   }
 }
 
+// ─── Quick Stamp Preset Palette (Target, Warning, Breakout, Pin, Flag) ───
+
+export interface StampPreset {
+  id: string;
+  tool: 'iconstamp' | 'flagmark';
+  label: string;
+  emoji: string;
+  glyph: string;
+  color: string;
+  description: string;
+}
+
+export const STAMP_PRESETS: StampPreset[] = [
+  {
+    id: 'target',
+    tool: 'iconstamp',
+    label: 'Target Profit',
+    emoji: '🎯',
+    glyph: '★',
+    color: '#10b981',
+    description: 'Level sasaran harga atau take-profit'
+  },
+  {
+    id: 'warning',
+    tool: 'iconstamp',
+    label: 'Warning / Stop',
+    emoji: '⚠️',
+    glyph: '▲',
+    color: '#ef4444',
+    description: 'Zona bahaya, invalidasi atau stop loss'
+  },
+  {
+    id: 'breakout',
+    tool: 'iconstamp',
+    label: 'Breakout Surge',
+    emoji: '🚀',
+    glyph: '➤',
+    color: '#06b6d4',
+    description: 'Titik penembusan resistensi atau lonjakan momentum'
+  },
+  {
+    id: 'pin',
+    tool: 'iconstamp',
+    label: 'Key Pivot Pin',
+    emoji: '📌',
+    glyph: '●',
+    color: '#f59e0b',
+    description: 'Titik penting pivot atau struktur pasar'
+  },
+  {
+    id: 'flag',
+    tool: 'flagmark',
+    label: 'Market Flag',
+    emoji: '🚩',
+    glyph: '⚑',
+    color: '#8b5cf6',
+    description: 'Penanda peristiwa penting atau catatan sentimen'
+  }
+];
+
+export function getStampPresets(): StampPreset[] {
+  return [...STAMP_PRESETS];
+}
+
+

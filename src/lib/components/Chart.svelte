@@ -110,6 +110,8 @@
   let resizeObserver: ResizeObserver | null = null;
   let isMounted = false;
   let unsubAlerts: (() => void) | null = null;
+  let isHandpullActive = $state(false);
+  let unsubDrawingState: (() => void) | null = null;
 
   let chartSettingsObserver: MutationObserver | null = null;
   let activeChartDefaultConfig: any = null;
@@ -1179,11 +1181,42 @@
           applySavedChartDefaultConfig(cell);
         }
 
+        // Defensive Interceptor: Pastikan applyConfig tidak pernah menghapus atau menimpa currentPriceLine
+        const native = renderer?.renderer || renderer;
+        if (native && typeof native.applyConfig === 'function' && !native.__trawanganPriceLineIntercepted) {
+          native.__trawanganPriceLineIntercepted = true;
+          const originalApplyConfig = native.applyConfig.bind(native);
+          native.applyConfig = function (patch: any) {
+            if (patch) {
+              if (!patch.priceScale) {
+                patch.priceScale = {};
+              }
+              if (patch.priceScale.currentPriceLine === undefined) {
+                patch.priceScale.currentPriceLine = showCurrentPriceLine !== false;
+              }
+            }
+            const res = originalApplyConfig(patch);
+            if (this.scene) {
+              this.scene.showPriceLine = showCurrentPriceLine !== false;
+            }
+            return res;
+          };
+        }
+
+        // Auto-healing pada siklus pergantian pasar, timeframe, atau penyelesaian riwayat kline
+        cell.chart?.on?.('market:changed', () => {
+          enforceCurrentPriceLineOnCell(cell);
+        });
+        cell.chart?.on?.('history:complete', () => {
+          enforceCurrentPriceLineOnCell(cell);
+        });
+
+        // Tegaskan garis harga secara langsung saat sel diinisialisasi
+        enforceCurrentPriceLineOnCell(cell);
+
         // Terapkan preferensi zona waktu ke sel grafik Vela
         if (timezone) {
           try {
-            const renderer = (cell as any)?.chart?.renderer;
-            const native = renderer?.renderer || renderer;
             if (typeof native?.set === 'function') {
               native.set('timezone', timezone);
             }
@@ -1244,29 +1277,48 @@
     }
   });
 
-  // Reaktif sinkronisasi garis harga sekarang (Current Price Line) dengan Persistent Guard
+  /**
+   * Defensive Price Line Enforce Engine:
+   * Menegaskan visibilitas garis harga terkini pada sel tertentu dengan invalidate scheduler
+   */
+  export function enforceCurrentPriceLineOnCell(cell: any): void {
+    if (!cell) return;
+    const isVisible = showCurrentPriceLine !== false;
+    try {
+      const renderer = (cell as any)?.chart?.renderer;
+      const native = renderer?.renderer || renderer;
+      if (native?.scene) {
+        native.scene.showPriceLine = isVisible;
+      }
+      if (typeof native?.set === 'function') {
+        native.set('currentPriceLine', isVisible);
+      }
+      if (native?.scheduler?.invalidate) {
+        native.scheduler.invalidate(4); // Invalidate layer chrome & overlay (level 4)
+      }
+    } catch (_) {}
+  }
+
+  // Reaktif sinkronisasi garis harga sekarang (Current Price Line) dengan Persistent Defensive Guard
   export function enforceCurrentPriceLine(): void {
     if (!workspace) return;
-    const isVisible = showCurrentPriceLine !== false;
     for (const cell of getAllWorkspaceCells()) {
-      try {
-        const renderer = (cell as any)?.chart?.renderer;
-        const native = renderer?.renderer || renderer;
-        if (native?.scene) {
-          native.scene.showPriceLine = isVisible;
-        }
-        if (typeof native?.set === 'function') {
-          native.set('currentPriceLine', isVisible);
-        }
-      } catch (_) {}
+      enforceCurrentPriceLineOnCell(cell);
     }
   }
 
+  // Pantau perubahan parameter reaktif untuk memastikan garis harga selalu tampil
   $effect(() => {
-    if (workspace) {
+    const _vis = showCurrentPriceLine;
+    const _sym = symbol;
+    const _tf = timeframe;
+    const _ly = layout;
+    const _pid = providerId;
+    if (isMounted && workspace) {
       enforceCurrentPriceLine();
     }
   });
+
 
   /**
    * Terapkan zona waktu ke seluruh komponen Vela (workspace-level dan renderer-level)
@@ -1546,9 +1598,45 @@
         isDismissedConnectionWarning = false;
       }
     });
+
+    // Langganan state mode gambar/handpull dari controller
+    unsubDrawingState = chartDrawingController.subscribe((state) => {
+      isHandpullActive = state.activeTool === 'handpull';
+    });
+
+    // Keyboard navigation Spacebar hold untuk Hand-Pull Pan sementara
+    window.addEventListener('keydown', handleWindowKeyDown);
+    window.addEventListener('keyup', handleWindowKeyUp);
   });
 
+  function handleWindowKeyDown(e: KeyboardEvent) {
+    if (e.code === 'Space' && !e.repeat) {
+      const target = e.target as HTMLElement;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || target?.isContentEditable) return;
+      if (!replaySession.getSnapshot().active) {
+        chartDrawingController.setSpaceTemporaryHandpull(true);
+      }
+    }
+  }
+
+  function handleWindowKeyUp(e: KeyboardEvent) {
+    if (e.code === 'Space') {
+      chartDrawingController.setSpaceTemporaryHandpull(false);
+    }
+  }
+
   onDestroy(() => {
+    if (unsubDrawingState) {
+      unsubDrawingState();
+      unsubDrawingState = null;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('keydown', handleWindowKeyDown);
+      window.removeEventListener('keyup', handleWindowKeyUp);
+    }
+
     if (unsubFeedConnection) {
       unsubFeedConnection();
       unsubFeedConnection = null;
@@ -2412,7 +2500,7 @@
 </script>
 
 <div 
-  class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''}"
+  class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''} {isHandpullActive ? 'handpull-mode' : ''}"
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}
   onpointerdown={() => { isPointerActiveOnChart = true; scheduleBadgePositionUpdate(); }}
@@ -2590,6 +2678,18 @@
 
   .chart-wrapper.selecting-cutoff :global(canvas) {
     cursor: crosshair !important;
+  }
+
+  .chart-wrapper.handpull-mode,
+  .chart-wrapper.handpull-mode :global(.vela-container),
+  .chart-wrapper.handpull-mode :global(canvas) {
+    cursor: grab !important;
+  }
+
+  .chart-wrapper.handpull-mode:active,
+  .chart-wrapper.handpull-mode:active :global(.vela-container),
+  .chart-wrapper.handpull-mode:active :global(canvas) {
+    cursor: grabbing !important;
   }
 
   .vela-container {

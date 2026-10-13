@@ -1,6 +1,8 @@
 <script lang="ts">
   import {
     MousePointer,
+    Hand,
+    Eraser,
     TrendingUp,
     Minus,
     ArrowUpRight,
@@ -57,6 +59,8 @@
     getFavoritesBarPosition,
     saveFavoritesBarPosition,
     clampFavoritesBarPosition,
+    STAMP_PRESETS,
+    type StampPreset,
     type FavoritesBarPosition,
     type DrawingGroupId,
     type DrawingToolItem,
@@ -103,7 +107,8 @@
   }: Props = $props();
 
   // State flyout menu
-  let openFlyout = $state<DrawingGroupId | null>(null);
+  let openFlyout = $state<DrawingGroupId | 'pointer' | null>(null);
+  let lastUsedPointerTool = $state<DrawingToolType>('cursor');
   let searchQuery = $state('');
   let isFavoritesBarVisible = $state(true);
 
@@ -168,6 +173,8 @@
   // Pemetaan Ikon Dinamis per Tool
   function getIconComponent(toolId: DrawingToolType | null) {
     if (!toolId || toolId === 'cursor') return MousePointer;
+    if (toolId === 'handpull') return Hand;
+    if (toolId === 'eraser') return Eraser;
 
     switch (toolId) {
       // Lines
@@ -320,6 +327,57 @@
     return group.tools.some((t) => t.id === activeTool);
   }
 
+  const POINTER_TOOLS: Array<{ id: DrawingToolType; label: string; shortcut?: string }> = [
+    { id: 'cursor', label: 'Kursor (Seleksi & Pindah)', shortcut: 'Esc' },
+    { id: 'handpull', label: 'Hand-Pull (Geser Kanvas)', shortcut: 'H' },
+    { id: 'eraser', label: 'Penghapus Interaktif' }
+  ];
+
+  function isPointerActive(): boolean {
+    return activeTool === 'cursor' || activeTool === 'handpull' || activeTool === 'eraser' || activeTool === null;
+  }
+
+  function getCurrentPointerTool(): DrawingToolType {
+    if (activeTool === 'handpull' || activeTool === 'eraser' || activeTool === 'cursor') {
+      return activeTool;
+    }
+    return lastUsedPointerTool;
+  }
+
+  function handleSelectPointerTool(toolId: DrawingToolType) {
+    lastUsedPointerTool = toolId;
+    onSelectTool(toolId);
+    openFlyout = null;
+  }
+
+  function togglePointerFlyout(e?: MouseEvent | Event) {
+    if (openFlyout === 'pointer') {
+      openFlyout = null;
+    } else {
+      openFlyout = 'pointer';
+      if (e && e.currentTarget) {
+        const target = e.currentTarget as HTMLElement;
+        const toolItem = target.closest('.tool-item') || target;
+        const rect = toolItem.getBoundingClientRect();
+        flyoutTop = Math.max(8, Math.min(rect.top - 4, window.innerHeight - 440));
+      }
+    }
+  }
+
+  function handleDirectPointerClick() {
+    const current = getCurrentPointerTool();
+    if (activeTool === current) {
+      togglePointerFlyout();
+    } else {
+      handleSelectPointerTool(current);
+    }
+  }
+
+  let currentPtrTool = $derived(getCurrentPointerTool());
+  let CurrentPtrIcon = $derived(getIconComponent(currentPtrTool));
+  let isPtrActive = $derived(isPointerActive());
+  let isPointerFlyoutOpen = $derived(openFlyout === 'pointer');
+
   // Menutup flyout jika pengguna mengklik di luar area toolbar atau flyout
   function handleDocumentClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -341,16 +399,70 @@
 <!-- Toolbar Vertikal Utama Trawangan (Docked Structural Rail) -->
 <aside class="drawing-toolbar glass-panel {isCollapsed ? 'collapsed' : ''}" aria-label="Bilah Alat Gambar Teknikal">
   <div class="toolbar-scroll-container" onscroll={() => { if (openFlyout) openFlyout = null; }}>
-  <!-- 1. Cursor / Selection Tool -->
+  <!-- 1. Flyout Pointer & Navigasi (Cursor, Handpull, Eraser) -->
   <div class="tool-item">
-    <button
-      type="button"
-      class="tool-btn {activeTool === 'cursor' || activeTool === null ? 'active' : ''}"
-      title="Cursor (Pan & Pilih Objek)"
-      onclick={() => handleSelectToolItem('cursor')}
+    <div
+      class="tool-btn-wrapper {isPtrActive ? 'active' : ''} {isPointerFlyoutOpen ? 'flyout-open' : ''}"
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        togglePointerFlyout(e);
+      }}
     >
-      <MousePointer size={15} />
-    </button>
+      <button
+        type="button"
+        class="tool-btn"
+        title="{currentPtrTool === 'handpull' ? 'Hand-Pull (Geser Kanvas - H)' : currentPtrTool === 'eraser' ? 'Penghapus Interaktif' : 'Kursor (Seleksi Objek)'} (Klik untuk aktifkan, klik kanan atau panah untuk pilihan)"
+        onclick={handleDirectPointerClick}
+      >
+        <CurrentPtrIcon size={15} />
+      </button>
+      <button
+        type="button"
+        class="sub-arrow-btn"
+        title="Buka pilihan Navigasi Pointer & Hand-Pull"
+        onclick={(e) => {
+          e.stopPropagation();
+          togglePointerFlyout(e);
+        }}
+      >
+        <span class="sub-arrow">▸</span>
+      </button>
+    </div>
+
+    <!-- Submenu Flyout Pointer & Navigasi -->
+    {#if isPointerFlyoutOpen}
+      <div
+        class="flyout-menu obsidian-panel"
+        style="top: {flyoutTop}px;"
+        onclick={(e) => e.stopPropagation()}
+      >
+        <div class="flyout-header-row">
+          <span class="flyout-header-title">Pointer & Navigasi</span>
+          <span class="flyout-count-badge mono-nums">3</span>
+        </div>
+
+        <div class="flyout-tools-list">
+          {#each POINTER_TOOLS as pTool (pTool.id)}
+            {@const PtrIcon = getIconComponent(pTool.id)}
+            {@const isThisActive = (activeTool === pTool.id) || (pTool.id === 'cursor' && activeTool === null)}
+
+            <button
+              type="button"
+              class="flyout-tool-row {isThisActive ? 'active-row' : ''}"
+              onclick={() => handleSelectPointerTool(pTool.id)}
+            >
+              <div class="tool-label-group">
+                <PtrIcon size={14} class="tool-icon" />
+                <span class="tool-name">{pTool.label}</span>
+              </div>
+              {#if pTool.shortcut}
+                <span class="tool-shortcut-badge mono-nums">{pTool.shortcut}</span>
+              {/if}
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
   </div>
 
   <div class="tool-divider"></div>
@@ -422,6 +534,27 @@
                   <X size={10} />
                 </button>
               {/if}
+            </div>
+          {/if}
+
+          {#if group.id === 'annotations'}
+            <!-- Quick Stamp Palette (Target, Warning, Breakout, Pin, Flag) -->
+            <div class="stamp-quick-palette">
+              <span class="stamp-palette-title">Stempel Cepat:</span>
+              <div class="stamp-chips-row">
+                {#each STAMP_PRESETS as stamp (stamp.id)}
+                  <button
+                    type="button"
+                    class="stamp-chip-btn"
+                    style="--stamp-color: {stamp.color};"
+                    title="{stamp.label} ({stamp.description})"
+                    onclick={() => handleSelectToolItem(stamp.tool, group.id)}
+                  >
+                    <span class="stamp-chip-emoji">{stamp.emoji}</span>
+                    <span class="stamp-chip-label">{stamp.label}</span>
+                  </button>
+                {/each}
+              </div>
             </div>
           {/if}
 
@@ -893,6 +1026,61 @@
     background: rgba(255, 255, 255, 0.05);
     padding: 1px 5px;
     border-radius: 4px;
+  }
+
+  .stamp-quick-palette {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 4px 4px 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    margin-bottom: 4px;
+  }
+
+  .stamp-palette-title {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted, #71767b);
+  }
+
+  .stamp-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .stamp-chip-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    font-size: 10px;
+    color: var(--text-main, #e5e7eb);
+  }
+
+  .stamp-chip-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: var(--stamp-color, #00f0ff);
+    box-shadow: 0 0 6px rgba(0, 240, 255, 0.2);
+  }
+
+  .stamp-chip-emoji {
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .stamp-chip-label {
+    font-size: 9.5px;
+    font-weight: 500;
   }
 
   .flyout-search-box {
