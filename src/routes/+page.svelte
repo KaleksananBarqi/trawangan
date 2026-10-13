@@ -124,11 +124,13 @@
   let isCreateAlertModalOpen = $state(false);
   let createAlertSymbol = $state('BTCUSDT');
   let createAlertTargetPrice = $state<number | undefined>(undefined);
+  let editingAlert = $state<PriceAlert | null>(null);
   let triggeredAlertsToasts = $state<PriceAlert[]>([]);
 
-  function handleRequestCreateAlert(sym?: string, price?: number) {
-    createAlertSymbol = sym || activeSymbol;
-    createAlertTargetPrice = price;
+  function handleRequestCreateAlert(sym?: string, price?: number, alertToEdit?: PriceAlert | null) {
+    editingAlert = alertToEdit || null;
+    createAlertSymbol = alertToEdit ? alertToEdit.symbol : (sym || activeSymbol);
+    createAlertTargetPrice = alertToEdit ? alertToEdit.targetPrice : price;
     isCreateAlertModalOpen = true;
   }
 
@@ -1096,6 +1098,7 @@
           onActiveCellChange={handleActiveCellChange}
           onStrategyUpdate={handleStrategyUpdate}
           onRequestCreateAlert={handleRequestCreateAlert}
+          onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
         />
       </div>
 
@@ -1139,6 +1142,7 @@
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
           onRemoveIndicator={handleRemoveIndicator}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
+          onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
           onOpenSymbolSearch={() => (isSymbolSearchOpen = true)}
         />
       {/if}
@@ -1251,15 +1255,22 @@
     onClose={() => (isReplayDatePickerOpen = false)}
   />
 
-  <!-- Create Price Alert Modal -->
+  <!-- Create & Edit Price Alert Modal -->
   <CreateAlertModal
     isOpen={isCreateAlertModalOpen}
     initialSymbol={createAlertSymbol}
     initialPrice={createAlertTargetPrice}
+    editingAlert={editingAlert}
     currentMarketPrice={ticker?.price || 0}
-    onClose={() => (isCreateAlertModalOpen = false)}
+    onClose={() => {
+      isCreateAlertModalOpen = false;
+      editingAlert = null;
+    }}
     onCreated={(newAlert: any) => {
       addSystemLog(`Price Alert dibuat: ${newAlert.symbol} @ $${newAlert.targetPrice}`, 'success');
+    }}
+    onUpdated={(upAlert: any) => {
+      addSystemLog(`Price Alert diperbarui: ${upAlert.symbol} @ $${upAlert.targetPrice}`, 'success');
     }}
   />
 

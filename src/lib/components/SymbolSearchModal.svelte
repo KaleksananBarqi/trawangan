@@ -121,6 +121,15 @@
     }
   });
 
+  function scrollSelectedIntoView() {
+    tick().then(() => {
+      const el = document.querySelector('.result-item-row.highlighted');
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    });
+  }
+
   function handleKeyDown(e: KeyboardEvent) {
     if (!isOpen) return;
 
@@ -131,11 +140,13 @@
       e.preventDefault();
       if (searchResults.length > 0) {
         selectedIndex = (selectedIndex + 1) % searchResults.length;
+        scrollSelectedIntoView();
       }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (searchResults.length > 0) {
         selectedIndex = (selectedIndex - 1 + searchResults.length) % searchResults.length;
+        scrollSelectedIntoView();
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();

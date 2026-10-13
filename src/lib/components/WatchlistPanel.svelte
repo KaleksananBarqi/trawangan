@@ -21,13 +21,16 @@
     ArrowUpRight,
     ArrowDownRight,
     MoveHorizontal,
-    SlidersHorizontal
+    SlidersHorizontal,
+    Globe,
+    Check,
+    Loader2
   } from '@lucide/svelte';
   import { loadWatchlist, saveWatchlist } from '../services/persistence';
   import { marketFeed } from '../services/market';
   import { alertService } from '../services/alertService';
   import SymbolSearchModal from './SymbolSearchModal.svelte';
-  import type { PriceAlert, ObjectTreeItem } from '../types/market';
+  import type { PriceAlert, ObjectTreeItem, MarketSearchResult } from '../types/market';
 
   interface Props {
     isOpen: boolean;
@@ -43,6 +46,7 @@
     onRemoveIndicator?: (id: string) => void;
     onWatchlistChange?: (symbols: string[]) => void;
     onRequestCreateAlert?: () => void;
+    onRequestEditAlert?: (alert: PriceAlert) => void;
     onOpenSymbolSearch?: () => void;
   }
 
@@ -60,6 +64,7 @@
     onRemoveIndicator,
     onWatchlistChange,
     onRequestCreateAlert,
+    onRequestEditAlert,
     onOpenSymbolSearch,
   }: Props = $props();
 
@@ -221,6 +226,73 @@
     showAddInput = false;
   }
 
+  // ─── Omni-Search State & Background Exploration ───
+  let exchangeSearchResults = $state<MarketSearchResult[]>([]);
+  let isSearchingExchange = $state(false);
+  let selectedOmniIndex = $state(0);
+  let searchDebounceTimer: any = null;
+
+  $effect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      exchangeSearchResults = [];
+      isSearchingExchange = false;
+      selectedOmniIndex = 0;
+      return;
+    }
+
+    // 1. Respon instan < 5ms dari cache memori lokal
+    if (marketFeed.searchLocalSymbols) {
+      const instant = marketFeed.searchLocalSymbols(q);
+      exchangeSearchResults = instant.slice(0, 15);
+    }
+
+    // 2. Query menyeluruh bursa dengan debounce 150ms
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(async () => {
+      isSearchingExchange = true;
+      try {
+        const fullResults = await marketFeed.searchSymbols(q);
+        exchangeSearchResults = fullResults.slice(0, 25);
+      } catch (err) {
+        console.warn('Gagal mencari simbol bursa:', err);
+      } finally {
+        isSearchingExchange = false;
+      }
+    }, 150);
+  });
+
+  async function handleAddSymbolFromExchange(e: MouseEvent, sym: string) {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!symbols.includes(sym)) {
+      await applyWatchlistUpdate([...symbols, sym]);
+    }
+  }
+
+  function handleSearchKeyDown(e: KeyboardEvent) {
+    const totalOmniItems = filteredSymbols.length + exchangeSearchResults.length;
+    if (totalOmniItems === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedOmniIndex = (selectedOmniIndex + 1) % totalOmniItems;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedOmniIndex = (selectedOmniIndex - 1 + totalOmniItems) % totalOmniItems;
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedOmniIndex < filteredSymbols.length) {
+        handleSelectSymbol(filteredSymbols[selectedOmniIndex]);
+      } else {
+        const exItem = exchangeSearchResults[selectedOmniIndex - filteredSymbols.length];
+        if (exItem) {
+          handleSelectSymbol(exItem.symbol);
+        }
+      }
+    }
+  }
+
   async function handleToggleSymbolFromSearch(sym: string) {
     let next: string[];
     if (symbols.includes(sym)) {
@@ -380,8 +452,9 @@
           <span class="search-icon"><Search size={12} /></span>
           <input
             type="text"
-            placeholder="Filter list..."
+            placeholder="Cari simbol (e.g. RE, BTC, ETH)..."
             bind:value={searchQuery}
+            onkeydown={handleSearchKeyDown}
             class="search-input"
           />
           {#if searchQuery}
@@ -414,22 +487,24 @@
       </div>
 
       <!-- Preset Category Tabs: Binance USDT & Indodax IDR -->
-      <div class="preset-category-bar">
-        <button
-          type="button"
-          class="preset-cat-btn {selectedPresetCategory === 'binance' ? 'active' : ''}"
-          onclick={() => switchPresetCategory('binance')}
-        >
-          Binance USDT
-        </button>
-        <button
-          type="button"
-          class="preset-cat-btn {selectedPresetCategory === 'indodax' ? 'active' : ''}"
-          onclick={() => switchPresetCategory('indodax')}
-        >
-          Indodax IDR
-        </button>
-      </div>
+      {#if !searchQuery.trim()}
+        <div class="preset-category-bar">
+          <button
+            type="button"
+            class="preset-cat-btn {selectedPresetCategory === 'binance' ? 'active' : ''}"
+            onclick={() => switchPresetCategory('binance')}
+          >
+            Binance USDT
+          </button>
+          <button
+            type="button"
+            class="preset-cat-btn {selectedPresetCategory === 'indodax' ? 'active' : ''}"
+            onclick={() => switchPresetCategory('indodax')}
+          >
+            Indodax IDR
+          </button>
+        </div>
+      {/if}
 
       <!-- Feed Status & Column Headers -->
       <div class="table-head mono-nums">
@@ -453,59 +528,200 @@
         </form>
       {/if}
 
-      <!-- Watchlist Items List -->
+      <!-- Watchlist & Omni-Search Items List -->
       <div class="items-list">
-        {#each filteredSymbols as sym (sym)}
-          {@const ticker = tickerMap[sym]}
-          {@const isBull = (ticker?.change24h ?? 0) >= 0}
-          <div class="watchlist-row {activeSymbol === sym ? 'active-row' : ''}">
-            <button
-              type="button"
-              class="row-select-btn"
-              onclick={() => handleSelectSymbol(sym)}
-            >
-              <div class="row-symbol">
-                <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                <span class="symbol-name">{sym.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
-                {#if sym.endsWith('.P')}
-                  <span class="type-tag perp mono-nums">.P</span>
-                {:else if sym.endsWith('IDR')}
-                  <span class="type-tag idr mono-nums">IDR</span>
-                {:else}
-                  <span class="type-tag spot mono-nums">SPOT</span>
-                {/if}
+        {#if searchQuery.trim()}
+          <!-- ─── 1. Koin Lokal Terdaftar di Watchlist ─── -->
+          {#if filteredSymbols.length > 0}
+            <div class="omni-section-header">
+              <span>Di Watchlist ({filteredSymbols.length})</span>
+            </div>
+            {#each filteredSymbols as sym, idx (sym)}
+              {@const ticker = tickerMap[sym]}
+              {@const isBull = (ticker?.change24h ?? 0) >= 0}
+              {@const isHighlighted = selectedOmniIndex === idx}
+              <div class="watchlist-row {activeSymbol === sym ? 'active-row' : ''} {isHighlighted ? 'omni-highlighted' : ''}">
+                <button
+                  type="button"
+                  class="row-select-btn"
+                  onclick={() => handleSelectSymbol(sym)}
+                >
+                  <div class="row-symbol">
+                    <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
+                    <span class="symbol-name">{sym.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
+                    {#if sym.endsWith('.P')}
+                      <span class="type-tag perp mono-nums">.P</span>
+                    {:else if sym.endsWith('IDR')}
+                      <span class="type-tag idr mono-nums">IDR</span>
+                    {:else}
+                      <span class="type-tag spot mono-nums">SPOT</span>
+                    {/if}
+                  </div>
+
+                  <div class="row-price mono-nums">
+                    {formatPrice(ticker?.price, sym)}
+                  </div>
+
+                  <div class="row-change mono-nums">
+                    {#if ticker?.change24h !== undefined}
+                      <span class="change-pill {isBull ? 'pill-bull' : 'pill-bear'}">
+                        {#if isBull}+{/if}{ticker.change24h.toFixed(2)}%
+                      </span>
+                    {:else}
+                      <span class="change-placeholder">--</span>
+                    {/if}
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  class="delete-item-btn"
+                  title="Hapus dari watchlist"
+                  onclick={(e) => handleRemoveSymbol(e, sym)}
+                >
+                  <X size={11} />
+                </button>
               </div>
+            {/each}
+          {/if}
 
-              <div class="row-price mono-nums">
-                {formatPrice(ticker?.price, sym)}
+          <!-- ─── 2. Hasil Agregasi Bursa (Exchange Results) ─── -->
+          {#if exchangeSearchResults.length > 0}
+            <div class="omni-section-header exchange-header">
+              <div class="omni-header-left">
+                <Globe size={11} />
+                <span>Hasil dari Bursa ({exchangeSearchResults.length})</span>
               </div>
+              {#if isSearchingExchange}
+                <span class="omni-loading-pip">
+                  <Loader2 size={10} class="spin" />
+                  <span>Memuat...</span>
+                </span>
+              {/if}
+            </div>
 
-              <div class="row-change mono-nums">
-                {#if ticker?.change24h !== undefined}
-                  <span class="change-pill {isBull ? 'pill-bull' : 'pill-bear'}">
-                    {#if isBull}+{/if}{ticker.change24h.toFixed(2)}%
-                  </span>
-                {:else}
-                  <span class="change-placeholder">--</span>
-                {/if}
+            {#each exchangeSearchResults as item, exIdx (item.symbol + item.provider)}
+              {@const globalIdx = filteredSymbols.length + exIdx}
+              {@const isInWatchlist = symbols.includes(item.symbol)}
+              {@const isHighlighted = selectedOmniIndex === globalIdx}
+              <div class="watchlist-row exchange-row {activeSymbol === item.symbol ? 'active-row' : ''} {isHighlighted ? 'omni-highlighted' : ''}">
+                <button
+                  type="button"
+                  class="row-select-btn"
+                  onclick={() => handleSelectSymbol(item.symbol)}
+                >
+                  <div class="row-symbol">
+                    <span class="status-pip {item.type === 'perp' ? 'pip-perp' : 'pip-spot'}"></span>
+                    <span class="symbol-name">{item.baseAsset}</span>
+                    <span class="symbol-quote mono-nums">/{item.quoteAsset}</span>
+                    {#if item.type === 'perp'}
+                      <span class="type-tag perp mono-nums">.P</span>
+                    {:else if item.quoteAsset === 'IDR'}
+                      <span class="type-tag idr mono-nums">IDR</span>
+                    {:else}
+                      <span class="type-tag spot mono-nums">SPOT</span>
+                    {/if}
+                  </div>
+
+                  <div class="exchange-venue-desc">
+                    {item.provider}
+                  </div>
+                </button>
+
+                <!-- Tombol 1-klik Tambah ke Watchlist (+) -->
+                <button
+                  type="button"
+                  class="add-exchange-btn {isInWatchlist ? 'already-added' : ''}"
+                  title={isInWatchlist ? 'Sudah ada di daftar pantau' : 'Tambahkan ke watchlist'}
+                  onclick={(e) => handleAddSymbolFromExchange(e, item.symbol)}
+                  disabled={isInWatchlist}
+                >
+                  {#if isInWatchlist}
+                    <Check size={12} />
+                  {:else}
+                    <Plus size={12} />
+                  {/if}
+                </button>
               </div>
-            </button>
+            {/each}
+          {/if}
 
-            <button
-              type="button"
-              class="delete-item-btn"
-              title="Hapus dari watchlist"
-              onclick={(e) => handleRemoveSymbol(e, sym)}
-            >
-              <X size={11} />
-            </button>
-          </div>
-        {/each}
+          {#if filteredSymbols.length === 0 && exchangeSearchResults.length === 0}
+            <div class="empty-state omni-empty">
+              {#if isSearchingExchange}
+                <Loader2 size={20} class="spin" />
+                <span>Mencari di seluruh bursa...</span>
+              {:else}
+                <span>Tidak ada koin yang cocok dengan "{searchQuery}".</span>
+                <button
+                  type="button"
+                  class="btn-open-global-search"
+                  onclick={() => {
+                    if (onOpenSymbolSearch) onOpenSymbolSearch();
+                    else isSymbolSearchOpen = true;
+                  }}
+                >
+                  <Search size={11} />
+                  <span>Cari Online di Menu Simbol (Ctrl+K)</span>
+                </button>
+              {/if}
+            </div>
+          {/if}
 
-        {#if filteredSymbols.length === 0}
-          <div class="empty-state">
-            <span>Tidak ada koin yang sesuai pencarian.</span>
-          </div>
+        {:else}
+          <!-- ─── 3. Tampilan Normal (Seluruh Koin Watchlist) ─── -->
+          {#each filteredSymbols as sym (sym)}
+            {@const ticker = tickerMap[sym]}
+            {@const isBull = (ticker?.change24h ?? 0) >= 0}
+            <div class="watchlist-row {activeSymbol === sym ? 'active-row' : ''}">
+              <button
+                type="button"
+                class="row-select-btn"
+                onclick={() => handleSelectSymbol(sym)}
+              >
+                <div class="row-symbol">
+                  <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
+                  <span class="symbol-name">{sym.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
+                  {#if sym.endsWith('.P')}
+                    <span class="type-tag perp mono-nums">.P</span>
+                  {:else if sym.endsWith('IDR')}
+                    <span class="type-tag idr mono-nums">IDR</span>
+                  {:else}
+                    <span class="type-tag spot mono-nums">SPOT</span>
+                  {/if}
+                </div>
+
+                <div class="row-price mono-nums">
+                  {formatPrice(ticker?.price, sym)}
+                </div>
+
+                <div class="row-change mono-nums">
+                  {#if ticker?.change24h !== undefined}
+                    <span class="change-pill {isBull ? 'pill-bull' : 'pill-bear'}">
+                      {#if isBull}+{/if}{ticker.change24h.toFixed(2)}%
+                    </span>
+                  {:else}
+                    <span class="change-placeholder">--</span>
+                  {/if}
+                </div>
+              </button>
+
+              <button
+                type="button"
+                class="delete-item-btn"
+                title="Hapus dari watchlist"
+                onclick={(e) => handleRemoveSymbol(e, sym)}
+              >
+                <X size={11} />
+              </button>
+            </div>
+          {/each}
+
+          {#if filteredSymbols.length === 0}
+            <div class="empty-state">
+              <span>Daftar pantau kosong. Tambahkan koin dengan tombol + di atas.</span>
+            </div>
+          {/if}
         {/if}
       </div>
 
@@ -637,6 +853,15 @@
                   {/if}
                 </button>
               {/if}
+
+              <button
+                type="button"
+                class="icon-alert-btn edit"
+                title="Sunting Alert Ini (Ubah Target & Kondisi)"
+                onclick={() => onRequestEditAlert?.(a)}
+              >
+                <SlidersHorizontal size={12} />
+              </button>
 
               <button
                 type="button"
@@ -1196,6 +1421,143 @@
     color: var(--bear-color);
     background-color: rgba(255, 59, 105, 0.18);
     border-color: rgba(255, 59, 105, 0.4);
+  }
+
+  /* ─── Omni-Search Watchlist Styles (Tiket #24) ─── */
+  .omni-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 8px;
+    background-color: rgba(15, 23, 42, 0.7);
+    border-bottom: 1px solid var(--border-hairline);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+
+  .omni-section-header.exchange-header {
+    background-color: rgba(14, 116, 144, 0.12);
+    border-top: 1px solid rgba(14, 116, 144, 0.3);
+    border-bottom: 1px solid rgba(14, 116, 144, 0.3);
+    color: #38bdf8;
+  }
+
+  .omni-header-left {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .omni-loading-pip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9px;
+    color: #38bdf8;
+    text-transform: none;
+  }
+
+  .watchlist-row.exchange-row .row-select-btn {
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .symbol-quote {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .exchange-venue-desc {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 28px;
+  }
+
+  .add-exchange-btn {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-xs);
+    background-color: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #60a5fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    z-index: 5;
+    padding: 0;
+  }
+
+  .add-exchange-btn:hover:not(:disabled) {
+    background-color: #2563eb;
+    border-color: #3b82f6;
+    color: #ffffff;
+    box-shadow: 0 0 8px rgba(37, 99, 235, 0.4);
+  }
+
+  .add-exchange-btn.already-added {
+    background-color: rgba(0, 240, 144, 0.12);
+    border-color: rgba(0, 240, 144, 0.3);
+    color: var(--brand-primary);
+    cursor: default;
+    opacity: 0.8;
+  }
+
+  .watchlist-row.omni-highlighted {
+    background-color: rgba(59, 130, 246, 0.14) !important;
+    border-left: 2px solid #38bdf8 !important;
+  }
+
+  .omni-empty {
+    padding: 24px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+    color: var(--text-dim);
+  }
+
+  .btn-open-global-search {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background-color: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    border-radius: var(--radius-xs);
+    color: #60a5fa;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-open-global-search:hover {
+    background-color: rgba(59, 130, 246, 0.25);
+    border-color: #60a5fa;
+    color: #93c5fd;
+  }
+
+  .spin {
+    animation: spin-anim 1s linear infinite;
+  }
+
+  @keyframes spin-anim {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   /* Alerts Sub Toolbar & Filters */

@@ -23,6 +23,7 @@
   import { marketFeed } from '../services/market';
   import type { FeedConnectionStatus } from '../services/market/types';
   import { alertService } from '../services/alertService';
+  import { playSuccessPip } from '../services/soundService';
   import { replaySession, type ReplayDriver } from '../services/replay';
   import { getTimeframeDurationMs } from '../services/replay/historicalRange';
   import ChartContextMenu from './ChartContextMenu.svelte';
@@ -74,6 +75,7 @@
     onCutoffCancelled?: () => void;
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
     onRequestCreateAlert?: (symbol: string, price: number) => void;
+    onRequestEditAlert?: (alert: PriceAlert) => void;
     themePreset?: ThemePresetId;
     fontSize?: number;
   }
@@ -98,6 +100,7 @@
     onCutoffCancelled,
     onStrategyUpdate,
     onRequestCreateAlert,
+    onRequestEditAlert,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -176,8 +179,15 @@
       for (const cell of cells) {
         const renderer = (cell as any)?.chart?.renderer;
         if (renderer && typeof renderer.applyConfig === 'function') {
+          if (activeChartDefaultConfig.priceScale) {
+            activeChartDefaultConfig.priceScale.currentPriceLine = showCurrentPriceLine !== false;
+          }
           renderer.applyConfig(activeChartDefaultConfig);
           renderer.factoryConfig = activeChartDefaultConfig;
+          const native = renderer.renderer || renderer;
+          if (native?.scene) {
+            native.scene.showPriceLine = showCurrentPriceLine !== false;
+          }
         }
       }
     } catch (err) {
@@ -362,7 +372,13 @@
         if (state.invert !== undefined) {
           patch.priceScale.invert = state.invert;
         }
+        // Persistent Price Line Guard: pastikan currentPriceLine disertakan agar scene.showPriceLine tidak hilang
+        patch.priceScale.currentPriceLine = showCurrentPriceLine !== false;
+
         native.applyConfig?.(patch);
+        if (native.scene) {
+          native.scene.showPriceLine = showCurrentPriceLine !== false;
+        }
       }
 
       // 2. Terapkan manual drag range jika mode auto nonaktif
@@ -726,6 +742,68 @@
   $effect(() => {
     priceScaleOverlayController.updateIndicators(getActiveIndicators(), showIndicatorPriceLabels);
   });
+
+  // ─── Draggable Alert Line Interaction State & Handlers ───
+  let draggingAlertId = $state<string | null>(null);
+  let draggingAlertPrice = $state<number | null>(null);
+  let dragStartY = 0;
+  let hasDraggedAlert = false;
+
+  function handleAlertPointerDown(e: PointerEvent, alert: PriceAlert) {
+    if ((e.target as HTMLElement)?.closest('.badge-del-btn')) return;
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
+
+    draggingAlertId = alert.id;
+    draggingAlertPrice = alert.targetPrice;
+    dragStartY = e.clientY;
+    hasDraggedAlert = false;
+  }
+
+  function handleAlertPointerMove(e: PointerEvent, alert: PriceAlert) {
+    if (draggingAlertId !== alert.id) return;
+    const dy = Math.abs(e.clientY - dragStartY);
+    if (dy > 3) {
+      hasDraggedAlert = true;
+    }
+
+    const newP = priceScaleOverlayController.getPriceFromClientY(e.clientY);
+    if (newP !== null && newP > 0) {
+      draggingAlertPrice = newP;
+      if (chartContainer) {
+        const rect = chartContainer.getBoundingClientRect();
+        alertYPositions[alert.id] = Math.round(e.clientY - rect.top);
+      }
+    }
+  }
+
+  async function handleAlertPointerUp(e: PointerEvent, alert: PriceAlert) {
+    if (draggingAlertId !== alert.id) return;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch (_) {}
+
+    const wasDragged = hasDraggedAlert;
+    const finalPrice = draggingAlertPrice;
+
+    draggingAlertId = null;
+    draggingAlertPrice = null;
+    hasDraggedAlert = false;
+
+    if (wasDragged && finalPrice && finalPrice > 0 && Math.abs(finalPrice - alert.targetPrice) > 0.0001) {
+      await alertService.updateAlert(alert.id, {
+        targetPrice: finalPrice,
+        triggered: false,
+        active: true,
+      });
+      playSuccessPip();
+      priceScaleOverlayController.scheduleUpdate();
+    } else if (!wasDragged) {
+      onRequestEditAlert?.(alert);
+    }
+  }
 
   /**
    * Handler event klik kanan (context menu) pada canvas grafik
@@ -1150,22 +1228,27 @@
     }
   });
 
-  // Reaktif sinkronisasi garis harga sekarang (Current Price Line)
+  // Reaktif sinkronisasi garis harga sekarang (Current Price Line) dengan Persistent Guard
+  export function enforceCurrentPriceLine(): void {
+    if (!workspace) return;
+    const isVisible = showCurrentPriceLine !== false;
+    for (const cell of getAllWorkspaceCells()) {
+      try {
+        const renderer = (cell as any)?.chart?.renderer;
+        const native = renderer?.renderer || renderer;
+        if (native?.scene) {
+          native.scene.showPriceLine = isVisible;
+        }
+        if (typeof native?.set === 'function') {
+          native.set('currentPriceLine', isVisible);
+        }
+      } catch (_) {}
+    }
+  }
+
   $effect(() => {
     if (workspace) {
-      const isVisible = Boolean(showCurrentPriceLine);
-      for (const cell of getAllWorkspaceCells()) {
-        try {
-          const renderer = (cell as any)?.chart?.renderer;
-          const native = renderer?.renderer || renderer;
-          if (native?.scene) {
-            native.scene.showPriceLine = isVisible;
-          }
-          if (typeof native?.set === 'function') {
-            native.set('currentPriceLine', isVisible);
-          }
-        } catch (_) {}
-      }
+      enforceCurrentPriceLine();
     }
   });
 
@@ -2312,15 +2395,24 @@
 
   <!-- Visual Price Alert Overlays -->
   {#each activeSymbolAlerts as a (a.id)}
-    {@const yPos = alertYPositions[a.id] ?? getPriceY(a.targetPrice)}
+    {@const isDraggingThis = draggingAlertId === a.id}
+    {@const displayPrice = isDraggingThis && draggingAlertPrice ? draggingAlertPrice : a.targetPrice}
+    {@const yPos = isDraggingThis ? (alertYPositions[a.id] ?? getPriceY(displayPrice)) : (alertYPositions[a.id] ?? getPriceY(a.targetPrice))}
     {#if yPos !== null && yPos >= 0}
       <div
-        class="chart-alert-line {a.triggered ? 'triggered' : ''} {a.active ? 'active' : 'paused'}"
+        class="chart-alert-line {a.triggered ? 'triggered' : ''} {a.active ? 'active' : 'paused'} {isDraggingThis ? 'is-dragging' : ''}"
         style="top: {yPos}px;"
       >
-        <div class="alert-line-badge mono-nums">
+        <div
+          class="alert-line-badge mono-nums {isDraggingThis ? 'dragging' : ''}"
+          onpointerdown={(e) => handleAlertPointerDown(e, a)}
+          onpointermove={(e) => handleAlertPointerMove(e, a)}
+          onpointerup={(e) => handleAlertPointerUp(e, a)}
+          onpointercancel={(e) => handleAlertPointerUp(e, a)}
+          title="Tahan & geser untuk mengubah harga, atau klik untuk mengedit"
+        >
           <Bell size={10} class="badge-bell" />
-          <span class="badge-price">${formatPrice(a.targetPrice)}</span>
+          <span class="badge-price">${formatPrice(displayPrice)}</span>
           {#if a.label}
             <span class="badge-lbl">{a.label}</span>
           {/if}
@@ -2712,8 +2804,24 @@
     font-weight: 600;
     color: #fbbf24;
     pointer-events: auto;
-    cursor: default;
-    transition: all 0.12s ease;
+    cursor: ns-resize;
+    user-select: none;
+    touch-action: none;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+
+  .alert-line-badge.dragging {
+    background-color: #f59e0b;
+    color: #06090e;
+    font-weight: 700;
+    border-color: #fbbf24;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.9), 0 0 12px rgba(245, 158, 11, 0.7);
+    cursor: grabbing;
+  }
+
+  .chart-alert-line.is-dragging {
+    z-index: 30;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
   }
 
   .alert-line-badge:hover {
