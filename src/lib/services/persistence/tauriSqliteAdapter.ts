@@ -5,9 +5,9 @@ import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 
 export class TauriSqliteAdapter implements PersistenceAdapter {
   private fallbackAdapter = new InMemoryLocalStorageAdapter();
-  private invokePromise: Promise<any> | null = null;
+  private invokePromise: Promise<typeof import('@tauri-apps/api/core').invoke> | null = null;
 
-  private async getInvoke() {
+  private async getInvoke(): Promise<typeof import('@tauri-apps/api/core').invoke> {
     if (!this.invokePromise) {
       this.invokePromise = import('@tauri-apps/api/core').then((m) => m.invoke);
     }

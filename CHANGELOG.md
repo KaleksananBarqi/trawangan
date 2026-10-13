@@ -5,6 +5,42 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.12.0] - 2026-10-13
+
+### 🚀 Ditambahkan (Added)
+- **Ergonomi Kanvas & Intersepsi Keyboard Cepat (Type-to-Search Canvas Guard) (#26, #27):**
+  - Intersepsi keystroke alfanumerik cerdas saat fokus pada kanvas grafik yang otomatis membuka modal pencarian simbol tanpa memicu gangguan manipulasi grafik atau konflik hotkey.
+  - Akses pencarian simbol global instan melalui pintasan keyboard `Ctrl+K` / `Cmd+K` dengan auto-focus query input.
+- **Pencarian Simbol Sub-5ms & Auto-Switching Provider Multi-Bursa (#26, #28):**
+  - Respons pencarian simbol super cepat (< 5ms) memanfaatkan indeks cache memori lokal.
+  - Pengalihan otomatis (*auto-switching*) penyedia data (Binance, Indodax, Bitunix) saat simbol dipilih dari hasil pencarian tanpa perlu konfigurasi manual.
+- **Sinkronisasi Zona Waktu Reaktif Antar-Pane Vela Workspace (#26, #29):**
+  - Sinkronisasi pengaturan zona waktu (WIB/Asia/Jakarta, UTC, Asia/Bangkok, New York, Tokyo, London, Sydney) secara reaktif ke seluruh sel multi-pane workspace grafik Vela dan native renderer.
+- **Adaptive UI Typography Scale (#26, #30):**
+  - Opsi skala ukuran tipografi antarmuka terpadu (Kompak 12px, Default 13px, Nyaman 14px, Luas 16px) yang secara adaptif menyesuaikan seluruh panel dock rail, bilah status, header, dan teks label kanvas.
+
+### ⚡ Performa & Optimasi (Performance)
+- **Promise Caching Dynamic Import pada `TauriSqliteAdapter` (#31):**
+  - Meng-cache promise dynamic import dari `@tauri-apps/api/core` untuk menghindari overhead re-import berulang pada setiap pemanggilan database persistence layer.
+- **Pre-allocation Array Candle Bitunix (#35):**
+  - Mengoptimalkan alokasi memori heap dengan menginisialisasi ukuran array lilin di awal (`new Array(len)`) saat parsing respons pasar Bitunix.
+- **Optimasi Pengambilan Watchlist di Rust Backend (#37):**
+  - Menggantikan iterasi manual dengan idiomatic `.collect()` pada layer Rust Tauri untuk mempercepat serialisasi data watchlist.
+
+### 🛡️ Keamanan & Perbaikan Bug (Fixed & Security)
+- **Remediasi Celah DOM-based XSS pada `app.html` (#32):**
+  - Mengganti injeksi `innerHTML` langsung pada variabel title dengan metode DOM aman (`createElement`, `textContent`) guna mengeliminasi potensi celah cross-site scripting.
+- **Binding Timezone ke Konstruktor Vela & Renderer Native (#29):**
+  - Menghubungkan opsi zona waktu langsung ke konstruktor `VelaWorkspace` serta pemanggilan `workspace.setTimezone(tz)` dan `native.set('timezone', tz)` agar sumbu waktu grafik selalu akurat.
+- **Pembersihan Scanner Komentar Bug pada Test Suite (#40):**
+  - Memperbaiki komentar pada `tests/chartPriceLineGuard.test.ts` agar tidak memicu false positive pada scanner audit kode.
+
+### 🔄 Pemeliharaan Kode (Refactor & Docs)
+- **Modularisasi `DEFAULT_COMMANDS` (#39):**
+  - Mengekstrak registrasi command bawaan dari fungsi monolitik `createDefaultCommandDispatcher` menjadi konstanta tingkat modul untuk meningkatkan maintainability dan code health.
+- **Standardisasi Workflow Rilis & Otomasi Logging MCP:**
+  - Pembaruan skill otomasi rilis dengan validasi pre-flight git, verifikasi changelog, dan integrasi pencatatan Second Brain langsung melalui Obsidian MCP.
+
 ## [0.11.0] - 2026-10-13
 
 ### 🚀 Ditambahkan (Added)

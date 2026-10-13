@@ -81,6 +81,20 @@
     };
   });
 
+  function applyPercentageOffset(percent: number) {
+    if (!currentMarketPrice || currentMarketPrice <= 0) return;
+    const computedPrice = percent === 0 ? currentMarketPrice : currentMarketPrice * (1 + percent / 100);
+    targetPrice = computedPrice >= 1 ? computedPrice.toFixed(2) : computedPrice.toPrecision(4);
+    if (computedPrice > currentMarketPrice) {
+      condition = 'crossing_up';
+    } else if (computedPrice < currentMarketPrice) {
+      condition = 'crossing_down';
+    } else {
+      condition = 'crossing';
+    }
+    label = `Target ${symbol} @ ${targetPrice}`;
+  }
+
   async function handleSubmit(e?: Event) {
     e?.preventDefault();
     const p = parseFloat(targetPrice);
