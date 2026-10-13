@@ -37,7 +37,15 @@
 
         var titleArea = document.createElement('div');
         titleArea.style.cssText = 'display:flex;align-items:center;gap:8px;font-weight:600;color:#FCA5A5;';
-        titleArea.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#EF4444;box-shadow:0 0 8px #EF4444;"></span><span>' + title + '</span>';
+
+        var indicator = document.createElement('span');
+        indicator.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:#EF4444;box-shadow:0 0 8px #EF4444;';
+
+        var titleText = document.createElement('span');
+        titleText.textContent = title;
+
+        titleArea.appendChild(indicator);
+        titleArea.appendChild(titleText);
 
         var actionsArea = document.createElement('div');
         actionsArea.style.cssText = 'display:flex;align-items:center;gap:6px;';
