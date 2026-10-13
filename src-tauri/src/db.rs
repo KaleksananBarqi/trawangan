@@ -392,11 +392,7 @@ pub fn get_watchlist(conn: &Connection) -> Result<Vec<String>> {
     )?;
 
     let rows = stmt.query_map([], |row| row.get(0))?;
-    let mut symbols = Vec::new();
-    for s in rows {
-        symbols.push(s?);
-    }
-    Ok(symbols)
+    rows.collect()
 }
 
 /// Perbarui seluruh daftar watchlist pengguna
