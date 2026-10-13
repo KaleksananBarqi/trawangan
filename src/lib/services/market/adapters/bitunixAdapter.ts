@@ -103,16 +103,17 @@ export class BitunixAdapter implements MarketProviderAdapter {
       if (res.ok) {
         const json = await res.json();
         if (json && json.s === 'ok' && Array.isArray(json.t)) {
-          const candles: Candle[] = [];
-          for (let i = 0; i < json.t.length; i++) {
-            candles.push({
+          const len = json.t.length;
+          const candles: Candle[] = new Array(len);
+          for (let i = 0; i < len; i++) {
+            candles[i] = {
               time: json.t[i] * 1000,
               open: json.o[i],
               high: json.h[i],
               low: json.l[i],
               close: json.c[i],
               volume: json.v ? json.v[i] : 0,
-            });
+            };
           }
           return candles;
         }
