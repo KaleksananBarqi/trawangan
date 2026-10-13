@@ -179,8 +179,15 @@
       for (const cell of cells) {
         const renderer = (cell as any)?.chart?.renderer;
         if (renderer && typeof renderer.applyConfig === 'function') {
+          if (activeChartDefaultConfig.priceScale) {
+            activeChartDefaultConfig.priceScale.currentPriceLine = showCurrentPriceLine !== false;
+          }
           renderer.applyConfig(activeChartDefaultConfig);
           renderer.factoryConfig = activeChartDefaultConfig;
+          const native = renderer.renderer || renderer;
+          if (native?.scene) {
+            native.scene.showPriceLine = showCurrentPriceLine !== false;
+          }
         }
       }
     } catch (err) {
@@ -365,7 +372,13 @@
         if (state.invert !== undefined) {
           patch.priceScale.invert = state.invert;
         }
+        // Persistent Price Line Guard: pastikan currentPriceLine disertakan agar scene.showPriceLine tidak hilang
+        patch.priceScale.currentPriceLine = showCurrentPriceLine !== false;
+
         native.applyConfig?.(patch);
+        if (native.scene) {
+          native.scene.showPriceLine = showCurrentPriceLine !== false;
+        }
       }
 
       // 2. Terapkan manual drag range jika mode auto nonaktif
@@ -1215,22 +1228,27 @@
     }
   });
 
-  // Reaktif sinkronisasi garis harga sekarang (Current Price Line)
+  // Reaktif sinkronisasi garis harga sekarang (Current Price Line) dengan Persistent Guard
+  export function enforceCurrentPriceLine(): void {
+    if (!workspace) return;
+    const isVisible = showCurrentPriceLine !== false;
+    for (const cell of getAllWorkspaceCells()) {
+      try {
+        const renderer = (cell as any)?.chart?.renderer;
+        const native = renderer?.renderer || renderer;
+        if (native?.scene) {
+          native.scene.showPriceLine = isVisible;
+        }
+        if (typeof native?.set === 'function') {
+          native.set('currentPriceLine', isVisible);
+        }
+      } catch (_) {}
+    }
+  }
+
   $effect(() => {
     if (workspace) {
-      const isVisible = Boolean(showCurrentPriceLine);
-      for (const cell of getAllWorkspaceCells()) {
-        try {
-          const renderer = (cell as any)?.chart?.renderer;
-          const native = renderer?.renderer || renderer;
-          if (native?.scene) {
-            native.scene.showPriceLine = isVisible;
-          }
-          if (typeof native?.set === 'function') {
-            native.set('currentPriceLine', isVisible);
-          }
-        } catch (_) {}
-      }
+      enforceCurrentPriceLine();
     }
   });
 
