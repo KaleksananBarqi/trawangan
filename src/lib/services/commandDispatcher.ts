@@ -275,10 +275,7 @@ export class CommandDispatcher {
 /**
  * Inisialisasi daftar perintah bawaan terminal Trawangan (30+ perintah terstandarisasi)
  */
-export function createDefaultCommandDispatcher(): CommandDispatcher {
-  const dispatcher = new CommandDispatcher();
-
-  const DEFAULT_COMMANDS: CommandDefinition[] = [
+export const DEFAULT_COMMANDS: CommandDefinition[] = [
     // --- Navigasi & Simbol ---
     {
       id: 'search-symbol',
@@ -589,6 +586,9 @@ export function createDefaultCommandDispatcher(): CommandDispatcher {
       },
     },
   ];
+
+export function createDefaultCommandDispatcher(): CommandDispatcher {
+  const dispatcher = new CommandDispatcher();
 
   for (const cmd of DEFAULT_COMMANDS) {
     dispatcher.register(cmd);
