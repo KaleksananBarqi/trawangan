@@ -5,6 +5,28 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.11.0] - 2026-10-13
+
+### 🚀 Ditambahkan (Added)
+- **Alur Price Alert Interaktif & Form Decoupling (#20, #21):**
+  - Mengisolasi inisialisasi modal alert menggunakan transisi pembukaan satu kali (`lastIsOpen` + `untrack`), mengeliminasi bug reset input harga manual dan focus loop saat tick WebSocket pasar masuk.
+  - Tombol preset offset persentase cepat (-10%, -5%, -1%, +1%, +5%, +10%) terhadap harga pasar live.
+  - Mode penyuntingan alert in-place (`editingAlert`) langsung dari daftar Price Alerts di Right Dock Rail.
+  - Garis batas alert interaktif pada kanvas grafik (*Draggable Alert Line*) yang dapat digeser secara vertikal secara real-time 60 FPS untuk mengatur target harga baru tanpa membuka dialog, dilengkapi chime audio (`playSuccessPip`) dan notifikasi toast.
+- **Persistent Price Line Guard pada Kanvas Grafik (#22):**
+  - Perlindungan otomatis garis harga terakhir (*Last/Current Price Line*) agar tidak hilang saat berganti mode skala (Log/Linear/Auto), invert scale, reset view, maupun switching multi-chart split panes.
+  - Injeksi otomatis `priceScale.currentPriceLine = true` pada setiap mutasi konfigurasi kanvas Vela dan penegakan verifikasi scene renderer saat lilin baru diterima.
+- **Mesin Pencarian Simbol Multi-Tier dengan Offline Cache & Dynamic Online Fallback (#23):**
+  - Mesin *scoring ranking multi-tier* terpadu (`SymbolSearchEngine`) yang memprioritaskan kecocokan prefix ticker (seperti query `"re"` langsung menempatkan `RENDER`, `REEF`, `REQ`, `REN`, `REI` di posisi puncak di atas substring acak).
+  - Cache memori lokal yang memberikan respons pencarian instan (< 10ms).
+  - Sintesis *dynamic online fallback* untuk koin baru/belum terindeks (`{TOKEN}USDT`, `{TOKEN}USDT.P`, `{TOKEN}IDR`).
+  - Agregasi pencarian simbol lintas seluruh bursa (Binance Spot & Futures, Indodax IDR, Bitunix).
+- **Watchlist Omni-Search Bar & Eksplorasi Simbol Cepat (#24):**
+  - Transformasi bilah pencarian Watchlist menjadi *Omni-Search Bar* yang menyaring koin lokal tersimpan sekaligus menampilkan seksi *"Hasil dari Bursa"*.
+  - Tombol aksi 1-klik `+` untuk langsung menambahkan instrumen bursa ke watchlist tanpa menutup panel.
+  - Klik baris instrumen bursa langsung membuka grafik aset terkait dengan peralihan provider otomatis (Binance/Indodax).
+  - Navigasi keyboard penuh (Panah Atas/Bawah, Enter) dengan auto scroll-into-view pada menu pencarian simbol (Ctrl + K) dan Watchlist.
+
 ## [0.10.0] - 2026-10-12
 
 ### 🚀 Ditambahkan (Added)
