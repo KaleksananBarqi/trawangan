@@ -234,16 +234,32 @@
       // 5. Animasi feedback visual pada tombol jika tersedia
       if (buttonEl) {
         buttonEl.classList.add('saved');
-        const prevContent = buttonEl.innerHTML;
-        buttonEl.innerHTML = `
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px; flex-shrink: 0;">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-          <span>✓ Tersimpan sebagai Default!</span>
-        `;
+        const prevNodes = Array.from(buttonEl.childNodes);
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '12');
+        svg.setAttribute('height', '12');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2.5');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.marginRight = '5px';
+        svg.style.flexShrink = '0';
+
+        const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        polyline.setAttribute('points', '20 6 9 17 4 12');
+        svg.appendChild(polyline);
+
+        const span = document.createElement('span');
+        span.textContent = '✓ Tersimpan sebagai Default!';
+
+        buttonEl.replaceChildren(svg, span);
+
         setTimeout(() => {
           buttonEl.classList.remove('saved');
-          buttonEl.innerHTML = prevContent;
+          buttonEl.replaceChildren(...prevNodes);
         }, 2500);
       }
 
@@ -551,14 +567,34 @@
         saveBtn.type = 'button';
         saveBtn.className = 'vela-sd-btn trawangan-save-default-btn';
         saveBtn.title = 'Simpan warna bar, lilin, dan konfigurasi grafik ini sebagai setelan default permanen';
-        saveBtn.innerHTML = `
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px; flex-shrink: 0;">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-            <polyline points="17 21 17 13 7 13 7 21"></polyline>
-            <polyline points="7 3 7 8 15 8"></polyline>
-          </svg>
-          <span>Simpan sebagai default</span>
-        `;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '12');
+        svg.setAttribute('height', '12');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2.5');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.marginRight = '5px';
+        svg.style.flexShrink = '0';
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z');
+
+        const polyline1 = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        polyline1.setAttribute('points', '17 21 17 13 7 13 7 21');
+
+        const polyline2 = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        polyline2.setAttribute('points', '7 3 7 8 15 8');
+
+        svg.append(path, polyline1, polyline2);
+
+        const span = document.createElement('span');
+        span.textContent = 'Simpan sebagai default';
+
+        saveBtn.append(svg, span);
 
         saveBtn.addEventListener('click', (e) => {
           e.preventDefault();
