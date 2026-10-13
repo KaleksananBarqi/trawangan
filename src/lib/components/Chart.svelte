@@ -110,6 +110,8 @@
   let resizeObserver: ResizeObserver | null = null;
   let isMounted = false;
   let unsubAlerts: (() => void) | null = null;
+  let isHandpullActive = $state(false);
+  let unsubDrawingState: (() => void) | null = null;
 
   let chartSettingsObserver: MutationObserver | null = null;
   let activeChartDefaultConfig: any = null;
@@ -1596,9 +1598,45 @@
         isDismissedConnectionWarning = false;
       }
     });
+
+    // Langganan state mode gambar/handpull dari controller
+    unsubDrawingState = chartDrawingController.subscribe((state) => {
+      isHandpullActive = state.activeTool === 'handpull';
+    });
+
+    // Keyboard navigation Spacebar hold untuk Hand-Pull Pan sementara
+    window.addEventListener('keydown', handleWindowKeyDown);
+    window.addEventListener('keyup', handleWindowKeyUp);
   });
 
+  function handleWindowKeyDown(e: KeyboardEvent) {
+    if (e.code === 'Space' && !e.repeat) {
+      const target = e.target as HTMLElement;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || target?.isContentEditable) return;
+      if (!replaySession.getSnapshot().active) {
+        chartDrawingController.setSpaceTemporaryHandpull(true);
+      }
+    }
+  }
+
+  function handleWindowKeyUp(e: KeyboardEvent) {
+    if (e.code === 'Space') {
+      chartDrawingController.setSpaceTemporaryHandpull(false);
+    }
+  }
+
   onDestroy(() => {
+    if (unsubDrawingState) {
+      unsubDrawingState();
+      unsubDrawingState = null;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('keydown', handleWindowKeyDown);
+      window.removeEventListener('keyup', handleWindowKeyUp);
+    }
+
     if (unsubFeedConnection) {
       unsubFeedConnection();
       unsubFeedConnection = null;
@@ -2462,7 +2500,7 @@
 </script>
 
 <div 
-  class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''}"
+  class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''} {isHandpullActive ? 'handpull-mode' : ''}"
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}
   onpointerdown={() => { isPointerActiveOnChart = true; scheduleBadgePositionUpdate(); }}
@@ -2640,6 +2678,18 @@
 
   .chart-wrapper.selecting-cutoff :global(canvas) {
     cursor: crosshair !important;
+  }
+
+  .chart-wrapper.handpull-mode,
+  .chart-wrapper.handpull-mode :global(.vela-container),
+  .chart-wrapper.handpull-mode :global(canvas) {
+    cursor: grab !important;
+  }
+
+  .chart-wrapper.handpull-mode:active,
+  .chart-wrapper.handpull-mode:active :global(.vela-container),
+  .chart-wrapper.handpull-mode:active :global(canvas) {
+    cursor: grabbing !important;
   }
 
   .vela-container {

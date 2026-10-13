@@ -1,6 +1,8 @@
 <script lang="ts">
   import {
     MousePointer,
+    Hand,
+    Eraser,
     TrendingUp,
     Minus,
     ArrowUpRight,
@@ -103,7 +105,8 @@
   }: Props = $props();
 
   // State flyout menu
-  let openFlyout = $state<DrawingGroupId | null>(null);
+  let openFlyout = $state<DrawingGroupId | 'pointer' | null>(null);
+  let lastUsedPointerTool = $state<DrawingToolType>('cursor');
   let searchQuery = $state('');
   let isFavoritesBarVisible = $state(true);
 
@@ -168,6 +171,8 @@
   // Pemetaan Ikon Dinamis per Tool
   function getIconComponent(toolId: DrawingToolType | null) {
     if (!toolId || toolId === 'cursor') return MousePointer;
+    if (toolId === 'handpull') return Hand;
+    if (toolId === 'eraser') return Eraser;
 
     switch (toolId) {
       // Lines
@@ -320,6 +325,57 @@
     return group.tools.some((t) => t.id === activeTool);
   }
 
+  const POINTER_TOOLS: Array<{ id: DrawingToolType; label: string; shortcut?: string }> = [
+    { id: 'cursor', label: 'Kursor (Seleksi & Pindah)', shortcut: 'Esc' },
+    { id: 'handpull', label: 'Hand-Pull (Geser Kanvas)', shortcut: 'H' },
+    { id: 'eraser', label: 'Penghapus Interaktif' }
+  ];
+
+  function isPointerActive(): boolean {
+    return activeTool === 'cursor' || activeTool === 'handpull' || activeTool === 'eraser' || activeTool === null;
+  }
+
+  function getCurrentPointerTool(): DrawingToolType {
+    if (activeTool === 'handpull' || activeTool === 'eraser' || activeTool === 'cursor') {
+      return activeTool;
+    }
+    return lastUsedPointerTool;
+  }
+
+  function handleSelectPointerTool(toolId: DrawingToolType) {
+    lastUsedPointerTool = toolId;
+    onSelectTool(toolId);
+    openFlyout = null;
+  }
+
+  function togglePointerFlyout(e?: MouseEvent | Event) {
+    if (openFlyout === 'pointer') {
+      openFlyout = null;
+    } else {
+      openFlyout = 'pointer';
+      if (e && e.currentTarget) {
+        const target = e.currentTarget as HTMLElement;
+        const toolItem = target.closest('.tool-item') || target;
+        const rect = toolItem.getBoundingClientRect();
+        flyoutTop = Math.max(8, Math.min(rect.top - 4, window.innerHeight - 440));
+      }
+    }
+  }
+
+  function handleDirectPointerClick() {
+    const current = getCurrentPointerTool();
+    if (activeTool === current) {
+      togglePointerFlyout();
+    } else {
+      handleSelectPointerTool(current);
+    }
+  }
+
+  let currentPtrTool = $derived(getCurrentPointerTool());
+  let CurrentPtrIcon = $derived(getIconComponent(currentPtrTool));
+  let isPtrActive = $derived(isPointerActive());
+  let isPointerFlyoutOpen = $derived(openFlyout === 'pointer');
+
   // Menutup flyout jika pengguna mengklik di luar area toolbar atau flyout
   function handleDocumentClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -341,16 +397,70 @@
 <!-- Toolbar Vertikal Utama Trawangan (Docked Structural Rail) -->
 <aside class="drawing-toolbar glass-panel {isCollapsed ? 'collapsed' : ''}" aria-label="Bilah Alat Gambar Teknikal">
   <div class="toolbar-scroll-container" onscroll={() => { if (openFlyout) openFlyout = null; }}>
-  <!-- 1. Cursor / Selection Tool -->
+  <!-- 1. Flyout Pointer & Navigasi (Cursor, Handpull, Eraser) -->
   <div class="tool-item">
-    <button
-      type="button"
-      class="tool-btn {activeTool === 'cursor' || activeTool === null ? 'active' : ''}"
-      title="Cursor (Pan & Pilih Objek)"
-      onclick={() => handleSelectToolItem('cursor')}
+    <div
+      class="tool-btn-wrapper {isPtrActive ? 'active' : ''} {isPointerFlyoutOpen ? 'flyout-open' : ''}"
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        togglePointerFlyout(e);
+      }}
     >
-      <MousePointer size={15} />
-    </button>
+      <button
+        type="button"
+        class="tool-btn"
+        title="{currentPtrTool === 'handpull' ? 'Hand-Pull (Geser Kanvas - H)' : currentPtrTool === 'eraser' ? 'Penghapus Interaktif' : 'Kursor (Seleksi Objek)'} (Klik untuk aktifkan, klik kanan atau panah untuk pilihan)"
+        onclick={handleDirectPointerClick}
+      >
+        <CurrentPtrIcon size={15} />
+      </button>
+      <button
+        type="button"
+        class="sub-arrow-btn"
+        title="Buka pilihan Navigasi Pointer & Hand-Pull"
+        onclick={(e) => {
+          e.stopPropagation();
+          togglePointerFlyout(e);
+        }}
+      >
+        <span class="sub-arrow">▸</span>
+      </button>
+    </div>
+
+    <!-- Submenu Flyout Pointer & Navigasi -->
+    {#if isPointerFlyoutOpen}
+      <div
+        class="flyout-menu obsidian-panel"
+        style="top: {flyoutTop}px;"
+        onclick={(e) => e.stopPropagation()}
+      >
+        <div class="flyout-header-row">
+          <span class="flyout-header-title">Pointer & Navigasi</span>
+          <span class="flyout-count-badge mono-nums">3</span>
+        </div>
+
+        <div class="flyout-tools-list">
+          {#each POINTER_TOOLS as pTool (pTool.id)}
+            {@const PtrIcon = getIconComponent(pTool.id)}
+            {@const isThisActive = (activeTool === pTool.id) || (pTool.id === 'cursor' && activeTool === null)}
+
+            <button
+              type="button"
+              class="flyout-tool-row {isThisActive ? 'active-row' : ''}"
+              onclick={() => handleSelectPointerTool(pTool.id)}
+            >
+              <div class="tool-label-group">
+                <PtrIcon size={14} class="tool-icon" />
+                <span class="tool-name">{pTool.label}</span>
+              </div>
+              {#if pTool.shortcut}
+                <span class="tool-shortcut-badge mono-nums">{pTool.shortcut}</span>
+              {/if}
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
   </div>
 
   <div class="tool-divider"></div>

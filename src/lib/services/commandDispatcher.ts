@@ -330,6 +330,21 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       match: { alt: true, ctrlOrMeta: false, key: 't', code: 'KeyT' },
     },
     {
+      id: 'draw-handpull',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['H'],
+      desc: 'Beralih antara Mode Hand-Pull (Tangan Geser Grafik) dan Kursor',
+      match: {
+        customMatch: (e) =>
+          !isEditableElement(e.target) &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey &&
+          !e.shiftKey &&
+          (e.key === 'h' || e.key === 'H' || e.code === 'KeyH'),
+      },
+    },
+    {
       id: 'draw-hline',
       category: 'Alat Gambar (Drawing Tools)',
       keys: ['Alt', 'H'],

@@ -71,8 +71,10 @@ export interface ActiveIndicatorInfo {
 }
 
 export type DrawingToolType =
-  // Kontrol kursor & ukur
+  // Kontrol kursor, navigasi & ukur
   | 'cursor'
+  | 'handpull'
+  | 'eraser'
   | 'measure'
   // Garis (Lines)
   | 'trendline'

@@ -173,4 +173,85 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
 
     unbind();
   });
+
+  await t.test('5. Hand-Pull Mode mengisolasi canvas pan dan menonaktifkan claim gambar pada seluruh sel', () => {
+    const controller = new ChartDrawingController();
+
+    const mockNative1 = { input: { drawings: true } };
+    const mockNative2 = { input: { drawings: true } };
+
+    const mockCell1 = { chart: { renderer: { renderer: mockNative1 }, drawings: { setMode: () => {}, setTool: () => {} } } };
+    const mockCell2 = { chart: { renderer: { renderer: mockNative2 }, drawings: { setMode: () => {}, setTool: () => {} } } };
+
+    const mockWorkspace = {
+      active: mockCell1,
+      cells: () => [mockCell1, mockCell2]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+
+    // Aktifkan handpull
+    controller.setTool('handpull');
+    assert.equal(controller.isHandpullMode(), true);
+    assert.equal(controller.getSnapshot().activeTool, 'handpull');
+    assert.equal(mockNative1.input.drawings, false, 'Cell 1 drawings claim harus dimatikan saat handpull');
+    assert.equal(mockNative2.input.drawings, false, 'Cell 2 drawings claim harus dimatikan saat handpull');
+
+    // Kembalikan ke trendline
+    controller.setTool('trendline');
+    assert.equal(controller.isHandpullMode(), false);
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+    assert.equal(mockNative1.input.drawings, true, 'Cell 1 drawings claim harus dipulihkan');
+    assert.equal(mockNative2.input.drawings, true, 'Cell 2 drawings claim harus dipulihkan');
+  });
+
+  await t.test('6. Toggle Hand-Pull & Shortcut H beralih secara deterministik', () => {
+    const controller = new ChartDrawingController();
+    const dispatcher = new CommandDispatcher();
+
+    dispatcher.register({
+      id: 'draw-handpull',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['H'],
+      desc: 'Hand-Pull Mode',
+      match: {
+        customMatch: (e) => (e.key === 'h' || e.key === 'H') && !e.ctrlKey && !e.altKey && !e.metaKey
+      }
+    });
+
+    const unbind = controller.bindToDispatcher(dispatcher);
+
+    // Default cursor/null
+    assert.equal(controller.getSnapshot().activeTool, null);
+
+    // Tekan H pertama kali -> handpull
+    const hKeyEv = { key: 'h', code: 'KeyH', ctrlKey: false, altKey: false, metaKey: false, shiftKey: false } as any;
+    dispatcher.dispatch(hKeyEv);
+    assert.equal(controller.getSnapshot().activeTool, 'handpull');
+
+    // Tekan H kedua kali -> kembali ke cursor
+    dispatcher.dispatch(hKeyEv);
+    assert.equal(controller.getSnapshot().activeTool, 'cursor');
+
+    unbind();
+  });
+
+  await t.test('7. Spacebar Hold Temporary Hand-Pull menyimpan dan memulihkan tool sebelumnya', () => {
+    const controller = new ChartDrawingController();
+
+    // User sedang memilih alat gambar trendline
+    controller.setTool('trendline');
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+
+    // User menekan dan menahan Spacebar (keydown)
+    controller.setSpaceTemporaryHandpull(true);
+    assert.equal(controller.getSnapshot().activeTool, 'handpull');
+    assert.equal(controller.isHandpullMode(), true);
+
+    // User melepaskan Spacebar (keyup) -> harus kembali ke trendline
+    controller.setSpaceTemporaryHandpull(false);
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+    assert.equal(controller.isHandpullMode(), false);
+  });
 });
+

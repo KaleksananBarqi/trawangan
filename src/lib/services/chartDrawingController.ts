@@ -66,10 +66,62 @@ export class ChartDrawingController {
   }
 
   /**
+   * Helper internal untuk mengambil seluruh cells dari workspace
+   */
+  private getAllCells(): any[] {
+    if (!this.workspace) return [];
+    if (typeof this.workspace.cells === 'function') {
+      try {
+        return this.workspace.cells() || [];
+      } catch (_) {}
+    }
+    return this.workspace.active ? [this.workspace.active] : [];
+  }
+
+  /**
    * Helper internal untuk mengambil instans active chart dari workspace
    */
   private getActiveChart(): any {
     return this.workspace?.active?.chart ?? null;
+  }
+
+  private previousToolBeforeSpace: DrawingToolType | null = null;
+
+  /**
+   * Beralih antara mode Hand-Pull dan Kursor (Shortcut H)
+   */
+  toggleHandpull(): void {
+    if (this.activeTool === 'handpull') {
+      this.setTool('cursor');
+    } else {
+      this.setTool('handpull');
+    }
+  }
+
+  /**
+   * Mengaktifkan mode Hand-Pull sementara saat Spacebar ditahan,
+   * dan mengembalikan ke tool sebelumnya saat Spacebar dilepas.
+   */
+  setSpaceTemporaryHandpull(active: boolean): void {
+    if (active) {
+      if (this.activeTool !== 'handpull' && this.previousToolBeforeSpace === null) {
+        this.previousToolBeforeSpace = this.activeTool ?? 'cursor';
+        this.setTool('handpull');
+      }
+    } else {
+      if (this.previousToolBeforeSpace !== null) {
+        const restoreTool = this.previousToolBeforeSpace;
+        this.previousToolBeforeSpace = null;
+        this.setTool(restoreTool);
+      }
+    }
+  }
+
+  /**
+   * Memeriksa apakah mode Hand-Pull sedang aktif
+   */
+  isHandpullMode(): boolean {
+    return this.activeTool === 'handpull';
   }
 
   /**
@@ -146,13 +198,41 @@ export class ChartDrawingController {
    * Atur alat gambar aktif
    */
   setTool(tool: DrawingToolType | null): void {
+    const prevTool = this.activeTool;
     this.activeTool = tool;
+
+    const isEnteringHandpull = tool === 'handpull';
+    const isExitingHandpull = prevTool === 'handpull' && tool !== 'handpull';
+
+    // Kelola isolasi input drawing pada seluruh sel saat mode handpull aktif
+    if (isEnteringHandpull || isExitingHandpull) {
+      for (const cell of this.getAllCells()) {
+        try {
+          const renderer = cell?.chart?.renderer;
+          const native = renderer?.renderer || renderer;
+          if (native?.input) {
+            if (isEnteringHandpull) {
+              if (native.__origDrawingsInteractive === undefined) {
+                native.__origDrawingsInteractive = native.input.drawings ?? true;
+              }
+              native.input.drawings = false; // Matikan claim seleksi objek gambar
+            } else if (isExitingHandpull) {
+              native.input.drawings = native.__origDrawingsInteractive ?? true;
+              delete native.__origDrawingsInteractive;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
     const activeChart = this.getActiveChart();
     if (activeChart?.drawings) {
       try {
         if (tool === 'measure') {
           activeChart.drawings.setMode('measure');
-        } else if (tool === 'cursor' || tool === null) {
+        } else if (tool === 'eraser') {
+          activeChart.drawings.setMode('eraser');
+        } else if (tool === 'handpull' || tool === 'cursor' || tool === null) {
           activeChart.drawings.setMode(null);
           activeChart.drawings.setTool(null);
         } else {
@@ -416,6 +496,13 @@ export class ChartDrawingController {
     unbinders.push(
       dispatcher.bindHandler('draw-trendline', () => {
         this.setTool(this.activeTool === 'trendline' ? null : 'trendline');
+      })
+    );
+
+    // Hand-Pull Pan Mode (H)
+    unbinders.push(
+      dispatcher.bindHandler('draw-handpull', () => {
+        this.toggleHandpull();
       })
     );
 
