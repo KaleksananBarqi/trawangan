@@ -151,6 +151,23 @@
   }
 
   /**
+   * Sinkronisasi watermark ke seluruh cell (Bug 5)
+   */
+  function syncWatermarkToAllCells(visible: boolean) {
+    if (!workspace) return;
+    try {
+      const cells = getAllWorkspaceCells();
+      for (const cell of cells) {
+        if (cell && typeof cell.setWatermarkVisible === 'function') {
+          cell.setWatermarkVisible(visible);
+        }
+      }
+    } catch (e) {
+      console.warn('setWatermarkVisible error:', e);
+    }
+  }
+
+  /**
    * Helper internal untuk mengambil seluruh cell yang aktif di workspace secara tangguh
    */
   function getAllWorkspaceCells(): any[] {
@@ -1706,6 +1723,9 @@
         if (activeChartDefaultConfig) {
           applySavedChartDefaultConfig();
         }
+
+        // Terapkan watermark (Bug 5) ke cell yang baru dibuat
+        syncWatermarkToAllCells(showWatermark);
       } catch (e) {
         console.warn('setLayout error:', e);
       } finally {
@@ -1755,16 +1775,7 @@
   // Reaktif terhadap watermark (Bug 5)
   $effect(() => {
     if (isMounted && workspace) {
-      try {
-        const cells = getAllWorkspaceCells();
-        for (const cell of cells as any[]) {
-          if (cell && typeof cell.setWatermarkVisible === 'function') {
-            cell.setWatermarkVisible(showWatermark);
-          }
-        }
-      } catch (e) {
-        console.warn('setWatermarkVisible error:', e);
-      }
+      syncWatermarkToAllCells(showWatermark);
     }
   });
 
