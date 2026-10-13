@@ -75,3 +75,12 @@ _Avoid_: Static UTC chart, Disconnected timezone
 **Adaptive UI Typography Scale**:
 Sistem penskalaan visual antarmuka terminal modular berbasis faktor `--font-scale` yang menjamin seluruh panel, label instrumen, dan skala sumbu harga membesar/mengecil secara seragam sesuai konfigurasi kerapatan layar.
 _Avoid_: Fixed pixel text, Rigid layout
+
+**Hand-Pull Pan Mode**:
+Mode navigasi grafik interaktif yang mengubah kursor menjadi tangan cengkeram (`grab`/`grabbing`) dan mengisolasi gestur geser kanvas sepenuhnya dari manipulasi atau seleksi titik jangkar objek gambar.
+_Avoid_: Canvas scroll mode, Dragging tool, Screen pan
+
+**Zero-Omission Drawing Suite**:
+Prinsip penyediaan 100% seluruh 68 varian alat gambar analitikal dan utilitas bawaan engine Vela secara lengkap di bilah alat gambar Trawangan tanpa pengurangan fitur.
+_Avoid_: Partial toolset, Basic drawing kit, Reduced tools
+

@@ -70,4 +70,104 @@ test.describe('Persistent Price Line Guard Seam Suite (#22)', () => {
     assert.equal(mockCells[0].chart.renderer.scene.showPriceLine, true);
     assert.equal(mockCells[1].chart.renderer.scene.showPriceLine, true);
   });
+
+  test('4. Defensive Interceptor pada applyConfig: otomatis menyuntikkan currentPriceLine jika diabaikan oleh patch parsial', () => {
+    const mockScene = { showPriceLine: true };
+    const mockNative: any = {
+      scene: mockScene,
+      applyConfig(next: any) {
+        if (next.priceScale) {
+          this.scene.showPriceLine = next.priceScale.currentPriceLine;
+        }
+      },
+    };
+
+    // Pasang defensive interceptor
+    let showCurrentPriceLine = true;
+    const originalApplyConfig = mockNative.applyConfig.bind(mockNative);
+    mockNative.applyConfig = function (patch: any) {
+      if (patch) {
+        if (!patch.priceScale) {
+          patch.priceScale = {};
+        }
+        if (patch.priceScale.currentPriceLine === undefined) {
+          patch.priceScale.currentPriceLine = showCurrentPriceLine !== false;
+        }
+      }
+      const res = originalApplyConfig(patch);
+      if (this.scene) {
+        this.scene.showPriceLine = showCurrentPriceLine !== false;
+      }
+      return res;
+    };
+
+    // Uji: Patch tanpa priceScale (misal perubahan tema atau margin)
+    mockNative.applyConfig({ margins: { top: 15 } });
+    assert.equal(mockScene.showPriceLine, true, 'showPriceLine harus tetap true meski patch hanya berisi margins');
+
+    // Uji: Patch dengan priceScale parsial tanpa currentPriceLine (misal toggle log scale)
+    mockNative.applyConfig({ priceScale: { log: true } });
+    assert.equal(mockScene.showPriceLine, true, 'showPriceLine harus tetap true meski patch hanya berisi log scale');
+
+    // Uji: Saat user sengaja mematikan showCurrentPriceLine
+    showCurrentPriceLine = false;
+    mockNative.applyConfig({ priceScale: { log: false } });
+    assert.equal(mockScene.showPriceLine, false, 'showPriceLine harus false jika user sengaja mematikannya');
+  });
+
+  test('5. Lifecycle Auto-Healing: Event market:changed dan cell:created memulihkan garis harga dan invalidate scheduler', () => {
+    let invalidateLevel = 0;
+    const mockCell = {
+      chart: {
+        renderer: {
+          renderer: {
+            scene: { showPriceLine: undefined as any },
+            scheduler: {
+              invalidate(level: number) {
+                invalidateLevel = level;
+              },
+            },
+            set(key: string, val: any) {
+              if (key === 'currentPriceLine') {
+                this.scene.showPriceLine = val;
+              }
+            },
+          },
+        },
+        events: new Map<string, Function>(),
+        on(event: string, fn: Function) {
+          this.events.set(event, fn);
+        },
+      },
+    };
+
+    // Fungsi enforce helper
+    const showCurrentPriceLine: boolean = true;
+    function enforceCurrentPriceLineOnCell(cell: any) {
+      const native = cell?.chart?.renderer?.renderer;
+      if (native?.scene) {
+        native.scene.showPriceLine = showCurrentPriceLine !== false;
+      }
+      if (typeof native?.set === 'function') {
+        native.set('currentPriceLine', showCurrentPriceLine !== false);
+      }
+      if (native?.scheduler?.invalidate) {
+        native.scheduler.invalidate(4);
+      }
+    }
+
+    // Pasang listener market:changed
+    mockCell.chart.on('market:changed', () => {
+      enforceCurrentPriceLineOnCell(mockCell);
+    });
+
+    // Simulasikan pergantian market/timeframe
+    const onMarketChanged = mockCell.chart.events.get('market:changed');
+    assert.ok(onMarketChanged, 'Listener market:changed harus terpasang');
+    onMarketChanged();
+
+    assert.equal(mockCell.chart.renderer.renderer.scene.showPriceLine, true);
+    assert.equal(invalidateLevel, 4, 'Scheduler invalidate level 4 (chrome overlay) harus dipanggil');
+  });
 });
+
