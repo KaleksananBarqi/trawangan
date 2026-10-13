@@ -275,7 +275,7 @@ describe('Multi-Chart Synchronization Engine Unit Tests', () => {
     const syncedY = 250;
     assert.strictEqual(isCrosshairInBounds(syncedX, syncedY, canvasWidth, canvasHeight), true);
 
-    // Kasus 2: Viewport desinkron -> koordinat x jatuh di luar rentang kanvas (bug sebelumnya)
+    // Kasus 2: Viewport desinkron -> koordinat x jatuh di luar rentang kanvas
     const outOfBoundsX = -150;
     const outOfBoundsY = 250;
     assert.strictEqual(isCrosshairInBounds(outOfBoundsX, outOfBoundsY, canvasWidth, canvasHeight), false);
