@@ -1098,6 +1098,7 @@
           onActiveCellChange={handleActiveCellChange}
           onStrategyUpdate={handleStrategyUpdate}
           onRequestCreateAlert={handleRequestCreateAlert}
+          onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
         />
       </div>
 
