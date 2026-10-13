@@ -80,6 +80,10 @@ class UpdateService {
   private listeners: Set<(state: UpdateState) => void> = new Set();
   private hasInitializedVersion = false;
 
+  private cachedReleaseData: any = null;
+  private lastFetchTime: number = 0;
+  private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
   constructor() {
     this.initCurrentVersion();
   }
@@ -136,15 +140,25 @@ class UpdateService {
     }
 
     try {
-      const res = await fetch('https://api.github.com/repos/KaleksananBarqi/trawangan/releases/latest', {
-        headers: { Accept: 'application/vnd.github.v3+json' },
-      });
+      let data: any;
+      const now = Date.now();
 
-      if (!res.ok) {
-        throw new Error(`Gagal mengambil data rilis (HTTP ${res.status})`);
+      if (this.cachedReleaseData && (now - this.lastFetchTime) < this.CACHE_TTL_MS) {
+        data = this.cachedReleaseData;
+      } else {
+        const res = await fetch('https://api.github.com/repos/KaleksananBarqi/trawangan/releases/latest', {
+          headers: { Accept: 'application/vnd.github.v3+json' },
+        });
+
+        if (!res.ok) {
+          throw new Error(`Gagal mengambil data rilis (HTTP ${res.status})`);
+        }
+
+        data = await res.json();
+        this.cachedReleaseData = data;
+        this.lastFetchTime = now;
       }
 
-      const data = await res.json();
       const latestTag = data.tag_name || 'v0.0.0';
       const latestVersion = latestTag.replace(/^v/, '');
       const currentVersion = this.state.currentVersion;
