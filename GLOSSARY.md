@@ -52,5 +52,17 @@ _Avoid_: Network monitor, Error catcher
 Pasangan perdagangan aset kripto dengan berbagai mata uang kuotasi (seperti IDR, USDT, USD) yang dapat dicari dan dianalisis lintas bursa.
 _Avoid_: Fiat pair, Non-USDT pair
 
+**Omni-Search Watchlist**:
+Bilah input pintar pada bilah sisi Watchlist yang menyatukan penyaringan instrumen lokal tersimpan dengan eksplorasi instrumen global bursa multi-provider secara real-time.
+_Avoid_: Local filter only, Disconnected search modal
+
+**Draggable Alert Line**:
+Garis visual horizontal penanda sinyal batas harga pada kanvas grafik yang dapat digeser (drag-and-drop) secara interaktif untuk memperbarui level target harga secara instan tanpa dialog modal.
+_Avoid_: Static alert line, Read-only alert badge
+
+**Persistent Price Line Guard**:
+Mekanisme pertahanan di subsistem grafik yang menjamin garis harga terkini (last price line) tetap aktif dan terhindar dari reset senyap saat mutasi konfigurasi kanvas, pergantian timeframe, atau perubahan tata letak sel.
+_Avoid_: Disappearing price line, Flaky last price
+
 
 
