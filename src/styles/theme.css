@@ -7,8 +7,15 @@
   --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-code: 'JetBrains Mono', 'Fira Code', monospace;
   --font-sans: var(--font-ui);
-  --font-mono: var(--font-code);
   --base-font-size: 12px;
+  --font-scale: 1;
+  --font-size-2xs: calc(8.5px * var(--font-scale, 1));
+  --font-size-xs: calc(9px * var(--font-scale, 1));
+  --font-size-sm: calc(10px * var(--font-scale, 1));
+  --font-size-base: calc(11px * var(--font-scale, 1));
+  --font-size-md: calc(12px * var(--font-scale, 1));
+  --font-size-lg: calc(13px * var(--font-scale, 1));
+  --font-size-xl: calc(14px * var(--font-scale, 1));
 
   /* Default Signature Palette (#0F0F0F + White Bull + Hot Pink Bear) */
   --bg-darkest: #0F0F0F;        /* True Dark Canvas Foundation */

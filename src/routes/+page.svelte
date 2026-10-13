@@ -108,6 +108,7 @@
   let isSettingsModalOpen = $state(false);
   let isIndicatorModalOpen = $state(false);
   let isSymbolSearchOpen = $state(false);
+  let symbolSearchInitialQuery = $state('');
   let isShortcutCheatsheetOpen = $state(false);
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
@@ -341,6 +342,7 @@
         isConsoleDrawerOpen = !isConsoleDrawerOpen;
       }),
       commandDispatcher.bindHandler('search-symbol', () => {
+        symbolSearchInitialQuery = '';
         isSymbolSearchOpen = true;
       }),
       commandDispatcher.bindHandler('help-cheatsheet-f1', () => {
@@ -471,9 +473,14 @@
     });
 
     const unbindGlobalListener = commandDispatcher.attachGlobalListener(window);
+    const unsubTypeToSearch = commandDispatcher.onTypeToSearch((char) => {
+      symbolSearchInitialQuery = char;
+      isSymbolSearchOpen = true;
+    });
 
     return () => {
       unbindGlobalListener();
+      unsubTypeToSearch();
       unsubDrawingState();
       commandUnbinds.forEach((u) => u());
     };
@@ -488,7 +495,33 @@
     if (unsubAlertsList) unsubAlertsList();
   });
 
-  function handleSymbolChange(newSym: string) {
+  function handleSymbolChange(newSym: string, providerHint?: string) {
+    const clean = newSym.trim().toUpperCase();
+
+    // Auto-switch provider bursa jika kuotasi IDR (Indodax) atau USDT/.P (Binance/Bitunix)
+    if (providerHint?.toLowerCase().includes('indodax') || clean.endsWith('IDR')) {
+      if (activeProviderId !== 'indodax') {
+        marketFeed.setActiveProvider('indodax');
+        activeProviderId = 'indodax';
+        telemetryService.setActiveProvider('indodax');
+        addSystemLog(`Bursa dialihkan ke Indodax untuk ${newSym}`, 'info');
+      }
+    } else if (providerHint?.toLowerCase().includes('bitunix')) {
+      if (activeProviderId !== 'bitunix') {
+        marketFeed.setActiveProvider('bitunix');
+        activeProviderId = 'bitunix';
+        telemetryService.setActiveProvider('bitunix');
+        addSystemLog(`Bursa dialihkan ke Bitunix untuk ${newSym}`, 'info');
+      }
+    } else if (clean.includes('USDT') || clean.endsWith('.P') || providerHint?.toLowerCase().includes('binance')) {
+      if (activeProviderId === 'indodax') {
+        marketFeed.setActiveProvider('binance');
+        activeProviderId = 'binance';
+        telemetryService.setActiveProvider('binance');
+        addSystemLog(`Bursa dialihkan ke Binance untuk ${newSym}`, 'info');
+      }
+    }
+
     activeSymbol = newSym;
     addSystemLog(`Simbol berganti ke ${newSym}`, 'info');
   }
@@ -1005,7 +1038,10 @@
       settingsInitialTab = tab as any;
       isSettingsModalOpen = true;
     }}
-    onOpenSymbolSearch={() => (isSymbolSearchOpen = true)}
+    onOpenSymbolSearch={() => {
+      symbolSearchInitialQuery = '';
+      isSymbolSearchOpen = true;
+    }}
     favoriteTimeframes={appSettings.favoriteTimeframes}
     customTimeframes={appSettings.customTimeframes}
     onFavoriteTimeframesChange={(tfs) => handleUpdateSettings({ favoriteTimeframes: tfs })}
@@ -1089,6 +1125,7 @@
           providerId={activeProviderId}
           themePreset={appSettings.themePreset || 'signature'}
           fontSize={appSettings.fontSize || 12}
+          timezone={appSettings.timezone || 'Asia/Jakarta'}
           {syncConfig}
           showWatermark={appSettings.showWatermark}
           showCurrentPriceLine={appSettings.showCurrentPriceLine ?? true}
@@ -1143,7 +1180,10 @@
           onRemoveIndicator={handleRemoveIndicator}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
-          onOpenSymbolSearch={() => (isSymbolSearchOpen = true)}
+          onOpenSymbolSearch={() => {
+            symbolSearchInitialQuery = '';
+            isSymbolSearchOpen = true;
+          }}
         />
       {/if}
 
@@ -1232,9 +1272,13 @@
     activeSymbol={activeSymbol}
     {activeProviderId}
     {watchlistSymbols}
+    initialQuery={symbolSearchInitialQuery}
     onSelectSymbol={handleSymbolChange}
     onToggleWatchlistSymbol={handleToggleWatchlistSymbolFromSearch}
-    onClose={() => (isSymbolSearchOpen = false)}
+    onClose={() => {
+      isSymbolSearchOpen = false;
+      symbolSearchInitialQuery = '';
+    }}
   />
 
 

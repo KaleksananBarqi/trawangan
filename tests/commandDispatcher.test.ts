@@ -218,4 +218,129 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     dispatcher.dispatch(event);
     assert.equal(toggleState, true);
   });
+
+  await t.test('8. Type-to-Search Canvas Guard: Keystroke alfanumerik pada kanvas memicu pencarian', () => {
+    const dispatcher = new CommandDispatcher();
+    let typedChar = '';
+    const unbind = dispatcher.onTypeToSearch((char) => {
+      typedChar = char;
+    });
+
+    let prevented = false;
+    let stopped = false;
+    let listenerHandler: ((e: any) => void) | null = null;
+    const mockWindow = {
+      addEventListener: (type: string, fn: any) => {
+        if (type === 'keydown') listenerHandler = fn;
+      },
+      removeEventListener: () => {
+        listenerHandler = null;
+      },
+    } as unknown as Window;
+
+    const unbindGlobal = dispatcher.attachGlobalListener(mockWindow);
+
+    // 1. Ketik huruf 'b' di luar elemen input
+    if (listenerHandler) {
+      (listenerHandler as (e: any) => void)({
+        key: 'b',
+        code: 'KeyB',
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        target: { tagName: 'CANVAS' },
+        preventDefault: () => { prevented = true; },
+        stopPropagation: () => { stopped = true; },
+      });
+    }
+
+    assert.equal(typedChar, 'B', 'Harus mengonversi ke huruf kapital B');
+    assert.equal(prevented, true, 'Harus memanggil preventDefault');
+    assert.equal(stopped, true, 'Harus memanggil stopPropagation');
+
+    unbind();
+    unbindGlobal();
+  });
+
+  await t.test('9. Input Element Guard: Pengetikan di dalam input/textarea tidak memicu Type-to-Search', () => {
+    const dispatcher = new CommandDispatcher();
+    let triggered = false;
+    dispatcher.onTypeToSearch(() => {
+      triggered = true;
+    });
+
+    let listenerHandler: ((e: any) => void) | null = null;
+    const mockWindow = {
+      addEventListener: (type: string, fn: any) => {
+        if (type === 'keydown') listenerHandler = fn;
+      },
+      removeEventListener: () => {},
+    } as unknown as Window;
+
+    dispatcher.attachGlobalListener(mockWindow);
+
+    // Ketik huruf di dalam input teks
+    if (listenerHandler) {
+      (listenerHandler as (e: any) => void)({
+        key: 'e',
+        code: 'KeyE',
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        target: { tagName: 'INPUT' },
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+    }
+
+    assert.equal(triggered, false, 'Tidak boleh memicu Type-to-Search saat fokus di INPUT');
+  });
+
+  await t.test('10. Search Symbol Hotkey: Ctrl+K dan Cmd+K memicu pencarian dengan preventDefault', () => {
+    const dispatcher = new CommandDispatcher();
+    let searchTriggered = 0;
+
+    dispatcher.register({
+      id: 'search-symbol',
+      category: 'Navigasi & Simbol',
+      keys: ['Ctrl', 'K'],
+      desc: 'Buka modal pencarian',
+      match: { ctrlOrMeta: true, key: ['k', 'K'], code: 'KeyK' },
+      handler: () => {
+        searchTriggered++;
+      },
+    });
+
+    // Test dengan lowercase 'k'
+    let prev1 = false;
+    dispatcher.dispatch({
+      key: 'k',
+      code: 'KeyK',
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      target: null,
+      preventDefault: () => { prev1 = true; },
+      stopPropagation: () => {},
+    } as unknown as KeyboardEvent);
+
+    // Test dengan uppercase 'K' (misal saat CapsLock aktif)
+    let prev2 = false;
+    dispatcher.dispatch({
+      key: 'K',
+      code: 'KeyK',
+      ctrlKey: false,
+      metaKey: true, // Cmd di macOS
+      altKey: false,
+      shiftKey: false,
+      target: null,
+      preventDefault: () => { prev2 = true; },
+      stopPropagation: () => {},
+    } as unknown as KeyboardEvent);
+
+    assert.equal(searchTriggered, 2);
+    assert.equal(prev1, true);
+    assert.equal(prev2, true);
+  });
 });

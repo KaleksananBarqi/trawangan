@@ -78,6 +78,7 @@
     onRequestEditAlert?: (alert: PriceAlert) => void;
     themePreset?: ThemePresetId;
     fontSize?: number;
+    timezone?: string;
   }
 
   let {
@@ -88,6 +89,7 @@
     providerId = 'binance',
     themePreset = 'signature',
     fontSize = 12,
+    timezone = 'Asia/Jakarta',
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true,
     showCurrentPriceLine = true,
@@ -1176,6 +1178,20 @@
         if (activeChartDefaultConfig) {
           applySavedChartDefaultConfig(cell);
         }
+
+        // Terapkan preferensi zona waktu ke sel grafik Vela
+        if (timezone) {
+          try {
+            const renderer = (cell as any)?.chart?.renderer;
+            const native = renderer?.renderer || renderer;
+            if (typeof native?.set === 'function') {
+              native.set('timezone', timezone);
+            }
+            if (typeof (cell as any)?.applyTimezone === 'function') {
+              (cell as any).applyTimezone();
+            }
+          } catch (_) {}
+        }
       }
     } catch (e) {
       console.warn('attachCellListeners error:', e);
@@ -1252,6 +1268,41 @@
     }
   });
 
+  /**
+   * Terapkan zona waktu ke seluruh komponen Vela (workspace-level dan renderer-level)
+   */
+  export function applyWorkspaceTimezone(tz: string): void {
+    if (!workspace || !tz) return;
+    try {
+      // 1. Terapkan via API resmi workspace Vela (mengatur state workspace, bottombar, dan cell.applyTimezone)
+      if (typeof (workspace as any)?.setTimezone === 'function') {
+        (workspace as any).setTimezone(tz);
+      }
+      // 2. Redundansi langsung ke native WebGL2 renderer di seluruh cell aktif
+      for (const cell of getAllWorkspaceCells()) {
+        try {
+          const renderer = (cell as any)?.chart?.renderer;
+          const native = renderer?.renderer || renderer;
+          if (typeof native?.set === 'function') {
+            native.set('timezone', tz);
+          }
+          if (typeof (cell as any)?.applyTimezone === 'function') {
+            (cell as any).applyTimezone();
+          }
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.warn('Gagal menerapkan zona waktu ke Vela workspace:', err);
+    }
+  }
+
+  // Reaktif sinkronisasi zona waktu grafik ke seluruh sel workspace Vela saat timezone berubah
+  $effect(() => {
+    if (workspace && timezone) {
+      applyWorkspaceTimezone(timezone);
+    }
+  });
+
 
   onMount(() => {
     if (!chartContainer) return;
@@ -1282,6 +1333,7 @@
         live: true,
         currentPriceLine: showCurrentPriceLine,
         theme: velaTheme as any,
+        timezone: timezone || 'Asia/Jakarta',
         providers: {
           binance: () => new BinanceProvider(),
           indodax: () => new IndodaxProvider(),
@@ -1312,6 +1364,18 @@
         const cell = workspace?.cell(id);
         if (cell) {
           attachCellListeners(cell);
+          if (timezone) {
+            try {
+              const renderer = (cell as any)?.chart?.renderer;
+              const native = renderer?.renderer || renderer;
+              if (typeof native?.set === 'function') {
+                native.set('timezone', timezone);
+              }
+              if (typeof (cell as any)?.applyTimezone === 'function') {
+                (cell as any).applyTimezone();
+              }
+            } catch (_) {}
+          }
         }
       });
 

@@ -508,14 +508,14 @@
   }
 
   .active-sym-title {
-    font-size: 12px;
+    font-size: var(--font-size-md, 12px);
     font-weight: 700;
     color: var(--text-main);
     letter-spacing: 0.02em;
   }
 
   .provider-pill {
-    font-size: 8.5px;
+    font-size: var(--font-size-2xs, 8.5px);
     font-weight: 700;
     padding: 1px 4px;
     border-radius: 2px;
@@ -551,13 +551,6 @@
     color: var(--text-dim);
   }
 
-  .active-sym-title {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-main);
-    letter-spacing: 0.02em;
-  }
-
   .provider-dropdown-container {
     position: relative;
   }
@@ -566,7 +559,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 9px;
+    font-size: var(--font-size-xs, 9px);
     font-weight: 700;
     padding: 3px 6px;
     height: 26px;
@@ -667,13 +660,13 @@
   }
 
   .prov-name {
-    font-size: 11px;
+    font-size: var(--font-size-base, 11px);
     font-weight: 600;
     color: var(--text-main, #f1f5f9);
   }
 
   .prov-id {
-    font-size: 9px;
+    font-size: var(--font-size-xs, 9px);
     color: var(--text-dim, #64748b);
   }
 
@@ -690,7 +683,7 @@
   .add-custom-feed-link {
     background: none;
     border: none;
-    font-size: 10px;
+    font-size: var(--font-size-sm, 10px);
     font-weight: 600;
     color: var(--brand-primary, #00f090);
     cursor: pointer;
@@ -705,7 +698,7 @@
   }
 
   .kbd-hint {
-    font-size: 9px;
+    font-size: var(--font-size-xs, 9px);
     color: var(--text-dim);
     background-color: var(--bg-container);
     border: 1px solid var(--border-hairline);
@@ -733,7 +726,7 @@
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--font-size-base, 11px);
     cursor: pointer;
     transition: all 0.15s ease;
   }

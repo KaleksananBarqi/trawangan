@@ -9,7 +9,8 @@
     activeSymbol: string;
     activeProviderId?: string;
     watchlistSymbols?: string[];
-    onSelectSymbol: (symbol: string) => void;
+    initialQuery?: string;
+    onSelectSymbol: (symbol: string, providerId?: string) => void;
     onToggleWatchlistSymbol?: (symbol: string) => void;
     onClose: () => void;
   }
@@ -19,6 +20,7 @@
     activeSymbol,
     activeProviderId = 'binance',
     watchlistSymbols = [],
+    initialQuery = '',
     onSelectSymbol,
     onToggleWatchlistSymbol,
     onClose,
@@ -34,6 +36,13 @@
   let recentSearches = $state<string[]>([]);
   let liveTickerMap = $state<Record<string, { price: number; change24h: number }>>({});
   let availableProviders = $state<import('../types/market').ProviderConfig[]>([]);
+
+  // Sinkronkan initialQuery saat modal dibuka (misal dari Type-to-Search)
+  $effect(() => {
+    if (isOpen && initialQuery) {
+      query = initialQuery;
+    }
+  });
 
   function loadRecentSearches() {
     if (typeof localStorage !== 'undefined') {
@@ -88,6 +97,18 @@
     if (isOpen) {
       loadRecentSearches();
       marketFeed.getSavedProviders().then((res) => (availableProviders = res));
+
+      // Respon Instan (< 5ms) dari cache lokal / registry offline sebelum agregasi jaringan
+      const localResults = marketFeed.searchLocalSymbols(query, {
+        filterType,
+        exchange: selectedExchange as any,
+        quoteAsset: selectedQuote,
+      });
+      if (localResults.length > 0) {
+        searchResults = localResults;
+        selectedIndex = 0;
+      }
+
       marketFeed
         .searchSymbols(query, {
           filterType,
@@ -151,14 +172,14 @@
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (searchResults[selectedIndex]) {
-        handlePickSymbol(searchResults[selectedIndex].symbol);
+        handlePickSymbol(searchResults[selectedIndex].symbol, searchResults[selectedIndex].provider);
       }
     }
   }
 
-  function handlePickSymbol(sym: string) {
+  function handlePickSymbol(sym: string, providerId?: string) {
     addRecentSearch(sym);
-    onSelectSymbol(sym);
+    onSelectSymbol(sym, providerId);
     onClose();
   }
 
@@ -366,9 +387,9 @@
 
               <div
                 class="result-item-row {isHighlighted ? 'highlighted' : ''} {isCurrentChart ? 'current-active' : ''}"
-                onclick={() => handlePickSymbol(item.symbol)}
+                onclick={() => handlePickSymbol(item.symbol, item.provider)}
                 onkeydown={(e) => {
-                  if (e.key === 'Enter') handlePickSymbol(item.symbol);
+                  if (e.key === 'Enter') handlePickSymbol(item.symbol, item.provider);
                 }}
                 onmouseenter={() => (selectedIndex = index)}
                 role="button"
