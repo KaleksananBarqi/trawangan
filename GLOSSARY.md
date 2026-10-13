@@ -64,5 +64,14 @@ _Avoid_: Static alert line, Read-only alert badge
 Mekanisme pertahanan di subsistem grafik yang menjamin garis harga terkini (last price line) tetap aktif dan terhindar dari reset senyap saat mutasi konfigurasi kanvas, pergantian timeframe, atau perubahan tata letak sel.
 _Avoid_: Disappearing price line, Flaky last price
 
+**Type-to-Search Canvas Guard**:
+Kapabilitas deteksi keystroke alfanumerik instan langsung pada kanvas grafik yang memicu pembukaan modal pencarian simbol dengan karakter pertama terisi otomatis (meniru ergonomi standar TradingView) tanpa harus menekan kombinasi `Ctrl+K`.
+_Avoid_: Modal shortcut only, Hidden search trigger
 
+**Chart Timezone Sync**:
+Mekanisme transmisi preferensi zona waktu pengguna (default `Asia/Jakarta` UTC+7) secara reaktif ke seluruh sel WebGL2 kanvas grafik Vela dan sumbu waktu horizontal lilin.
+_Avoid_: Static UTC chart, Disconnected timezone
 
+**Adaptive UI Typography Scale**:
+Sistem penskalaan visual antarmuka terminal modular berbasis faktor `--font-scale` yang menjamin seluruh panel, label instrumen, dan skala sumbu harga membesar/mengecil secara seragam sesuai konfigurasi kerapatan layar.
+_Avoid_: Fixed pixel text, Rigid layout

@@ -221,6 +221,20 @@ export class CommandDispatcher {
     });
   }
 
+  private typeToSearchHandler: ((char: string) => void) | null = null;
+
+  /**
+   * Daftarkan handler Type-to-Search saat pengguna mengetik huruf/angka langsung di kanvas grafik
+   */
+  onTypeToSearch(handler: (char: string) => void): () => void {
+    this.typeToSearchHandler = handler;
+    return () => {
+      if (this.typeToSearchHandler === handler) {
+        this.typeToSearchHandler = null;
+      }
+    };
+  }
+
   /**
    * Pasang event listener global di capture-phase pada window
    */
@@ -230,6 +244,24 @@ export class CommandDispatcher {
     }
 
     const handler = (e: KeyboardEvent) => {
+      const isInput = isEditableElement(e.target);
+
+      // 1. Type-to-Search Canvas Guard
+      // Saat fokus berada di kanvas grafik (bukan elemen teks) dan tanpa modifier keys (Ctrl/Meta/Alt),
+      // pengetikan alfanumerik (A-Z, 0-9) langsung membuka modal pencarian dengan karakter awal terisi.
+      if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key && e.key.length === 1 && /^[a-zA-Z0-9]$/.test(e.key)) {
+          if (this.typeToSearchHandler) {
+            try {
+              if (typeof e.preventDefault === 'function') e.preventDefault();
+              if (typeof e.stopPropagation === 'function') e.stopPropagation();
+            } catch (_) {}
+            this.typeToSearchHandler(e.key.toUpperCase());
+            return;
+          }
+        }
+      }
+
       this.dispatch(e);
     };
 

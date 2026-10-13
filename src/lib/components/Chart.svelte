@@ -78,6 +78,7 @@
     onRequestEditAlert?: (alert: PriceAlert) => void;
     themePreset?: ThemePresetId;
     fontSize?: number;
+    timezone?: string;
   }
 
   let {
@@ -88,6 +89,7 @@
     providerId = 'binance',
     themePreset = 'signature',
     fontSize = 12,
+    timezone = 'Asia/Jakarta',
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true,
     showCurrentPriceLine = true,
@@ -1176,6 +1178,13 @@
         if (activeChartDefaultConfig) {
           applySavedChartDefaultConfig(cell);
         }
+
+        // Terapkan preferensi zona waktu ke sel grafik Vela
+        if (timezone) {
+          try {
+            (cell as any)?.chart?.set('timezone', timezone);
+          } catch (_) {}
+        }
       }
     } catch (e) {
       console.warn('attachCellListeners error:', e);
@@ -1249,6 +1258,17 @@
   $effect(() => {
     if (workspace) {
       enforceCurrentPriceLine();
+    }
+  });
+
+  // Reaktif sinkronisasi zona waktu grafik ke seluruh sel workspace Vela
+  $effect(() => {
+    if (workspace && timezone) {
+      for (const cell of getAllWorkspaceCells()) {
+        try {
+          (cell as any)?.chart?.set('timezone', timezone);
+        } catch (_) {}
+      }
     }
   });
 

@@ -974,7 +974,7 @@
   .vertical-label {
     writing-mode: vertical-lr;
     transform: rotate(180deg);
-    font-size: 9px;
+    font-size: var(--font-size-xs, 9px);
     font-weight: 700;
     letter-spacing: 0.1em;
   }
@@ -1016,7 +1016,7 @@
     background: transparent;
     border: none;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--font-size-base, 11px);
     font-weight: 500;
     border-radius: var(--radius-xs);
     cursor: pointer;
@@ -1035,7 +1035,7 @@
   }
 
   .count-pill {
-    font-size: 9px;
+    font-size: var(--font-size-xs, 9px);
     background-color: var(--bg-container);
     color: var(--text-dim);
     padding: 1px 4px;
@@ -1077,7 +1077,7 @@
   }
 
   .sub-title {
-    font-size: 11px;
+    font-size: var(--font-size-base, 11px);
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -1085,7 +1085,7 @@
   }
 
   .layer-count {
-    font-size: 10px;
+    font-size: var(--font-size-sm, 10px);
     color: var(--text-dim);
   }
 
@@ -1108,7 +1108,7 @@
     background: none;
     border: none;
     color: var(--text-main);
-    font-size: 11px;
+    font-size: var(--font-size-base, 11px);
     width: 100%;
     outline: none;
   }
@@ -1129,7 +1129,7 @@
     border: 1px solid rgba(59, 130, 246, 0.3);
     border-radius: var(--radius-xs);
     color: #60a5fa;
-    font-size: 10px;
+    font-size: var(--font-size-sm, 10px);
     font-weight: 600;
     padding: 3px 6px;
     cursor: pointer;
@@ -1151,7 +1151,7 @@
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
     color: var(--brand-primary);
-    font-size: 11px;
+    font-size: var(--font-size-base, 11px);
     font-weight: 600;
     padding: 3px 6px;
     cursor: pointer;
@@ -1183,7 +1183,7 @@
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
     color: var(--text-main);
-    font-size: 11px;
+    font-size: var(--font-size-base, 11px);
     padding: 4px 6px;
     outline: none;
   }
@@ -1197,7 +1197,7 @@
     color: var(--bg-darkest);
     border: none;
     border-radius: var(--radius-xs);
-    font-size: 10px;
+    font-size: var(--font-size-sm, 10px);
     font-weight: 700;
     padding: 0 8px;
     cursor: pointer;
@@ -1210,7 +1210,7 @@
     padding: 4px 8px;
     background-color: var(--bg-container);
     border-bottom: 1px solid var(--border-hairline);
-    font-size: 10px;
+    font-size: var(--font-size-sm, 10px);
     color: var(--text-dim);
     flex-shrink: 0;
   }
@@ -1222,7 +1222,7 @@
   }
 
   .active-feed-pill {
-    font-size: 8px;
+    font-size: var(--font-size-2xs, 8px);
     font-weight: 700;
     padding: 1px 3px;
     border-radius: 2px;
@@ -1297,13 +1297,13 @@
   }
 
   .symbol-name {
-    font-size: 11px;
+    font-size: var(--font-size-base, 11px);
     font-weight: 600;
     color: var(--text-main);
   }
 
   .type-tag {
-    font-size: 8px;
+    font-size: var(--font-size-2xs, 8px);
     font-weight: 700;
     padding: 1px 3px;
     border-radius: 2px;
@@ -1324,7 +1324,7 @@
     background: none;
     border: 1px solid var(--border-hairline);
     color: var(--text-dim);
-    font-size: 10px;
+    font-size: var(--font-size-sm, 10px);
     font-weight: 600;
     padding: 3px 6px;
     border-radius: var(--radius-xs);
@@ -1363,7 +1363,7 @@
   }
 
   .row-price {
-    font-size: 11px;
+    font-size: var(--font-size-base, 11px);
     color: var(--text-main);
     text-align: right;
     padding-right: 8px;
@@ -1377,7 +1377,7 @@
     display: inline-block;
     padding: 1px 4px;
     border-radius: var(--radius-xs);
-    font-size: 10px;
+    font-size: var(--font-size-sm, 10px);
     font-weight: 600;
   }
 
