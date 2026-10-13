@@ -42,10 +42,16 @@
       onchange={(e) => onUpdateSettings({ timezone: e.currentTarget.value })}
     >
       <option value="Asia/Jakarta">UTC+7 (WIB / Jakarta)</option>
-      <option value="Asia/Makassar">UTC+8 (WITA / Singapore)</option>
-      <option value="Asia/Tokyo">UTC+9 (Tokyo)</option>
+      <option value="Asia/Bangkok">UTC+7 (Bangkok)</option>
+      <option value="Asia/Makassar">UTC+8 (WITA / Makassar)</option>
+      <option value="Asia/Singapore">UTC+8 (Singapore / Shanghai)</option>
+      <option value="Asia/Tokyo">UTC+9 (Tokyo / Seoul)</option>
       <option value="UTC">UTC+0 (Coordinated Universal Time)</option>
+      <option value="Europe/London">UTC+0 (London / GMT)</option>
+      <option value="Europe/Berlin">UTC+1 (Frankfurt / Berlin / Paris)</option>
       <option value="America/New_York">UTC-4 (New York EDT)</option>
+      <option value="America/Chicago">UTC-5 (Chicago CDT)</option>
+      <option value="America/Los_Angeles">UTC-7 (Los Angeles PDT)</option>
     </select>
   </div>
 

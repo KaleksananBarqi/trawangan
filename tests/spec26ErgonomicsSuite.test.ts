@@ -49,45 +49,56 @@ test('Spec #26 Ergonomics Suite: Type-to-Search, Timezone Sync & Adaptive Typogr
     assert.equal(resolveTargetProvider('BTCUSDT.P', 'binance', 'Bitunix Futures'), 'bitunix');
   });
 
-  await t.test('3. Chart Timezone Sync Contract: Memverifikasi propagasi preferensi zona waktu ke sel Vela', () => {
-    // Mock Vela Workspace Cell
+  await t.test('3. Chart Timezone Sync Contract: Memverifikasi propagasi preferensi zona waktu ke workspace dan renderer Vela', () => {
+    // Mock Vela Workspace dengan setTimezone dan cell native renderer
     const mockCells = [
       {
         chart: {
-          properties: new Map<string, any>(),
-          set(key: string, val: any) {
-            this.properties.set(key, val);
+          renderer: {
+            properties: new Map<string, any>(),
+            set(key: string, val: any) {
+              this.properties.set(key, val);
+            },
           },
+        },
+        applyTimezone() {
+          this.chart.renderer.set('timezone', mockWorkspace.timezone);
         },
       },
       {
         chart: {
-          properties: new Map<string, any>(),
-          set(key: string, val: any) {
-            this.properties.set(key, val);
+          renderer: {
+            properties: new Map<string, any>(),
+            set(key: string, val: any) {
+              this.properties.set(key, val);
+            },
           },
+        },
+        applyTimezone() {
+          this.chart.renderer.set('timezone', mockWorkspace.timezone);
         },
       },
     ];
 
-    const targetTimezone = 'Asia/Jakarta';
+    const mockWorkspace = {
+      timezone: 'UTC',
+      setTimezone(zone: string) {
+        this.timezone = zone;
+        mockCells.forEach((c) => c.applyTimezone());
+      },
+    };
 
-    // Simulasi sinkronisasi reaktif ke seluruh sel
-    mockCells.forEach((cell) => {
-      cell.chart.set('timezone', targetTimezone);
-    });
+    // Simulasi pergantian zona waktu ke Asia/Jakarta
+    mockWorkspace.setTimezone('Asia/Jakarta');
+    assert.equal(mockWorkspace.timezone, 'Asia/Jakarta');
+    assert.equal(mockCells[0].chart.renderer.properties.get('timezone'), 'Asia/Jakarta');
+    assert.equal(mockCells[1].chart.renderer.properties.get('timezone'), 'Asia/Jakarta');
 
-    assert.equal(mockCells[0].chart.properties.get('timezone'), 'Asia/Jakarta');
-    assert.equal(mockCells[1].chart.properties.get('timezone'), 'Asia/Jakarta');
-
-    // Simulasi pergantian zona waktu ke UTC
-    const updatedTimezone = 'UTC';
-    mockCells.forEach((cell) => {
-      cell.chart.set('timezone', updatedTimezone);
-    });
-
-    assert.equal(mockCells[0].chart.properties.get('timezone'), 'UTC');
-    assert.equal(mockCells[1].chart.properties.get('timezone'), 'UTC');
+    // Simulasi pergantian zona waktu ke Asia/Bangkok
+    mockWorkspace.setTimezone('Asia/Bangkok');
+    assert.equal(mockWorkspace.timezone, 'Asia/Bangkok');
+    assert.equal(mockCells[0].chart.renderer.properties.get('timezone'), 'Asia/Bangkok');
+    assert.equal(mockCells[1].chart.renderer.properties.get('timezone'), 'Asia/Bangkok');
   });
 
   await t.test('4. Adaptive Typography Scale: Formula --font-scale, boundary clamping dan default reset', () => {
