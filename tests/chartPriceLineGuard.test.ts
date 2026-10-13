@@ -40,7 +40,7 @@ test.describe('Persistent Price Line Guard Seam Suite (#22)', () => {
     // 1. Tanpa guard: jika patch hanya membawa { priceScale: { log: true } }
     const badPatch: any = { priceScale: { log: true } };
     mockRenderer.applyConfig(badPatch);
-    assert.equal(mockScene.showPriceLine, undefined); // BUG terbukti: garis hilang!
+    assert.equal(mockScene.showPriceLine, undefined); // Memastikan bahwa tanpa guard, garis akan hilang
 
     // 2. Dengan Persistent Price Line Guard:
     const safePatch: any = {
