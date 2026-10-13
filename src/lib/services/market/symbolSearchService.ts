@@ -154,6 +154,14 @@ export function rankSearchResults(
 }
 
 /**
+ * Menghasilkan unique key stabil untuk Svelte each block pada item hasil pencarian simbol.
+ * Menghindari error `each_key_duplicate` saat beberapa bursa menyediakan simbol yang sama.
+ */
+export function getSearchResultKey(item: MarketSearchResult): string {
+  return `${item.provider || 'unknown'}:${item.symbol}:${item.type || 'spot'}`;
+}
+
+/**
  * Mesin Pencarian Simbol Terpadu (Omni-Search Engine).
  * Menggabungkan registry in-memory cepat (< 10ms), agregasi multi-bursa, dan online fallback.
  */
@@ -246,7 +254,17 @@ export class SymbolSearchEngine {
       return true;
     });
 
-    return rankSearchResults(q, filtered);
+    const ranked = rankSearchResults(q, filtered);
+    const finalResults: MarketSearchResult[] = [];
+    const seen = new Set<string>();
+    for (const item of ranked) {
+      const k = getSearchResultKey(item);
+      if (!seen.has(k)) {
+        seen.add(k);
+        finalResults.push(item);
+      }
+    }
+    return finalResults;
   }
 
   /**
@@ -324,7 +342,7 @@ export class SymbolSearchEngine {
       return true;
     });
 
-    // Deduplikasi berdasarkan symbol + provider
+    // Deduplikasi awal berdasarkan symbol + provider
     const deduplicated: MarketSearchResult[] = [];
     const seen = new Set<string>();
     for (const item of filteredByQuote) {
@@ -384,6 +402,19 @@ export class SymbolSearchEngine {
     }
 
     // Urutkan dengan ranking multi-tier
-    return rankSearchResults(effectiveQuery, deduplicated);
+    const ranked = rankSearchResults(effectiveQuery, deduplicated);
+
+    // Final deduplikasi komprehensif (provider:symbol:type) untuk menjamin key Svelte unik 100%
+    const finalResults: MarketSearchResult[] = [];
+    const finalSeen = new Set<string>();
+    for (const item of ranked) {
+      const k = getSearchResultKey(item);
+      if (!finalSeen.has(k)) {
+        finalSeen.add(k);
+        finalResults.push(item);
+      }
+    }
+
+    return finalResults;
   }
 }

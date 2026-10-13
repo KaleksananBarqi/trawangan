@@ -5,6 +5,22 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.12.1] - 2026-10-13
+
+### 🐛 Diperbaiki (Fixed)
+- **Eliminasi Svelte Runtime Error Duplicate Key pada Pencarian Simbol (#26):**
+  - Mengatasi crash `https://svelte.dev/e/each_key_duplicate` saat membuka modal pencarian via `Ctrl+K`, Type-to-Search, atau tombol pencarian header.
+  - Memperkenalkan helper `getSearchResultKey` untuk membentuk kunci unik majemuk (`provider:symbol:type`) sehingga item dari bursa yang berbeda (seperti `BTCUSDT.P` di Binance Futures dan Bitunix Futures) tidak lagi berbenturan pada blok `{#each}` Svelte.
+  - Mencegah UI membeku (*freeze/stuck*) saat rekonsiliasi DOM komponen pencarian simbol.
+
+### 🛡️ Pertahanan Berlapis (Defense-in-Depth)
+- **Deduplikasi Final pada SymbolSearchEngine:**
+  - Menambahkan filter deduplikasi akhir berbasis `getSearchResultKey` pada metode `search()` dan `searchLocal()` untuk menjamin integritas data 100% unik sebelum diteruskan ke antarmuka pengguna.
+- **Penyelarasan Key pada Watchlist Omni-Search:**
+  - Menyelaraskan blok perulangan hasil pencarian bursa di `WatchlistPanel` menggunakan `getSearchResultKey` yang konsisten.
+- **Reset State Dialog Pencarian:**
+  - Memastikan `query` dan `selectedIndex` ter-reset secara bersih ke `initialQuery || ''` dan `0` saat dialog dibuka.
+
 ## [0.12.0] - 2026-10-13
 
 ### 🚀 Ditambahkan (Added)

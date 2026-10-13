@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { Search, X, Check, Plus, ArrowRight, CornerDownLeft, Sparkles, TrendingUp, Layers } from '@lucide/svelte';
   import { marketFeed } from '../services/market';
+  import { getSearchResultKey } from '../services/market/symbolSearchService';
   import type { MarketSearchResult } from '../types/market';
 
   interface Props {
@@ -39,8 +40,9 @@
 
   // Sinkronkan initialQuery saat modal dibuka (misal dari Type-to-Search)
   $effect(() => {
-    if (isOpen && initialQuery) {
-      query = initialQuery;
+    if (isOpen) {
+      query = initialQuery || '';
+      selectedIndex = 0;
     }
   });
 
@@ -380,7 +382,7 @@
 
         {#if searchResults.length > 0}
           <div class="results-list" role="listbox">
-            {#each searchResults as item, index (item.symbol)}
+            {#each searchResults as item, index (getSearchResultKey(item))}
               {@const isWatchlisted = watchlistSymbols.includes(item.symbol)}
               {@const isCurrentChart = activeSymbol === item.symbol}
               {@const isHighlighted = selectedIndex === index}

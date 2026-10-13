@@ -30,6 +30,7 @@
   import { marketFeed } from '../services/market';
   import { alertService } from '../services/alertService';
   import SymbolSearchModal from './SymbolSearchModal.svelte';
+  import { getSearchResultKey } from '../services/market/symbolSearchService';
   import type { PriceAlert, ObjectTreeItem, MarketSearchResult } from '../types/market';
 
   interface Props {
@@ -600,7 +601,7 @@
               {/if}
             </div>
 
-            {#each exchangeSearchResults as item, exIdx (item.symbol + item.provider)}
+            {#each exchangeSearchResults as item, exIdx (getSearchResultKey(item))}
               {@const globalIdx = filteredSymbols.length + exIdx}
               {@const isInWatchlist = symbols.includes(item.symbol)}
               {@const isHighlighted = selectedOmniIndex === globalIdx}
