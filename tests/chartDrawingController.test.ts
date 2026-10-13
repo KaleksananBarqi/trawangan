@@ -253,5 +253,47 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     assert.equal(controller.getSnapshot().activeTool, 'trendline');
     assert.equal(controller.isHandpullMode(), false);
   });
+
+  await t.test('8. Interactive Single-Item Eraser Mode (#46) mendelegasikan setMode("eraser") dan mengelola siklus hidupnya', () => {
+    const controller = new ChartDrawingController();
+
+    const modeCalls: Array<string | null> = [];
+    const mockDrawings = {
+      setMode: (mode: string | null) => modeCalls.push(mode),
+      setTool: (_tool: string | null) => {},
+      on: () => {},
+      all: () => []
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+
+    // Aktifkan Eraser mode
+    controller.setTool('eraser');
+    assert.equal(controller.isEraserMode(), true);
+    assert.equal(controller.getSnapshot().activeTool, 'eraser');
+    assert.equal(modeCalls[modeCalls.length - 1], 'eraser', 'Harus memanggil setMode("eraser") pada engine Vela');
+
+    // Toggle Eraser kembali ke cursor
+    controller.toggleEraser();
+    assert.equal(controller.isEraserMode(), false);
+    assert.equal(controller.getSnapshot().activeTool, 'cursor');
+    assert.equal(modeCalls[modeCalls.length - 1], null, 'Harus memanggil setMode(null) saat keluar dari eraser');
+
+    // Toggle Eraser aktif kembali
+    controller.toggleEraser();
+    assert.equal(controller.isEraserMode(), true);
+    assert.equal(modeCalls[modeCalls.length - 1], 'eraser');
+
+    // Ganti ke tool lain (misal hline) otomatis membersihkan eraser mode
+    controller.setTool('hline');
+    assert.equal(controller.isEraserMode(), false);
+    assert.equal(modeCalls[modeCalls.length - 1], null);
+  });
 });
+
 

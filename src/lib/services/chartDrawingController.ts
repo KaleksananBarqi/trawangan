@@ -125,6 +125,24 @@ export class ChartDrawingController {
   }
 
   /**
+   * Beralih antara mode Penghapus (Eraser) dan Kursor
+   */
+  toggleEraser(): void {
+    if (this.activeTool === 'eraser') {
+      this.setTool('cursor');
+    } else {
+      this.setTool('eraser');
+    }
+  }
+
+  /**
+   * Memeriksa apakah mode Penghapus sedang aktif
+   */
+  isEraserMode(): boolean {
+    return this.activeTool === 'eraser';
+  }
+
+  /**
    * Pasang listener event mutasi drawing dari engine Vela
    */
   attachChartListeners(chart: any): () => void {
