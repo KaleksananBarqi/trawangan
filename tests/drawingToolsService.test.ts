@@ -10,6 +10,8 @@ import {
   toggleFavoriteTool,
   searchDrawingTools,
   clampFavoritesBarPosition,
+  STAMP_PRESETS,
+  getStampPresets,
   type DrawingToolId,
   type DrawingGroupId,
 } from '../src/lib/services/drawingToolsService.js';
@@ -114,5 +116,72 @@ describe('Drawing Tools Service & Catalog Suite', () => {
     const clamped3 = clampFavoritesBarPosition({ x: 2000, y: 1200 }, 200, 36, 1920, 1080);
     assert.deepEqual(clamped3, { x: 1720, y: 1044 });
   });
+
+  it('8. Zero-Omission Suite: 100% dari seluruh 76 DrawingTypeKey Vela terdaftar tanpa ada yang diabaikan (#47)', () => {
+    const allTools = getAllSupportedTools();
+    const registeredIds = new Set(allTools.map((t) => t.id));
+
+    // Daftar kanonikal seluruh 76 jenis gambar dari engine Vela (@luxalgo/vela)
+    const canonicalVelaTypes: DrawingToolId[] = [
+      'trendline', 'hline', 'ray', 'extendedline', 'vline', 'hray', 'crossline', 'infoline', 'trendangle',
+      'box', 'text', 'note', 'pricenote', 'comment', 'pricelabel', 'signpost',
+      'parallelchannel', 'disjointchannel', 'flattopbottom', 'regressionchannel',
+      'anchoredvwap', 'fixedrangevp',
+      'pitchfork', 'schiffpitchfork', 'modifiedschiffpitchfork', 'insidepitchfork',
+      'arrow', 'callout', 'ellipse', 'triangle', 'polyline', 'freehand', 'highlighter', 'circle', 'rotatedrect', 'path', 'arc', 'curve',
+      'arrowmarkup', 'arrowmarkdown', 'flagmark', 'iconstamp',
+      'fibretracement', 'fibextension', 'fibextensiontrend', 'fibfan', 'fibtimezones', 'fibchannel', 'fibspeedfan', 'trendfibtime', 'fibcircles', 'fibarcs', 'fibwedge', 'fibspiral',
+      'gannfan', 'gannbox', 'gannsquare', 'dedekind', 'sonic', 'supersonic', 'goldensonic', 'goldensupersonic',
+      'datepricerange', 'position', 'magnifier',
+      'xabcd', 'abcd', 'elliottimpulse', 'elliottcorrection', 'headshoulders', 'gartley', 'bat', 'butterfly', 'crab', 'shark', 'cypher'
+    ];
+
+    assert.equal(canonicalVelaTypes.length, 76, 'Jumlah jenis gambar kanonikal Vela harus tepat 76');
+
+    const missingTypes: string[] = [];
+    for (const type of canonicalVelaTypes) {
+      if (!registeredIds.has(type)) {
+        missingTypes.push(type);
+      }
+    }
+
+    assert.deepEqual(missingTypes, [], `Seluruh tool Vela harus terdaftar. Missing: ${missingTypes.join(', ')}`);
+  });
+
+  it('9. Integritas Metadata: Setiap tool memiliki label yang jelas, kategori valid, dan tags pencarian (#47)', () => {
+    const allTools = getAllSupportedTools();
+    const seenIds = new Set<string>();
+
+    for (const tool of allTools) {
+      assert.ok(tool.id, 'Tool ID tidak boleh kosong');
+      assert.ok(!seenIds.has(tool.id), `Duplikasi tool ID terdeteksi: ${tool.id}`);
+      seenIds.add(tool.id);
+
+      assert.ok(tool.label && tool.label.length >= 2, `Label tool ${tool.id} harus informatif`);
+      assert.ok(tool.category, `Kategori tool ${tool.id} harus terdefinisi`);
+      assert.ok(Array.isArray(tool.tags) && tool.tags.length > 0, `Tool ${tool.id} harus memiliki tags pencarian`);
+    }
+  });
+
+  it('10. Quick Stamp Palette: Menyediakan preset stempel visual lengkap (Target, Warning, Breakout, Pin, Flag) (#47)', () => {
+    const presets = getStampPresets();
+    assert.ok(presets.length >= 5, 'Minimal menyediakan 5 preset stempel');
+
+    const presetIds = presets.map((p) => p.id);
+    assert.ok(presetIds.includes('target'), 'Harus ada preset target');
+    assert.ok(presetIds.includes('warning'), 'Harus ada preset warning');
+    assert.ok(presetIds.includes('breakout'), 'Harus ada preset breakout');
+    assert.ok(presetIds.includes('pin'), 'Harus ada preset pin');
+    assert.ok(presetIds.includes('flag'), 'Harus ada preset flag');
+
+    for (const p of presets) {
+      assert.ok(p.tool === 'iconstamp' || p.tool === 'flagmark', `Tool untuk preset ${p.id} harus iconstamp atau flagmark`);
+      assert.ok(p.emoji, `Emoji untuk preset ${p.id} harus ada`);
+      assert.ok(p.glyph, `Glyph untuk preset ${p.id} harus ada`);
+      assert.ok(p.color.startsWith('#'), `Color untuk preset ${p.id} harus kode hex yang valid`);
+      assert.ok(p.label, `Label untuk preset ${p.id} harus ada`);
+    }
+  });
 });
+
 

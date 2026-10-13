@@ -59,6 +59,8 @@
     getFavoritesBarPosition,
     saveFavoritesBarPosition,
     clampFavoritesBarPosition,
+    STAMP_PRESETS,
+    type StampPreset,
     type FavoritesBarPosition,
     type DrawingGroupId,
     type DrawingToolItem,
@@ -535,6 +537,27 @@
             </div>
           {/if}
 
+          {#if group.id === 'annotations'}
+            <!-- Quick Stamp Palette (Target, Warning, Breakout, Pin, Flag) -->
+            <div class="stamp-quick-palette">
+              <span class="stamp-palette-title">Stempel Cepat:</span>
+              <div class="stamp-chips-row">
+                {#each STAMP_PRESETS as stamp (stamp.id)}
+                  <button
+                    type="button"
+                    class="stamp-chip-btn"
+                    style="--stamp-color: {stamp.color};"
+                    title="{stamp.label} ({stamp.description})"
+                    onclick={() => handleSelectToolItem(stamp.tool, group.id)}
+                  >
+                    <span class="stamp-chip-emoji">{stamp.emoji}</span>
+                    <span class="stamp-chip-label">{stamp.label}</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
           <!-- List Items -->
           <div class="flyout-list-scroll">
             {#each group.tools.filter((t) => !searchQuery || t.label.toLowerCase().includes(searchQuery.toLowerCase()) || (t.tags && t.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase())))) as tool (tool.id)}
@@ -1003,6 +1026,61 @@
     background: rgba(255, 255, 255, 0.05);
     padding: 1px 5px;
     border-radius: 4px;
+  }
+
+  .stamp-quick-palette {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 4px 4px 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    margin-bottom: 4px;
+  }
+
+  .stamp-palette-title {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted, #71767b);
+  }
+
+  .stamp-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .stamp-chip-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    font-size: 10px;
+    color: var(--text-main, #e5e7eb);
+  }
+
+  .stamp-chip-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: var(--stamp-color, #00f0ff);
+    box-shadow: 0 0 6px rgba(0, 240, 255, 0.2);
+  }
+
+  .stamp-chip-emoji {
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .stamp-chip-label {
+    font-size: 9.5px;
+    font-weight: 500;
   }
 
   .flyout-search-box {
