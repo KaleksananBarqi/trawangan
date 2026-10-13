@@ -5,10 +5,13 @@ import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 
 export class TauriSqliteAdapter implements PersistenceAdapter {
   private fallbackAdapter = new InMemoryLocalStorageAdapter();
+  private invokePromise: Promise<any> | null = null;
 
   private async getInvoke() {
-    const { invoke } = await import('@tauri-apps/api/core');
-    return invoke;
+    if (!this.invokePromise) {
+      this.invokePromise = import('@tauri-apps/api/core').then((m) => m.invoke);
+    }
+    return this.invokePromise;
   }
 
   async loadDrawings(symbol: string, timeframe: string): Promise<string | null> {
