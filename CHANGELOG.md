@@ -5,6 +5,29 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.13.0] - 2026-10-13
+
+### 🚀 Ditambahkan (Added)
+- **Hand-Pull Pan Navigation Mode (#43, #45):**
+  - Mode geser kanvas tangan (Hand-Pull) di bilah alat kiri untuk navigasi grafik yang mulus dan bebas distraksi.
+  - Saat aktif, kursor kanvas berubah menjadi `grab` / `grabbing`, dan seluruh interaksi geser murni menggeser kanvas tanpa risiko memindahkan titik atau garis gambar teknikal.
+  - Didukung tombol pintas <kbd>H</kbd> untuk beralih mode secara instan, serta penahanan tombol <kbd>Spacebar</kbd> untuk geser kanvas sementara.
+- **Flyout Pointer & Navigation Selector (#43, #45):**
+  - Slot teratas bilah alat gambar kiri diubah menjadi flyout selektor terpadu untuk Kursor (`MousePointer`), Hand-Pull (`Hand`), dan Penghapus (`Eraser`).
+- **Interactive Single-Item Eraser Mode (#43, #46):**
+  - Mode penghapus interaktif satuan yang terintegrasi langsung dengan engine Vela. Pengguna dapat menghapus objek gambar teknikal apa pun dengan 1-klik di kanvas tanpa menu konteks.
+  - Menekan tombol <kbd>Esc</kbd> otomatis mengembalikan kontrol ke mode kursor standar.
+- **Zero-Omission 76 Vela Drawing Tools Suite (#43, #47):**
+  - Ketersediaan 100% dari seluruh 76 varian `DrawingTypeKey` engine Vela di toolbar Trawangan tanpa pengurangan.
+  - Setiap varian alat gambar dilengkapi label dwibahasa, kata kunci pencarian berindeks, dan ikon visual Lucide yang spesifik tanpa *fallback* generik.
+- **Quick Stamp Palette (#43, #47):**
+  - Palette stempel visual cepat untuk alat `iconstamp` dan `flagmark`, menyediakan preset siap pakai: Target 🎯, Warning ⚠️, Breakout 🚀, Pin 📌, dan Flag 🚩.
+
+### 🐛 Diperbaiki (Fixed)
+- **Defensive Current Price Line Enforce Engine (#43, #44):**
+  - Memasang interceptor defensif pada mutasi konfigurasi grafik Vela (`applyConfig`) agar mutasi parsial (perubahan tema, margin, toggle skala logaritmik) tidak pernah menimpa `priceScale.currentPriceLine` menjadi `undefined`.
+  - Mengimplementasikan auto-healing pada siklus event `market:changed` dan `history:complete` dengan memicu `native.scheduler.invalidate(4)` untuk memastikan garis harga terkini selalu tampil konsisten tanpa berkedip atau hilang senyap.
+
 ## [0.12.1] - 2026-10-13
 
 ### 🐛 Diperbaiki (Fixed)
