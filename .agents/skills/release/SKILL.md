@@ -13,21 +13,35 @@ Gunakan alur ini setiap kali pengguna meminta rilis baru, bump versi, pembaruan 
 
 ## 🎯 Completion Criteria (Gerbang Penyelesaian)
 Alur rilis dianggap **SELESAI** jika dan hanya jika:
-1. Seluruh 4 berkas manifes versi terverifikasi sinkron pada versi SemVer target.
-2. `CHANGELOG.md` memuat seksi rilis baru dengan standar *Keep a Changelog*.
-3. Gerbang pengujian lolos 100% (`npm test` pass, `npm run check` 0 error, `cargo check` clean).
-4. Git commit dan annotated git tag `v<version>` terbentuk.
-5. Branch utama dan git tag berhasil di-push ke remote GitHub (`origin`).
-6. Dokumentasi Second Brain di Obsidian berhasil dicatat via MCP tanpa menunggu konfirmasi manual.
+1. Working tree bersih dan cabang `main` tersinkronisasi penuh dengan upstream GitHub.
+2. Seluruh berkas manifes versi terverifikasi sinkron pada versi SemVer target.
+3. `CHANGELOG.md` memuat seksi rilis baru dengan standar *Keep a Changelog* dan tervalidasi via skrip ekstraksi.
+4. Gerbang pengujian lolos 100% (`npm test` pass, `npm run check` / `tsc --noEmit` clean, `cargo check` clean).
+5. Git commit dan annotated git tag `v<version>` terbentuk.
+6. Branch utama dan git tag berhasil di-push ke remote GitHub (`origin`).
+7. Dokumentasi Second Brain di Obsidian berhasil dicatat via MCP tanpa menunggu konfirmasi manual.
 
 ---
 
 ## 📋 Langkah-Langkah Eksekusi (In-File Steps)
 
+### Langkah 0: Pre-Flight Git & Branch Synchronization
+1. Pastikan working tree bersih dari perubahan yang belum tersimpan atau uncommitted diff:
+   ```powershell
+   git status
+   ```
+2. Pastikan berada di branch `main` dan tarik commit terbaru hasil merge PR dari upstream:
+   ```powershell
+   git checkout main; git pull origin main
+   ```
+
+---
+
 ### Langkah 1: Resolusi Versi SemVer Target
 1. Periksa versi saat ini pada `package.json` (`pkg.version`).
 2. Periksa commit terakhir sejak tag rilis sebelumnya:
    ```powershell
+   git describe --tags --abbrev=0
    git log $(git describe --tags --abbrev=0)..HEAD --oneline
    ```
 3. Tentukan nomor versi SemVer berikutnya:
@@ -67,6 +81,11 @@ Perbarui nomor versi ke nilai target pada seluruh berkas berikut secara serentak
    - Deskripsi perbaikan bug (jika ada).
    ```
 3. Pastikan bahasa yang digunakan adalah bahasa Indonesia yang lugas dan profesional sesuai standar proyek.
+4. **Uji Validasi Ekstraksi Changelog Lokal:**
+   Pastikan skrip ekstraksi mengenali blok rilis terbaru dan tidak menghasilkan output kosong:
+   ```powershell
+   node scripts/extract-changelog.cjs X.Y.Z
+   ```
 
 ---
 
@@ -81,12 +100,12 @@ Jalankan rangkaian pengujian berikut secara berurutan:
    ```powershell
    npm run check
    ```
-   *Kriteria lolos:* 0 errors ditemukan.
+   *(Jalankan juga `npx tsc --noEmit` untuk memastikan integritas static typing TypeScript 100% bebas error).*
 3. **Rust Backend Check:**
    ```powershell
    cargo check --manifest-path src-tauri/Cargo.toml
    ```
-   *Kriteria lolos:* Kompilasi sukses tanpa error. Hal ini juga otomatis memperbarui `src-tauri/Cargo.lock`.
+   *Kriteria lolos:* Kompilasi sukses tanpa error (`Finished dev profile`). Hal ini juga otomatis menyinkronkan `src-tauri/Cargo.lock`. Tunggu hingga proses background selesai (~15–25 detik).
 
 > [!CAUTION]
 > **JANGAN PERNAH** melanjutkan ke langkah Git Commit/Push jika ada pengujian atau pemeriksaan yang gagal! Perbaiki akar masalahnya terlebih dahulu.
@@ -131,6 +150,7 @@ Jalankan rangkaian pengujian berikut secara berurutan:
 ### Langkah 7: Dokumentasi Otomatis Second Brain (Obsidian MCP)
 Ekstrak catatan rilis versi terkait dari `CHANGELOG.md` menggunakan `node scripts/extract-changelog.cjs vX.Y.Z`.
 Panggil tool `create_vault_file` pada MCP `mcp-tools-istefox` **tanpa menunggu persetujuan pengguna**:
+*(PENTING: Langsung panggil `create_vault_file` ke target path log tanpa mendahuluinya dengan `list_vault_files` untuk menghindari resiko timeout pada vault besar).*
 - **Lokasi Target:** `Project Logs/YYYY-MM-DD - Rilis vX.Y.Z <Ringkasan Singkat>.md`
 - **Metadata Frontmatter:**
   ```yaml
