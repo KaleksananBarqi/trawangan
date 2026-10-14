@@ -4,9 +4,9 @@
 
 **Blocked by:** 01: Prefactoring & Dead Facade Elimination (#50)
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Implement `ChartSessionController` with public interface: `attach(container, options)`, `setSymbol(symbol, timeframe, providerId)`, `setTimezone(timezone)`, `destroy()`, and `subscribe(listener)`.
-- [ ] Encapsulate Vela `VelaWorkspace` instantiation, canvas resize observation, and Pine worker engine registration inside the controller.
-- [ ] Implement a headless test suite (`tests/chartSessionController.test.ts`) validating initialization, symbol updating, subscriber reactivity, and leak-free destruction without browser DOM requirements.
-- [ ] All tests pass.
+- [x] Implement `ChartSessionController` with public interface: `attach(container, options)`, `setSymbol(symbol, timeframe, providerId)`, `setTimezone(timezone)`, `destroy()`, and `subscribe(listener)`.
+- [x] Encapsulate Vela `VelaWorkspace` instantiation, canvas resize observation, and Pine worker engine registration inside the controller.
+- [x] Implement a headless test suite (`tests/chartSessionController.test.ts`) validating initialization, symbol updating, subscriber reactivity, and leak-free destruction without browser DOM requirements.
+- [x] All tests pass.
