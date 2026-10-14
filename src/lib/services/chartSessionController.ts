@@ -20,7 +20,7 @@ import type {
   SavedWorkspace
 } from '../types/market';
 import { THEME_PRESETS } from '../constants/themes';
-import { toVelaTimeframe } from '../utils/timeframeAdapter';
+import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 import { applyLayoutTimeframePolicy } from '../constants/defaults';
 import {
   saveChartDefaultConfig,
@@ -293,6 +293,24 @@ export class ChartSessionController {
             if (this.timezone) {
               this.setTimezone(this.timezone);
             }
+          }
+        });
+
+        this.workspace.on('cell:active', () => {
+          if (this.isApplyingLayout) return;
+          const cur = this.workspace?.active;
+          if (cur && this.onActiveCellChange) {
+            const rawSym = cur.symbol || this.symbol;
+            const cleanSym = rawSym.includes(':') ? rawSym.split(':')[1] : rawSym;
+            const curTf = (fromVelaTimeframe(cur.timeframe || this.timeframe) as Timeframe);
+            this.activeCellInfo = { symbol: cleanSym, timeframe: curTf };
+            if (cleanSym !== this.symbol || curTf !== this.timeframe) {
+              this.onActiveCellChange({ symbol: cleanSym, timeframe: curTf });
+            }
+            this.attachCellListeners(cur);
+          }
+          if (this.syncConfig.indicators === false) {
+            this.notifyActiveIndicators();
           }
         });
       } catch (_) {}
@@ -589,7 +607,6 @@ export class ChartSessionController {
   public async setSymbol(symbol: string, timeframe?: Timeframe, providerId?: string): Promise<void> {
     if (!symbol) return;
     this.symbol = symbol;
-    if (timeframe) this.timeframe = timeframe;
     if (providerId) this.providerId = providerId;
 
     if (this.workspace) {
@@ -597,11 +614,11 @@ export class ChartSessionController {
         const targetSym = resolveVelaSymbol(this.symbol, this.providerId);
         if (this.syncConfig.symbol) {
           for (const cell of this.getAllCells()) {
-            if (cell.symbol !== targetSym) {
+            if (cell.symbol !== targetSym && typeof cell.setSymbol === 'function') {
               cell.setSymbol(targetSym);
             }
           }
-        } else if (this.workspace.active && this.workspace.active.symbol !== targetSym) {
+        } else if (this.workspace.active && this.workspace.active.symbol !== targetSym && typeof this.workspace.active.setSymbol === 'function') {
           this.workspace.active.setSymbol(targetSym);
         }
       } catch (err) {
@@ -609,7 +626,11 @@ export class ChartSessionController {
       }
     }
 
-    this.notify();
+    if (timeframe) {
+      this.setTimeframe(timeframe);
+    } else {
+      this.notify();
+    }
   }
 
   /**
@@ -622,7 +643,13 @@ export class ChartSessionController {
     if (this.workspace) {
       try {
         const velaTf = toVelaTimeframe(timeframe);
-        if (this.workspace.active) {
+        if (this.syncConfig.timeframe) {
+          for (const cell of this.getAllCells()) {
+            if (cell.timeframe !== velaTf && typeof cell.setTimeframe === 'function') {
+              cell.setTimeframe(velaTf);
+            }
+          }
+        } else if (this.workspace.active && typeof this.workspace.active.setTimeframe === 'function') {
           this.workspace.active.setTimeframe(velaTf);
         }
       } catch (err) {
