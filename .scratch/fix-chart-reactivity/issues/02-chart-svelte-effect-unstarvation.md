@@ -10,11 +10,11 @@ Memperbaiki reaktivitas di `Chart.svelte` dengan membaca seluruh props secara ek
 - 01: Core Controller Seam Fixes (#56)
 
 ## Status
-ready-for-agent
+closed
 
 ## Acceptance criteria
-- [ ] Props `symbol`, `providerId`, `timeframe`, `layout`, `syncConfig`, `themePreset`, `fontSize`, `timezone`, `showCurrentPriceLine`, dan `showWatermark` dibaca tanpa guard di baris pertama `$effect`.
-- [ ] Tersedia `$effect` terdedikasi untuk `controller.setTimeframe(timeframe)`.
-- [ ] Pergantian timeframe, simbol, dan layout di UI langsung diteruskan ke controller.
-- [ ] Komponen `Chart.svelte` tetap berada di bawah 350 baris kode deklaratif.
-- [ ] `npx svelte-check --threshold error` menghasilkan 0 error.
+- [x] Props `symbol`, `providerId`, `timeframe`, `layout`, `syncConfig`, `themePreset`, `fontSize`, `timezone`, `showCurrentPriceLine`, dan `showWatermark` dibaca tanpa guard di baris pertama `$effect`.
+- [x] Tersedia `$effect` terdedikasi untuk `controller.setTimeframe(timeframe)`.
+- [x] Pergantian timeframe, simbol, dan layout di UI langsung diteruskan ke controller.
+- [x] Komponen `Chart.svelte` tetap berada di bawah 350 baris kode deklaratif (sekarang 347 baris).
+- [x] `npx svelte-check --threshold error` menghasilkan 0 error.

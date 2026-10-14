@@ -45,7 +45,7 @@
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
-  let isMounted = false;
+  let isMounted = $state(false);
 
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
@@ -83,21 +83,21 @@
   function formatPrice(p: number | null): string { return priceScaleOverlayController.formatPrice(p); }
   function getPriceY(p: number | null): number | null { return p !== null ? priceScaleOverlayController.getPriceY(p) : null; }
 
-  $effect(() => { if (isMounted) controller.setSymbol(symbol, timeframe, providerId); });
-  $effect(() => { if (isMounted && layout) controller.setLayout(layout); });
-  $effect(() => { if (isMounted && syncConfig) controller.syncLayout(syncConfig); });
-  $effect(() => { if (isMounted) controller.setTheme(themePreset, fontSize); });
-  $effect(() => { if (isMounted && timezone) controller.setTimezone(timezone); });
-  $effect(() => { if (isMounted) controller.setShowCurrentPriceLine(showCurrentPriceLine); });
+  // Explicit prop read guarantees Svelte 5 dependency registration on initial run
+  $effect(() => { const s = symbol, p = providerId; if (isMounted) controller.setSymbol(s, undefined, p); });
+  $effect(() => { const tf = timeframe; if (isMounted) controller.setTimeframe(tf); });
+  $effect(() => { const l = layout; if (isMounted && l) controller.setLayout(l); });
+  $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
+  $effect(() => { const tp = themePreset, fs = fontSize; if (isMounted) controller.setTheme(tp, fs); });
+  $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
+  $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
   $effect(() => {
-    if (isMounted) {
-      for (const cell of controller.getAllCells()) {
-        if (typeof cell?.setWatermarkVisible === 'function') cell.setWatermarkVisible(showWatermark);
-      }
-    }
+    const wm = showWatermark;
+    if (isMounted) for (const c of controller.getAllCells()) c?.setWatermarkVisible?.(wm);
   });
   $effect(() => {
-    priceScaleOverlayController.updateIndicators(controller.getActiveIndicators(), showIndicatorPriceLabels);
+    const ind = controller.getActiveIndicators(), lbl = showIndicatorPriceLabels;
+    priceScaleOverlayController.updateIndicators(ind, lbl);
   });
 
   onMount(() => {
