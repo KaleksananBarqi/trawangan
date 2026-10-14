@@ -101,3 +101,54 @@ test('Tiket 1: setTheme harus memanggil applyConfig dengan konfigurasi lengkap c
 
   controller.destroy();
 });
+
+test('Tiket 2: setTheme dengan customCandleColors harus meng-override warna candle dan menurunkan border 15%', () => {
+  const { ws, appliedConfigs } = createMockWorkspaceWithRendererWatcher();
+  const mockContainer: any = {
+    nodeType: 1,
+    clientWidth: 1000,
+    clientHeight: 600,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+
+  const controller = new ChartSessionController({
+    symbol: 'BTCUSDT',
+    timeframe: '15m',
+    workspaceFactory: () => ws,
+  });
+
+  controller.attach(mockContainer);
+
+  // 1. Terapkan custom color pada tema signature
+  appliedConfigs.length = 0;
+  controller.setTheme('signature', 12, {
+    bullColor: '#00F090',
+    bearColor: '#FF3B69',
+  });
+
+  const customConfig = appliedConfigs.find((c) => c.candles !== undefined);
+  assert.ok(customConfig, 'applyConfig harus dipanggil saat custom color diterapkan');
+  assert.equal(customConfig.candles.upColor, '#00F090');
+  assert.equal(customConfig.candles.downColor, '#FF3B69');
+  assert.equal(customConfig.candles.wickUpColor, '#00F090');
+  assert.equal(customConfig.candles.wickDownColor, '#FF3B69');
+  // Border dihitung 15% lebih gelap secara otomatis
+  assert.equal(customConfig.candles.borderUpColor, '#00CC7A'); // 240 * 0.85 = 204 -> CC
+  assert.equal(customConfig.candles.borderDownColor, '#D93259'); // 255*0.85=217(D9), 59*0.85=50(32), 105*0.85=89(59)
+
+  // 2. Bersihkan custom color (Reset ke tema)
+  appliedConfigs.length = 0;
+  controller.setTheme('signature', 12, {});
+
+  const resetConfig = appliedConfigs.find((c) => c.candles !== undefined);
+  assert.ok(resetConfig, 'applyConfig harus dipanggil saat reset custom colors');
+  assert.equal(resetConfig.candles.upColor, THEME_PRESETS.signature.chart.upColor);
+  assert.equal(resetConfig.candles.downColor, THEME_PRESETS.signature.chart.downColor);
+  assert.equal(resetConfig.candles.borderUpColor, THEME_PRESETS.signature.chart.borderUpColor);
+  assert.equal(resetConfig.candles.borderDownColor, THEME_PRESETS.signature.chart.borderDownColor);
+
+  controller.destroy();
+});
+
