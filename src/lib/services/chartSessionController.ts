@@ -689,7 +689,7 @@ export class ChartSessionController {
   }
 
   /**
-   * Menyelaraskan tema visual kanvas WebGL2
+   * Menyelaraskan tema visual kanvas WebGL2 dan warna candlestick
    */
   public setTheme(preset: ThemePresetId, fontSize?: number): void {
     this.themePreset = preset;
@@ -714,6 +714,48 @@ export class ChartSessionController {
         }
       } catch (err) {
         console.warn('[ChartSessionController] setTheme error:', err);
+      }
+
+      // Bangun patch konfigurasi candles dan bars untuk WebGL2 Renderer
+      const candleConfig = {
+        candles: {
+          upColor: cfg.chart.upColor,
+          downColor: cfg.chart.downColor,
+          borderUpColor: cfg.chart.borderUpColor || cfg.chart.upColor,
+          borderDownColor: cfg.chart.borderDownColor || cfg.chart.downColor,
+          wickUpColor: cfg.chart.wickUpColor || cfg.chart.upColor,
+          wickDownColor: cfg.chart.wickDownColor || cfg.chart.downColor,
+          bodyVisible: true,
+          borderVisible: true,
+          wickVisible: true,
+        },
+        bars: {
+          upColor: cfg.chart.upColor,
+          downColor: cfg.chart.downColor,
+        },
+      };
+
+      // Terapkan ke seluruh sel grafik aktif
+      try {
+        for (const cell of this.getAllCells()) {
+          const chart = cell?.chart || cell?.inner;
+          const r = chart?.renderer?.renderer || chart?.renderer;
+          if (r && typeof r.applyConfig === 'function') {
+            r.applyConfig(candleConfig);
+          }
+        }
+      } catch (err) {
+        console.warn('[ChartSessionController] applyConfig candleStyle error:', err);
+      }
+
+      // Perbarui activeChartDefaultConfig agar layout multi-chart berikutnya mewarisi konfigurasi lilin ini
+      if (this.activeChartDefaultConfig) {
+        this.activeChartDefaultConfig = {
+          ...this.activeChartDefaultConfig,
+          ...candleConfig,
+        };
+      } else {
+        this.activeChartDefaultConfig = candleConfig;
       }
     }
 
