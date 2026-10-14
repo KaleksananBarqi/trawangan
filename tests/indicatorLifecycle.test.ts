@@ -102,4 +102,89 @@ describe('Indicator Lifecycle & Memory Stacking Prevention', () => {
     assert.strictEqual(totalRemoved, 8, 'Ke-4 handle aktif harus di-remove saat indikator dihapus');
     assert.strictEqual(indicatorHandles.size, 0);
   });
+
+  test('3. ChartSessionController Seam: addPineIndicator, deduplication, and removal directly on controller', async () => {
+    const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+
+    let removedCell1Count = 0;
+    let removedCell2Count = 0;
+    let cell1Indicators: any[] = [];
+    let cell2Indicators: any[] = [];
+
+    const cell1: any = {
+      id: 'c1',
+      chart: {
+        addIndicator: (_code: string, opts: any) => {
+          const h: any = {
+            id: 'ind_h1_' + Date.now() + Math.random(),
+            title: opts.title,
+            remove: () => {
+              removedCell1Count++;
+              cell1Indicators = cell1Indicators.filter((x) => x !== h);
+            }
+          };
+          cell1Indicators.push(h);
+          return h;
+        },
+        indicators: () => cell1Indicators
+      }
+    };
+
+    const cell2: any = {
+      id: 'c2',
+      chart: {
+        addIndicator: (_code: string, opts: any) => {
+          const h: any = {
+            id: 'ind_h2_' + Date.now() + Math.random(),
+            title: opts.title,
+            remove: () => {
+              removedCell2Count++;
+              cell2Indicators = cell2Indicators.filter((x) => x !== h);
+            }
+          };
+          cell2Indicators.push(h);
+          return h;
+        },
+        indicators: () => cell2Indicators
+      }
+    };
+
+    const mockWs = {
+      cells: () => [cell1, cell2],
+      active: cell1,
+      destroy: () => {}
+    };
+
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs,
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true }
+    });
+
+    controller.attach({ nodeType: 1 } as any);
+
+    // 1. Tambah indikator pertama
+    const ok1 = await controller.addPineIndicator('plot(close)', 'Test MACD');
+    assert.strictEqual(ok1, true);
+    let active = controller.getActiveIndicators();
+    assert.strictEqual(active.length, 1);
+    assert.strictEqual(active[0].title, 'Test MACD');
+    assert.strictEqual(removedCell1Count, 0);
+
+    // 2. Re-compile skrip yang sama (Deduplikasi)
+    const ok2 = await controller.addPineIndicator('plot(close * 2)', 'Test MACD');
+    assert.strictEqual(ok2, true);
+    active = controller.getActiveIndicators();
+    assert.strictEqual(active.length, 1, 'Instance harus tetap 1 setelah deduplikasi');
+    assert.strictEqual(removedCell1Count, 1, 'Handle lama pada cell 1 harus di-remove');
+    assert.strictEqual(removedCell2Count, 1, 'Handle lama pada cell 2 harus di-remove');
+
+    // 3. Remove indicator
+    controller.removeIndicator(active[0].id);
+    active = controller.getActiveIndicators();
+    assert.strictEqual(active.length, 0, 'Indikator harus bersih setelah di-remove');
+    assert.strictEqual(removedCell1Count, 2);
+    assert.strictEqual(removedCell2Count, 2);
+
+    controller.destroy();
+  });
 });

@@ -280,6 +280,28 @@ export class IndicatorRegistry {
   }
 
   /**
+   * Memperbarui input parameter indikator di registry dan pada live handle jika didukung
+   */
+  updateInputs(id: string, inputs: Record<string, any>): boolean {
+    const matched = this.findEntry(id);
+    if (!matched) return false;
+
+    const { entry } = matched;
+    entry.inputs = { ...(entry.inputs || {}), ...inputs };
+
+    for (const h of entry.handles || []) {
+      try {
+        if (typeof h?.setInputs === 'function') {
+          h.setInputs(inputs);
+        } else if (typeof h?.updateInputs === 'function') {
+          h.updateInputs(inputs);
+        }
+      } catch (_) {}
+    }
+    return true;
+  }
+
+  /**
    * Mendapatkan daftar indikator aktif yang valid dan hidup
    * Secara cerdas memangkas (*auto-prune*) indikator yang sudah dihapus dari engine chart
    */

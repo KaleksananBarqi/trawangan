@@ -1,6 +1,7 @@
 // Deep ChartSessionController Module
 // Mengenkapsulasi orkestrasi sesi grafik, siklus hidup WebGL2 Vela Workspace,
-// routing simbol multi-provider, sinkronisasi tema/timezone, dan pembersihan memori.
+// routing simbol multi-provider, sinkronisasi tema/timezone, manajemen indikator,
+// persistent price line guard, dan pembersihan memori.
 
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { BinanceProvider } from '@luxalgo/vela/providers/binance';
@@ -10,10 +11,12 @@ import { BitunixProvider } from './bitunixProvider';
 import { IndodaxProvider } from './indodaxProvider';
 import { registerDefaultEngine } from '@luxalgo/vela';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
+import { IndicatorRegistry } from './indicatorRegistry';
 import type {
   Timeframe,
   MultiChartSyncConfig,
-  ThemePresetId
+  ThemePresetId,
+  ActiveIndicatorInfo
 } from '../types/market';
 import { THEME_PRESETS } from '../constants/themes';
 import { toVelaTimeframe } from '../utils/timeframeAdapter';
@@ -30,6 +33,7 @@ export interface ChartSessionOptions {
   showCurrentPriceLine?: boolean;
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
+  onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   // Factory opsional untuk dependency injection / headless unit testing
   workspaceFactory?: (container: HTMLElement, config: any) => any;
 }
@@ -43,7 +47,9 @@ export interface ChartSessionSnapshot {
   timezone: string;
   themePreset: ThemePresetId;
   fontSize: number;
+  showCurrentPriceLine: boolean;
   activeCell: { symbol: string; timeframe: Timeframe } | null;
+  activeIndicators: ActiveIndicatorInfo[];
 }
 
 type SessionSubscriber = (snapshot: ChartSessionSnapshot) => void;
@@ -58,7 +64,7 @@ export function ensurePineEngine(): void {
     try {
       registerDefaultEngine('pine', () => new PineWorkerEngine());
       staticEngineRegistered = true;
-    } catch (err) {
+    } catch (_) {
       // Abaikan jika sudah terdaftar
     }
   }
@@ -97,6 +103,7 @@ export class ChartSessionController {
   private resizeObserver: ResizeObserver | null = null;
   private subscribers = new Set<SessionSubscriber>();
   private isAttached = false;
+  private indicatorRegistry = new IndicatorRegistry();
 
   private symbol: string;
   private timeframe: Timeframe;
@@ -109,7 +116,9 @@ export class ChartSessionController {
   private showCurrentPriceLine: boolean;
   private syncConfig: MultiChartSyncConfig;
   private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
+  private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   private workspaceFactory?: (container: HTMLElement, config: any) => any;
+  private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -129,6 +138,7 @@ export class ChartSessionController {
       indicators: true
     };
     this.onActiveCellChange = options.onActiveCellChange;
+    this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
     this.workspaceFactory = options.workspaceFactory;
   }
 
@@ -145,13 +155,13 @@ export class ChartSessionController {
       timezone: this.timezone,
       themePreset: this.themePreset,
       fontSize: this.fontSize,
+      showCurrentPriceLine: this.showCurrentPriceLine,
       activeCell: this.activeCellInfo
         ? { ...this.activeCellInfo }
-        : { symbol: this.symbol, timeframe: this.timeframe }
+        : { symbol: this.symbol, timeframe: this.timeframe },
+      activeIndicators: this.getActiveIndicators()
     };
   }
-
-  private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
 
   private notify(): void {
     const snapshot = this.getSnapshot();
@@ -188,6 +198,7 @@ export class ChartSessionController {
     if (options.timezone) this.timezone = options.timezone;
     if (options.themePreset) this.themePreset = options.themePreset;
     if (options.fontSize) this.fontSize = options.fontSize;
+    if (options.syncConfig) this.syncConfig = options.syncConfig;
 
     this.container = container;
     ensurePineEngine();
@@ -249,6 +260,26 @@ export class ChartSessionController {
       return () => {};
     }
 
+    // Pasang listener & price line guard ke seluruh cell awal
+    for (const cell of this.getAllCells()) {
+      this.attachCellListeners(cell);
+    }
+
+    // Dengarkan pembuatan cell baru saat berganti layout grid
+    if (this.workspace && typeof this.workspace.on === 'function') {
+      try {
+        this.workspace.on('cell:created', ({ id }: { id: string }) => {
+          const cell = this.workspace?.cell?.(id);
+          if (cell) {
+            this.attachCellListeners(cell);
+            if (this.timezone) {
+              this.setTimezone(this.timezone);
+            }
+          }
+        });
+      } catch (_) {}
+    }
+
     // Pasang ResizeObserver agar kanvas adaptif terhadap perubahan ukuran window
     if (typeof ResizeObserver !== 'undefined') {
       try {
@@ -265,6 +296,267 @@ export class ChartSessionController {
       this.destroy();
     };
   }
+
+  /**
+   * Mengaitkan listener peristiwa pada sel spesifik dan mengaktifkan price line guard
+   */
+  public attachCellListeners(cell: any): void {
+    if (!cell) return;
+    this.interceptApplyConfig(cell);
+    this.enforceCurrentPriceLine(cell);
+
+    const chart = cell.chart || cell.inner;
+    if (chart && typeof chart.on === 'function') {
+      try {
+        chart.on('market:changed', () => {
+          this.enforceCurrentPriceLine(cell);
+        });
+        chart.on('indicator:removed', (ev: any) => {
+          this.handleIndicatorRemoved(ev?.id);
+        });
+      } catch (_) {}
+    }
+  }
+
+  // ─── Persistent Price Line Guard Engine ───
+
+  /**
+   * Menegakkan garis harga live terkini secara defensif ke seluruh sel aktif
+   */
+  public enforceCurrentPriceLine(targetCell?: any): void {
+    const cells = targetCell ? [targetCell] : this.getAllCells();
+    const show = this.showCurrentPriceLine !== false;
+    for (const cell of cells) {
+      const renderer = cell?.chart?.renderer;
+      const native = renderer?.renderer || renderer;
+      if (native?.scene) {
+        native.scene.showPriceLine = show;
+      }
+      if (typeof native?.set === 'function') {
+        native.set('currentPriceLine', show);
+      }
+      if (native?.scheduler?.invalidate) {
+        native.scheduler.invalidate(4);
+      }
+    }
+  }
+
+  /**
+   * Memasang interceptor pada applyConfig native renderer agar patch parsial tidak menimpa showPriceLine
+   */
+  public interceptApplyConfig(cell: any): void {
+    const renderer = cell?.chart?.renderer;
+    const native = renderer?.renderer || renderer;
+    if (!native || typeof native.applyConfig !== 'function') return;
+    if (native.__priceLineInterceptorAttached) return;
+
+    const self = this;
+    const originalApplyConfig = native.applyConfig.bind(native);
+    native.applyConfig = function (patch: any) {
+      if (patch) {
+        if (!patch.priceScale) {
+          patch.priceScale = {};
+        }
+        if (patch.priceScale.currentPriceLine === undefined) {
+          patch.priceScale.currentPriceLine = self.showCurrentPriceLine !== false;
+        }
+      }
+      const res = originalApplyConfig(patch);
+      if (this.scene) {
+        this.scene.showPriceLine = self.showCurrentPriceLine !== false;
+      }
+      return res;
+    };
+    native.__priceLineInterceptorAttached = true;
+  }
+
+  /**
+   * Menyetel status visibilitas garis harga live
+   */
+  public setShowCurrentPriceLine(show: boolean): void {
+    this.showCurrentPriceLine = show;
+    this.enforceCurrentPriceLine();
+    this.notify();
+  }
+
+  // ─── Indicator Lifecycle & Zombie Guard Engine ───
+
+  /**
+   * Menambahkan indikator Pine Script v6 ke seluruh sel aktif dengan deduplikasi bersih
+   */
+  public async addPineIndicator(
+    source: string,
+    customTitle?: string,
+    savedInputs?: Record<string, any>,
+    savedProps?: Record<string, any>
+  ): Promise<boolean> {
+    if (!this.workspace) return false;
+
+    try {
+      const cleanTitle = (customTitle || 'Custom Indicator').trim();
+
+      // 1. DEDUPLIKASI: Hapus instance lama dengan judul atau source identik agar worker tidak menumpuk
+      for (const entry of this.getActiveIndicators()) {
+        if (entry.title === cleanTitle || (entry.source && entry.source.trim() === source.trim())) {
+          this.removeIndicator(entry.id);
+        }
+      }
+
+      // 2. Bersihkan juga secara native di cell target jika ada indikator dengan title yang sama
+      const targetCells = (this.syncConfig.indicators !== false)
+        ? this.getAllCells()
+        : (this.workspace.active ? [this.workspace.active] : this.getAllCells());
+
+      for (const cell of targetCells as any[]) {
+        const chart = cell?.chart || cell?.inner;
+        if (!cell || !chart || typeof chart.indicators !== 'function') continue;
+        try {
+          const nativeList = chart.indicators();
+          for (const ind of nativeList) {
+            if (ind && (ind.title === cleanTitle || ind.title === customTitle)) {
+              if (typeof ind.remove === 'function') ind.remove();
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 3. Tambahkan indikator ke cell target
+      const createdHandles: any[] = [];
+      let firstHandle: any = null;
+
+      for (const cell of targetCells as any[]) {
+        const chart = cell?.chart || cell?.inner;
+        if (!chart || typeof chart.addIndicator !== 'function') continue;
+        const addOptions: any = {
+          language: 'pine',
+          title: cleanTitle,
+        };
+        if (savedInputs && Object.keys(savedInputs).length > 0) {
+          addOptions.inputs = savedInputs;
+        }
+        if (savedProps && Object.keys(savedProps).length > 0) {
+          addOptions.props = savedProps;
+        }
+
+        const handle = chart.addIndicator(source, addOptions);
+        if (handle) {
+          if (savedInputs && typeof handle.setInputs === 'function') {
+            try { handle.setInputs(savedInputs); } catch (_) {}
+          }
+          if (savedProps && typeof handle.setProps === 'function') {
+            try { handle.setProps(savedProps); } catch (_) {}
+          }
+          createdHandles.push(handle);
+          if (!firstHandle) firstHandle = handle;
+        }
+      }
+
+      if (firstHandle) {
+        this.indicatorRegistry.register({
+          id: firstHandle.id,
+          handle: firstHandle,
+          handles: createdHandles,
+          title: cleanTitle,
+          source,
+          visible: firstHandle.visible ?? true,
+          inputs: savedInputs,
+          props: savedProps,
+        });
+
+        if (savedInputs && Object.keys(savedInputs).length > 0) {
+          setTimeout(() => {
+            for (const h of createdHandles) {
+              try {
+                if (typeof h?.setInputs === 'function') {
+                  h.setInputs(savedInputs);
+                }
+              } catch (_) {}
+            }
+            this.notifyActiveIndicators();
+          }, 350);
+        }
+
+        this.notifyActiveIndicators();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('[ChartSessionController] addPineIndicator error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Menghapus indikator secara tuntas di seluruh sel (mencegah zombie indicator)
+   */
+  public removeIndicator(id: string): void {
+    this.indicatorRegistry.removeIndicator(
+      id,
+      this.syncConfig.indicators !== false,
+      () => this.getAllCells()
+    );
+    this.notifyActiveIndicators();
+  }
+
+  /**
+   * Membersihkan seluruh indikator aktif di workspace
+   */
+  public clearAllIndicators(): void {
+    this.indicatorRegistry.clearAll(() => this.getAllCells());
+    this.notifyActiveIndicators();
+  }
+
+  /**
+   * Mengubah status visibilitas indikator
+   */
+  public toggleIndicatorVisibility(id: string): void {
+    this.indicatorRegistry.toggleVisibility(id, this.syncConfig.indicators !== false);
+    this.notifyActiveIndicators();
+  }
+
+  /**
+   * Memperbarui input parameter indikator
+   */
+  public updateIndicatorInputs(id: string, inputs: Record<string, any>): void {
+    this.indicatorRegistry.updateInputs(id, inputs);
+    this.notifyActiveIndicators();
+  }
+
+  /**
+   * Mengambil daftar indikator aktif di chart
+   */
+  public getActiveIndicators(): ActiveIndicatorInfo[] {
+    return this.indicatorRegistry.getActiveIndicators(
+      this.workspace?.active?.chart,
+      () => this.getAllCells()
+    );
+  }
+
+  /**
+   * Menangani event penghapusan dari engine Vela native
+   */
+  public handleIndicatorRemoved(removedId?: string): void {
+    this.indicatorRegistry.handleRemovedEvent(
+      removedId,
+      this.syncConfig.indicators !== false,
+      () => this.getAllCells()
+    );
+    this.notifyActiveIndicators();
+  }
+
+  private notifyActiveIndicators(): void {
+    const active = this.getActiveIndicators();
+    if (this.onActiveIndicatorsChange) {
+      try {
+        this.onActiveIndicatorsChange(active);
+      } catch (e) {
+        console.error('[ChartSessionController] onActiveIndicatorsChange error:', e);
+      }
+    }
+    this.notify();
+  }
+
+  // ─── Navigation, Simbol & Timeframe ───
 
   /**
    * Mengubah simbol atau bursa aktif secara reaktif

@@ -4,10 +4,10 @@
 
 **Blocked by:** 02: Core ChartSessionController Engine & Headless Lifecycle Seam (#51)
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Move indicator synchronization methods (`addIndicator`, `removeIndicator`, `toggleIndicatorVisibility`, `updateIndicatorInputs`, `clearAllIndicators`) into `ChartSessionController`.
-- [ ] Eliminate the requirement for callers to pass `getAllWorkspaceCells` callbacks or cell arrays.
-- [ ] Integrate `Persistent Price Line Guard` inside `ChartSessionController` so that `currentPriceLine: true` is defensively asserted across `applyConfig` and cell creation events.
-- [ ] Migrate `tests/indicatorLifecycle.test.ts` and `tests/chartPriceLineGuard.test.ts` to test `ChartSessionController` directly at the seam.
-- [ ] All tests pass.
+- [x] Move indicator synchronization methods (`addIndicator`, `removeIndicator`, `toggleIndicatorVisibility`, `updateIndicatorInputs`, `clearAllIndicators`) into `ChartSessionController`.
+- [x] Eliminate the requirement for callers to pass `getAllWorkspaceCells` callbacks or cell arrays.
+- [x] Integrate `Persistent Price Line Guard` inside `ChartSessionController` so that `currentPriceLine: true` is defensively asserted across `applyConfig` and cell creation events.
+- [x] Migrate `tests/indicatorLifecycle.test.ts` and `tests/chartPriceLineGuard.test.ts` to test `ChartSessionController` directly at the seam.
+- [x] All tests pass.

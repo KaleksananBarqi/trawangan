@@ -169,5 +169,61 @@ test.describe('Persistent Price Line Guard Seam Suite (#22)', () => {
     assert.equal(mockCell.chart.renderer.renderer.scene.showPriceLine, true);
     assert.equal(invalidateLevel, 4, 'Scheduler invalidate level 4 (chrome overlay) harus dipanggil');
   });
+
+  test('6. ChartSessionController Seam: otomatis menerapkan interceptor dan menegakkan price line', async () => {
+    const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+
+    let invalidated = false;
+    const mockScene = { showPriceLine: undefined as any };
+    const mockNative: any = {
+      scene: mockScene,
+      scheduler: {
+        invalidate: () => { invalidated = true; }
+      },
+      applyConfig(next: any) {
+        if (next.priceScale) {
+          this.scene.showPriceLine = next.priceScale.currentPriceLine;
+        }
+      }
+    };
+
+    const mockCell = {
+      chart: {
+        renderer: { renderer: mockNative },
+        on: () => {}
+      }
+    };
+
+    const mockWs = {
+      cells: () => [mockCell],
+      active: mockCell,
+      destroy: () => {}
+    };
+
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs,
+      showCurrentPriceLine: true
+    });
+
+    controller.attach({ nodeType: 1 } as any);
+
+    // Initial attach must enforce showPriceLine = true
+    assert.equal(mockScene.showPriceLine, true);
+    assert.equal(invalidated, true);
+
+    // Partial patch without priceScale.currentPriceLine must be intercepted and kept true
+    mockNative.applyConfig({ priceScale: { log: true } });
+    assert.equal(mockScene.showPriceLine, true, 'Patch log scale tidak boleh mematikan showPriceLine');
+
+    // Toggling off intentionally via controller
+    controller.setShowCurrentPriceLine(false);
+    assert.equal(mockScene.showPriceLine, false);
+
+    // Toggling back on
+    controller.setShowCurrentPriceLine(true);
+    assert.equal(mockScene.showPriceLine, true);
+
+    controller.destroy();
+  });
 });
 
