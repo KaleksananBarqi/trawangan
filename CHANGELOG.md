@@ -5,6 +5,17 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.14.1] - 2026-10-14
+
+### 🐛 Diperbaiki (Fixed)
+- **Reaktivitas Timeframe, Layout Grid, dan Simbol Grafik (#55, #56, #57):**
+  - **Propagasi Timeframe ke Vela Workspace (#56):** Memperbaiki metode `ChartSessionController.setTimeframe()` agar secara eksplisit meneruskan mutasi interval/timeframe ke seluruh sel workspace aktif via `cell.setTimeframe()`.
+  - **Sinkronisasi Simbol & Timeframe (#56):** Menyelaraskan alur `setSymbol(symbol, timeframe)` pada controller sehingga pembaruan timeframe tidak hanya disimpan di memori internal, melainkan diteruskan ke sel grafik.
+  - **Eliminasi Svelte 5 Effect Dependency Starvation (#57):** Memperbaiki penanganan `$state` pada `isMounted` di `Chart.svelte` dan mengekstrak evaluasi seluruh props (`symbol`, `timeframe`, `layout`, `syncConfig`, dll.) secara eksplisit di baris teratas blok `$effect`. Ini mencegah hilangnya pelacakan dependensi reaktif Svelte 5 yang sebelumnya menyebabkan pergantian timeframe, simbol, dan layout tidak bereaksi.
+  - **Sinkronisasi Fokus Multi-Chart Cell (`cell:active`) (#56, #58):** Memasang listener event `cell:active` pada Vela Workspace di controller untuk memicu callback `onActiveCellChange({ symbol, timeframe })`, sehingga status simbol dan interval di top bar selalu tersinkronisasi saat pengguna mengeklik sel berbeda pada grid multi-chart.
+- **Rangkaian Tes Regresi Reaktivitas Grafik (#58):**
+  - Menambahkan pengujian end-to-end headless pada `tests/chartReactivityRepro.test.ts` dan `tests/chartSessionController.test.ts` untuk memvalidasi interaksi pergantian timeframe, transisi layout multi-chart, dan propagasi fokus sel.
+
 ## [0.14.0] - 2026-10-14
 
 ### 🚀 Ditambahkan (Added)
