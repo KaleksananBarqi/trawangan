@@ -42,6 +42,8 @@ Mengapa harus membayar langganan bulanan mahal hanya untuk memasang indikator da
 | Fitur / Kapabilitas | `trawangan` (Desktop Native) | Platform Komersial Gratis (TradingView dkk) |
 | :--- | :---: | :---: |
 | **Indikator Simultan** | **Tanpa Batas (Unlimited)** | Terbatas (Maksimal 2 - 3 indikator) |
+| **Tools Gambar Teknikal** | **76+ Varian Lengkap + Hand-Pull** | Dibatasi / Berbayar |
+| **Multi-Chart Grid Layout** | **Bebas (1, 2, 2H, 4 Sel Sinkron)** | Terkunci di tier Pro/Premium |
 | **Kapasitas Watchlist** | **Tanpa Kuota (Unlimited)** | Dibatasi kuota ketat (maks. 30 simbol) |
 | **Eksekusi Pine Script v6** | **Penuh (PineTS Web Worker Lokal)** | Dibatasi server rate-limit & paywall |
 | **Data Feed Multi-Exchange** | **Real-time WebSocket Langsung** | Sering tertunda (*delayed*) / berbayar |
@@ -54,31 +56,31 @@ Mengapa harus membayar langganan bulanan mahal hanya untuk memasang indikator da
 ## 📸 Galeri Tampilan Antarmuka
 
 ### 1. Terminal Charting Utama & Vela WebGL2 Engine
-Rendering candlestick mulus hingga 120 FPS dengan akselerasi hardware penuh, orderflow real-time, dan panel status responsif.
+Rendering candlestick mulus hingga 120 FPS dengan akselerasi hardware penuh, orderflow real-time, mode navigasi geser Hand-Pull (<kbd>H</kbd>), penghapus interaktif 1-klik, dan panel status responsif.
 
 <p align="center">
-  <img src="static/screenshots/main.png" alt="Terminal Charting Utama trawangan" width="95%">
+  <img src="docs/assets/screenshots/main.png" alt="Terminal Charting Utama trawangan" width="95%">
 </p>
 
-### 2. Pine Script v6 Editor & Web Worker Scripting
-Tulis, edit, dan kompilasi script PineTS v6 secara mandiri tanpa membebani UI thread utama.
+### 2. Side-by-Side Pine Script v6 Editor & Web Worker Scripting
+Tulis, edit, dan kompilasi skrip PineTS v6 secara mandiri berdampingan dengan grafik menggunakan editor modern CodeMirror 6 tanpa membebani UI thread utama.
 
 <p align="center">
-  <img src="static/screenshots/pine-editor.png" alt="Pine Script Editor trawangan" width="95%">
+  <img src="docs/assets/screenshots/pine-editor.png" alt="Pine Script Editor trawangan" width="95%">
 </p>
 
-### 3. Pengaturan Terminal & Multi-Provider Data Feed
-Kustomisasi koneksi WebSocket multi-exchange (Binance, Bitunix, Hyperliquid, Coinbase), manajemen data provider kustom, serta telemetri hardware WebGL2 real-time.
+### 3. Pengaturan Terminal, Audio Chime Alerts & Multi-Provider Data Feed
+Kustomisasi zona waktu chart reaktif (WIB/Jakarta, UTC), nada alert kristal sintetis Audio Chime, notifikasi native Windows Toast, manajemen data feed multi-exchange (Binance, Indodax IDR, Bitunix, Hyperliquid, Coinbase), serta telemetri hardware WebGL2 real-time.
 
 <p align="center">
-  <img src="static/screenshots/setting.png" alt="Pengaturan Terminal dan Multi-Provider trawangan" width="95%">
+  <img src="docs/assets/screenshots/setting.png" alt="Pengaturan Terminal dan Multi-Provider trawangan" width="95%">
 </p>
 
-### 4. Preset Multi-Tema & Filosofi Sistem
-Dukungan *Signature Palette* cyberpunk minimalis (`#0F0F0F` + `#FF69B4`), tema exchange klasik (Binance, TradingView, Bitunix, Coinglass), serta kustomisasi densitas font antarmuka.
+### 4. Preset Multi-Tema WebGL2 & Kustomisasi Candlestick Hibrida
+Harmonisasi palet warna tema instan (Signature Cyber-Monochrome `#0F0F0F` + `#FF69B4`, Binance Classic, Bitunix Neon, TradingView Pro, Coinglass Dark) ke seluruh sel kanvas WebGL2, pemilih warna kustom mandiri lilin bullish dan bearish dengan formula kontras border otomatis (-15%), serta tombol reset ke tema sekali klik.
 
 <p align="center">
-  <img src="static/screenshots/about.png" alt="Preset Multi-Tema dan Modal Tentang trawangan" width="95%">
+  <img src="docs/assets/screenshots/theme-custom.png" alt="Preset Multi-Tema dan Kustomisasi Warna Lilin trawangan" width="95%">
 </p>
 
 ---
@@ -95,11 +97,14 @@ Dukungan *Signature Palette* cyberpunk minimalis (`#0F0F0F` + `#FF69B4`), tema e
 
 ## 🚀 Fitur Unggulan
 
-- **Ultra-Ringan & Efisien:** Menggunakan arsitektur native desktop berbasis Tauri v2 dengan konsumsi RAM minimal (~30-50MB), jauh lebih hemat dibandingkan platform berbasis Electron.
-- **WebGL2 Charting Engine:** Rendering grafik candle berkecepatan tinggi hingga 60-120 FPS menggunakan LuxAlgo Vela.
-- **Custom Scripting (PineTS):** Dukungan Pine Script execution langsung di aplikasi melalui LuxAlgo PineTS yang berjalan di Web Worker tanpa memblokir UI thread.
-- **Multi-Exchange Real-Time Feed:** Koneksi WebSocket real-time dan REST fallback ke Binance, Bitunix, Hyperliquid, dan Coinbase.
-- **Offline Drawing Storage:** Penyimpanan alat gambar, indikator, dan konfigurasi chart secara lokal menggunakan SQLite (`rusqlite`) di layer Rust.
+- **Ultra-Ringan & Efisien:** Menggunakan arsitektur native desktop berbasis Tauri v2 (Rust Core) dengan konsumsi RAM minimal (~30-50MB), jauh lebih hemat dibandingkan platform berbasis Electron.
+- **WebGL2 Charting Engine (120 FPS):** Rendering grafik lilin berkecepatan tinggi dengan akselerasi GPU penuh menggunakan LuxAlgo Vela Engine.
+- **76+ Tools Gambar Teknikal & Navigasi Hand-Pull:** Ketersediaan lengkap 76 varian alat teknikal Vela, quick stamp palette (🎯, 🚀, 📌), mode navigasi geser Hand-Pull (<kbd>H</kbd> / <kbd>Spacebar</kbd>), dan mode penghapus interaktif 1-klik (<kbd>Esc</kbd> untuk kembali).
+- **Side-by-Side Pine Script v6 IDE:** Tulis dan kompilasi script Pine Script v6 di editor CodeMirror 6 berdampingan dengan grafik. Dijalankan oleh LuxAlgo PineTS di Web Worker lokal tanpa memblokir UI thread.
+- **Type-to-Search & Sub-5ms Multi-Bursa:** Intersepsi keyboard cepat saat fokus di grafik atau tekan <kbd>Ctrl+K</kbd> untuk membuka pencarian simbol multi-tier dengan cache instan (< 5ms) dan auto-switch provider.
+- **Draggable Price Alerts & Defensive Price Line Guard:** Tarik garis alert langsung di kanvas grafik secara interaktif dengan umpan balik audio chime kristal, serta penjagaan garis harga terkini yang anti-hilang saat mutasi layout atau timeframe.
+- **Provider Native Indodax & Format Rupiah (IDR):** Dukungan data feed lokal dengan pemformatan nominal Rupiah terstandarisasi (`Rp 1.480.000.000`), presisi koin mikro, dan pengawas koneksi (Feed Connection Guard).
+- **Multi-Chart Grid & Deep Workspace Persistence:** Tata letak grid (1, 2, 2H, 4 sel) dengan sinkronisasi kursor, viewport, simbol, dan indikator. Dilengkapi persistensi state atomik dan siklus hidup indikator bebas zombie di SQLite lokal (`rusqlite`).
 - **Cross-Platform:** Kompatibel penuh untuk **Windows**, **Linux**, dan **macOS**.
 
 ---
@@ -157,15 +162,15 @@ Aplikasi ini sudah dilengkapi dengan GitHub Actions CI/CD matrix workflow (`.git
 #### Cara Trigger Release Otomatis:
 1. **Lewat Git Tag (Direkomendasikan):**
    ```bash
-   git tag -a v0.3.0 -m "Release v0.3.0"
-   git push origin v0.3.0
+   git tag -a v0.15.0 -m "Release v0.15.0"
+   git push origin v0.15.0
    ```
 2. **Lewat GitHub CLI:**
    ```bash
-   gh workflow run release.yml -f tag=v0.3.0
+   gh workflow run release.yml -f tag=v0.15.0
    ```
 3. **Lewat GitHub Actions UI:**
-   Buka tab **Actions** di GitHub -> Pilih **release trawangan** -> Klik **Run workflow** -> Masukkan versi tag (contoh `v0.3.0`).
+   Buka tab **Actions** di GitHub -> Pilih **release trawangan** -> Klik **Run workflow** -> Masukkan versi tag (contoh `v0.15.0`).
 
 ### Hasil Paket Rilis Biner:
 - **Windows:** `.exe` (NSIS Setup) & `.msi`
