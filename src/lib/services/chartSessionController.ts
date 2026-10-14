@@ -26,6 +26,7 @@ import {
   saveChartDefaultConfig,
   clearChartDefaultConfig
 } from './persistence';
+import { deriveBorderColor } from '../utils/colorUtils';
 
 export interface ChartSessionOptions {
   symbol: string;
@@ -36,6 +37,8 @@ export interface ChartSessionOptions {
   themePreset?: ThemePresetId;
   fontSize?: number;
   timezone?: string;
+  customBullColor?: string;
+  customBearColor?: string;
   showCurrentPriceLine?: boolean;
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
@@ -53,6 +56,8 @@ export interface ChartSessionSnapshot {
   timezone: string;
   themePreset: ThemePresetId;
   fontSize: number;
+  customBullColor?: string;
+  customBearColor?: string;
   showCurrentPriceLine: boolean;
   activeCell: { symbol: string; timeframe: Timeframe } | null;
   activeIndicators: ActiveIndicatorInfo[];
@@ -136,6 +141,7 @@ export class ChartSessionController {
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
   private activeChartDefaultConfig: any = null;
   private isApplyingLayout = false;
+  private customCandleColors: { bullColor?: string; bearColor?: string } | null = null;
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -147,6 +153,12 @@ export class ChartSessionController {
     this.fontSize = options.fontSize || 12;
     this.timezone = options.timezone || 'Asia/Jakarta';
     this.showCurrentPriceLine = options.showCurrentPriceLine ?? true;
+    if (options.customBullColor || options.customBearColor) {
+      this.customCandleColors = {
+        bullColor: options.customBullColor,
+        bearColor: options.customBearColor,
+      };
+    }
     this.syncConfig = options.syncConfig || {
       crosshair: true,
       viewport: true,
@@ -172,6 +184,8 @@ export class ChartSessionController {
       timezone: this.timezone,
       themePreset: this.themePreset,
       fontSize: this.fontSize,
+      customBullColor: this.customCandleColors?.bullColor,
+      customBearColor: this.customCandleColors?.bearColor,
       showCurrentPriceLine: this.showCurrentPriceLine,
       activeCell: this.activeCellInfo
         ? { ...this.activeCellInfo }
@@ -689,21 +703,41 @@ export class ChartSessionController {
   }
 
   /**
-   * Menyelaraskan tema visual kanvas WebGL2
+   * Menyelaraskan tema visual kanvas WebGL2 dan warna candlestick (bawaan tema maupun kustom)
    */
-  public setTheme(preset: ThemePresetId, fontSize?: number): void {
+  public setTheme(
+    preset: ThemePresetId,
+    fontSize?: number,
+    customCandleColors?: { bullColor?: string; bearColor?: string }
+  ): void {
     this.themePreset = preset;
     if (fontSize) this.fontSize = fontSize;
+    if (customCandleColors !== undefined) {
+      this.customCandleColors = customCandleColors;
+    }
 
     if (this.workspace) {
       const cfg = THEME_PRESETS[preset] || THEME_PRESETS.signature;
+
+      // Hitung warna efektif (warna kustom mendominasi jika disetel pengguna)
+      const effectiveUp = this.customCandleColors?.bullColor || cfg.chart.upColor;
+      const effectiveDown = this.customCandleColors?.bearColor || cfg.chart.downColor;
+      const effectiveWickUp = this.customCandleColors?.bullColor || cfg.chart.wickUpColor || cfg.chart.upColor;
+      const effectiveWickDown = this.customCandleColors?.bearColor || cfg.chart.wickDownColor || cfg.chart.downColor;
+      const effectiveBorderUp = this.customCandleColors?.bullColor
+        ? deriveBorderColor(this.customCandleColors.bullColor, 0.15)
+        : cfg.chart.borderUpColor || cfg.chart.upColor;
+      const effectiveBorderDown = this.customCandleColors?.bearColor
+        ? deriveBorderColor(this.customCandleColors.bearColor, 0.15)
+        : cfg.chart.borderDownColor || cfg.chart.downColor;
+
       const themeObj = {
         background: cfg.chart.background,
         textColor: cfg.chart.textColor,
         gridColor: cfg.chart.gridColor,
         borderColor: cfg.chart.borderColor,
-        upColor: cfg.chart.upColor,
-        downColor: cfg.chart.downColor,
+        upColor: effectiveUp,
+        downColor: effectiveDown,
         fontSize: Math.max(9, Math.min(32, Math.round(this.fontSize))),
         fontFamily: "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
       };
@@ -714,6 +748,48 @@ export class ChartSessionController {
         }
       } catch (err) {
         console.warn('[ChartSessionController] setTheme error:', err);
+      }
+
+      // Bangun patch konfigurasi candles dan bars untuk WebGL2 Renderer
+      const candleConfig = {
+        candles: {
+          upColor: effectiveUp,
+          downColor: effectiveDown,
+          borderUpColor: effectiveBorderUp,
+          borderDownColor: effectiveBorderDown,
+          wickUpColor: effectiveWickUp,
+          wickDownColor: effectiveWickDown,
+          bodyVisible: true,
+          borderVisible: true,
+          wickVisible: true,
+        },
+        bars: {
+          upColor: effectiveUp,
+          downColor: effectiveDown,
+        },
+      };
+
+      // Terapkan ke seluruh sel grafik aktif
+      try {
+        for (const cell of this.getAllCells()) {
+          const chart = cell?.chart || cell?.inner;
+          const r = chart?.renderer?.renderer || chart?.renderer;
+          if (r && typeof r.applyConfig === 'function') {
+            r.applyConfig(candleConfig);
+          }
+        }
+      } catch (err) {
+        console.warn('[ChartSessionController] applyConfig candleStyle error:', err);
+      }
+
+      // Perbarui activeChartDefaultConfig agar layout multi-chart berikutnya mewarisi konfigurasi lilin ini
+      if (this.activeChartDefaultConfig) {
+        this.activeChartDefaultConfig = {
+          ...this.activeChartDefaultConfig,
+          ...candleConfig,
+        };
+      } else {
+        this.activeChartDefaultConfig = candleConfig;
       }
     }
 
@@ -1311,6 +1387,7 @@ export class ChartSessionController {
 
   /**
    * Reset konfigurasi lilin & chart kembali ke setelan awal pabrik Vela
+   * dan menyelaraskan ulang dengan Theme Preset yang sedang aktif
    */
   public async resetSettingsToFactory(): Promise<void> {
     try {
@@ -1328,6 +1405,8 @@ export class ChartSessionController {
           }
         }
       }
+      // Pulihkan lilin & elemen kanvas ke Theme Preset aktif yang sedang dipilih pengguna
+      this.setTheme(this.themePreset, this.fontSize, this.customCandleColors || undefined);
     } catch (err) {
       console.warn('[ChartSessionController] Gagal reset chart settings ke pabrik:', err);
     }

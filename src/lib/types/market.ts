@@ -231,6 +231,8 @@ export interface AppSettings {
   showDrawingPriceLabels?: boolean;
   theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'obsidian';
   themePreset?: ThemePresetId;
+  customBullColor?: string;
+  customBearColor?: string;
   fontFamilyUi?: string;
   fontFamilyMono?: string;
   uiDensity?: UiDensity;

@@ -1124,6 +1124,8 @@
           layout={currentLayout}
           providerId={activeProviderId}
           themePreset={appSettings.themePreset || 'signature'}
+          customBullColor={appSettings.customBullColor}
+          customBearColor={appSettings.customBearColor}
           fontSize={appSettings.fontSize || 12}
           timezone={appSettings.timezone || 'Asia/Jakarta'}
           {syncConfig}

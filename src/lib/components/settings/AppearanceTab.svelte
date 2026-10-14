@@ -33,6 +33,15 @@
     const current = settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE);
     handleSetFontSize(current + delta);
   }
+
+  const activePreset = $derived(THEME_PRESETS[settings.themePreset || 'signature'] || THEME_PRESETS.signature);
+  const currentBull = $derived(settings.customBullColor || activePreset.chart.upColor);
+  const currentBear = $derived(settings.customBearColor || activePreset.chart.downColor);
+  const isCustomActive = $derived(Boolean(settings.customBullColor || settings.customBearColor));
+
+  function handleResetCandleColors() {
+    onUpdateSettings({ customBullColor: undefined, customBearColor: undefined });
+  }
 </script>
 
 <div class="section-group">
@@ -47,7 +56,13 @@
       <button
         type="button"
         class="theme-card {isSelected ? 'selected' : ''}"
-        onclick={() => onUpdateSettings({ themePreset: preset.id, theme: preset.id as any })}
+        onclick={() =>
+          onUpdateSettings({
+            themePreset: preset.id,
+            theme: preset.id as any,
+            customBullColor: undefined,
+            customBearColor: undefined,
+          })}
       >
         <div class="theme-card-header">
           <span class="theme-name">{preset.name}</span>
@@ -85,6 +100,101 @@
         </div>
       </button>
     {/each}
+  </div>
+
+  <!-- Kustomisasi Warna Candlestick Hibrida -->
+  <div class="custom-candle-box">
+    <div class="custom-candle-header">
+      <div class="custom-candle-info">
+        <span class="custom-candle-title">Kustomisasi Warna Candlestick</span>
+        <span class="custom-candle-desc">
+          Atur warna lilin Bullish dan Bearish secara mandiri. Garis tepi otomatis dihitung 15% lebih gelap dan sumbu mengikuti badan.
+        </span>
+      </div>
+      <div class="custom-candle-actions">
+        {#if isCustomActive}
+          <span class="custom-active-badge">Custom Aktif</span>
+        {:else}
+          <span class="custom-theme-badge">Mengikuti Tema</span>
+        {/if}
+        <button
+          type="button"
+          class="btn-reset-candle"
+          onclick={handleResetCandleColors}
+          disabled={!isCustomActive}
+          title="Kembalikan warna candlestick ke setelan bawaan tema aktif"
+        >
+          <RotateCcw size={12} />
+          <span>Reset ke Tema</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="custom-candle-inputs">
+      <!-- Bullish Picker -->
+      <div class="candle-picker-card">
+        <div class="picker-label-row">
+          <span class="picker-title">Candlestick Bullish (Naik)</span>
+          <span class="picker-current-hex mono-nums">{currentBull}</span>
+        </div>
+        <div class="picker-controls">
+          <input
+            type="color"
+            class="color-input"
+            value={currentBull}
+            onchange={(e) => onUpdateSettings({ customBullColor: e.currentTarget.value })}
+            aria-label="Warna Candlestick Bullish"
+          />
+          <input
+            type="text"
+            class="hex-text-input mono-nums"
+            value={currentBull}
+            maxlength="7"
+            onchange={(e) => {
+              let val = e.currentTarget.value.trim();
+              if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                val = '#' + val;
+              }
+              if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
+                onUpdateSettings({ customBullColor: val });
+              }
+            }}
+          />
+        </div>
+      </div>
+
+      <!-- Bearish Picker -->
+      <div class="candle-picker-card">
+        <div class="picker-label-row">
+          <span class="picker-title">Candlestick Bearish (Turun)</span>
+          <span class="picker-current-hex mono-nums">{currentBear}</span>
+        </div>
+        <div class="picker-controls">
+          <input
+            type="color"
+            class="color-input"
+            value={currentBear}
+            onchange={(e) => onUpdateSettings({ customBearColor: e.currentTarget.value })}
+            aria-label="Warna Candlestick Bearish"
+          />
+          <input
+            type="text"
+            class="hex-text-input mono-nums"
+            value={currentBear}
+            maxlength="7"
+            onchange={(e) => {
+              let val = e.currentTarget.value.trim();
+              if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                val = '#' + val;
+              }
+              if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
+                onUpdateSettings({ customBearColor: val });
+              }
+            }}
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -376,6 +486,173 @@
 
   .status-inactive {
     color: var(--text-dim);
+  }
+
+  .custom-candle-box {
+    margin-top: 14px;
+    padding: 14px 16px;
+    background: var(--bg-surface, #141414);
+    border: 1px solid var(--border-subtle, #242424);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .custom-candle-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .custom-candle-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .custom-candle-title {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main, #f7f7f7);
+    letter-spacing: 0.02em;
+  }
+
+  .custom-candle-desc {
+    font-size: 11px;
+    color: var(--text-muted, #a3a3a3);
+    max-width: 480px;
+    line-height: 1.4;
+  }
+
+  .custom-candle-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .custom-active-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--brand-primary, #ff69b4);
+    background: rgba(255, 105, 180, 0.12);
+    border: 1px solid rgba(255, 105, 180, 0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .custom-theme-badge {
+    font-size: 10px;
+    color: var(--text-muted, #a3a3a3);
+    background: var(--bg-elevated, #1e1e1e);
+    border: 1px solid var(--border-hairline, #242424);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .btn-reset-candle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 10px;
+    background: var(--bg-elevated, #1e1e1e);
+    border: 1px solid var(--border-hairline, #242424);
+    color: var(--text-main, #f7f7f7);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-reset-candle:hover:not(:disabled) {
+    background: var(--bg-hover, #2a2a2a);
+    border-color: var(--border-subtle, #333333);
+  }
+
+  .btn-reset-candle:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .custom-candle-inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+
+  .candle-picker-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    background: var(--bg-darkest, #0f0f0f);
+    border: 1px solid var(--border-hairline, #242424);
+    border-radius: 6px;
+  }
+
+  .picker-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .picker-title {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-muted, #a3a3a3);
+  }
+
+  .picker-current-hex {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-main, #f7f7f7);
+  }
+
+  .picker-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .color-input {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 32px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0;
+  }
+
+  .color-input::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+
+  .color-input::-webkit-color-swatch {
+    border: 1px solid var(--border-subtle, #333);
+    border-radius: 4px;
+  }
+
+  .hex-text-input {
+    flex: 1;
+    background: var(--bg-surface, #141414);
+    border: 1px solid var(--border-hairline, #242424);
+    color: var(--text-main, #f7f7f7);
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .hex-text-input:focus {
+    border-color: var(--brand-primary, #ff69b4);
   }
 
   .setting-row {

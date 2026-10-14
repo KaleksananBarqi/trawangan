@@ -33,11 +33,13 @@
     onRequestCreateAlert?: (symbol: string, price: number) => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
     themePreset?: ThemePresetId; fontSize?: number; timezone?: string;
+    customBullColor?: string; customBearColor?: string;
   }
 
   let {
     symbol, timeframe, defaultTimeframe = '15m', layout, providerId = 'binance',
     themePreset = 'signature', fontSize = 12, timezone = 'Asia/Jakarta',
+    customBullColor, customBearColor,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
@@ -49,7 +51,8 @@
 
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
-    fontSize, timezone, showCurrentPriceLine, syncConfig, onActiveCellChange, onActiveIndicatorsChange
+    fontSize, timezone, customBullColor, customBearColor,
+    showCurrentPriceLine, syncConfig, onActiveCellChange, onActiveIndicatorsChange
   });
 
   let feedConnectionStatus = $state(marketFeed.getConnectionStatus());
@@ -88,7 +91,7 @@
   $effect(() => { const tf = timeframe; if (isMounted) controller.setTimeframe(tf); });
   $effect(() => { const l = layout; if (isMounted && l) controller.setLayout(l); });
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
-  $effect(() => { const tp = themePreset, fs = fontSize; if (isMounted) controller.setTheme(tp, fs); });
+  $effect(() => { const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor; if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }); });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
   $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
   $effect(() => {
