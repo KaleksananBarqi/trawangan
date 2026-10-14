@@ -551,6 +551,13 @@ export class ChartSessionController {
   }
 
   /**
+   * Mengambil kode sumber Pine Script dari indikator terdaftar
+   */
+  public getIndicatorSource(id: string): string | undefined {
+    return this.indicatorRegistry.getSource(id);
+  }
+
+  /**
    * Menangani event penghapusan dari engine Vela native
    */
   public handleIndicatorRemoved(removedId?: string): void {

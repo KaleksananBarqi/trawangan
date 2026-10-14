@@ -1,0 +1,440 @@
+/* trawangan Chart Presentation Layer Styles */
+
+.chart-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-darkest);
+}
+
+.chart-wrapper.selecting-cutoff canvas {
+  cursor: crosshair !important;
+}
+
+.chart-wrapper.handpull-mode,
+.chart-wrapper.handpull-mode .vela-container,
+.chart-wrapper.handpull-mode canvas {
+  cursor: grab !important;
+}
+
+.chart-wrapper.handpull-mode:active,
+.chart-wrapper.handpull-mode:active .vela-container,
+.chart-wrapper.handpull-mode:active canvas {
+  cursor: grabbing !important;
+}
+
+.vela-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Garis panduan vertikal pemotong lilin presisi */
+.vertical-cutline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--bear-color) 0,
+    var(--bear-color) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  pointer-events: none;
+  z-index: 25;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.cutline-scissors-badge {
+  position: absolute;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: rgba(16, 19, 26, 0.95);
+  border: 1px solid var(--bear-color);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7), 0 0 8px var(--bear-glow);
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.badge-cut-icon {
+  color: var(--bear-color);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.cutoff-overlay-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  pointer-events: none;
+  animation: fadeInDown 0.2s ease-out;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.feed-connection-warning-banner {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(26, 17, 16, 0.96);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.75), 0 0 15px rgba(239, 68, 68, 0.25);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm, 6px);
+  color: #ffffff;
+  max-width: 90%;
+  animation: fadeInDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.warning-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.warning-icon {
+  color: #ef4444;
+  flex-shrink: 0;
+}
+
+.warning-text {
+  font-size: 11.5px;
+  color: #fca5a5;
+}
+
+.warning-text b {
+  color: #ffffff;
+}
+
+.warning-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-switch-indodax {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-xs, 4px);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-switch-indodax:hover {
+  background: #1d4ed8;
+}
+
+.btn-retry-feed {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-xs, 4px);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-retry-feed:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-dismiss-warning {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-dismiss-warning:hover {
+  color: #ffffff;
+}
+
+.hint-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(16, 19, 26, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--bear-color);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.65), 0 0 10px var(--bear-glow);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  pointer-events: auto;
+}
+
+.hint-icon {
+  color: var(--bear-color);
+}
+
+.hint-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: 0.02em;
+}
+
+.cancel-hint-btn {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.cancel-hint-btn:hover {
+  color: var(--text-main);
+  background-color: var(--bg-hover);
+}
+
+/* Garis Horizontal Visual Price Alert pada Grafik */
+.chart-alert-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: repeating-linear-gradient(
+    to right,
+    #f59e0b 0,
+    #f59e0b 5px,
+    transparent 5px,
+    transparent 10px
+  );
+  pointer-events: none;
+  z-index: 18;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.35);
+}
+
+.chart-alert-line.triggered {
+  background: repeating-linear-gradient(
+    to right,
+    var(--bear-color) 0,
+    var(--bear-color) 5px,
+    transparent 5px,
+    transparent 10px
+  );
+  box-shadow: 0 0 8px var(--bear-glow);
+}
+
+.chart-alert-line.paused {
+  opacity: 0.35;
+  background: repeating-linear-gradient(
+    to right,
+    var(--text-dim) 0,
+    var(--text-dim) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  box-shadow: none;
+}
+
+.alert-line-badge {
+  position: absolute;
+  right: 60px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background-color: rgba(20, 16, 10, 0.94);
+  backdrop-filter: blur(4px);
+  border: 1px solid #f59e0b;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.75), 0 0 8px rgba(245, 158, 11, 0.25);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 9px;
+  font-weight: 600;
+  color: #fbbf24;
+  pointer-events: auto;
+  cursor: ns-resize;
+  user-select: none;
+  touch-action: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.alert-line-badge.dragging {
+  background-color: #f59e0b;
+  color: #06090e;
+  font-weight: 700;
+  border-color: #fbbf24;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.9), 0 0 12px rgba(245, 158, 11, 0.7);
+  cursor: grabbing;
+}
+
+.chart-alert-line.is-dragging {
+  z-index: 30;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+}
+
+.alert-line-badge:hover {
+  background-color: rgba(28, 22, 12, 0.98);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.85), 0 0 10px rgba(245, 158, 11, 0.4);
+}
+
+.chart-alert-line.triggered .alert-line-badge {
+  background-color: rgba(30, 10, 15, 0.94);
+  border-color: var(--bear-color);
+  color: var(--bear-color);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.75), 0 0 8px var(--bear-glow);
+}
+
+.badge-bell {
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.badge-price {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.badge-lbl {
+  color: var(--text-muted);
+  font-size: 8.5px;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  padding-left: 4px;
+}
+
+.badge-del-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 1px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  transition: color 0.1s ease;
+}
+
+.badge-del-btn:hover {
+  color: var(--bear-color);
+  background-color: rgba(255, 59, 105, 0.15);
+}
+
+/* Styling Tombol 'Simpan sebagai default' pada Modal Chart Settings Vela */
+.trawangan-save-default-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  background: rgba(255, 105, 180, 0.12) !important;
+  border: 1px solid rgba(255, 105, 180, 0.4) !important;
+  color: #ff69b4 !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  padding: 0 12px !important;
+  height: 30px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  user-select: none !important;
+  margin-left: 6px !important;
+}
+
+.trawangan-save-default-btn:hover {
+  background: rgba(255, 105, 180, 0.22) !important;
+  border-color: rgba(255, 105, 180, 0.8) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(255, 105, 180, 0.35) !important;
+}
+
+.trawangan-save-default-btn.saved {
+  background: rgba(16, 185, 129, 0.2) !important;
+  border-color: rgba(16, 185, 129, 0.85) !important;
+  color: #10b981 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4) !important;
+}
+
+/* Visual Badge Skala Harga Sumbu Kanan (TradingView Parity) */
+.price-scale-badge-item {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 3px 0 0 3px;
+  z-index: 22;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  user-select: none;
+  line-height: 1.2;
+  animation: fadeIn 0.12s ease-out;
+}
+
+.price-scale-badge-item .badge-tag {
+  font-size: 7.5px;
+  font-weight: 800;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.price-scale-badge-item .badge-num {
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}

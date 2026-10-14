@@ -403,6 +403,14 @@ export class IndicatorRegistry {
   }
 
   /**
+   * Mengambil kode sumber Pine Script dari indikator berdasarkan ID
+   */
+  getSource(id: string): string | undefined {
+    const matched = this.findEntry(id);
+    return matched?.entry?.source;
+  }
+
+  /**
    * Mengembalikan jumlah entri indikator tersimpan di registry
    */
   get size(): number {
