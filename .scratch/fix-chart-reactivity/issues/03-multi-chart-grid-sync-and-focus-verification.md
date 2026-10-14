@@ -10,10 +10,10 @@ Memvalidasi integrasi end-to-end pergantian layout grid multi-chart (tambah/kura
 - 02: Chart.svelte Svelte 5 Effect Unstarvation
 
 ## Status
-ready-for-agent
+closed
 
 ## Acceptance criteria
-- [ ] Membuka layout 2 atau 4 menata ulang sel grafik secara responsif.
-- [ ] Mengklik sel yang berbeda memperbarui status simbol dan timeframe di top header via `onActiveCellChange`.
-- [ ] Garis harga terkini (price line guard) tetap aktif di seluruh sel baru.
-- [ ] Seluruh 182+ unit tests di 24 suites lulus 100% tanpa regresi.
+- [x] Membuka layout 2 atau 4 menata ulang sel grafik secara responsif.
+- [x] Mengklik sel yang berbeda memperbarui status simbol dan timeframe di top header via `onActiveCellChange`.
+- [x] Garis harga terkini (price line guard) tetap aktif di seluruh sel baru.
+- [x] Seluruh 186 unit tests di 25 suites lulus 100% tanpa regresi.

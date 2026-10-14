@@ -62,6 +62,10 @@ function createMockWorkspace() {
       list.push(fn);
       listeners.set(event, list);
     },
+    emit(event: string, ...args: any[]) {
+      const list = listeners.get(event) || [];
+      for (const fn of list) fn(...args);
+    },
     destroy() {
       destroyed = true;
     },
@@ -209,5 +213,37 @@ test.describe('ChartSessionController Seam Suite (#51)', () => {
       controller.destroy();
       controller.destroy();
     });
+  });
+
+  test('7. cell:active Event Propagation ke onActiveCellChange', () => {
+    let mockWs: any = null;
+    let receivedCellInfo: { symbol: string; timeframe: string } | null = null;
+
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      onActiveCellChange: (info) => {
+        receivedCellInfo = info;
+      },
+      workspaceFactory: () => {
+        mockWs = createMockWorkspace();
+        return mockWs;
+      }
+    });
+
+    controller.attach(createMockContainer());
+
+    // Ubah sel aktif di workspace dan picu event cell:active
+    mockWs.active.symbol = 'binance:SOLUSDT';
+    mockWs.active.timeframe = '60'; // Vela format 60 = 1h
+
+    mockWs.emit('cell:active');
+
+    assert.ok(receivedCellInfo);
+    if (!receivedCellInfo) throw new Error('Cell info not received');
+    assert.equal((receivedCellInfo as any).symbol, 'SOLUSDT');
+    assert.equal((receivedCellInfo as any).timeframe, '1h');
+
+    controller.destroy();
   });
 });
