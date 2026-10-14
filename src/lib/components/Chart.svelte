@@ -20,7 +20,6 @@
   import { chartDrawingController } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { IndicatorRegistry } from '../services/indicatorRegistry';
-  import { getHistoricalCandles } from '../services/marketProvider';
   import { marketFeed } from '../services/market';
   import type { FeedConnectionStatus } from '../services/market/types';
   import { alertService } from '../services/alertService';
@@ -43,11 +42,7 @@
   import { THEME_PRESETS } from '../constants/themes';
   import { applyLayoutTimeframePolicy } from '../constants/defaults';
   import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
-  import {
-    extractDrawingPriceBadges,
-    extractIndicatorPriceBadges,
-    type PriceScaleBadge
-  } from '../services/priceScaleLabelService';
+  import type { PriceScaleBadge } from '../services/priceScaleLabelService';
 
 
   export interface ReplayStateInfo {
@@ -2173,7 +2168,7 @@
   export const applyPineScript = addPineIndicator;
 
   export async function getActiveCandles(limit = 1000): Promise<Candle[]> {
-    return getHistoricalCandles(symbol, timeframe, limit, providerId);
+    return marketFeed.getCandles(symbol, timeframe, limit);
   }
 
   export function removeIndicator(id: string): void {

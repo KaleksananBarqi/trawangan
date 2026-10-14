@@ -30,7 +30,7 @@
     ArrowDownRight,
     Filter,
   } from '@lucide/svelte';
-  import { getHistoricalCandles } from '../services/marketProvider';
+  import { marketFeed } from '../services/market';
   import { saveScript } from '../services/persistence';
   import { Indicator } from 'pinets';
   import { runPineStrategyBacktest } from '../services/strategyEngine';
@@ -404,7 +404,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
     if (!silent) addLog(`Mengambil candle ${activeSymbol} & menjalankan backtest...`, 'info');
 
     try {
-      const candles = await getHistoricalCandles(activeSymbol, activeTimeframe, 600, providerId);
+      const candles = await marketFeed.getCandles(activeSymbol, activeTimeframe, 600);
       if (!candles || candles.length === 0) {
         if (!silent) addLog('Tidak ada candle pasar tersedia.', 'error');
         isBacktesting = false;

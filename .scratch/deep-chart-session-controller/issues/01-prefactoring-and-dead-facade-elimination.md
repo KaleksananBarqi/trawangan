@@ -4,9 +4,9 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Delete `src/lib/services/drawingStorage.ts` and `src/lib/services/workspaceStorage.ts` (0 active callers in codebase).
-- [ ] Migrate `PineEditor.svelte` and `Chart.svelte` to import directly from `marketFeed` and `persistence`, then delete `src/lib/services/marketProvider.ts`.
-- [ ] Remove unused leftover imports in `Chart.svelte` (e.g. `extractDrawingPriceBadges`, `extractIndicatorPriceBadges`).
-- [ ] All 174 existing tests pass with zero regressions.
+- [x] Delete `src/lib/services/drawingStorage.ts` and `src/lib/services/workspaceStorage.ts` (0 active callers in codebase).
+- [x] Migrate `PineEditor.svelte` and `Chart.svelte` to import directly from `marketFeed` and `persistence`, then delete `src/lib/services/marketProvider.ts`.
+- [x] Remove unused leftover imports in `Chart.svelte` (e.g. `extractDrawingPriceBadges`, `extractIndicatorPriceBadges`).
+- [x] All 174 existing tests pass with zero regressions.
