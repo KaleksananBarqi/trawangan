@@ -5,6 +5,25 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.15.0] - 2026-10-14
+
+### 🚀 Ditambahkan (Added)
+- **Harmonisasi Warna Candlestick dengan Theme Preset WebGL2 (#59, #60):**
+  - Mengintegrasikan pembaruan `applyConfig({ candles, bars })` pada `ChartSessionController.setTheme()` sehingga seluruh Theme Preset (Signature, Binance Classic, Bitunix Neon, TradingView, Coinglass) langsung memperbarui warna badan, sumbu (*wick*), dan garis tepi (*border*) candlestick di seluruh sel grafik WebGL2 tanpa memerlukan reload atau membuka dialog setelan internal Vela.
+  - Mempertahankan Signature Theme cyberpunk minimalis dengan lilin bullish putih gading (`#F7F7F7`) dan bearish hot pink (`#FF69B4`).
+- **Kustomisasi Lilin Hibrida (Bull & Bear) di Tab Tampilan (#59, #61):**
+  - Menghadirkan kontrol pemilih warna mandiri (*color pickers*) untuk lilin Bullish dan Bearish di `AppearanceTab.svelte`.
+  - Menerapkan kalkulasi deterministik penurunan kecerahan garis tepi (*border*) otomatis sebesar 15% via utilitas baru `deriveBorderColor()` di `colorUtils.ts` agar tepi lilin tetap tegas dan nyaman di mata tanpa konfigurasi rumit.
+  - Menyediakan tombol *"Reset ke Tema"* untuk mengembalikan warna lilin ke setelan bawaan tema aktif dengan sekali klik.
+  - Mendukung pengetikan langsung kode warna hex dengan auto-prefix simbol tanda pagar `#`.
+  - Persistensi pengaturan warna kustom di `appSettings` tersimpan otomatis lintas sesi aplikasi.
+- **Penyelarasan Transisi Tema & Reset Setelan Pabrik Cerdas (#59, #62):**
+  - Memilih Theme Preset baru di grid kartu tema secara otomatis membersihkan warna kustom (*auto-clear*) agar pengguna langsung merasakan visual otentik dari tema baru yang dipilih.
+  - Menyelaraskan tombol *"Reset ke Setelan Pabrik"* pada setelan grafik agar memulihkan lilin dan elemen grafik ke Theme Preset yang sedang aktif, bukan warna pabrik lawas.
+
+### 🧪 Pengujian (Tests)
+- Menambahkan rangkaian unit test menyeluruh pada `tests/chartThemeCandleSync.test.ts` (propagasi tema, override warna kustom, reset setelan pabrik) dan `tests/colorUtils.test.ts` (akurasi formula derivasi warna heksadesimal).
+
 ## [0.14.1] - 2026-10-14
 
 ### 🐛 Diperbaiki (Fixed)
