@@ -5,6 +5,30 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.14.0] - 2026-10-14
+
+### 🚀 Ditambahkan (Added)
+- **Deep ChartSessionController & Headless Lifecycle Seam (#49, #51):**
+  - Mengimplementasikan `ChartSessionController` sebagai deep module independen yang mengabstraksi orkestrasi sesi grafik, siklus hidup WebGL2 Vela Workspace, inisialisasi multi-bursa (Binance, Indodax, Bitunix, Hyperliquid, Coinbase), dan pembersihan memori.
+  - Mendukung injection `workspaceFactory` untuk eksekusi headless unit testing tanpa memerlukan DOM atau kanvas WebGL nyata.
+- **Multi-Chart Grid Synchronization & Deep Workspace Persistence (#49, #53):**
+  - Mengenkapsulasi alur perpindahan layout grid multi-chart (1, 2, 2h, 4 sel) beserta sinkronisasi kursor, viewport, simbol, dan indikator.
+  - Menghadirkan rekonsiliasi atomik `saveWorkspaceState` dan `loadWorkspaceState` yang memulihkan proporsi sub-pane (`paneWeights`), konfigurasi skala harga logaritmik/manual (`priceScaleState`), style harga, bar spacing, serta indikator aktif ke seluruh sel.
+  - Menyediakan persistensi pengaturan grafik pengguna (`saveCurrentSettingsAsDefault` dan `resetSettingsToFactory`).
+
+### 🔄 Diubah (Changed)
+- **Perampingan Monolit `Chart.svelte` (< 350 Baris) (#49, #54):**
+  - Memangkas komponen inti `Chart.svelte` dari 2.940 baris menjadi hanya 347 baris presentasi deklaratif yang ramping dan mudah dipelihara.
+  - Mengekstrak 440 baris stylesheet presentasi ke berkas terpisah `src/lib/components/chart.css`.
+  - Mengeliminasi seluruh loop iterasi sel imperatif, mutasi DOM manual, dan redundansi observer dari lapisan view komponen.
+- **Pembersihan Modul Dead Storage Facades (#49, #50):**
+  - Mengeliminasi modul lama `drawingStorage.ts`, `workspaceStorage.ts`, dan `marketProvider.ts` yang redundan, serta memigrasikan seluruh pemanggil ke antarmuka resmi `persistence.ts` dan `marketFeed`.
+
+### 🐛 Diperbaiki (Fixed)
+- **Penyatuan Siklus Hidup Indikator & Defensive Price Line Guard (#49, #52):**
+  - Mengintegrasikan manajemen indikator dan pencegahan residu zombie ke dalam controller tunggal, memastikan sinkronisasi penghapusan instans di semua sel grid.
+  - Menyatukan interseptor defensif `enforceCurrentPriceLine` agar garis harga terkini tidak pernah hilang saat switching simbol, pergantian timeframe, atau mutasi layout multi-chart.
+
 ## [0.13.1] - 2026-10-14
 
 ### 🐛 Diperbaiki (Fixed)
