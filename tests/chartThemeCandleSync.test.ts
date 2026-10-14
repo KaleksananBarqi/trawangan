@@ -152,3 +152,40 @@ test('Tiket 2: setTheme dengan customCandleColors harus meng-override warna cand
   controller.destroy();
 });
 
+test('Tiket 3: resetSettingsToFactory harus memulihkan lilin ke Theme Preset aktif', async () => {
+  const { ws, appliedConfigs } = createMockWorkspaceWithRendererWatcher();
+  const mockContainer: any = {
+    nodeType: 1,
+    clientWidth: 1000,
+    clientHeight: 600,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+
+  const controller = new ChartSessionController({
+    symbol: 'BTCUSDT',
+    timeframe: '15m',
+    themePreset: 'binance',
+    workspaceFactory: () => ws,
+  });
+
+  controller.attach(mockContainer);
+  controller.setTheme('binance');
+
+  // Bersihkan log konfigurasi sebelumnya
+  appliedConfigs.length = 0;
+
+  // Lakukan resetSettingsToFactory
+  await controller.resetSettingsToFactory();
+
+  // Pastikan applyConfig dipanggil ulang dengan tema binance aktif
+  const lastConfig = appliedConfigs[appliedConfigs.length - 1];
+  assert.ok(lastConfig, 'applyConfig harus dipanggil setelah factory reset');
+  assert.equal(lastConfig.candles.upColor, THEME_PRESETS.binance.chart.upColor);
+  assert.equal(lastConfig.candles.downColor, THEME_PRESETS.binance.chart.downColor);
+
+  controller.destroy();
+});
+
+

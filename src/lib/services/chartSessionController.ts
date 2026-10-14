@@ -1387,6 +1387,7 @@ export class ChartSessionController {
 
   /**
    * Reset konfigurasi lilin & chart kembali ke setelan awal pabrik Vela
+   * dan menyelaraskan ulang dengan Theme Preset yang sedang aktif
    */
   public async resetSettingsToFactory(): Promise<void> {
     try {
@@ -1404,6 +1405,8 @@ export class ChartSessionController {
           }
         }
       }
+      // Pulihkan lilin & elemen kanvas ke Theme Preset aktif yang sedang dipilih pengguna
+      this.setTheme(this.themePreset, this.fontSize, this.customCandleColors || undefined);
     } catch (err) {
       console.warn('[ChartSessionController] Gagal reset chart settings ke pabrik:', err);
     }

@@ -56,7 +56,13 @@
       <button
         type="button"
         class="theme-card {isSelected ? 'selected' : ''}"
-        onclick={() => onUpdateSettings({ themePreset: preset.id, theme: preset.id as any })}
+        onclick={() =>
+          onUpdateSettings({
+            themePreset: preset.id,
+            theme: preset.id as any,
+            customBullColor: undefined,
+            customBearColor: undefined,
+          })}
       >
         <div class="theme-card-header">
           <span class="theme-name">{preset.name}</span>
