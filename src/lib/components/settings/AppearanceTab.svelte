@@ -151,7 +151,10 @@
             value={currentBull}
             maxlength="7"
             onchange={(e) => {
-              const val = e.currentTarget.value.trim();
+              let val = e.currentTarget.value.trim();
+              if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                val = '#' + val;
+              }
               if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
                 onUpdateSettings({ customBullColor: val });
               }
@@ -180,7 +183,10 @@
             value={currentBear}
             maxlength="7"
             onchange={(e) => {
-              const val = e.currentTarget.value.trim();
+              let val = e.currentTarget.value.trim();
+              if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                val = '#' + val;
+              }
               if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
                 onUpdateSettings({ customBearColor: val });
               }
