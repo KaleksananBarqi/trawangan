@@ -5,6 +5,14 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [Unreleased]
+
+### 🐛 Diperbaiki (Fixed)
+- **Eliminasi Residu Zombie Indikator pada Siklus Save-Load Workspace:**
+  - Memperbaiki penanganan event `indicator:removed` dari engine Vela yang sebelumnya mengabaikan ID indikator yang dihapus.
+  - Mengimplementasikan `IndicatorRegistry` dengan fitur auto-pruning indikator mati dan pencocokan ID multi-cell yang menyeluruh.
+  - Memastikan `getActiveIndicators()` tidak lagi mengembalikan fallback handle zombie ke fungsi simpan workspace, sehingga indikator yang dihapus dari kanvas atau daftar objek tidak akan muncul kembali saat me-load workspace.
+
 ## [0.13.0] - 2026-10-13
 
 ### 🚀 Ditambahkan (Added)
