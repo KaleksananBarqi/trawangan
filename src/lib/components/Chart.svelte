@@ -19,6 +19,7 @@
   } from '../services/persistence';
   import { chartDrawingController } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
+  import { IndicatorRegistry } from '../services/indicatorRegistry';
   import { getHistoricalCandles } from '../services/marketProvider';
   import { marketFeed } from '../services/market';
   import type { FeedConnectionStatus } from '../services/market/types';
@@ -136,8 +137,8 @@
     isDismissedConnectionWarning = true;
   }
 
-  // Koleksi handle indikator aktif
-  const indicatorHandles = new Map<string, any>();
+  // Manajer siklus hidup dan deduplikasi indikator aktif
+  const indicatorRegistry = new IndicatorRegistry();
 
   // Daftarkan PineTS worker engine satu kali secara global
   let staticEngineRegistered = false;
@@ -1137,7 +1138,8 @@
       chart.on('indicator:visibility', () => {
         notifyActiveIndicators();
       });
-      chart.on('indicator:removed', () => {
+      chart.on('indicator:removed', (ev?: any) => {
+        indicatorRegistry.handleRemovedEvent(ev?.id, syncConfig.indicators !== false, getAllWorkspaceCells);
         notifyActiveIndicators();
       });
     } catch (e) {
@@ -1857,59 +1859,7 @@
   });
 
   export function getActiveIndicators(): ActiveIndicatorInfo[] {
-    const list: ActiveIndicatorInfo[] = [];
-
-    // Ambil live indicators dari cell chart aktif jika tersedia
-    const activeChart = workspace?.active?.chart;
-    const nativeIndicators = (activeChart && typeof activeChart.indicators === 'function')
-      ? activeChart.indicators()
-      : [];
-    const liveMap = new Map<string, any>();
-    for (const ind of nativeIndicators) {
-      if (ind && ind.id) liveMap.set(ind.id, ind);
-    }
-
-    for (const [id, item] of indicatorHandles.entries()) {
-      const liveHandle = liveMap.get(id) || item.handle;
-      let inputs: Record<string, any> | undefined = undefined;
-      let props: Record<string, any> | undefined = undefined;
-
-      try {
-        if (liveHandle && typeof liveHandle.inputValues === 'function') {
-          const vals = liveHandle.inputValues();
-          if (vals && Object.keys(vals).length > 0) {
-            inputs = vals;
-          }
-        }
-      } catch (_) {}
-
-      try {
-        if (liveHandle && typeof liveHandle.propValues === 'function') {
-          const pvals = liveHandle.propValues();
-          if (pvals && Object.keys(pvals).length > 0) {
-            props = pvals;
-          }
-        }
-      } catch (_) {}
-
-      // Fallback ke nilai yang tersimpan sebelumnya jika handle belum siap
-      if (!inputs && item.inputs) inputs = item.inputs;
-      if (!props && item.props) props = item.props;
-
-      // Perbarui cache internal
-      if (inputs) item.inputs = inputs;
-      if (props) item.props = props;
-
-      list.push({
-        id,
-        title: item.title || liveHandle?.title || 'Indicator',
-        source: item.source || liveHandle?.source,
-        visible: item.visible ?? liveHandle?.visible ?? true,
-        inputs: inputs || item.inputs,
-        props: props || item.props,
-      });
-    }
-    return list;
+    return indicatorRegistry.getActiveIndicators(workspace?.active?.chart, getAllWorkspaceCells);
   }
 
   function notifyActiveIndicators() {
@@ -1960,15 +1910,16 @@
               try { handle.setProps(ind.props); } catch (_) {}
             }
 
-            // Catat handle baru ke indicatorHandles
-            const tracked = indicatorHandles.get(ind.id);
-            if (tracked) {
-              if (!tracked.handles) tracked.handles = tracked.handle ? [tracked.handle] : [];
-              if (!tracked.handles.includes(handle)) {
-                tracked.handles.push(handle);
+            // Catat handle baru ke indicatorRegistry
+            const matched = indicatorRegistry.findEntry(ind.id);
+            if (matched) {
+              const entry = matched.entry;
+              if (!entry.handles) entry.handles = entry.handle ? [entry.handle] : [];
+              if (!entry.handles.includes(handle)) {
+                entry.handles.push(handle);
               }
             } else {
-              indicatorHandles.set(handle.id || ind.id, {
+              indicatorRegistry.register({
                 id: handle.id || ind.id,
                 handle,
                 handles: [handle],
@@ -2045,16 +1996,8 @@
       }
 
       // Bersihkan handles lama yang bukan dari cell aktif
-      for (const [id, item] of indicatorHandles.entries()) {
-        const activeChart = activeCell.chart;
-        const activeNative = Array.from(activeChart?.indicators?.() || []);
-        const stillInActive = activeNative.some((n: any) => n.title === item.title || n.id === id);
-        if (!stillInActive) {
-          indicatorHandles.delete(id);
-        } else {
-          item.handles = [item.handle];
-        }
-      }
+      const activeChart = activeCell.chart;
+      indicatorRegistry.getActiveIndicators(activeChart, () => [activeCell]);
 
       // Kloning ulang seluruh indikator cell aktif ke follower cell
       cloneIndicatorsToCells(activeSnapshot);
@@ -2119,17 +2062,9 @@
       const cleanTitle = (customTitle || 'Custom Indicator').trim();
 
       // 1. DEDUPLIKASI: Hapus instance lama dengan judul atau kode identik agar Web Worker tidak menumpuk
-      for (const [existingId, item] of indicatorHandles.entries()) {
-        if (item.title === cleanTitle || (item.source && item.source.trim() === source.trim())) {
-          const list = item.handles || (item.handle ? [item.handle] : []);
-          for (const h of list) {
-            try {
-              if (typeof h?.remove === 'function') h.remove();
-            } catch (e) {
-              console.warn('Gagal menghapus handle lama:', e);
-            }
-          }
-          indicatorHandles.delete(existingId);
+      for (const entry of indicatorRegistry.getActiveIndicators(workspace?.active?.chart, getAllWorkspaceCells)) {
+        if (entry.title === cleanTitle || (entry.source && entry.source.trim() === source.trim())) {
+          indicatorRegistry.removeIndicator(entry.id, syncConfig.indicators !== false, getAllWorkspaceCells);
         }
       }
 
@@ -2186,7 +2121,7 @@
       }
 
       if (firstHandle) {
-        indicatorHandles.set(firstHandle.id, {
+        indicatorRegistry.register({
           id: firstHandle.id,
           handle: firstHandle,
           handles: createdHandles,
@@ -2242,129 +2177,23 @@
   }
 
   export function removeIndicator(id: string): void {
-    const item = indicatorHandles.get(id);
-    if (item) {
-      if (syncConfig.indicators !== false) {
-        // Hapus dari seluruh cell di workspace
-        const list = item.handles || (item.handle ? [item.handle] : [item]);
-        for (const h of list) {
-          try {
-            if (typeof h?.remove === 'function') {
-              h.remove();
-            }
-          } catch (e) {
-            console.warn('Gagal memanggil handle.remove:', e);
-          }
-        }
-        indicatorHandles.delete(id);
-      } else {
-        // Hapus hanya dari cell aktif saat ini
-        const activeChart = workspace?.active?.chart;
-        if (activeChart && typeof activeChart.indicators === 'function') {
-          const nativeList = Array.from(activeChart.indicators() || []);
-          for (const n of nativeList as any[]) {
-            if (n && (n.id === id || n.title === item.title)) {
-              try { n.remove(); } catch (_) {}
-            }
-          }
-        }
-        if (item.handles) {
-          item.handles = item.handles.filter((h: any) => h !== item.handle);
-        }
-        if (item.handle?.id === id) {
-          indicatorHandles.delete(id);
-        }
-      }
-      notifyActiveIndicators();
-    }
+    indicatorRegistry.removeIndicator(id, syncConfig.indicators !== false, getAllWorkspaceCells);
+    notifyActiveIndicators();
   }
 
   export function clearAllIndicators(): void {
-    // 1. Bersihkan seluruh handle di Map internal indicatorHandles
-    for (const [id, item] of indicatorHandles.entries()) {
-      const list = item.handles || (item.handle ? [item.handle] : [item]);
-      for (const h of list) {
-        try {
-          if (typeof h?.remove === 'function') h.remove();
-        } catch (_) {}
-      }
-    }
-    indicatorHandles.clear();
-
-    // 2. Bersihkan seluruh indikator di seluruh cell workspace secara menyeluruh
-    if (workspace) {
-      try {
-        const targetCells = (syncConfig.indicators !== false)
-          ? getAllWorkspaceCells()
-          : (workspace.active ? [workspace.active] : getAllWorkspaceCells());
-
-        for (const cell of targetCells as any[]) {
-          // Bersihkan cell.instances jika ada agar tidak ter-rehydrate saat ganti simbol
-          if (Array.isArray(cell?.instances)) {
-            for (const it of [...cell.instances]) {
-              try {
-                if (typeof cell.dropInstance === 'function') {
-                  cell.dropInstance(it);
-                } else if (it?.handle && typeof it.handle.remove === 'function') {
-                  it.handle.remove();
-                }
-              } catch (_) {}
-            }
-            cell.instances.length = 0;
-          }
-
-          // Bersihkan seluruh handle indikator di engine chart (lewati volume native bawaan)
-          const chart = cell?.chart || cell?.inner;
-          if (chart && typeof chart.indicators === 'function') {
-            const list = Array.from(chart.indicators() || []);
-            for (const h of list as any[]) {
-              if (h?.nativeType === 'volume') continue;
-              try {
-                if (typeof h?.remove === 'function') h.remove();
-              } catch (_) {}
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Error saat membersihkan cell indicators di workspace:', err);
-      }
-    }
-
+    indicatorRegistry.clearAll(getAllWorkspaceCells);
     notifyActiveIndicators();
   }
 
   export function toggleIndicatorVisibility(id: string): void {
-    const item = indicatorHandles.get(id);
-    if (item) {
-      const nextVisible = !(item.visible ?? item.handle?.visible ?? true);
-      item.visible = nextVisible;
-      if (syncConfig.indicators !== false) {
-        // Terapkan ke semua cell
-        const list = item.handles || (item.handle ? [item.handle] : [item]);
-        for (const h of list) {
-          try {
-            if (typeof h?.setVisible === 'function') {
-              h.setVisible(nextVisible);
-            }
-          } catch (e) {
-            console.warn('Gagal memanggil handle.setVisible:', e);
-          }
-        }
-      } else {
-        // Terapkan hanya ke cell aktif
-        try {
-          if (item.handle && typeof item.handle.setVisible === 'function') {
-            item.handle.setVisible(nextVisible);
-          }
-        } catch (_) {}
-      }
-      notifyActiveIndicators();
-    }
+    indicatorRegistry.toggleVisibility(id, syncConfig.indicators !== false);
+    notifyActiveIndicators();
   }
 
   export function getIndicatorSource(id: string): string | undefined {
-    const item = indicatorHandles.get(id);
-    return item ? (item.source || item.handle?.source) : undefined;
+    const matched = indicatorRegistry.findEntry(id);
+    return matched?.entry.source || matched?.entry.handle?.source;
   }
 
   // ─── Bar Replay Public Methods ───
