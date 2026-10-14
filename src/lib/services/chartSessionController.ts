@@ -16,10 +16,16 @@ import type {
   Timeframe,
   MultiChartSyncConfig,
   ThemePresetId,
-  ActiveIndicatorInfo
+  ActiveIndicatorInfo,
+  SavedWorkspace
 } from '../types/market';
 import { THEME_PRESETS } from '../constants/themes';
 import { toVelaTimeframe } from '../utils/timeframeAdapter';
+import { applyLayoutTimeframePolicy } from '../constants/defaults';
+import {
+  saveChartDefaultConfig,
+  clearChartDefaultConfig
+} from './persistence';
 
 export interface ChartSessionOptions {
   symbol: string;
@@ -50,6 +56,7 @@ export interface ChartSessionSnapshot {
   showCurrentPriceLine: boolean;
   activeCell: { symbol: string; timeframe: Timeframe } | null;
   activeIndicators: ActiveIndicatorInfo[];
+  syncConfig: MultiChartSyncConfig;
 }
 
 type SessionSubscriber = (snapshot: ChartSessionSnapshot) => void;
@@ -94,6 +101,14 @@ export function resolveVelaSymbol(sym: string, pId: string): string {
 }
 
 /**
+ * Helper untuk mendapatkan instans Coords dari Vela Chart Renderer
+ */
+function getChartCoords(chart: any): any {
+  if (!chart) return null;
+  return chart.renderer?.renderer?.coords || chart.renderer?.coords || chart.coords || null;
+}
+
+/**
  * Deep Module: ChartSessionController
  * Mengelola seluruh orkestrasi kanvas WebGL2 dan state sesi grafik
  */
@@ -119,6 +134,8 @@ export class ChartSessionController {
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   private workspaceFactory?: (container: HTMLElement, config: any) => any;
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
+  private activeChartDefaultConfig: any = null;
+  private isApplyingLayout = false;
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -159,7 +176,8 @@ export class ChartSessionController {
       activeCell: this.activeCellInfo
         ? { ...this.activeCellInfo }
         : { symbol: this.symbol, timeframe: this.timeframe },
-      activeIndicators: this.getActiveIndicators()
+      activeIndicators: this.getActiveIndicators(),
+      syncConfig: { ...this.syncConfig }
     };
   }
 
@@ -666,6 +684,619 @@ export class ChartSessionController {
     }
 
     this.notify();
+  }
+
+  /**
+   * Mengubah tata letak grid multi-chart (1, 2, 2h, 4)
+   * Mengkloning indikator ke cell baru atau menyelaraskan single cell saat kembali ke 1 chart
+   */
+  public setLayout(layout: string): void {
+    if (!layout) return;
+    this.layout = layout;
+
+    if (this.workspace && typeof this.workspace.setLayout === 'function') {
+      this.isApplyingLayout = true;
+      try {
+        const activeSnapshot = this.getActiveIndicators();
+        this.workspace.setLayout(layout as any);
+
+        const activeCell = this.workspace.active;
+        const curRange = activeCell?.chart?.getVisibleRange?.();
+        const targetSym = resolveVelaSymbol(this.symbol, this.providerId);
+
+        for (const cell of this.getAllCells()) {
+          this.attachCellListeners(cell);
+          if (cell !== activeCell) {
+            if (this.syncConfig.symbol && cell.symbol !== targetSym && typeof cell.setSymbol === 'function') {
+              cell.setSymbol(targetSym);
+            }
+            if (this.syncConfig.viewport && curRange && typeof cell.chart?.setVisibleRange === 'function') {
+              cell.chart.setVisibleRange(curRange);
+            }
+          }
+        }
+
+        applyLayoutTimeframePolicy({
+          activeCell,
+          cells: this.getAllCells(),
+          defaultTimeframe: this.defaultTimeframe || '15m',
+          syncTimeframe: Boolean(this.syncConfig.timeframe),
+        });
+
+        if (layout === '1') {
+          this.ensureSingleCellMatchesSnapshot(activeSnapshot);
+        } else {
+          this.cloneIndicatorsToCells(activeSnapshot);
+        }
+
+        if (this.workspace.sync && typeof this.workspace.sync.set === 'function') {
+          this.workspace.sync.set('crosshair', Boolean(this.syncConfig.crosshair));
+          this.workspace.sync.set('viewport', Boolean(this.syncConfig.viewport ?? true));
+          this.workspace.sync.set('drawings', Boolean(this.syncConfig.drawings));
+          this.workspace.sync.set('symbol', Boolean(this.syncConfig.symbol));
+        }
+
+        for (const cell of this.getAllCells()) {
+          this.enforceCurrentPriceLine(cell);
+        }
+
+        if (this.activeChartDefaultConfig) {
+          for (const cell of this.getAllCells()) {
+            const r = cell?.chart?.renderer?.renderer || cell?.chart?.renderer;
+            if (r && typeof r.applyConfig === 'function') {
+              r.applyConfig(this.activeChartDefaultConfig);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[ChartSessionController] setLayout error:', err);
+      } finally {
+        setTimeout(() => {
+          this.isApplyingLayout = false;
+        }, 60);
+      }
+    }
+
+    this.notify();
+  }
+
+  /**
+   * Mengatur dan menyelaraskan konfigurasi multi-chart synchronization
+   */
+  public syncLayout(config: Partial<MultiChartSyncConfig>): void {
+    this.syncConfig = { ...this.syncConfig, ...config };
+
+    if (this.workspace?.sync && typeof this.workspace.sync.set === 'function') {
+      try {
+        this.workspace.sync.set('crosshair', Boolean(this.syncConfig.crosshair));
+        this.workspace.sync.set('viewport', Boolean(this.syncConfig.viewport ?? true));
+        this.workspace.sync.set('drawings', Boolean(this.syncConfig.drawings));
+        this.workspace.sync.set('symbol', Boolean(this.syncConfig.symbol));
+
+        const activeCell = this.workspace.active;
+
+        if (this.syncConfig.symbol && this.symbol) {
+          const targetSym = resolveVelaSymbol(this.symbol, this.providerId);
+          for (const cell of this.getAllCells()) {
+            if (cell !== activeCell && cell.symbol !== targetSym && typeof cell.setSymbol === 'function') {
+              cell.setSymbol(targetSym);
+            }
+          }
+        }
+
+        if (this.syncConfig.viewport) {
+          const curRange = activeCell?.chart?.getVisibleRange?.();
+          if (curRange) {
+            for (const cell of this.getAllCells()) {
+              if (cell !== activeCell && typeof cell.chart?.setVisibleRange === 'function') {
+                cell.chart.setVisibleRange(curRange);
+              }
+            }
+          }
+        }
+
+        if (this.syncConfig.indicators) {
+          this.syncIndicatorsFromActiveCell();
+        }
+      } catch (err) {
+        console.warn('[ChartSessionController] syncLayout error:', err);
+      }
+    }
+
+    this.notify();
+  }
+
+  /**
+   * Mengkloning daftar indikator aktif ke seluruh cell workspace yang belum memilikinya
+   */
+  public cloneIndicatorsToCells(snapshot: ActiveIndicatorInfo[]): void {
+    if (!this.workspace || !snapshot || snapshot.length === 0) return;
+    try {
+      const cells = this.getAllCells();
+      for (const cell of cells) {
+        const chart = cell?.chart || cell?.inner;
+        if (!cell || !chart || typeof chart.indicators !== 'function') continue;
+
+        const existingNative = Array.from(chart.indicators() || []);
+        const existingTitles = new Set(existingNative.map((ind: any) => ind?.title).filter(Boolean));
+
+        for (const ind of snapshot) {
+          if (!ind.title || existingTitles.has(ind.title)) continue;
+          const source = ind.source || 'plot(close)';
+          if (!source) continue;
+
+          const addOptions: any = {
+            language: 'pine',
+            title: ind.title,
+          };
+          if (ind.inputs && Object.keys(ind.inputs).length > 0) {
+            addOptions.inputs = ind.inputs;
+          }
+          if (ind.props && Object.keys(ind.props).length > 0) {
+            addOptions.props = ind.props;
+          }
+
+          const handle = chart.addIndicator(source, addOptions);
+          if (handle) {
+            if (ind.visible === false && typeof handle.setVisible === 'function') {
+              try { handle.setVisible(false); } catch (_) {}
+            }
+            if (ind.inputs && typeof handle.setInputs === 'function') {
+              try { handle.setInputs(ind.inputs); } catch (_) {}
+            }
+            if (ind.props && typeof handle.setProps === 'function') {
+              try { handle.setProps(ind.props); } catch (_) {}
+            }
+
+            const matched = this.indicatorRegistry.findEntry(ind.id);
+            if (matched) {
+              const entry = matched.entry;
+              if (!entry.handles) entry.handles = entry.handle ? [entry.handle] : [];
+              if (!entry.handles.includes(handle)) {
+                entry.handles.push(handle);
+              }
+            } else {
+              this.indicatorRegistry.register({
+                id: handle.id || ind.id,
+                handle,
+                handles: [handle],
+                title: ind.title,
+                source,
+                visible: ind.visible ?? true,
+                inputs: ind.inputs,
+                props: ind.props,
+              });
+            }
+          }
+        }
+      }
+      this.notifyActiveIndicators();
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal clone indicators ke cells:', err);
+    }
+  }
+
+  /**
+   * Menjamin saat berpindah kembali ke layout 1 chart, cell tunggal memuat indikator cell aktif
+   */
+  public ensureSingleCellMatchesSnapshot(snapshot: ActiveIndicatorInfo[]): void {
+    if (!this.workspace) return;
+    try {
+      const activeCell = this.workspace.active || this.getAllCells()[0];
+      const chart = activeCell?.chart || activeCell?.inner;
+      if (!chart || typeof chart.indicators !== 'function') return;
+
+      const existingNative = Array.from(chart.indicators() || []);
+      const snapshotTitles = new Set(snapshot.map((i) => i.title));
+
+      for (const h of existingNative as any[]) {
+        if (h?.nativeType === 'volume') continue;
+        if (h?.title && !snapshotTitles.has(h.title)) {
+          try {
+            if (typeof h?.remove === 'function') h.remove();
+          } catch (_) {}
+        }
+      }
+
+      this.cloneIndicatorsToCells(snapshot);
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal revert ke layout 1:', err);
+    }
+  }
+
+  /**
+   * Menyelaraskan seluruh cell agar mengikuti indikator dari cell aktif
+   */
+  public syncIndicatorsFromActiveCell(): void {
+    if (!this.workspace || !this.workspace.active) return;
+    try {
+      const activeCell = this.workspace.active;
+      const activeSnapshot = this.getActiveIndicators();
+
+      const cells = this.getAllCells();
+      for (const cell of cells) {
+        if (cell === activeCell) continue;
+        const chart = cell?.chart || cell?.inner;
+        if (!cell || !chart || typeof chart.indicators !== 'function') continue;
+
+        const currentIndicators = Array.from(chart.indicators() || []);
+        for (const ind of currentIndicators as any[]) {
+          if (ind?.nativeType === 'volume') continue;
+          try {
+            if (typeof ind?.remove === 'function') ind.remove();
+          } catch (_) {}
+        }
+      }
+
+      this.cloneIndicatorsToCells(activeSnapshot);
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal rekonsiliasi indikator dari active cell:', err);
+    }
+  }
+
+  /**
+   * Mengambil bobot tinggi (heightWeight) dari seluruh pane aktif
+   */
+  public getPaneWeights(): number[] {
+    try {
+      const activeCell = this.workspace?.active || this.getAllCells()[0];
+      const chart = activeCell?.chart || activeCell?.inner;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (native?.scene?.orderedPanes) {
+        const panes = native.scene.orderedPanes();
+        return panes.map((p: any) =>
+          typeof p.heightWeight === 'number' ? p.heightWeight : p.kind === 'price' ? 3 : 1
+        );
+      }
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal membaca paneWeights:', err);
+    }
+    return [];
+  }
+
+  /**
+   * Menerapkan bobot tinggi tersimpan ke sub-pane
+   */
+  public applyPaneWeights(weights: number[]): boolean {
+    if (!weights || weights.length === 0) return false;
+    try {
+      const activeCell = this.workspace?.active || this.getAllCells()[0];
+      const chart = activeCell?.chart || activeCell?.inner;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (native?.scene?.orderedPanes) {
+        const panes = native.scene.orderedPanes();
+        panes.forEach((p: any, i: number) => {
+          if (weights[i] !== undefined && weights[i] > 0) {
+            p.heightWeight = weights[i];
+          }
+        });
+        if (typeof native.layoutPanes === 'function') {
+          native.layoutPanes();
+        }
+        if (native.scheduler?.invalidate) {
+          native.scheduler.invalidate(4);
+        }
+        return true;
+      }
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal menerapkan paneWeights:', err);
+    }
+    return false;
+  }
+
+  /**
+   * Membaca status mode skala sumbu harga kanan
+   */
+  public getPriceScaleState(): any {
+    try {
+      const activeCell = this.workspace?.active || this.getAllCells()[0];
+      const chart = activeCell?.chart || activeCell?.inner;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      const pricePane =
+        native?.scene?.panes?.get?.('price') ||
+        native?.scene?.orderedPanes?.().find((p: any) => p.kind === 'price');
+      const cfg = native?.getConfig?.();
+      return {
+        mode: (cfg?.priceScale?.log || cfg?.priceScale?.mode === 'log') ? 'log' : (cfg?.priceScale?.mode || 'price'),
+        log: Boolean(cfg?.priceScale?.log),
+        invert: Boolean(cfg?.priceScale?.invert),
+        auto: pricePane ? pricePane.manualScale == null : true,
+        manualScale: pricePane?.manualScale ? { ...pricePane.manualScale } : null,
+      };
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal membaca priceScaleState:', err);
+    }
+    return null;
+  }
+
+  /**
+   * Menerapkan status skala harga tersimpan ke sumbu kanan grafik
+   */
+  public applyPriceScaleState(state: any): boolean {
+    if (!state) return false;
+    try {
+      const activeCell = this.workspace?.active || this.getAllCells()[0];
+      const chart = activeCell?.chart || activeCell?.inner;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (!native) return false;
+
+      if (state.log !== undefined || state.mode !== undefined || state.invert !== undefined) {
+        const patch: any = { priceScale: {} };
+        if (state.mode === 'log' || state.log === true) {
+          patch.priceScale.log = true;
+          patch.priceScale.mode = 'price';
+        } else if (state.mode) {
+          patch.priceScale.mode = state.mode;
+          patch.priceScale.log = false;
+        }
+        if (state.invert !== undefined) {
+          patch.priceScale.invert = state.invert;
+        }
+        patch.priceScale.currentPriceLine = this.showCurrentPriceLine !== false;
+
+        native.applyConfig?.(patch);
+        if (native.scene) {
+          native.scene.showPriceLine = this.showCurrentPriceLine !== false;
+        }
+      }
+
+      const pricePane =
+        native.scene?.panes?.get?.('price') ||
+        native.scene?.orderedPanes?.().find((p: any) => p.kind === 'price');
+      if (pricePane) {
+        if (state.auto === false && state.manualScale) {
+          if (typeof native.setManualScale === 'function') {
+            native.setManualScale(pricePane, state.manualScale);
+          } else {
+            pricePane.manualScale = { ...state.manualScale };
+            pricePane.scale = { ...state.manualScale };
+          }
+        } else if (state.auto === true) {
+          pricePane.manualScale = null;
+        }
+        if (native.scheduler?.invalidate) {
+          native.scheduler.invalidate(4);
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal menerapkan priceScaleState:', err);
+    }
+    return false;
+  }
+
+  /**
+   * Mengambil gaya visual lilin aktif
+   */
+  public getPriceStyle(): string {
+    try {
+      const activeCell = (this.workspace?.active || this.getAllCells()[0]) as any;
+      const chart = activeCell?.chart || activeCell?.inner;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      return native?.getConfig?.()?.series?.style || activeCell?.priceStyle || 'candles';
+    } catch (_) {}
+    return 'candles';
+  }
+
+  /**
+   * Menyetel gaya visual lilin
+   */
+  public setPriceStyle(style: string): void {
+    if (!style) return;
+    try {
+      const activeCell = (this.workspace?.active || this.getAllCells()[0]) as any;
+      const chart = activeCell?.chart || activeCell?.inner;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (native?.applyConfig) {
+        native.applyConfig({ series: { style } });
+      }
+      if (typeof activeCell?.setPriceStyle === 'function') {
+        activeCell.setPriceStyle(style);
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * Mengambil kerapatan zoom horizontal terakhir (barSpacing)
+   */
+  public getBarSpacing(): number {
+    try {
+      const activeCell = (this.workspace?.active || this.getAllCells()[0]) as any;
+      const chart = activeCell?.chart || activeCell?.inner;
+      const coords = getChartCoords(chart);
+      return coords?.getViewport?.()?.barSpacing ?? 8;
+    } catch (_) {}
+    return 8;
+  }
+
+  /**
+   * Menyetel kerapatan zoom horizontal (barSpacing)
+   */
+  public setBarSpacing(spacing: number): void {
+    if (!spacing || spacing <= 0) return;
+    try {
+      const activeCell = (this.workspace?.active || this.getAllCells()[0]) as any;
+      const chart = activeCell?.chart || activeCell?.inner;
+      const coords = getChartCoords(chart);
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (coords && typeof coords.setViewport === 'function') {
+        const vp = coords.getViewport();
+        coords.setViewport({ ...vp, barSpacing: spacing });
+        native?.scheduler?.invalidate?.(4);
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * Mengambil snapshot kondisi workspace lengkap untuk disimpan ke persistence SQLite
+   */
+  public saveWorkspaceState(name: string = 'Workspace'): Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string } {
+    const indicatorsData = this.getActiveIndicators().map((i: ActiveIndicatorInfo) => ({
+      title: i.title,
+      source: i.source,
+      visible: i.visible,
+      inputs: i.inputs,
+      props: i.props,
+    }));
+
+    return {
+      name,
+      symbol: this.symbol,
+      timeframe: this.timeframe,
+      layout: this.layout,
+      providerId: this.providerId,
+      indicators: indicatorsData,
+      paneWeights: this.getPaneWeights(),
+      priceScaleState: this.getPriceScaleState(),
+      priceStyle: this.getPriceStyle(),
+      barSpacing: this.getBarSpacing(),
+      syncConfig: { ...this.syncConfig },
+    };
+  }
+
+  /**
+   * Memulihkan kondisi workspace lengkap secara atomik
+   */
+  public async loadWorkspaceState(snapshot: SavedWorkspace): Promise<void> {
+    if (!snapshot) return;
+
+    this.clearAllIndicators();
+
+    if (snapshot.providerId && snapshot.providerId !== this.providerId) {
+      this.providerId = snapshot.providerId;
+    }
+
+    if (snapshot.symbol || snapshot.timeframe) {
+      await this.setSymbol(
+        snapshot.symbol || this.symbol,
+        (snapshot.timeframe as Timeframe) || this.timeframe,
+        snapshot.providerId || this.providerId
+      );
+    }
+
+    if (snapshot.layout) {
+      this.setLayout(snapshot.layout);
+    }
+
+    if (snapshot.syncConfig) {
+      this.syncLayout(snapshot.syncConfig);
+    }
+
+    if (snapshot.paneWeights && snapshot.paneWeights.length > 0) {
+      this.applyPaneWeights(snapshot.paneWeights);
+    }
+
+    if (snapshot.priceScaleState) {
+      this.applyPriceScaleState(snapshot.priceScaleState);
+    }
+
+    if (snapshot.priceStyle) {
+      this.setPriceStyle(snapshot.priceStyle);
+    }
+
+    if (snapshot.barSpacing) {
+      this.setBarSpacing(snapshot.barSpacing);
+    }
+
+    if (Array.isArray(snapshot.indicators)) {
+      for (const ind of snapshot.indicators) {
+        if (!ind?.title) continue;
+        await this.addPineIndicator(
+          ind.source || 'plot(close)',
+          ind.title,
+          ind.inputs,
+          ind.props
+        );
+        if (ind.visible === false) {
+          this.toggleIndicatorVisibility(ind.title);
+        }
+      }
+    }
+
+    this.notify();
+  }
+
+  /**
+   * Menyimpan konfigurasi visual chart saat ini sebagai setelan default permanen
+   */
+  public async saveCurrentSettingsAsDefault(buttonEl?: HTMLElement): Promise<boolean> {
+    if (!this.workspace || !this.workspace.active) return false;
+    try {
+      const activeChart = this.workspace.active.chart as any;
+      const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+      const currentConfig = renderer?.getConfig?.() || activeChart?.getConfig?.();
+
+      if (!currentConfig) {
+        console.warn('[ChartSessionController] Gagal membaca getConfig() dari chart renderer aktif');
+        return false;
+      }
+
+      this.activeChartDefaultConfig = currentConfig;
+      await saveChartDefaultConfig(currentConfig);
+
+      for (const cell of this.getAllCells()) {
+        const chart = cell?.chart || cell?.inner;
+        const r = chart?.renderer?.renderer || chart?.renderer;
+        if (r) {
+          r.factoryConfig = currentConfig;
+        }
+        if (chart?.renderer && chart.renderer !== r) {
+          chart.renderer.factoryConfig = currentConfig;
+        }
+      }
+
+      for (const cell of this.getAllCells()) {
+        if (cell !== this.workspace.active) {
+          const chart = cell?.chart || cell?.inner;
+          const r = chart?.renderer?.renderer || chart?.renderer;
+          r?.applyConfig?.(currentConfig);
+        }
+      }
+
+      if (buttonEl) {
+        buttonEl.classList.add('saved');
+        const prevContent = buttonEl.innerHTML;
+        buttonEl.innerHTML = `
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px; flex-shrink: 0;">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>✓ Tersimpan sebagai Default!</span>
+        `;
+        setTimeout(() => {
+          buttonEl.classList.remove('saved');
+          buttonEl.innerHTML = prevContent;
+        }, 2500);
+      }
+
+      return true;
+    } catch (err) {
+      console.error('[ChartSessionController] Error saat menyimpan chart settings as default:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Reset konfigurasi lilin & chart kembali ke setelan awal pabrik Vela
+   */
+  public async resetSettingsToFactory(): Promise<void> {
+    try {
+      this.activeChartDefaultConfig = null;
+      await clearChartDefaultConfig();
+      if (this.workspace) {
+        for (const cell of this.getAllCells()) {
+          const chart = cell?.chart || cell?.inner;
+          const r = chart?.renderer?.renderer || chart?.renderer;
+          if (r && typeof r.factoryResetDocument === 'function') {
+            const orig = r.factoryConfig;
+            if (orig) {
+              r.applyConfig(r.factoryResetDocument(orig));
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal reset chart settings ke pabrik:', err);
+    }
   }
 
   /**

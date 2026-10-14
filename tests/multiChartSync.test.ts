@@ -1,268 +1,411 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import type { MultiChartSyncConfig } from '../src/lib/types/market';
+import type { MultiChartSyncConfig, SavedWorkspace } from '../src/lib/types/market';
 import { applyLayoutTimeframePolicy } from '../src/lib/constants/defaults';
+import { ChartSessionController } from '../src/lib/services/chartSessionController';
 
-describe('Multi-Chart Synchronization Engine Unit Tests', () => {
-  test('MultiChartSyncConfig: memverifikasi nilai default sinkronisasi kursor & viewport', () => {
-    const defaultSyncConfig: MultiChartSyncConfig = {
-      crosshair: true,
-      viewport: true,
-      symbol: false,
-      drawings: true,
-      indicators: true,
-    };
+function createMockChartCell(id: string, initialTf: string = '15m') {
+  let indicatorsList: any[] = [];
+  let visibleRange: { from: number; to: number } | null = { from: 1710000000000, to: 1710003600000 };
+  let currentSymbol = 'binance:BTCUSDT';
+  let currentTimeframe = initialTf;
+  let priceStyle = 'candles';
+  let barSpacing = 8;
+  const heightWeights: number[] = [3, 1];
 
-    assert.strictEqual(defaultSyncConfig.crosshair, true, 'Crosshair wajib aktif secara default');
-    assert.strictEqual(defaultSyncConfig.viewport, true, 'Viewport wajib aktif secara default agar kursor & gerakan tersinkron');
-    assert.strictEqual(defaultSyncConfig.symbol, false, 'Symbol independen secara default');
-    assert.strictEqual(defaultSyncConfig.drawings, true, 'Drawings sinkron antar chart');
-    assert.strictEqual(defaultSyncConfig.indicators, true, 'Indicators wajib aktif secara default');
-  });
+  const panes = [
+    { kind: 'price', heightWeight: 3, manualScale: null, scale: { min: 60000, max: 70000 } },
+    { kind: 'oscillator', heightWeight: 1, manualScale: null, scale: { min: 0, max: 100 } }
+  ];
 
-  test('Toggle Handlers: mengubah status flag sinkronisasi secara terisolasi', () => {
-    let syncConfig: MultiChartSyncConfig = {
-      crosshair: true,
-      viewport: true,
-      symbol: false,
-      drawings: true,
-      indicators: true,
-    };
+  let priceScaleConfig: any = { mode: 'price', log: false };
+  let appliedConfig: any = null;
 
-    // Toggle Viewport
-    syncConfig = { ...syncConfig, viewport: !syncConfig.viewport };
-    assert.strictEqual(syncConfig.viewport, false);
-
-    syncConfig = { ...syncConfig, viewport: !syncConfig.viewport };
-    assert.strictEqual(syncConfig.viewport, true);
-
-    // Toggle Crosshair
-    syncConfig = { ...syncConfig, crosshair: !syncConfig.crosshair };
-    assert.strictEqual(syncConfig.crosshair, false);
-
-    // Toggle Symbol
-    syncConfig = { ...syncConfig, symbol: !syncConfig.symbol };
-    assert.strictEqual(syncConfig.symbol, true);
-
-    // Toggle Indicators
-    syncConfig = { ...syncConfig, indicators: !syncConfig.indicators };
-    assert.strictEqual(syncConfig.indicators, false);
-
-    syncConfig = { ...syncConfig, indicators: !syncConfig.indicators };
-    assert.strictEqual(syncConfig.indicators, true);
-
-    // Pastikan flag lain tidak terdampak
-    assert.strictEqual(syncConfig.drawings, true);
-    assert.strictEqual(syncConfig.viewport, true);
-  });
-
-  test('Auto-Clone Indicators on Layout Expand: cell baru mewarisi seluruh indikator dari chart utama', () => {
-    interface MockIndicator {
-      id: string;
-      title: string;
-      source: string;
-      visible: boolean;
-      inputs?: Record<string, any>;
-    }
-
-    interface MockChartCell {
-      id: string;
-      indicators: MockIndicator[];
-      addIndicator(source: string, options: { title: string; inputs?: Record<string, any> }): MockIndicator;
-    }
-
-    const cell0: MockChartCell = {
-      id: 'cell_0',
-      indicators: [
-        { id: 'ind_1', title: 'EMA 20', source: 'plot(ta.ema(close, 20))', visible: true, inputs: { length: 20 } },
-        { id: 'ind_2', title: 'RSI', source: 'plot(ta.rsi(close, 14))', visible: true, inputs: { length: 14 } },
-        { id: 'ind_3', title: 'MACD', source: 'plot(ta.macd(close, 12, 26, 9))', visible: false }
-      ],
-      addIndicator(source, options) {
-        const ind: MockIndicator = {
-          id: `ind_${Date.now()}_${Math.random()}`,
-          title: options.title,
+  const cell: any = {
+    id,
+    symbol: currentSymbol,
+    timeframe: currentTimeframe,
+    setSymbol(s: string) {
+      this.symbol = s;
+      currentSymbol = s;
+    },
+    setTimeframe(tf: string) {
+      this.timeframe = tf;
+      currentTimeframe = tf;
+    },
+    chart: {
+      id,
+      indicators: () => indicatorsList,
+      addIndicator: (source: string, opts: any) => {
+        const ind = {
+          id: `ind_${id}_${Date.now()}_${Math.random()}`,
+          title: opts.title,
           source,
           visible: true,
-          inputs: options.inputs
+          inputs: opts.inputs || {},
+          props: opts.props || {},
+          remove: () => {
+            indicatorsList = indicatorsList.filter((x) => x !== ind);
+          },
+          setVisible: (v: boolean) => {
+            ind.visible = v;
+          },
+          setInputs: (inputs: any) => {
+            ind.inputs = { ...ind.inputs, ...inputs };
+          },
+          setProps: (props: any) => {
+            ind.props = { ...ind.props, ...props };
+          }
         };
-        this.indicators.push(ind);
+        indicatorsList.push(ind);
         return ind;
-      }
-    };
-
-    const cell1: MockChartCell = {
-      id: 'cell_1',
-      indicators: [],
-      addIndicator(source, options) {
-        const ind: MockIndicator = {
-          id: `ind_${Date.now()}_${Math.random()}`,
-          title: options.title,
-          source,
-          visible: true,
-          inputs: options.inputs
-        };
-        this.indicators.push(ind);
-        return ind;
-      }
-    };
-
-    // Simulasi kloning saat layout berganti ke 2 chart
-    const activeSnapshot = [...cell0.indicators];
-    const cells = [cell0, cell1];
-
-    for (const cell of cells) {
-      const existingTitles = new Set(cell.indicators.map((i) => i.title));
-      for (const ind of activeSnapshot) {
-        if (!existingTitles.has(ind.title)) {
-          cell.addIndicator(ind.source, { title: ind.title, inputs: ind.inputs });
+      },
+      setVisibleRange: (r: { from: number; to: number }) => {
+        visibleRange = r;
+      },
+      getVisibleRange: () => visibleRange,
+      renderer: {
+        renderer: {
+          scene: {
+            panes: {
+              get: (k: string) => panes.find((p) => p.kind === k)
+            },
+            orderedPanes: () => panes,
+            showPriceLine: true
+          },
+          coords: {
+            getViewport: () => ({ barSpacing }),
+            setViewport: (vp: any) => {
+              if (vp.barSpacing) barSpacing = vp.barSpacing;
+            }
+          },
+          getConfig: () => ({
+            priceScale: { ...priceScaleConfig },
+            series: { style: priceStyle }
+          }),
+          applyConfig: (cfg: any) => {
+            appliedConfig = cfg;
+            if (cfg?.series?.style) priceStyle = cfg.series.style;
+            if (cfg?.priceScale) priceScaleConfig = { ...priceScaleConfig, ...cfg.priceScale };
+          },
+          setManualScale: (pane: any, scale: any) => {
+            pane.manualScale = scale;
+          },
+          scheduler: {
+            invalidate: () => {}
+          },
+          factoryConfig: null as any,
+          factoryResetDocument: (orig: any) => ({ ...orig, isReset: true })
         }
       }
     }
+  };
 
-    // Cell 1 sekarang memiliki jumlah dan judul indikator yang sama persis dengan Cell 0
-    assert.strictEqual(cell1.indicators.length, 3);
-    assert.strictEqual(cell1.indicators[0].title, 'EMA 20');
-    assert.strictEqual(cell1.indicators[1].title, 'RSI');
-    assert.strictEqual(cell1.indicators[2].title, 'MACD');
+  return { cell, getIndicators: () => indicatorsList, getAppliedConfig: () => appliedConfig };
+}
+
+describe('Multi-Chart Synchronization Engine Unit Tests (ChartSessionController Seam)', () => {
+  test('1. MultiChartSyncConfig & syncLayout: memverifikasi nilai default dan update terisolasi pada ChartSessionController', () => {
+    const controller = new ChartSessionController();
+    const snapshot = controller.getSnapshot();
+
+    assert.strictEqual(snapshot.syncConfig.crosshair, true, 'Crosshair wajib aktif secara default');
+    assert.strictEqual(snapshot.syncConfig.viewport, true, 'Viewport wajib aktif secara default agar kursor & gerakan tersinkron');
+    assert.strictEqual(snapshot.syncConfig.symbol, false, 'Symbol independen secara default');
+    assert.strictEqual(snapshot.syncConfig.drawings, true, 'Drawings sinkron antar chart');
+    assert.strictEqual(snapshot.syncConfig.indicators, true, 'Indicators wajib aktif secara default');
+
+    // Toggle Viewport
+    controller.syncLayout({ viewport: false });
+    assert.strictEqual(controller.getSnapshot().syncConfig.viewport, false);
+    controller.syncLayout({ viewport: true });
+    assert.strictEqual(controller.getSnapshot().syncConfig.viewport, true);
+
+    // Toggle Crosshair
+    controller.syncLayout({ crosshair: false });
+    assert.strictEqual(controller.getSnapshot().syncConfig.crosshair, false);
+
+    // Toggle Symbol
+    controller.syncLayout({ symbol: true });
+    assert.strictEqual(controller.getSnapshot().syncConfig.symbol, true);
+
+    // Toggle Indicators
+    controller.syncLayout({ indicators: false });
+    assert.strictEqual(controller.getSnapshot().syncConfig.indicators, false);
+    controller.syncLayout({ indicators: true });
+    assert.strictEqual(controller.getSnapshot().syncConfig.indicators, true);
+
+    controller.destroy();
   });
 
-  test('Indicator Reconciliation: menyelaraskan follower cell saat sync diaktifkan kembali', () => {
-    interface MockIndicator {
-      id: string;
-      title: string;
-      source: string;
-    }
+  test('2. Auto-Clone Indicators on setLayout: cell baru mewarisi seluruh indikator dari chart utama via controller', async () => {
+    const mock0 = createMockChartCell('cell_0');
+    const mock1 = createMockChartCell('cell_1');
 
-    const activeCell = {
-      id: 'cell_0',
-      indicators: [
-        { id: 'ind_1', title: 'EMA 20', source: 'code1' },
-        { id: 'ind_2', title: 'Bollinger Bands', source: 'code2' }
-      ]
+    const mockWs = {
+      cells: () => [mock0.cell, mock1.cell],
+      active: mock0.cell,
+      setLayout: (_ly: string) => {},
+      sync: { set: () => {} },
+      destroy: () => {}
     };
 
-    const followerCell = {
-      id: 'cell_1',
-      indicators: [
-        { id: 'ind_custom', title: 'Stochastic RSI', source: 'code3' }
-      ]
-    };
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs,
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true }
+    });
 
-    // Simulasi rekonsiliasi: bersihkan follower dan salin indikator active cell
-    followerCell.indicators = [];
-    for (const ind of activeCell.indicators) {
-      followerCell.indicators.push({ ...ind });
-    }
+    controller.attach({ nodeType: 1 } as any);
 
-    assert.strictEqual(followerCell.indicators.length, 2);
-    assert.strictEqual(followerCell.indicators[0].title, 'EMA 20');
-    assert.strictEqual(followerCell.indicators[1].title, 'Bollinger Bands');
+    // Pasang 3 indikator pada controller
+    await controller.addPineIndicator('plot(ta.ema(close, 20))', 'EMA 20', { length: 20 });
+    await controller.addPineIndicator('plot(ta.rsi(close, 14))', 'RSI', { length: 14 });
+    await controller.addPineIndicator('plot(ta.macd(close, 12, 26, 9))', 'MACD');
+
+    // Ubah layout grid ke 2 chart
+    controller.setLayout('2');
+
+    const cell1Indicators = mock1.getIndicators();
+    assert.strictEqual(cell1Indicators.length, 3, 'Cell 1 harus mewarisi ke-3 indikator');
+    assert.strictEqual(cell1Indicators[0].title, 'EMA 20');
+    assert.strictEqual(cell1Indicators[1].title, 'RSI');
+    assert.strictEqual(cell1Indicators[2].title, 'MACD');
+
+    controller.destroy();
   });
 
-  test('Revert to Single Chart Layout: mempertahankan indikator dari cell yang aktif/terfokus', () => {
-    const focusedCell = {
-      id: 'cell_1',
-      indicators: [
-        { id: 'ind_1', title: 'SuperTrend', source: 'codeST' }
-      ]
+  test('3. Indicator Reconciliation on syncLayout: menyelaraskan follower cell saat indikator disinkronkan kembali', async () => {
+    const mock0 = createMockChartCell('cell_0');
+    const mock1 = createMockChartCell('cell_1');
+
+    const mockWs = {
+      cells: () => [mock0.cell, mock1.cell],
+      active: mock0.cell,
+      setLayout: () => {},
+      sync: { set: () => {} },
+      destroy: () => {}
     };
 
-    const unfocusedCell = {
-      id: 'cell_0',
-      indicators: [
-        { id: 'ind_old', title: 'Old Indicator', source: 'codeOld' }
-      ]
-    };
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs,
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: false }
+    });
 
-    // Snapshot diambil dari focusedCell sebelum setLayout('1')
-    const snapshotBeforeRevert = [...focusedCell.indicators];
+    controller.attach({ nodeType: 1 } as any);
 
-    // Single cell setelah revert
-    const singleCell = {
-      id: 'cell_0',
-      indicators: [...snapshotBeforeRevert]
-    };
+    // Active cell memiliki 2 indikator
+    await controller.addPineIndicator('code1', 'EMA 20');
+    await controller.addPineIndicator('code2', 'Bollinger Bands');
 
-    assert.strictEqual(singleCell.indicators.length, 1);
-    assert.strictEqual(singleCell.indicators[0].title, 'SuperTrend');
+    // Follower cell memiliki custom indikator yang berbeda
+    mock1.cell.chart.addIndicator('code3', { title: 'Stochastic RSI' });
+    assert.strictEqual(mock1.getIndicators().length, 1);
+    assert.strictEqual(mock1.getIndicators()[0].title, 'Stochastic RSI');
+
+    // Aktifkan sinkronisasi indikator kembali
+    controller.syncLayout({ indicators: true });
+
+    // Follower cell harus dibersihkan dari indikator lama dan diselaraskan dengan active cell
+    const cell1Indicators = mock1.getIndicators();
+    assert.strictEqual(cell1Indicators.length, 2);
+    assert.strictEqual(cell1Indicators[0].title, 'EMA 20');
+    assert.strictEqual(cell1Indicators[1].title, 'Bollinger Bands');
+
+    controller.destroy();
   });
 
-  test('Vela Sync Mapping: memastikan seluruh properti sync terpetakan ke setting workspace', () => {
-    const syncConfig: MultiChartSyncConfig = {
-      crosshair: true,
-      viewport: true,
-      symbol: false,
-      drawings: true,
+  test('4. Revert to Single Chart Layout: mempertahankan indikator dari cell aktif saat kembali ke layout 1', async () => {
+    const mock0 = createMockChartCell('cell_0');
+    const mock1 = createMockChartCell('cell_1');
+
+    // Jadikan cell 1 sebagai active cell yang terfokus
+    const mockWs = {
+      cells: () => [mock0.cell, mock1.cell],
+      active: mock1.cell,
+      setLayout: () => {},
+      sync: { set: () => {} },
+      destroy: () => {}
     };
+
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs
+    });
+
+    controller.attach({ nodeType: 1 } as any);
+
+    // Pasang indikator pada active cell (cell 1)
+    await controller.addPineIndicator('codeST', 'SuperTrend');
+
+    // Tambahkan indikator sampah lama di cell 0
+    mock0.cell.chart.addIndicator('codeOld', { title: 'Old Indicator' });
+
+    // Revert kembali ke layout 1 chart
+    controller.setLayout('1');
+
+    const activeIndicators = controller.getActiveIndicators();
+    assert.strictEqual(activeIndicators.length, 1);
+    assert.strictEqual(activeIndicators[0].title, 'SuperTrend');
+
+    controller.destroy();
+  });
+
+  test('5. Vela Sync Mapping & Viewport Alignment: controller.syncLayout memetakan flag ke workspace.sync dan menyelaraskan visible range', () => {
+    const mock0 = createMockChartCell('cell_0');
+    const mock1 = createMockChartCell('cell_1');
+    const mock2 = createMockChartCell('cell_2');
 
     const appliedSettings: Record<string, boolean> = {};
 
-    function applySyncToWorkspace(cfg: MultiChartSyncConfig) {
-      appliedSettings['crosshair'] = Boolean(cfg.crosshair);
-      appliedSettings['viewport'] = Boolean(cfg.viewport);
-      appliedSettings['symbol'] = Boolean(cfg.symbol);
-      appliedSettings['drawings'] = Boolean(cfg.drawings);
-    }
+    const mockWs = {
+      cells: () => [mock0.cell, mock1.cell, mock2.cell],
+      active: mock0.cell,
+      setLayout: () => {},
+      sync: {
+        set: (key: string, val: boolean) => {
+          appliedSettings[key] = Boolean(val);
+        }
+      },
+      destroy: () => {}
+    };
 
-    applySyncToWorkspace(syncConfig);
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs
+    });
+
+    controller.attach({ nodeType: 1 } as any);
+
+    controller.syncLayout({
+      crosshair: true,
+      viewport: true,
+      symbol: false,
+      drawings: true
+    });
 
     assert.strictEqual(appliedSettings['crosshair'], true);
     assert.strictEqual(appliedSettings['viewport'], true);
     assert.strictEqual(appliedSettings['symbol'], false);
     assert.strictEqual(appliedSettings['drawings'], true);
+
+    // Verifikasi perataan rentang viewport ke follower cells
+    assert.deepStrictEqual(mock1.cell.chart.getVisibleRange(), mock0.cell.chart.getVisibleRange());
+    assert.deepStrictEqual(mock2.cell.chart.getVisibleRange(), mock0.cell.chart.getVisibleRange());
+
+    controller.destroy();
   });
 
-  test('Viewport Alignment Logic: menyelaraskan range lilin pada panel pengikut saat viewport sync aktif', () => {
-    interface MockCell {
-      id: string;
-      range: { from: number; to: number } | null;
-      setVisibleRange(range: { from: number; to: number }): void;
-      getVisibleRange(): { from: number; to: number } | null;
-    }
+  test('6. Atomic Workspace State Snapshot & Restoration: saveWorkspaceState dan loadWorkspaceState memulihkan seluruh visual properties', async () => {
+    const mock0 = createMockChartCell('cell_0');
 
-    const activeCell: MockCell = {
-      id: 'cell_0',
-      range: { from: 1710000000000, to: 1710003600000 },
-      setVisibleRange(r) { this.range = r; },
-      getVisibleRange() { return this.range; }
+    const mockWs = {
+      cells: () => [mock0.cell],
+      active: mock0.cell,
+      setLayout: () => {},
+      sync: { set: () => {} },
+      destroy: () => {}
     };
 
-    const followerCell1: MockCell = {
-      id: 'cell_1',
-      range: { from: 1709000000000, to: 1709003600000 },
-      setVisibleRange(r) { this.range = r; },
-      getVisibleRange() { return this.range; }
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      providerId: 'indodax',
+      workspaceFactory: () => mockWs
+    });
+
+    controller.attach({ nodeType: 1 } as any);
+
+    // Set properties
+    controller.applyPaneWeights([3, 1.25]);
+    controller.applyPriceScaleState({
+      mode: 'log',
+      auto: false,
+      manualScale: { min: 65000, max: 71000 }
+    });
+    controller.setPriceStyle('heikinashi');
+    controller.setBarSpacing(14.5);
+    await controller.addPineIndicator('pine', 'Stochastic Oscillator', { periodK: 14, periodD: 3, smoothK: 3 });
+
+    // Snapshot via controller
+    const saved = controller.saveWorkspaceState('Scalping Layout Pro');
+
+    assert.strictEqual(saved.name, 'Scalping Layout Pro');
+    assert.strictEqual(saved.symbol, 'BTCUSDT');
+    assert.strictEqual(saved.timeframe, '15m');
+    assert.strictEqual(saved.providerId, 'indodax');
+    assert.deepStrictEqual(saved.paneWeights, [3, 1.25]);
+    assert.strictEqual(saved.priceScaleState?.mode, 'log');
+    assert.strictEqual(saved.priceStyle, 'heikinashi');
+    assert.strictEqual(saved.barSpacing, 14.5);
+    assert.strictEqual(saved.indicators.length, 1);
+    assert.strictEqual(saved.indicators[0].title, 'Stochastic Oscillator');
+
+    // Pulihkan pada instans controller baru
+    const newMock = createMockChartCell('new_cell');
+    const newWs = {
+      cells: () => [newMock.cell],
+      active: newMock.cell,
+      setLayout: () => {},
+      sync: { set: () => {} },
+      destroy: () => {}
     };
 
-    const followerCell2: MockCell = {
-      id: 'cell_2',
-      range: null,
-      setVisibleRange(r) { this.range = r; },
-      getVisibleRange() { return this.range; }
-    };
+    const restoredController = new ChartSessionController({
+      workspaceFactory: () => newWs
+    });
+    restoredController.attach({ nodeType: 1 } as any);
 
-    const allCells = [activeCell, followerCell1, followerCell2];
-    const isViewportSync = true;
+    await restoredController.loadWorkspaceState({
+      ...saved,
+      id: 'ws_restored',
+      timestamp: Date.now()
+    } as SavedWorkspace);
 
-    // Simulasikan logika penyelarasan seperti di Chart.svelte
-    if (isViewportSync) {
-      const activeRange = activeCell.getVisibleRange();
-      if (activeRange) {
-        for (const cell of allCells) {
-          if (cell.id !== activeCell.id) {
-            cell.setVisibleRange(activeRange);
-          }
-        }
-      }
-    }
+    const restoredSnap = restoredController.getSnapshot();
+    assert.strictEqual(restoredSnap.symbol, 'BTCUSDT');
+    assert.strictEqual(restoredSnap.timeframe, '15m');
+    assert.strictEqual(restoredSnap.providerId, 'indodax');
+    assert.strictEqual(restoredController.getPaneWeights()[0], 3);
+    assert.strictEqual(restoredController.getPriceStyle(), 'heikinashi');
+    assert.strictEqual(restoredController.getBarSpacing(), 14.5);
+    assert.strictEqual(restoredSnap.activeIndicators.length, 1);
+    assert.strictEqual(restoredSnap.activeIndicators[0].title, 'Stochastic Oscillator');
 
-    assert.deepStrictEqual(followerCell1.getVisibleRange(), activeCell.getVisibleRange());
-    assert.deepStrictEqual(followerCell2.getVisibleRange(), activeCell.getVisibleRange());
+    controller.destroy();
+    restoredController.destroy();
   });
 
-  test('Crosshair External Coordinates: menghitung visibilitas kursor lintas panel', () => {
-    // Fungsi simulasi kalkulasi posisi crosshair eksternal
+  test('7. Programmatic Chart Settings Persistence: saveCurrentSettingsAsDefault & resetSettingsToFactory tanpa DOM MutationObserver', async () => {
+    const mock0 = createMockChartCell('cell_0');
+    const mock1 = createMockChartCell('cell_1');
+
+    const mockWs = {
+      cells: () => [mock0.cell, mock1.cell],
+      active: mock0.cell,
+      setLayout: () => {},
+      sync: { set: () => {} },
+      destroy: () => {}
+    };
+
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs
+    });
+
+    controller.attach({ nodeType: 1 } as any);
+
+    // Simpan pengaturan saat ini sebagai default
+    const ok = await controller.saveCurrentSettingsAsDefault();
+    assert.strictEqual(ok, true);
+
+    // Pastikan factoryConfig terdistribusi ke seluruh cell
+    assert.ok(mock0.cell.chart.renderer.renderer.factoryConfig);
+    assert.ok(mock1.cell.chart.renderer.renderer.factoryConfig);
+
+    // Reset pengaturan ke factory
+    await controller.resetSettingsToFactory();
+
+    controller.destroy();
+  });
+
+  test('8. Crosshair External Coordinates: menghitung visibilitas kursor lintas panel', () => {
     function isCrosshairInBounds(x: number, y: number, width: number, height: number): boolean {
       return x >= 0 && x <= width && y >= 0 && y <= height;
     }
@@ -270,45 +413,36 @@ describe('Multi-Chart Synchronization Engine Unit Tests', () => {
     const canvasWidth = 800;
     const canvasHeight = 500;
 
-    // Kasus 1: Viewport sinkron -> koordinat x lilin jatuh dalam kanvas
     const syncedX = 420;
     const syncedY = 250;
     assert.strictEqual(isCrosshairInBounds(syncedX, syncedY, canvasWidth, canvasHeight), true);
 
-    // Kasus 2: Viewport desinkron -> koordinat x jatuh di luar rentang kanvas (bug sebelumnya)
     const outOfBoundsX = -150;
     const outOfBoundsY = 250;
     assert.strictEqual(isCrosshairInBounds(outOfBoundsX, outOfBoundsY, canvasWidth, canvasHeight), false);
   });
 
-  test('Layout Expansion Timeframe Policy: cell baru mengadopsi defaultTimeframe sedangkan cell aktif dipertahankan', () => {
-    interface MockChartCell {
-      id: string;
-      timeframe: string;
-      setTimeframe(tf: string): void;
-    }
-
-    const activeCell: MockChartCell = {
+  test('9. Layout Expansion Timeframe Policy: cell baru mengadopsi defaultTimeframe sedangkan cell aktif dipertahankan', () => {
+    const activeCell = {
       id: 'cell_active',
       timeframe: '1h',
-      setTimeframe(tf) { this.timeframe = tf; }
+      setTimeframe(tf: string) { this.timeframe = tf; }
     };
 
-    const newCell1: MockChartCell = {
+    const newCell1 = {
       id: 'cell_new_1',
-      timeframe: '1m', // default bawaan acak
-      setTimeframe(tf) { this.timeframe = tf; }
+      timeframe: '1m',
+      setTimeframe(tf: string) { this.timeframe = tf; }
     };
 
-    const newCell2: MockChartCell = {
+    const newCell2 = {
       id: 'cell_new_2',
       timeframe: '1m',
-      setTimeframe(tf) { this.timeframe = tf; }
+      setTimeframe(tf: string) { this.timeframe = tf; }
     };
 
     const cells = [activeCell, newCell1, newCell2];
 
-    // Ketika syncTimeframe false (default): cell baru mendapatkan defaultTimeframe (15m), cell aktif tetap 1h
     applyLayoutTimeframePolicy({
       activeCell,
       cells,
@@ -320,7 +454,6 @@ describe('Multi-Chart Synchronization Engine Unit Tests', () => {
     assert.strictEqual(newCell1.timeframe, '15m', 'Cell baru 1 harus diinisialisasi dengan defaultTimeframe 15m');
     assert.strictEqual(newCell2.timeframe, '15m', 'Cell baru 2 harus diinisialisasi dengan defaultTimeframe 15m');
 
-    // Ketika syncTimeframe true: cell pengikut mengikuti timeframe cell aktif (1h)
     applyLayoutTimeframePolicy({
       activeCell,
       cells,
@@ -333,4 +466,3 @@ describe('Multi-Chart Synchronization Engine Unit Tests', () => {
     assert.strictEqual(newCell2.timeframe, '1h');
   });
 });
-

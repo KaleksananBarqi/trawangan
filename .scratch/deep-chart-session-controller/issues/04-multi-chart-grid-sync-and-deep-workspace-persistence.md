@@ -4,10 +4,10 @@
 
 **Blocked by:** 03: Indicator Lifecycle, Zombie Guard & Persistent Price Line Guard Integration (#52)
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Implement `setLayout(layout: string)` and `syncLayout(config: MultiChartSyncConfig)` inside `ChartSessionController`.
-- [ ] Implement atomic snapshotting and restoration methods: `saveWorkspaceState()` and `loadWorkspaceState()` covering `paneWeights`, `priceScaleState`, `priceStyle`, and `barSpacing`.
-- [ ] Implement programmatic chart settings persistence (`saveCurrentSettingsAsDefault` and `resetSettingsToFactory`) without DOM `MutationObserver` hacks.
-- [ ] Migrate `tests/multiChartSync.test.ts` from synthetic simulation mocks to testing the real controller interface.
-- [ ] All tests pass.
+- [x] Implement `setLayout(layout: string)` and `syncLayout(config: MultiChartSyncConfig)` inside `ChartSessionController`.
+- [x] Implement atomic snapshotting and restoration methods: `saveWorkspaceState()` and `loadWorkspaceState()` covering `paneWeights`, `priceScaleState`, `priceStyle`, and `barSpacing`.
+- [x] Implement programmatic chart settings persistence (`saveCurrentSettingsAsDefault` and `resetSettingsToFactory`) without DOM `MutationObserver` hacks.
+- [x] Migrate `tests/multiChartSync.test.ts` from synthetic simulation mocks to testing the real controller interface.
+- [x] All tests pass.
