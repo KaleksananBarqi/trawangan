@@ -5,6 +5,35 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.16.0] - 2026-10-18
+
+### 🚀 Ditambahkan (Added)
+- **Isolasi Objek Gambar Analitis per Bursa (Exchange-Aware Drawing Isolation) (#64, #65):**
+  - Menerapkan arsitektur compound storage key `${providerId}:${symbol}` pada kanvas grafik dan SQLite lokal, memisahkan coretan teknikal antar bursa secara absolut (misal BTCUSDT di Binance terpisah dari BTCUSDT di Bitunix).
+  - Mengimplementasikan pembersihan kanvas eksplisit via `clearCanvasVisuals()` saat berpindah konteks dan fallback kompatibilitas mundur ke data legacy `binance`.
+- **Navigasi Bursa Deterministik pada Pencarian Simbol (#64, #66):**
+  - Memastikan pemilihan simbol dari modal pencarian (Ctrl+K) langsung beralih ke bursa target sesuai `providerHint`, mengeliminasi network error palsu.
+- **Watchlist Polling Multiplexer Multi-Bursa (#64, #67):**
+  - Mempartisi simbol daftar pantau dan mengeksekusi polling harga latar belakang secara paralel ke masing-masing adapter bursa (`binance`, `bitunix`, `indodax`) tanpa membebani provider aktif.
+- **Model Data Watchlist Multi-Provider & Badge Visual Venue (#64, #68):**
+  - Mendukung format entri watchlist `${providerId}:${symbol}` dengan backward compatibility parsing.
+  - Menghadirkan badge visual venue (`.venue-badge`) pada Omni-Search dan Watchlist panel, serta auto-routing bursa 1-klik saat simbol dipilih.
+- **Drawing Synchronization Boundary Guard Multi-Chart (#64, #69):**
+  - Membatasi propagasi gambar analitis hanya antar sel grafik yang berbagi `providerId` dan `symbol` yang identik, mencegah distorsi skala harga lintas bursa pada layout multi-pane.
+- **Native Rust IPC HTTP Bridge Bebas CORS:**
+  - Menyediakan perintah native Tauri IPC `http_get` via `reqwest` di backend Rust dan bridge `universalFetch` di frontend. Menghilangkan 100% pemblokiran CORS WebView2 Chromium saat memuat feed pasar, candle Vela, dan ping telemetri untuk Bitunix dan Indodax.
+
+### 🐛 Diperbaiki (Fixed)
+- **Eliminasi Hilangnya Gambar saat Switch Simbol Cepat (Event Suppression Guard & Debounce Flush):**
+  - Mencegah penimpaan dokumen kosong ke database SQLite akibat cascading event `drawing:removed` saat pembersihan kanvas dengan guard `isRestoring`.
+  - Mengimplementasikan `flushDrawings()` untuk mengamankan perubahan gambar in-flight yang terjadi dalam interval debounce 400ms sebelum konteks simbol berpindah.
+- **Perbaikan Status Palsu `FEED STALLED` & `FEED BLOCKED`:**
+  - Menghilangkan kegagalan HTTP akibat pembatasan CORS pada Bitunix dan Indodax di desktop app.
+  - Memperbaiki cacat endpoint single ticker Bitunix dari 404 menjadi batch lookup `/tickers`.
+
+### 🧪 Pengujian (Tests)
+- Menambahkan test suite baru: `tests/exchangeAwareDrawing.test.ts`, `tests/deterministicProviderSwitching.test.ts`, `tests/multiProviderPolling.test.ts`, `tests/exchangeAwareWatchlist.test.ts`, `tests/multiChartSync.test.ts`, `tests/drawingContextPreservation.test.ts`, dan `tests/universalHttpClient.test.ts` (total 212 tests passing).
+
 ## [0.15.0] - 2026-10-14
 
 ### 🚀 Ditambahkan (Added)
