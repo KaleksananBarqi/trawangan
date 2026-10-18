@@ -12,6 +12,7 @@ import { IndodaxProvider } from './indodaxProvider';
 import { registerDefaultEngine } from '@luxalgo/vela';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 import { IndicatorRegistry } from './indicatorRegistry';
+import { chartDrawingController } from './chartDrawingController';
 import type {
   Timeframe,
   MultiChartSyncConfig,
@@ -635,6 +636,9 @@ export class ChartSessionController {
         } else if (this.workspace.active && this.workspace.active.symbol !== targetSym && typeof this.workspace.active.setSymbol === 'function') {
           this.workspace.active.setSymbol(targetSym);
         }
+
+        // Pulihkan gambar spesifik untuk simbol dan provider target secara terisolasi
+        chartDrawingController.restoreDrawings(this.symbol, this.timeframe, this.providerId).catch(() => {});
       } catch (err) {
         console.warn('[ChartSessionController] setSymbol error:', err);
       }

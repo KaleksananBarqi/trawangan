@@ -109,7 +109,7 @@
       controller.attach(chartContainer);
       const ws = controller.getWorkspace();
       if (ws) {
-        chartDrawingController.attachWorkspace(ws, () => symbol, () => timeframe);
+        chartDrawingController.attachWorkspace(ws, () => symbol, () => timeframe, () => providerId);
         priceScaleOverlayController.attachChart(chartContainer, ws);
       }
     }

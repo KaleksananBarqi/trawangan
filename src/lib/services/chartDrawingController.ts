@@ -20,6 +20,22 @@ export interface DrawingState {
 type Subscriber = (state: DrawingState) => void;
 
 /**
+ * Menghasilkan kunci persistensi gabungan bursa dan simbol yang ternormalisasi (misal: 'binance:BTCUSDT')
+ */
+export function resolveDrawingKey(providerId: string | undefined, symbol: string): string {
+  if (!symbol) return 'binance:BTCUSDT';
+  const clean = symbol.trim();
+  if (clean.includes(':')) {
+    const parts = clean.split(':');
+    const p = parts[0].trim().toLowerCase() || 'binance';
+    const s = parts[1].trim().toUpperCase();
+    return `${p}:${s}`;
+  }
+  const p = (providerId || 'binance').trim().toLowerCase();
+  return `${p}:${clean.toUpperCase()}`;
+}
+
+/**
  * ChartDrawingController - Deep Module untuk Operasi Gambar Terminal Trawangan
  * Mengenkapsulasi manajemen alat gambar, mode snap/stay, undo/redo, adaptasi canvas Vela,
  * dan debounced persistence ke SQLite/localStorage dalam satu antarmuka yang ramping.
@@ -37,20 +53,25 @@ export class ChartDrawingController {
   private workspace: any = null;
   private getSymbol: () => string = () => 'BTCUSDT';
   private getTimeframe: () => string = () => '15m';
+  private getProviderId: () => string = () => 'binance';
 
   private subscribers = new Set<Subscriber>();
 
   /**
-   * Mengaitkan instance workspace Vela dan getter simbol/timeframe aktif
+   * Mengaitkan instance workspace Vela dan getter simbol/timeframe/provider aktif
    */
   attachWorkspace(
     workspace: any,
     getSymbol: () => string,
-    getTimeframe: () => string
+    getTimeframe: () => string,
+    getProviderId?: () => string
   ): () => void {
     this.workspace = workspace;
     this.getSymbol = getSymbol;
     this.getTimeframe = getTimeframe;
+    if (getProviderId) {
+      this.getProviderId = getProviderId;
+    }
 
     // Pasang listener pada chart aktif jika tersedia
     const activeChart = this.getActiveChart();
@@ -454,13 +475,38 @@ export class ChartDrawingController {
         this.activeDrawings = [...(activeChart.drawings.all?.() || [])];
         const doc = activeChart.drawings.toJSON?.();
         if (doc) {
-          const curSym = (this.workspace?.active as any)?.symbol || this.getSymbol();
-          saveDrawingsDebounced(curSym, 'GLOBAL', doc);
+          const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+          const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
+          const key = resolveDrawingKey(curProv, curSym);
+          saveDrawingsDebounced(key, 'GLOBAL', doc);
         }
       } catch (err) {
         console.warn('Gagal memproses auto-save drawing:', err);
       }
     }
+    this.notify();
+  }
+
+  /**
+   * Mengosongkan seluruh visual gambar pada layer kanvas aktif (Clean Slate)
+   */
+  clearCanvasVisuals(): void {
+    const activeChart = this.getActiveChart();
+    if (activeChart?.drawings) {
+      try {
+        if (typeof activeChart.drawings.clear === 'function') {
+          activeChart.drawings.clear();
+        } else if (typeof activeChart.drawings.removeMany === 'function') {
+          const existing = activeChart.drawings.all?.() || [];
+          if (existing.length > 0) {
+            activeChart.drawings.removeMany(existing.map((d: any) => d.id));
+          }
+        }
+      } catch (err) {
+        console.warn('Gagal mengosongkan gambar visual kanvas:', err);
+      }
+    }
+    this.activeDrawings = [];
     this.notify();
   }
 
@@ -478,27 +524,46 @@ export class ChartDrawingController {
   }
 
   /**
-   * Muat dan pasang gambar yang tersimpan dari SQLite / Storage
+   * Muat dan pasang gambar yang tersimpan dari SQLite / Storage sesuai bursa dan simbol aktif
    */
-  async restoreDrawings(targetSymbol?: string, targetTimeframe?: string): Promise<void> {
+  async restoreDrawings(
+    targetSymbol?: string,
+    targetTimeframe?: string,
+    targetProvider?: string
+  ): Promise<void> {
     const activeChart = this.getActiveChart();
     if (!activeChart?.drawings) return;
 
+    // 1. Bersihkan kanvas aktif terlebih dahulu (clean slate) agar gambar bursa lama tidak bocor
+    this.clearCanvasVisuals();
+
     const sym = targetSymbol || (this.workspace?.active as any)?.symbol || this.getSymbol();
     const tf = targetTimeframe || (this.workspace?.active as any)?.timeframe || this.getTimeframe();
+    const prov = targetProvider || this.getProviderId();
+    const key = resolveDrawingKey(prov, sym);
 
     try {
-      // 1. Coba slot GLOBAL
-      let doc = await loadDrawings(sym, 'GLOBAL');
-      // 2. Fallback per timeframe
+      // 1. Coba slot GLOBAL untuk bursa aktif
+      let doc = await loadDrawings(key, 'GLOBAL');
+      // 2. Fallback per timeframe bursa aktif
       if (!doc) {
-        doc = await loadDrawings(sym, tf);
+        doc = await loadDrawings(key, tf);
       }
+
+      // 3. Legacy Fallback: jika bursa adalah binance dan belum ada record bursa, cek key lama tanpa prefix bursa
+      if (!doc && prov.toLowerCase() === 'binance') {
+        const legacySym = sym.includes(':') ? sym.split(':')[1] : sym;
+        doc = await loadDrawings(legacySym, 'GLOBAL');
+        if (!doc) {
+          doc = await loadDrawings(legacySym, tf);
+        }
+      }
+
       if (doc && activeChart.drawings) {
         activeChart.drawings.fromJSON(doc);
         this.activeDrawings = activeChart.drawings.all?.() || [];
-        this.notify();
       }
+      this.notify();
     } catch (err) {
       console.warn('Gagal memulihkan drawings:', err);
     }
