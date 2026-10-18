@@ -18,6 +18,35 @@ import { DEFAULT_PROVIDERS, normalizeTicker } from './constants';
 import { alertService } from '../alertService';
 import { SymbolSearchEngine } from './symbolSearchService';
 
+/**
+ * Memecah simbol pair (baik ber-prefix 'provider:symbol' atau raw) dan menginfer bursa target
+ */
+export function resolveSymbolProvider(
+  rawSymbol: string,
+  defaultProvider = 'binance'
+): { providerId: string; cleanSymbol: string } {
+  if (!rawSymbol) return { providerId: defaultProvider.toLowerCase(), cleanSymbol: '' };
+  const trimmed = rawSymbol.trim();
+  if (trimmed.includes(':')) {
+    const [p, s] = trimmed.split(':');
+    return {
+      providerId: (p || defaultProvider).toLowerCase(),
+      cleanSymbol: s.toUpperCase(),
+    };
+  }
+  const upper = trimmed.toUpperCase();
+  if (upper.endsWith('IDR')) {
+    return { providerId: 'indodax', cleanSymbol: upper };
+  }
+  if (upper.endsWith('.P') && defaultProvider === 'indodax') {
+    return { providerId: 'bitunix', cleanSymbol: upper };
+  }
+  if (upper.includes('USDT') && defaultProvider === 'indodax') {
+    return { providerId: 'binance', cleanSymbol: upper };
+  }
+  return { providerId: defaultProvider.toLowerCase(), cleanSymbol: upper };
+}
+
 export class MarketFeedService implements IMarketFeedService {
   private adapters = new Map<string, MarketProviderAdapter>();
   private activeProviderId = 'binance';
@@ -233,49 +262,92 @@ export class MarketFeedService implements IMarketFeedService {
 
     if (allSymbolsSet.size === 0) return;
 
-    const symbolsList = Array.from(allSymbolsSet);
-    const adapter = this.getAdapter();
+    // 1. Partisi seluruh simbol berdasarkan provider target
+    const providerMap = new Map<string, Array<{ raw: string; clean: string }>>();
 
-    try {
-      const batchData = await adapter.fetchBatchTickers(symbolsList);
-      const keys = Object.keys(batchData || {});
-      if (keys.length === 0 && symbolsList.length > 0) {
-        this.recordFailure(new Error('Batch tickers returned empty'));
-        return;
+    for (const rawSym of allSymbolsSet) {
+      const { providerId, cleanSymbol } = resolveSymbolProvider(rawSym, this.activeProviderId);
+      if (!providerMap.has(providerId)) {
+        providerMap.set(providerId, []);
       }
+      providerMap.get(providerId)!.push({ raw: rawSym, clean: cleanSymbol });
+    }
 
-      this.recordSuccess();
+    const mergedBatchData: Record<string, TickerInfo> = {};
+    let activeProviderSucceeded = false;
+    let activeProviderHasQuery = false;
+    let activeProviderError: any = null;
 
-      // 1. Simpan ke cache & lakukan evaluasi alert terpusat
-      for (const [sym, ticker] of Object.entries(batchData)) {
-        if (ticker && ticker.price > 0) {
-          this.tickerCache.set(normalizeTicker(sym), ticker);
-          // Locality: Evaluasi alert harga otomatis di satu tempat
-          alertService.evaluateAlerts(sym, ticker.price);
+    // 2. Eksekusi batch per provider secara paralel
+    await Promise.allSettled(
+      Array.from(providerMap.entries()).map(async ([pId, symList]) => {
+        const adapter = this.adapters.get(pId) || this.getAdapter();
+        const cleanList = Array.from(new Set(symList.map((s) => s.clean)));
+        const isActive = pId === this.activeProviderId;
+
+        if (isActive) {
+          activeProviderHasQuery = true;
         }
-      }
 
-      // 2. Beritahu active symbol listeners
-      for (const [sym, listeners] of this.activeSymbolSubscribers.entries()) {
-        const t = batchData[sym] || this.tickerCache.get(sym);
-        if (t) {
-          for (const l of listeners) {
-            l(t);
+        try {
+          const batch = await adapter.fetchBatchTickers(cleanList);
+          if (batch && Object.keys(batch).length > 0) {
+            if (isActive) activeProviderSucceeded = true;
+            // Petakan kembali hasil ticker ke raw symbol dan clean symbol
+            for (const item of symList) {
+              const found = batch[item.clean] || batch[normalizeTicker(item.clean)];
+              if (found) {
+                mergedBatchData[item.raw] = found;
+                mergedBatchData[item.clean] = found;
+              }
+            }
+          } else if (isActive && cleanList.length > 0) {
+            activeProviderError = new Error(`Batch tickers for ${pId} returned empty`);
           }
+        } catch (err) {
+          if (isActive) {
+            activeProviderError = err;
+          }
+          console.warn(`[MarketFeedService] Error polling provider ${pId}:`, err);
         }
-      }
+      })
+    );
 
-      // 3. Beritahu watchlist subscribers
-      for (const sub of this.watchlistSubscribers) {
-        const subMap: Record<string, TickerInfo> = {};
-        for (const s of sub.symbols) {
-          const t = batchData[s] || this.tickerCache.get(normalizeTicker(s));
-          if (t) subMap[s] = t;
-        }
-        sub.listener(subMap);
+    // 3. Catat status koneksi bursa aktif
+    if (activeProviderHasQuery) {
+      if (activeProviderSucceeded) {
+        this.recordSuccess();
+      } else if (activeProviderError) {
+        this.recordFailure(activeProviderError);
       }
-    } catch (err) {
-      this.recordFailure(err);
+    } else {
+      this.recordSuccess();
+    }
+
+    // 4. Update cache & notifikasi subscriber
+    for (const [sym, ticker] of Object.entries(mergedBatchData)) {
+      if (ticker && ticker.price > 0) {
+        this.tickerCache.set(normalizeTicker(sym), ticker);
+        alertService.evaluateAlerts(sym, ticker.price);
+      }
+    }
+
+    for (const [sym, listeners] of this.activeSymbolSubscribers.entries()) {
+      const t = mergedBatchData[sym] || this.tickerCache.get(sym);
+      if (t) {
+        for (const l of listeners) {
+          l(t);
+        }
+      }
+    }
+
+    for (const sub of this.watchlistSubscribers) {
+      const subMap: Record<string, TickerInfo> = {};
+      for (const s of sub.symbols) {
+        const t = mergedBatchData[s] || this.tickerCache.get(normalizeTicker(s));
+        if (t) subMap[s] = t;
+      }
+      sub.listener(subMap);
     }
   }
 
