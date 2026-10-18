@@ -29,6 +29,7 @@
   import { loadWatchlist, saveWatchlist } from '../services/persistence';
   import { marketFeed } from '../services/market';
   import { alertService } from '../services/alertService';
+  import { parseWatchlistEntry, formatWatchlistEntry, normalizeProviderId } from '../services/watchlistUtils';
   import SymbolSearchModal from './SymbolSearchModal.svelte';
   import { getSearchResultKey } from '../services/market/symbolSearchService';
   import type { PriceAlert, ObjectTreeItem, MarketSearchResult } from '../types/market';
@@ -41,7 +42,7 @@
     activeProviderId?: string;
     watchlistSymbols?: string[];
     activeIndicators?: { id: string; title: string; visible: boolean }[];
-    onSelectSymbol: (symbol: string) => void;
+    onSelectSymbol: (symbol: string, providerId?: string) => void;
     onToggleCollapse: () => void;
     onToggleIndicatorVisibility?: (id: string) => void;
     onRemoveIndicator?: (id: string) => void;
@@ -99,13 +100,9 @@
     }
   }
 
-  function handleSelectSymbol(sym: string) {
-    if (sym.endsWith('IDR') && activeProviderId !== 'indodax') {
-      marketFeed.setActiveProvider('indodax');
-    } else if (sym.includes('USDT') && activeProviderId === 'indodax') {
-      marketFeed.setActiveProvider('binance');
-    }
-    onSelectSymbol(sym);
+  function handleSelectSymbol(rawEntry: string) {
+    const { providerId, symbol } = parseWatchlistEntry(rawEntry);
+    onSelectSymbol(symbol, providerId);
   }
 
   let symbols = $state<string[]>([
@@ -216,12 +213,13 @@
     if (clean.endsWith('.P')) {
       const base = clean.slice(0, -2);
       formatted = base.endsWith('USDT') ? clean : `${base}USDT.P`;
-    } else if (!clean.endsWith('USDT')) {
+    } else if (!clean.endsWith('USDT') && !clean.endsWith('IDR')) {
       formatted = `${clean}USDT`;
     }
 
-    if (!symbols.includes(formatted)) {
-      await applyWatchlistUpdate([...symbols, formatted]);
+    const entry = formatWatchlistEntry(formatted, activeProviderId);
+    if (!symbols.includes(entry)) {
+      await applyWatchlistUpdate([...symbols, entry]);
     }
     newSymbolInput = '';
     showAddInput = false;
@@ -294,20 +292,40 @@
     }
   }
 
-  async function handleToggleSymbolFromSearch(sym: string) {
+  async function handleToggleSymbolFromSearch(rawInput: string) {
+    let entry = rawInput;
+    if (!entry.includes(':')) {
+      entry = formatWatchlistEntry(rawInput, activeProviderId);
+    }
+    const target = parseWatchlistEntry(entry);
+    const exists = symbols.some((s) => {
+      if (s === entry) return true;
+      const p = parseWatchlistEntry(s);
+      return p.symbol === target.symbol && p.providerId === target.providerId;
+    });
+
     let next: string[];
-    if (symbols.includes(sym)) {
-      next = symbols.filter((s) => s !== sym);
+    if (exists) {
+      next = symbols.filter((s) => {
+        if (s === entry) return false;
+        const p = parseWatchlistEntry(s);
+        return !(p.symbol === target.symbol && p.providerId === target.providerId);
+      });
     } else {
-      next = [...symbols, sym];
+      next = [...symbols, entry];
     }
     await applyWatchlistUpdate(next);
   }
 
-  async function handleRemoveSymbol(e: MouseEvent, sym: string) {
+  async function handleRemoveSymbol(e: MouseEvent, rawEntry: string) {
     e.stopPropagation();
     e.preventDefault();
-    const next = symbols.filter((s) => s !== sym);
+    const target = parseWatchlistEntry(rawEntry);
+    const next = symbols.filter((s) => {
+      if (s === rawEntry) return false;
+      const p = parseWatchlistEntry(s);
+      return !(p.symbol === target.symbol && p.providerId === target.providerId);
+    });
     await applyWatchlistUpdate(next);
   }
 
@@ -538,10 +556,12 @@
               <span>Di Watchlist ({filteredSymbols.length})</span>
             </div>
             {#each filteredSymbols as sym, idx (sym)}
-              {@const ticker = tickerMap[sym]}
+              {@const entry = parseWatchlistEntry(sym)}
+              {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
               {@const isBull = (ticker?.change24h ?? 0) >= 0}
               {@const isHighlighted = selectedOmniIndex === idx}
-              <div class="watchlist-row {activeSymbol === sym ? 'active-row' : ''} {isHighlighted ? 'omni-highlighted' : ''}">
+              {@const isCurrentActive = activeSymbol === entry.symbol && activeProviderId === entry.providerId}
+              <div class="watchlist-row {isCurrentActive ? 'active-row' : ''} {isHighlighted ? 'omni-highlighted' : ''}">
                 <button
                   type="button"
                   class="row-select-btn"
@@ -549,10 +569,11 @@
                 >
                   <div class="row-symbol">
                     <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                    <span class="symbol-name">{sym.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
-                    {#if sym.endsWith('.P')}
+                    <span class="symbol-name">{entry.symbol.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
+                    <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
+                    {#if entry.symbol.endsWith('.P')}
                       <span class="type-tag perp mono-nums">.P</span>
-                    {:else if sym.endsWith('IDR')}
+                    {:else if entry.symbol.endsWith('IDR')}
                       <span class="type-tag idr mono-nums">IDR</span>
                     {:else}
                       <span class="type-tag spot mono-nums">SPOT</span>
@@ -560,7 +581,7 @@
                   </div>
 
                   <div class="row-price mono-nums">
-                    {formatPrice(ticker?.price, sym)}
+                    {formatPrice(ticker?.price, entry.symbol)}
                   </div>
 
                   <div class="row-change mono-nums">
@@ -672,9 +693,11 @@
         {:else}
           <!-- ─── 3. Tampilan Normal (Seluruh Koin Watchlist) ─── -->
           {#each filteredSymbols as sym (sym)}
-            {@const ticker = tickerMap[sym]}
+            {@const entry = parseWatchlistEntry(sym)}
+            {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
             {@const isBull = (ticker?.change24h ?? 0) >= 0}
-            <div class="watchlist-row {activeSymbol === sym ? 'active-row' : ''}">
+            {@const isCurrentActive = activeSymbol === entry.symbol && activeProviderId === entry.providerId}
+            <div class="watchlist-row {isCurrentActive ? 'active-row' : ''}">
               <button
                 type="button"
                 class="row-select-btn"
@@ -682,10 +705,11 @@
               >
                 <div class="row-symbol">
                   <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                  <span class="symbol-name">{sym.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
-                  {#if sym.endsWith('.P')}
+                  <span class="symbol-name">{entry.symbol.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
+                  <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
+                  {#if entry.symbol.endsWith('.P')}
                     <span class="type-tag perp mono-nums">.P</span>
-                  {:else if sym.endsWith('IDR')}
+                  {:else if entry.symbol.endsWith('IDR')}
                     <span class="type-tag idr mono-nums">IDR</span>
                   {:else}
                     <span class="type-tag spot mono-nums">SPOT</span>
@@ -693,7 +717,7 @@
                 </div>
 
                 <div class="row-price mono-nums">
-                  {formatPrice(ticker?.price, sym)}
+                  {formatPrice(ticker?.price, entry.symbol)}
                 </div>
 
                 <div class="row-change mono-nums">
@@ -1361,6 +1385,46 @@
     background-color: rgba(148, 163, 184, 0.12);
     color: #94a3b8;
     border: 1px solid rgba(148, 163, 184, 0.2);
+  }
+
+  .venue-badge {
+    font-size: var(--font-size-2xs, 8px);
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 2px;
+    letter-spacing: 0.05em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .venue-badge.binance {
+    background-color: rgba(240, 185, 11, 0.15);
+    color: #f0b90b;
+    border: 1px solid rgba(240, 185, 11, 0.3);
+  }
+
+  .venue-badge.bitunix {
+    background-color: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.3);
+  }
+
+  .venue-badge.indodax {
+    background-color: rgba(37, 99, 235, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(37, 99, 235, 0.3);
+  }
+
+  .venue-badge.hyperliquid {
+    background-color: rgba(20, 184, 166, 0.15);
+    color: #2dd4bf;
+    border: 1px solid rgba(20, 184, 166, 0.3);
+  }
+
+  .venue-badge.coinbase {
+    background-color: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.3);
   }
 
   .row-price {

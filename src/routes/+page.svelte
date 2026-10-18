@@ -24,6 +24,7 @@
   import { replaySession, type ReplaySnapshot } from '../lib/services/replay';
   import { commandDispatcher } from '../lib/services/commandDispatcher';
   import { chartDrawingController } from '../lib/services/chartDrawingController';
+  import { parseWatchlistEntry, formatWatchlistEntry } from '../lib/services/watchlistUtils';
   import type {
     TickerInfo,
     Timeframe,
@@ -655,12 +656,27 @@
     watchlistSymbols = newSymbols;
   }
 
-  async function handleToggleWatchlistSymbolFromSearch(sym: string) {
+  async function handleToggleWatchlistSymbolFromSearch(rawInput: string) {
+    let entry = rawInput;
+    if (!entry.includes(':')) {
+      entry = formatWatchlistEntry(rawInput, activeProviderId);
+    }
+    const target = parseWatchlistEntry(entry);
+    const exists = watchlistSymbols.some((s) => {
+      if (s === entry) return true;
+      const p = parseWatchlistEntry(s);
+      return p.symbol === target.symbol && p.providerId === target.providerId;
+    });
+
     let next: string[];
-    if (watchlistSymbols.includes(sym)) {
-      next = watchlistSymbols.filter((s) => s !== sym);
+    if (exists) {
+      next = watchlistSymbols.filter((s) => {
+        if (s === entry) return false;
+        const p = parseWatchlistEntry(s);
+        return !(p.symbol === target.symbol && p.providerId === target.providerId);
+      });
     } else {
-      next = [...watchlistSymbols, sym];
+      next = [...watchlistSymbols, entry];
     }
     handleWatchlistChange(next);
     await saveWatchlist(next);

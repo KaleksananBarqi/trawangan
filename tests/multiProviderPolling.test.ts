@@ -2,7 +2,8 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { MarketFeedService, resolveSymbolProvider } from '../src/lib/services/market';
-import type { MarketProviderAdapter, TickerInfo } from '../src/lib/services/market/types';
+import type { MarketProviderAdapter } from '../src/lib/services/market/types';
+import type { TickerInfo } from '../src/lib/types/market';
 
 class MockAdapter implements MarketProviderAdapter {
   constructor(public id: string, public name: string) {}

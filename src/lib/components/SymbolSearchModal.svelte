@@ -3,6 +3,7 @@
   import { Search, X, Check, Plus, ArrowRight, CornerDownLeft, Sparkles, TrendingUp, Layers } from '@lucide/svelte';
   import { marketFeed } from '../services/market';
   import { getSearchResultKey } from '../services/market/symbolSearchService';
+  import { formatWatchlistEntry, parseWatchlistEntry, normalizeProviderId } from '../services/watchlistUtils';
   import type { MarketSearchResult } from '../types/market';
 
   interface Props {
@@ -383,7 +384,10 @@
         {#if searchResults.length > 0}
           <div class="results-list" role="listbox">
             {#each searchResults as item, index (getSearchResultKey(item))}
-              {@const isWatchlisted = watchlistSymbols.includes(item.symbol)}
+              {@const isWatchlisted = watchlistSymbols.some((w) => {
+                const p = parseWatchlistEntry(w);
+                return p.symbol === item.symbol.toUpperCase() && p.providerId === normalizeProviderId(item.provider);
+              })}
               {@const isCurrentChart = activeSymbol === item.symbol}
               {@const isHighlighted = selectedIndex === index}
 
@@ -439,7 +443,7 @@
                     type="button"
                     class="watchlist-toggle-btn {isWatchlisted ? 'in-watchlist' : 'add-action'}"
                     title={isWatchlisted ? 'Hapus dari Watchlist' : 'Tambahkan ke Watchlist'}
-                    onclick={(e) => handleToggleWatchlist(e, item.symbol)}
+                    onclick={(e) => handleToggleWatchlist(e, formatWatchlistEntry(item.symbol, item.provider))}
                     onpointerdown={(e) => e.stopPropagation()}
                   >
                     {#if isWatchlisted}
