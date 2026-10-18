@@ -497,33 +497,33 @@
 
   function handleSymbolChange(newSym: string, providerHint?: string) {
     const clean = newSym.trim().toUpperCase();
+    const hint = providerHint ? providerHint.trim().toLowerCase() : '';
 
-    // Auto-switch provider bursa jika kuotasi IDR (Indodax) atau USDT/.P (Binance/Bitunix)
-    if (providerHint?.toLowerCase().includes('indodax') || clean.endsWith('IDR')) {
-      if (activeProviderId !== 'indodax') {
-        marketFeed.setActiveProvider('indodax');
-        activeProviderId = 'indodax';
-        telemetryService.setActiveProvider('indodax');
-        addSystemLog(`Bursa dialihkan ke Indodax untuk ${newSym}`, 'info');
-      }
-    } else if (providerHint?.toLowerCase().includes('bitunix')) {
-      if (activeProviderId !== 'bitunix') {
-        marketFeed.setActiveProvider('bitunix');
-        activeProviderId = 'bitunix';
-        telemetryService.setActiveProvider('bitunix');
-        addSystemLog(`Bursa dialihkan ke Bitunix untuk ${newSym}`, 'info');
-      }
-    } else if (clean.includes('USDT') || clean.endsWith('.P') || providerHint?.toLowerCase().includes('binance')) {
-      if (activeProviderId === 'indodax') {
-        marketFeed.setActiveProvider('binance');
-        activeProviderId = 'binance';
-        telemetryService.setActiveProvider('binance');
-        addSystemLog(`Bursa dialihkan ke Binance untuk ${newSym}`, 'info');
+    let targetProvider = activeProviderId;
+
+    if (hint) {
+      if (hint.includes('indodax') || hint === 'indodax') targetProvider = 'indodax';
+      else if (hint.includes('bitunix') || hint === 'bitunix') targetProvider = 'bitunix';
+      else if (hint.includes('binance') || hint === 'binance') targetProvider = 'binance';
+      else if (hint.includes('hyperliquid') || hint === 'hyperliquid') targetProvider = 'hyperliquid';
+      else if (hint.includes('coinbase') || hint === 'coinbase') targetProvider = 'coinbase';
+      else targetProvider = hint;
+    } else {
+      if (clean.endsWith('IDR')) {
+        targetProvider = 'indodax';
+      } else if (clean.endsWith('.P') && activeProviderId === 'indodax') {
+        targetProvider = 'bitunix';
+      } else if (clean.includes('USDT') && activeProviderId === 'indodax') {
+        targetProvider = 'binance';
       }
     }
 
+    if (targetProvider !== activeProviderId) {
+      handleProviderChange(targetProvider);
+    }
+
     activeSymbol = newSym;
-    addSystemLog(`Simbol berganti ke ${newSym}`, 'info');
+    addSystemLog(`Simbol berganti ke ${newSym} (${targetProvider.toUpperCase()})`, 'info');
   }
 
   function handleTimeframeChange(newTf: Timeframe) {
