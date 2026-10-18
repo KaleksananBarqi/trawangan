@@ -39,6 +39,7 @@ export interface IPersistenceService {
   // Drawings
   loadDrawings(symbol: string, timeframe: string): Promise<any | null>;
   saveDrawingsDebounced(symbol: string, timeframe: string, doc: any): void;
+  flushDrawings(symbol?: string, timeframe?: string): Promise<void>;
   clearDrawings(symbol: string, timeframe: string): Promise<void>;
 
   // Watchlist

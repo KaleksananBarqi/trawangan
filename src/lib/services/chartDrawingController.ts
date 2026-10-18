@@ -2,7 +2,8 @@ import type { DrawingToolType, SnapMode } from '../types/market';
 import {
   saveDrawingsDebounced,
   loadDrawings,
-  clearDrawings
+  clearDrawings,
+  flushDrawings
 } from './persistence';
 import type { CommandDispatcher } from './commandDispatcher';
 
@@ -49,6 +50,7 @@ export class ChartDrawingController {
   private activeDrawings: any[] = [];
   private canUndo = true;
   private canRedo = true;
+  private isRestoring = false;
 
   private workspace: any = null;
   private getSymbol: () => string = () => 'BTCUSDT';
@@ -469,6 +471,7 @@ export class ChartDrawingController {
    * Tangani event mutasi gambar (created, edited, removed, settings)
    */
   handleDrawingMutated(): void {
+    if (this.isRestoring) return; // Abaikan saat proses pembersihan / pemulihan berlangsung
     const activeChart = this.getActiveChart();
     if (activeChart?.drawings) {
       try {
@@ -493,8 +496,13 @@ export class ChartDrawingController {
   clearCanvasVisuals(): void {
     const activeChart = this.getActiveChart();
     if (activeChart?.drawings) {
+      const prevRestoring = this.isRestoring;
+      this.isRestoring = true;
       try {
-        if (typeof activeChart.drawings.clear === 'function') {
+        // Utamakan fromJSON({ version: 1, drawings: [] }) untuk clean slate internal store Vela tanpa memicu event removal
+        if (typeof activeChart.drawings.fromJSON === 'function') {
+          activeChart.drawings.fromJSON({ version: 1, drawings: [] });
+        } else if (typeof activeChart.drawings.clear === 'function') {
           activeChart.drawings.clear();
         } else if (typeof activeChart.drawings.removeMany === 'function') {
           const existing = activeChart.drawings.all?.() || [];
@@ -504,6 +512,8 @@ export class ChartDrawingController {
         }
       } catch (err) {
         console.warn('Gagal mengosongkan gambar visual kanvas:', err);
+      } finally {
+        this.isRestoring = prevRestoring;
       }
     }
     this.activeDrawings = [];
@@ -534,23 +544,32 @@ export class ChartDrawingController {
     const activeChart = this.getActiveChart();
     if (!activeChart?.drawings) return;
 
-    // 1. Bersihkan kanvas aktif terlebih dahulu (clean slate) agar gambar bursa lama tidak bocor
-    this.clearCanvasVisuals();
-
-    const sym = targetSymbol || (this.workspace?.active as any)?.symbol || this.getSymbol();
-    const tf = targetTimeframe || (this.workspace?.active as any)?.timeframe || this.getTimeframe();
-    const prov = targetProvider || this.getProviderId();
-    const key = resolveDrawingKey(prov, sym);
-
+    // 1. Flush gambar in-flight yang sedang aktif sebelum beralih konteks
     try {
-      // 1. Coba slot GLOBAL untuk bursa aktif
+      const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+      const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
+      const curKey = resolveDrawingKey(curProv, curSym);
+      await flushDrawings(curKey, 'GLOBAL');
+    } catch (_) {}
+
+    this.isRestoring = true;
+    try {
+      // 2. Bersihkan kanvas aktif terlebih dahulu (clean slate) agar gambar bursa lama tidak bocor
+      this.clearCanvasVisuals();
+
+      const sym = targetSymbol || (this.workspace?.active as any)?.symbol || this.getSymbol();
+      const tf = targetTimeframe || (this.workspace?.active as any)?.timeframe || this.getTimeframe();
+      const prov = targetProvider || this.getProviderId();
+      const key = resolveDrawingKey(prov, sym);
+
+      // 3. Coba slot GLOBAL untuk bursa aktif
       let doc = await loadDrawings(key, 'GLOBAL');
-      // 2. Fallback per timeframe bursa aktif
+      // 4. Fallback per timeframe bursa aktif
       if (!doc) {
         doc = await loadDrawings(key, tf);
       }
 
-      // 3. Legacy Fallback: jika bursa adalah binance dan belum ada record bursa, cek key lama tanpa prefix bursa
+      // 5. Legacy Fallback: jika bursa adalah binance dan belum ada record bursa, cek key lama tanpa prefix bursa
       if (!doc && prov.toLowerCase() === 'binance') {
         const legacySym = sym.includes(':') ? sym.split(':')[1] : sym;
         doc = await loadDrawings(legacySym, 'GLOBAL');
@@ -566,6 +585,8 @@ export class ChartDrawingController {
       this.notify();
     } catch (err) {
       console.warn('Gagal memulihkan drawings:', err);
+    } finally {
+      this.isRestoring = false;
     }
   }
 

@@ -28,6 +28,7 @@ function isTauriEnvironment(): boolean {
 export class PersistenceService implements IPersistenceService {
   private adapter: PersistenceAdapter;
   private debounceTimers = new Map<string, any>();
+  private pendingDebounceData = new Map<string, { symbol: string; timeframe: string; doc: any }>();
 
   constructor(customAdapter?: PersistenceAdapter) {
     if (customAdapter) {
@@ -64,9 +65,11 @@ export class PersistenceService implements IPersistenceService {
     if (this.debounceTimers.has(key)) {
       clearTimeout(this.debounceTimers.get(key));
     }
+    this.pendingDebounceData.set(key, { symbol, timeframe, doc });
 
     const timer = setTimeout(async () => {
       this.debounceTimers.delete(key);
+      this.pendingDebounceData.delete(key);
       try {
         const dataJson = typeof doc === 'string' ? doc : JSON.stringify(doc);
         await this.adapter.saveDrawings(symbol, timeframe, dataJson);
@@ -78,11 +81,61 @@ export class PersistenceService implements IPersistenceService {
     this.debounceTimers.set(key, timer);
   }
 
+  async flushDrawings(targetSymbol?: string, targetTimeframe?: string): Promise<void> {
+    if (targetSymbol && targetTimeframe) {
+      const key = `${targetSymbol}:${targetTimeframe}`;
+      if (this.debounceTimers.has(key)) {
+        clearTimeout(this.debounceTimers.get(key));
+        this.debounceTimers.delete(key);
+      }
+      const pending = this.pendingDebounceData.get(key);
+      this.pendingDebounceData.delete(key);
+      if (pending) {
+        try {
+          const dataJson = typeof pending.doc === 'string' ? pending.doc : JSON.stringify(pending.doc);
+          await this.adapter.saveDrawings(pending.symbol, pending.timeframe, dataJson);
+        } catch (err) {
+          console.warn(`[PersistenceService] Gagal flush drawings ${key}:`, err);
+        }
+      }
+    } else if (targetSymbol) {
+      const prefix = `${targetSymbol}:`;
+      const promises: Promise<void>[] = [];
+      for (const [key, timer] of [...this.debounceTimers.entries()]) {
+        if (key.startsWith(prefix)) {
+          clearTimeout(timer);
+          this.debounceTimers.delete(key);
+          const pending = this.pendingDebounceData.get(key);
+          this.pendingDebounceData.delete(key);
+          if (pending) {
+            const dataJson = typeof pending.doc === 'string' ? pending.doc : JSON.stringify(pending.doc);
+            promises.push(this.adapter.saveDrawings(pending.symbol, pending.timeframe, dataJson).catch(() => {}));
+          }
+        }
+      }
+      await Promise.all(promises);
+    } else {
+      const promises: Promise<void>[] = [];
+      for (const [key, timer] of [...this.debounceTimers.entries()]) {
+        clearTimeout(timer);
+        const pending = this.pendingDebounceData.get(key);
+        if (pending) {
+          const dataJson = typeof pending.doc === 'string' ? pending.doc : JSON.stringify(pending.doc);
+          promises.push(this.adapter.saveDrawings(pending.symbol, pending.timeframe, dataJson).catch(() => {}));
+        }
+      }
+      this.debounceTimers.clear();
+      this.pendingDebounceData.clear();
+      await Promise.all(promises);
+    }
+  }
+
   async clearDrawings(symbol: string, timeframe: string): Promise<void> {
     const key = `${symbol}:${timeframe}`;
     if (this.debounceTimers.has(key)) {
       clearTimeout(this.debounceTimers.get(key));
       this.debounceTimers.delete(key);
+      this.pendingDebounceData.delete(key);
     }
     await this.adapter.clearDrawings(symbol, timeframe);
   }
@@ -293,6 +346,7 @@ export const storage = new PersistenceService();
 // Export fungsi pembantu langsung untuk kompatibilitas & leverage pemanggil
 export const loadDrawings = (sym: string, tf: string) => storage.loadDrawings(sym, tf);
 export const saveDrawingsDebounced = (sym: string, tf: string, doc: any) => storage.saveDrawingsDebounced(sym, tf, doc);
+export const flushDrawings = (sym?: string, tf?: string) => storage.flushDrawings(sym, tf);
 export const clearDrawings = (sym: string, tf: string) => storage.clearDrawings(sym, tf);
 
 export const loadWatchlist = () => storage.loadWatchlist();
