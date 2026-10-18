@@ -2,10 +2,16 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import type { MultiChartSyncConfig, SavedWorkspace } from '../src/lib/types/market';
 import { applyLayoutTimeframePolicy } from '../src/lib/constants/defaults';
-import { ChartSessionController } from '../src/lib/services/chartSessionController';
+import {
+  ChartSessionController,
+  isDrawingSyncEligible,
+  getCellMarketIdentity,
+  attachDrawingSyncBoundaryGuard
+} from '../src/lib/services/chartSessionController';
 
 function createMockChartCell(id: string, initialTf: string = '15m') {
   let indicatorsList: any[] = [];
+  let drawingsList: any[] = [];
   let visibleRange: { from: number; to: number } | null = { from: 1710000000000, to: 1710003600000 };
   let currentSymbol = 'binance:BTCUSDT';
   let currentTimeframe = initialTf;
@@ -60,6 +66,24 @@ function createMockChartCell(id: string, initialTf: string = '15m') {
         indicatorsList.push(ind);
         return ind;
       },
+      drawings: {
+        all: () => drawingsList,
+        add: (type: string, spec: any) => {
+          const d = { id: `draw_${id}_${Date.now()}_${Math.random()}`, type, ...spec };
+          drawingsList.push(d);
+          return d;
+        },
+        update: (drawingId: string, patch: any) => {
+          const d = drawingsList.find((x) => x.id === drawingId);
+          if (d) Object.assign(d, patch);
+          return d;
+        },
+        remove: (drawingId: string) => {
+          const idx = drawingsList.findIndex((x) => x.id === drawingId);
+          if (idx !== -1) drawingsList.splice(idx, 1);
+        },
+        setExternalGhost: (_doc: any) => {}
+      },
       setVisibleRange: (r: { from: number; to: number }) => {
         visibleRange = r;
       },
@@ -101,7 +125,12 @@ function createMockChartCell(id: string, initialTf: string = '15m') {
     }
   };
 
-  return { cell, getIndicators: () => indicatorsList, getAppliedConfig: () => appliedConfig };
+  return {
+    cell,
+    getIndicators: () => indicatorsList,
+    getDrawings: () => drawingsList,
+    getAppliedConfig: () => appliedConfig
+  };
 }
 
 describe('Multi-Chart Synchronization Engine Unit Tests (ChartSessionController Seam)', () => {
@@ -464,5 +493,154 @@ describe('Multi-Chart Synchronization Engine Unit Tests (ChartSessionController 
     assert.strictEqual(activeCell.timeframe, '1h');
     assert.strictEqual(newCell1.timeframe, '1h');
     assert.strictEqual(newCell2.timeframe, '1h');
+  });
+
+  test('10. Multi-Chart Drawing Boundary: isolasi total drawing antara bursa berbeda (Binance vs Bitunix) pada aset yang sama', () => {
+    const mock0 = createMockChartCell('cell_0');
+    mock0.cell.symbol = 'binance:BTCUSDT';
+    mock0.cell.providerId = 'binance';
+
+    const mock1 = createMockChartCell('cell_1');
+    mock1.cell.symbol = 'bitunix:BTCUSDT';
+    mock1.cell.providerId = 'bitunix';
+
+    // Mock workspace dengan Vela sync methods
+    const drawingLinks = new Map();
+    const mockWs: any = {
+      cells: () => [mock0.cell, mock1.cell],
+      cellsById: new Map([['cell_0', mock0.cell], ['cell_1', mock1.cell]]),
+      active: mock0.cell,
+      setLayout: () => {},
+      sync: { set: () => {}, state: () => ({ drawings: true }) },
+      syncOpts: { drawings: true },
+      drawingLinks,
+      drawingSyncBusy: false,
+      propagateDrawing(originId: string, drawingId: string) {
+        // Implementasi raw vela tanpa boundary guard
+        const originCell = this.cellsById.get(originId);
+        const doc = originCell.chart.drawings.all().find((d: any) => d.id === drawingId);
+        for (const [id, cell] of this.cellsById.entries()) {
+          if (id === originId) continue;
+          cell.chart.drawings.add(doc.type, { ...doc });
+        }
+      },
+      destroy: () => {}
+    };
+
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs,
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true }
+    });
+
+    controller.attach({ nodeType: 1 } as any);
+
+    // Verifikasi boundary eligibility langsung
+    assert.strictEqual(
+      controller.isDrawingSyncEligible(mock0.cell, mock1.cell),
+      false,
+      'Cell dengan bursa berbeda (binance vs bitunix) TIDAK boleh eligible untuk sync drawings'
+    );
+
+    // Tambah drawing pada cell_0 (Binance)
+    const d0 = mock0.cell.chart.drawings.add('horizontal_line', { anchors: [{ price: 67000, time: 1000 }] });
+    assert.strictEqual(mock0.getDrawings().length, 1);
+
+    // Picu propagasi drawing dari cell_0
+    mockWs.propagateDrawing('cell_0', d0.id);
+
+    // Cell_1 (Bitunix) HARUS tetap 0 drawing karena isolasi bursa aktif
+    assert.strictEqual(
+      mock1.getDrawings().length,
+      0,
+      'Cell 1 (Bitunix) wajib 0 drawing karena boundary guard mencegah kebocoran dari Binance'
+    );
+
+    controller.destroy();
+  });
+
+  test('11. Multi-Chart Drawing Sync: sinkronisasi mulus antar timeframe berbeda pada bursa yang sama (Binance 15m vs Binance 1h)', () => {
+    const mock0 = createMockChartCell('cell_0', '15m');
+    mock0.cell.symbol = 'binance:BTCUSDT';
+    mock0.cell.providerId = 'binance';
+
+    const mock1 = createMockChartCell('cell_1', '1h');
+    mock1.cell.symbol = 'binance:BTCUSDT';
+    mock1.cell.providerId = 'binance';
+
+    const drawingLinks = new Map();
+    const mockWs: any = {
+      cells: () => [mock0.cell, mock1.cell],
+      cellsById: new Map([['cell_0', mock0.cell], ['cell_1', mock1.cell]]),
+      active: mock0.cell,
+      setLayout: () => {},
+      sync: { set: () => {}, state: () => ({ drawings: true }) },
+      syncOpts: { drawings: true },
+      drawingLinks,
+      drawingSyncBusy: false,
+      propagateDrawing(originId: string, drawingId: string) {
+        const originCell = this.cellsById.get(originId);
+        const doc = originCell.chart.drawings.all().find((d: any) => d.id === drawingId);
+        for (const [id, cell] of this.cellsById.entries()) {
+          if (id === originId) continue;
+          cell.chart.drawings.add(doc.type, { ...doc });
+        }
+      },
+      destroy: () => {}
+    };
+
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs,
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true }
+    });
+
+    controller.attach({ nodeType: 1 } as any);
+
+    assert.strictEqual(
+      controller.isDrawingSyncEligible(mock0.cell, mock1.cell),
+      true,
+      'Cell dengan bursa dan simbol yang sama wajib eligible meskipun timeframe berbeda'
+    );
+
+    // Tambah drawing pada cell_0 (Binance 15m)
+    const d0 = mock0.cell.chart.drawings.add('trendline', { anchors: [{ price: 65000, time: 1000 }, { price: 68000, time: 2000 }] });
+    assert.strictEqual(mock0.getDrawings().length, 1);
+
+    // Propagasi
+    mockWs.propagateDrawing('cell_0', d0.id);
+
+    // Cell_1 (Binance 1h) HARUS menerima drawing hasil sinkronisasi
+    assert.strictEqual(mock1.getDrawings().length, 1, 'Cell 1 (Binance 1h) wajib menerima drawing hasil sinkronisasi');
+    assert.strictEqual(mock1.getDrawings()[0].type, 'trendline');
+
+    controller.destroy();
+  });
+
+  test('12. Helper getCellMarketIdentity & isDrawingSyncEligible corner cases', () => {
+    assert.deepStrictEqual(getCellMarketIdentity(null), { providerId: 'binance', symbol: '' });
+    assert.deepStrictEqual(getCellMarketIdentity({ symbol: 'BTCUSDT' }), { providerId: 'binance', symbol: 'BTCUSDT' });
+    assert.deepStrictEqual(getCellMarketIdentity({ symbol: 'BTCIDR' }), { providerId: 'indodax', symbol: 'BTCIDR' });
+    assert.deepStrictEqual(getCellMarketIdentity({ symbol: 'bitunix:SOLUSDT' }), { providerId: 'bitunix', symbol: 'SOLUSDT' });
+    assert.deepStrictEqual(getCellMarketIdentity({ symbol: 'hyperliquid:ETH' }), { providerId: 'hyperliquid', symbol: 'ETH' });
+
+    // Perbedaan aset pada bursa yang sama
+    assert.strictEqual(
+      isDrawingSyncEligible({ symbol: 'binance:BTCUSDT' }, { symbol: 'binance:ETHUSDT' }),
+      false,
+      'Aset berbeda tidak boleh eligible'
+    );
+
+    // Perbedaan bursa pada aset yang sama
+    assert.strictEqual(
+      isDrawingSyncEligible({ symbol: 'binance:BTCUSDT' }, { symbol: 'bitunix:BTCUSDT' }),
+      false,
+      'Bursa berbeda tidak boleh eligible'
+    );
+
+    // Kesamaan identitas lengkap
+    assert.strictEqual(
+      isDrawingSyncEligible({ symbol: 'binance:BTCUSDT' }, { symbol: 'binance:BTCUSDT' }),
+      true,
+      'Identitas provider dan simbol identik wajib eligible'
+    );
   });
 });

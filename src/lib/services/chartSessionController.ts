@@ -115,6 +115,238 @@ function getChartCoords(chart: any): any {
 }
 
 /**
+ * Ekstraksi providerId dan symbol dari cell atau chart
+ */
+export function getCellMarketIdentity(cell: any): { providerId: string; symbol: string } {
+  if (!cell) return { providerId: 'binance', symbol: '' };
+
+  const rawSymbol = String(cell.symbol || cell.chart?.symbol || '').trim();
+  let providerId = String(cell.providerId || cell.provider || '').trim().toLowerCase();
+
+  if (rawSymbol.includes(':')) {
+    const parts = rawSymbol.split(':');
+    const prefix = parts[0].toLowerCase();
+    const cleanSym = parts.slice(1).join(':').toUpperCase();
+    return {
+      providerId: providerId || prefix,
+      symbol: cleanSym
+    };
+  }
+
+  if (!providerId) {
+    if (rawSymbol.toUpperCase().endsWith('IDR')) {
+      providerId = 'indodax';
+    } else {
+      providerId = 'binance';
+    }
+  }
+
+  return {
+    providerId: providerId.toLowerCase(),
+    symbol: rawSymbol.toUpperCase()
+  };
+}
+
+/**
+ * Validasi batas kesetaraan bursa untuk sinkronisasi drawing antar cell
+ * Wajib berbagi simbol yang sama DAN bursa (providerId) yang sama persis
+ */
+export function isDrawingSyncEligible(sourceCell: any, targetCell: any): boolean {
+  if (!sourceCell || !targetCell) return false;
+  if (sourceCell === targetCell) return true;
+
+  const src = getCellMarketIdentity(sourceCell);
+  const tgt = getCellMarketIdentity(targetCell);
+
+  if (!src.symbol || !tgt.symbol) return false;
+  return src.providerId === tgt.providerId && src.symbol === tgt.symbol;
+}
+
+/**
+ * Memasang boundary guard pada workspace untuk mencegah kebocoran drawing
+ * antar cell yang memiliki bursa (providerId) atau pair berbeda.
+ */
+export function attachDrawingSyncBoundaryGuard(workspace: any): void {
+  if (!workspace || workspace.__drawingSyncBoundaryAttached) return;
+
+  const originalPropagateDrawing = typeof workspace.propagateDrawing === 'function'
+    ? workspace.propagateDrawing.bind(workspace)
+    : null;
+  const originalPropagateDraft = typeof workspace.propagateDraft === 'function'
+    ? workspace.propagateDraft.bind(workspace)
+    : null;
+  const originalPropagateDrawingEdit = typeof workspace.propagateDrawingEdit === 'function'
+    ? workspace.propagateDrawingEdit.bind(workspace)
+    : null;
+  const originalPropagateDrawingRemoval = typeof workspace.propagateDrawingRemoval === 'function'
+    ? workspace.propagateDrawingRemoval.bind(workspace)
+    : null;
+
+  function findCell(id: string): any {
+    if (workspace.cellsById && typeof workspace.cellsById.get === 'function') {
+      const c = workspace.cellsById.get(id);
+      if (c) return c;
+    }
+    const cells = typeof workspace.cells === 'function' ? workspace.cells() : [];
+    return cells.find((c: any) => c.id === id) || null;
+  }
+
+  function getAllCellIds(): string[] {
+    if (workspace.cellsById && typeof workspace.cellsById.keys === 'function') {
+      return [...workspace.cellsById.keys()];
+    }
+    const cells = typeof workspace.cells === 'function' ? workspace.cells() : [];
+    return cells.map((c: any) => c.id);
+  }
+
+  if (originalPropagateDrawing) {
+    workspace.propagateDrawing = function (originId: string, drawingId: string) {
+      if (this.drawingSyncBusy || this.destroyed) return;
+      const setting = this.syncOpts?.drawings ?? this.sync?.state?.()?.drawings ?? true;
+      if (!setting) return;
+
+      const originCell = findCell(originId);
+      const doc = originCell?.chart?.drawings?.all?.()?.find((d: any) => d.id === drawingId);
+      if (!doc) return;
+
+      this.drawingSyncBusy = true;
+      try {
+        const group = new Map([[originId, drawingId]]);
+        for (const id of getAllCellIds()) {
+          if (id === originId) continue;
+          const targetCell = findCell(id);
+          if (!targetCell) continue;
+
+          // BOUNDARY GUARD: Lewati jika bursa atau simbol tidak sama persis
+          if (!isDrawingSyncEligible(originCell, targetCell)) {
+            continue;
+          }
+
+          const copy = targetCell.chart?.drawings?.add?.(doc.type, {
+            paneId: doc.paneId,
+            anchors: doc.anchors,
+            style: doc.style,
+            text: doc.text,
+            props: doc.props
+          });
+          if (copy && copy.id) group.set(id, copy.id);
+        }
+
+        if (group.size > 1 && this.drawingLinks) {
+          for (const [cellId, dId] of group) {
+            this.drawingLinks.set(`${cellId}\0${dId}`, group);
+          }
+        }
+      } finally {
+        this.drawingSyncBusy = false;
+      }
+    };
+  }
+
+  if (originalPropagateDraft) {
+    workspace.propagateDraft = function (originId: string, doc: any) {
+      if (this.destroyed) return;
+      const setting = this.syncOpts?.drawings ?? this.sync?.state?.()?.drawings ?? true;
+      if (!setting) return;
+
+      const originCell = findCell(originId);
+      for (const id of getAllCellIds()) {
+        if (id === originId) continue;
+        const targetCell = findCell(id);
+        if (!targetCell) continue;
+
+        // BOUNDARY GUARD
+        if (!isDrawingSyncEligible(originCell, targetCell)) {
+          continue;
+        }
+
+        targetCell.chart?.drawings?.setExternalGhost?.(doc);
+      }
+    };
+  }
+
+  if (originalPropagateDrawingEdit) {
+    workspace.propagateDrawingEdit = function (originId: string, drawingId: string) {
+      if (this.drawingSyncBusy || this.destroyed) return;
+      const setting = this.syncOpts?.drawings ?? this.sync?.state?.()?.drawings ?? true;
+      if (!setting) return;
+
+      const originCell = findCell(originId);
+      const group = this.drawingLinks?.get(`${originId}\0${drawingId}`);
+      if (!group) return;
+
+      const doc = originCell?.chart?.drawings?.all?.()?.find((d: any) => d.id === drawingId);
+      if (!doc) return;
+
+      this.drawingSyncBusy = true;
+      try {
+        for (const id of getAllCellIds()) {
+          if (id === originId) continue;
+          const targetCell = findCell(id);
+          if (!targetCell) continue;
+
+          // BOUNDARY GUARD
+          if (!isDrawingSyncEligible(originCell, targetCell)) {
+            continue;
+          }
+
+          const peerId = group.get(id);
+          if (peerId == null) continue;
+          targetCell.chart?.drawings?.update?.(peerId, {
+            anchors: doc.anchors,
+            style: doc.style,
+            text: doc.text,
+            props: doc.props
+          });
+        }
+      } finally {
+        this.drawingSyncBusy = false;
+      }
+    };
+  }
+
+  if (originalPropagateDrawingRemoval) {
+    workspace.propagateDrawingRemoval = function (originId: string, drawingId: string) {
+      if (this.destroyed) return;
+      const key = `${originId}\0${drawingId}`;
+      const group = this.drawingLinks?.get(key);
+      if (!group) return;
+
+      this.drawingLinks?.delete(key);
+      group.delete(originId);
+      if (this.drawingSyncBusy) return;
+
+      const setting = this.syncOpts?.drawings ?? this.sync?.state?.()?.drawings ?? true;
+      if (!setting) return;
+
+      const originCell = findCell(originId);
+      this.drawingSyncBusy = true;
+      try {
+        for (const id of getAllCellIds()) {
+          if (id === originId) continue;
+          const targetCell = findCell(id);
+          if (!targetCell) continue;
+
+          // BOUNDARY GUARD
+          if (!isDrawingSyncEligible(originCell, targetCell)) {
+            continue;
+          }
+
+          const peerId = group.get(id);
+          if (peerId != null) {
+            targetCell.chart?.drawings?.remove?.(peerId);
+          }
+        }
+      } finally {
+        this.drawingSyncBusy = false;
+      }
+    };
+  }
+
+  workspace.__drawingSyncBoundaryAttached = true;
+}
+
+/**
  * Deep Module: ChartSessionController
  * Mengelola seluruh orkestrasi kanvas WebGL2 dan state sesi grafik
  */
@@ -285,6 +517,7 @@ export class ChartSessionController {
       } else {
         this.workspace = new VelaWorkspace(container, workspaceConfig as any);
       }
+      this.attachDrawingSyncBoundaryGuard(this.workspace);
       this.isAttached = true;
     } catch (err) {
       console.warn('[ChartSessionController] Gagal inisialisasi VelaWorkspace:', err);
@@ -918,6 +1151,20 @@ export class ChartSessionController {
     }
 
     this.notify();
+  }
+
+  /**
+   * Memasang boundary guard pada workspace untuk mencegah kebocoran gambar antar bursa
+   */
+  public attachDrawingSyncBoundaryGuard(ws?: any): void {
+    attachDrawingSyncBoundaryGuard(ws || this.workspace);
+  }
+
+  /**
+   * Memeriksa apakah dua cell memenuhi batas kesetaraan bursa untuk sinkronisasi drawing
+   */
+  public isDrawingSyncEligible(sourceCell: any, targetCell: any): boolean {
+    return isDrawingSyncEligible(sourceCell, targetCell);
   }
 
   /**
