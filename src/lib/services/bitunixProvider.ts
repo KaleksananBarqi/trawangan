@@ -4,6 +4,7 @@
  */
 
 import { isMonthlyTimeframe } from '../utils/timeframeAdapter';
+import { universalFetch } from './httpClient';
 
 export interface OHLCV {
   time: number;
@@ -132,7 +133,7 @@ export class BitunixProvider {
     const url = `https://fapi.bitunix.com/api/v1/futures/market/kline?symbol=${symbol}&interval=${interval}&limit=${limit}`;
 
     try {
-      const res = await fetch(url);
+      const res = await universalFetch(url);
       if (!res.ok) {
         throw new Error(`Bitunix HTTP Error: ${res.statusText}`);
       }
@@ -157,7 +158,7 @@ export class BitunixProvider {
       // Fallback ke Binance Futures jika koneksi direct bitunix terkendala
       try {
         const binanceUrl = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-        const bRes = await fetch(binanceUrl);
+        const bRes = await universalFetch(binanceUrl);
         if (bRes.ok) {
           const bData = await bRes.json();
           return bData.map((d: any[]) => ({

@@ -40,7 +40,8 @@ pub fn run() {
             commands::clear_chart_drawings,
             commands::get_user_watchlist,
             commands::save_user_watchlist,
-            commands::get_process_memory
+            commands::get_process_memory,
+            commands::http_get
         ])
         .run(tauri::generate_context!())
         .expect("Terjadi error saat menjalankan aplikasi desktop Trawangan");

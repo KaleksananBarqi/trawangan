@@ -3,37 +3,14 @@ import type { MarketProviderAdapter } from '../types';
 import type { Candle, TickerInfo, MarketSearchResult } from '../../../types/market';
 import { normalizeTicker, VERIFIED_CRYPTO_ASSETS } from '../constants';
 
+import { universalFetch } from '../../httpClient';
+
 export class BitunixAdapter implements MarketProviderAdapter {
   id = 'bitunix';
   name = 'Bitunix Futures (USDT-M)';
 
   async fetchTicker(symbol: string): Promise<TickerInfo> {
-    const clean = normalizeTicker(symbol).replace(/\.P$/i, '').toUpperCase();
-    try {
-      const res = await fetch(`https://fapi.bitunix.com/api/v1/futures/market/ticker?symbol=${clean}`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json && json.code === 0 && json.data) {
-          const d = json.data;
-          const last = parseFloat(d.lastPrice || d.last || '0');
-          const open = parseFloat(d.open || '0');
-          const change = open > 0 ? ((last - open) / open) * 100 : 0;
-          return {
-            symbol,
-            name: symbol,
-            price: last,
-            change24h: change,
-            high24h: parseFloat(d.high || '0'),
-            low24h: parseFloat(d.low || '0'),
-            volume24h: parseFloat(d.baseVol || d.quoteVol || '0'),
-          };
-        }
-      }
-    } catch (err) {
-      console.warn('[BitunixAdapter] Gagal fetch ticker, beralih ke batch:', err);
-    }
-
-    // Fallback ambil dari batch
+    // Bitunix hanya menyediakan endpoint batch /tickers, ambil langsung dari batch
     const batch = await this.fetchBatchTickers([symbol]);
     return (
       batch[symbol] || {
@@ -53,7 +30,7 @@ export class BitunixAdapter implements MarketProviderAdapter {
     const resultMap: Record<string, TickerInfo> = {};
 
     try {
-      const res = await fetch('https://fapi.bitunix.com/api/v1/futures/market/tickers');
+      const res = await universalFetch('https://fapi.bitunix.com/api/v1/futures/market/tickers');
       if (res.ok) {
         const json = await res.json();
         if (json && json.code === 0 && Array.isArray(json.data)) {
@@ -97,7 +74,7 @@ export class BitunixAdapter implements MarketProviderAdapter {
     const cleanTf = interval.toLowerCase();
 
     try {
-      const res = await fetch(
+      const res = await universalFetch(
         `https://fapi.bitunix.com/api/v1/futures/market/tradingview/history?symbol=${clean}&resolution=${cleanTf}&countback=${limit}`
       );
       if (res.ok) {

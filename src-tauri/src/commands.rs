@@ -252,5 +252,15 @@ pub fn get_process_memory() -> Result<ProcessMemoryInfo, String> {
     }
 }
 
+#[tauri::command]
+pub async fn http_get(
+    market: State<'_, MarketService>,
+    url: String,
+    timeout_secs: Option<u64>,
+) -> Result<String, String> {
+    market.get(&url, timeout_secs).await
+}
+
+
 
 

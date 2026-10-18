@@ -12,9 +12,35 @@ impl MarketService {
         Self {
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(10))
+                .user_agent("trawangan/0.15.0")
                 .build()
                 .unwrap_or_default(),
         }
+    }
+
+    /// Mengambil data teks/JSON mentah dari URL eksternal via native reqwest (bebas CORS)
+    pub async fn get(&self, url: &str, timeout_secs: Option<u64>) -> Result<String, String> {
+        let mut req = self.client.get(url);
+        if let Some(secs) = timeout_secs {
+            req = req.timeout(std::time::Duration::from_secs(secs));
+        }
+
+        let res = req
+            .send()
+            .await
+            .map_err(|e| format!("Gagal menghubungi endpoint: {}", e))?;
+
+        if !res.status().is_success() {
+            return Err(format!(
+                "Server mengembalikan status HTTP {}: {}",
+                res.status(),
+                res.status().canonical_reason().unwrap_or("")
+            ));
+        }
+
+        res.text()
+            .await
+            .map_err(|e| format!("Gagal membaca respons server: {}", e))
     }
 
     /// Ambil data candle historis dari Binance Public REST API

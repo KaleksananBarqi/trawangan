@@ -1,5 +1,6 @@
 // Modul Telemetri Real-Time Trawangan: Memantau FPS, Latensi Jaringan, dan Penggunaan RAM Nyata
 import type { TelemetryData } from '../types/telemetry';
+import { universalFetch } from './httpClient';
 
 export type { TelemetryData };
 
@@ -148,30 +149,21 @@ export class TelemetryService {
 
   public async measurePing(): Promise<void> {
     const pingUrl = this.getPingUrl(this.activeProviderId);
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
-
     const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     try {
-      // Gunakan fetch dengan cache: no-store untuk mencegah respons tersimpan di cache
-      await fetch(pingUrl, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller ? controller.signal : undefined
+      const res = await universalFetch(pingUrl, {
+        timeoutMs: 3500,
       });
-
-      if (timeoutId) clearTimeout(timeoutId);
 
       const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const elapsed = Math.max(1, Math.round(end - start));
 
-      // Jika server merespons
+      // Jika server merespons (baik 200 maupun kode status lain asalkan server reachable)
       this.state.latencyMs = elapsed;
-      this.state.isOnline = true;
+      this.state.isOnline = res.ok || res.status > 0;
       this.notify();
     } catch {
-      if (timeoutId) clearTimeout(timeoutId);
       // Gagal ping / timeout / offline
       this.state.packetDrops += 1;
       this.state.latencyMs = null;

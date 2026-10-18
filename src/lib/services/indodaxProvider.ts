@@ -5,6 +5,7 @@
 
 import { isMonthlyTimeframe } from '../utils/timeframeAdapter';
 import type { OHLCV, SymbolDescriptor, SymbolInfo } from './bitunixProvider';
+import { universalFetch } from './httpClient';
 
 export class IndodaxProvider {
   private activeSubscriptions = new Map<string, { timer: any; callback: (b: OHLCV) => void }>();
@@ -136,7 +137,7 @@ export class IndodaxProvider {
     const url = `https://indodax.com/tradingview/history_v2?symbol=${pair}&tf=${tf}&from=${fromSec}&to=${toSec}`;
 
     try {
-      const res = await fetch(url);
+      const res = await universalFetch(url);
       if (!res.ok) {
         throw new Error(`Indodax HTTP Error: ${res.statusText}`);
       }

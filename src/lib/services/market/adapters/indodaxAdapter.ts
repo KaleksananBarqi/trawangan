@@ -2,6 +2,7 @@
 import type { MarketProviderAdapter } from '../types';
 import type { Candle, TickerInfo, MarketSearchResult } from '../../../types/market';
 import { IndodaxProvider } from '../../indodaxProvider';
+import { universalFetch } from '../../httpClient';
 
 interface IndodaxPairInfo {
   id: string;
@@ -72,7 +73,7 @@ export class IndodaxAdapter implements MarketProviderAdapter {
 
   async fetchTicker(symbol: string): Promise<TickerInfo> {
     try {
-      const res = await fetch('https://indodax.com/api/ticker_all');
+      const res = await universalFetch('https://indodax.com/api/ticker_all');
       if (res.ok) {
         const json = await res.json();
         const parsed = this.parseTickerFromMap(symbol, json.tickers || json);
@@ -99,7 +100,7 @@ export class IndodaxAdapter implements MarketProviderAdapter {
     const resultMap: Record<string, TickerInfo> = {};
 
     try {
-      const res = await fetch('https://indodax.com/api/ticker_all');
+      const res = await universalFetch('https://indodax.com/api/ticker_all');
       if (res.ok) {
         const json = await res.json();
         const tickersMap = json.tickers || json;
@@ -135,7 +136,7 @@ export class IndodaxAdapter implements MarketProviderAdapter {
       return this.pairsCache;
     }
     try {
-      const res = await fetch('https://indodax.com/api/pairs');
+      const res = await universalFetch('https://indodax.com/api/pairs');
       if (res.ok) {
         const json = await res.json();
         if (Array.isArray(json)) {
