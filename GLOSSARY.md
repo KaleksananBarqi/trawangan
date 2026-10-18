@@ -84,3 +84,16 @@ _Avoid_: Canvas scroll mode, Dragging tool, Screen pan
 Prinsip penyediaan 100% seluruh 68 varian alat gambar analitikal dan utilitas bawaan engine Vela secara lengkap di bilah alat gambar Trawangan tanpa pengurangan fitur.
 _Avoid_: Partial toolset, Basic drawing kit, Reduced tools
 
+**Exchange-Aware Drawing Isolation**:
+Prinsip pengisolasian layer coretan gambar teknikal secara mutlak pada kombinasi bursa dan simbol (`providerId:symbol`), menjamin analisis pada satu bursa tidak mencemari kanvas bursa lain.
+_Avoid_: Global drawing layer, Shared exchange shapes, Mixed canvas drawings
+
+**Exchange-Aware Watchlist**:
+Format entitas daftar pantau instrumen yang mengikat bursa asal (`providerId:symbol`), memungkinkan pemantauan instrumen yang sama dari berbagai bursa secara berdampingan tanpa saling menimpa.
+_Avoid_: Raw symbol watchlist, Single exchange watchlist
+
+**Multi-Provider Watchlist Polling Multiplexer**:
+Mekanisme polling harga berkala pada daftar pantau yang secara otomatis mengelompokkan instrumen per bursa asal dan menyalurkannya ke adapter yang tepat, mencegah kegagalan polling palsu (*Network Error/Stalled Feed*).
+_Avoid_: Uniform provider polling, Misrouted feed request
+
+
