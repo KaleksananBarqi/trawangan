@@ -24,7 +24,7 @@
   interface Props {
     symbol: string; timeframe: Timeframe; defaultTimeframe?: Timeframe; layout: string;
     providerId?: string; syncConfig?: MultiChartSyncConfig; showWatermark?: boolean;
-    showCurrentPriceLine?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
+    showCurrentPriceLine?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
     onReplayStateChange?: (state: ReplayStateInfo) => void;
@@ -41,7 +41,7 @@
     themePreset = 'signature', fontSize = 12, timezone = 'Asia/Jakarta',
     customBullColor, customBearColor,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
-    showWatermark = true, showCurrentPriceLine = true, showIndicatorPriceLabels = true,
+    showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onCutoffCancelled, onRequestCreateAlert,
   }: Props = $props();
@@ -52,7 +52,7 @@
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, customBullColor, customBearColor,
-    showCurrentPriceLine, syncConfig, onActiveCellChange, onActiveIndicatorsChange
+    showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange
   });
 
   let feedConnectionStatus = $state(marketFeed.getConnectionStatus());
@@ -94,6 +94,7 @@
   $effect(() => { const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor; if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }); });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
   $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
+  $effect(() => { const v = showVolume; if (isMounted && v !== undefined) controller.setShowVolume(v); });
   $effect(() => {
     const wm = showWatermark;
     if (isMounted) for (const c of controller.getAllCells()) c?.setWatermarkVisible?.(wm);
@@ -247,6 +248,7 @@
   export function hideAllDrawings(hide: boolean): void { chartDrawingController.setHide(hide); }
   export function setDrawingsLocked(lock: boolean): void { chartDrawingController.setLock(lock); }
   export function setDrawingsHidden(hide: boolean): void { chartDrawingController.setHide(hide); }
+  export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
 </script>
 
 <div 

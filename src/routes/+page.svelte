@@ -719,6 +719,12 @@
     addSystemLog(`Pengaturan aplikasi diperbarui.`, 'info');
   }
 
+  function handleToggleVolumeVisibility() {
+    const next = !(appSettings.showVolume ?? true);
+    handleUpdateSettings({ showVolume: next });
+    chartComponent?.setShowVolume(next);
+  }
+
   function handleWatchlistChange(newSymbols: string[]) {
     watchlistSymbols = newSymbols;
   }
@@ -787,6 +793,7 @@
       priceScaleState: chartComponent?.getPriceScaleState?.() || null,
       priceStyle: chartComponent?.getPriceStyle?.() || 'candles',
       barSpacing: chartComponent?.getBarSpacing?.() || 8,
+      showVolume: appSettings.showVolume ?? true,
       providerId: activeProviderId,
       activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
       syncConfig: { ...syncConfig },
@@ -838,6 +845,11 @@
         } else {
           rightDockService.openTab(w.activeRightDockPanel as any);
         }
+      }
+
+      if (w.showVolume !== undefined) {
+        handleUpdateSettings({ showVolume: w.showVolume });
+        chartComponent?.setShowVolume(w.showVolume);
       }
 
       // Tunggu layout grid dan WebGL render settle secara penuh
@@ -945,6 +957,7 @@
           priceScaleState: chartComponent?.getPriceScaleState?.() || null,
           priceStyle: chartComponent?.getPriceStyle?.() || 'candles',
           barSpacing: chartComponent?.getBarSpacing?.() || 8,
+          showVolume: appSettings.showVolume ?? true,
           providerId: activeProviderId,
           activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
           syncConfig: { ...syncConfig },
@@ -1248,6 +1261,7 @@
           {syncConfig}
           showWatermark={appSettings.showWatermark}
           showCurrentPriceLine={appSettings.showCurrentPriceLine ?? true}
+          showVolume={appSettings.showVolume ?? true}
           showIndicatorPriceLabels={appSettings.showIndicatorPriceLabels ?? true}
           showDrawingPriceLabels={appSettings.showDrawingPriceLabels ?? true}
           onActiveIndicatorsChange={(list) => (activeIndicators = list)}
@@ -1294,6 +1308,8 @@
           {activeIndicators}
           {activeDrawings}
           {selectedDrawingId}
+          showVolume={appSettings.showVolume ?? true}
+          onToggleVolumeVisibility={handleToggleVolumeVisibility}
           onSelectSymbol={handleSymbolChange}
           onWatchlistChange={handleWatchlistChange}
           onToggleCollapse={() => rightDockService.close()}

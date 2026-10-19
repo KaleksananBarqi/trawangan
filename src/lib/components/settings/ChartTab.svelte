@@ -113,6 +113,20 @@
 
   <div class="setting-row">
     <div class="setting-info">
+      <span class="setting-label">Histogram Volume Pasar (Native Overlay)</span>
+      <span class="setting-desc">Tampilkan bar volume WebGL2 di dasar panel candlestick harga utama</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.showVolume !== false ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ showVolume: settings.showVolume === false })}
+    >
+      {settings.showVolume !== false ? 'Tampilkan' : 'Sembunyikan'}
+    </button>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
       <span class="setting-label">Bar Replay Controller</span>
       <span class="setting-desc">Tampilkan toolbar replay candle historis di atas grafik</span>
     </div>

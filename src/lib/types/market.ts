@@ -227,6 +227,7 @@ export interface AppSettings {
   showGrid: boolean;
   showReplayBar: boolean;
   showCurrentPriceLine?: boolean;
+  showVolume?: boolean;
   showIndicatorPriceLabels?: boolean;
   showDrawingPriceLabels?: boolean;
   theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'obsidian';
@@ -313,6 +314,7 @@ export interface SavedWorkspace {
   };
   priceStyle?: string;
   barSpacing?: number;
+  showVolume?: boolean;
   activeRightDockPanel?: string | null;
   syncConfig?: MultiChartSyncConfig;
   indicators: {

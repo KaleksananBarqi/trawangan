@@ -37,7 +37,7 @@
   let favoriteIds = $state<string[]>([]);
   let addedFeedbackMap = $state<Record<string, boolean>>({});
 
-  const officialCategories = ['All', 'Trend', 'Momentum', 'Volatility', 'Signals'];
+  const officialCategories = ['All', 'Volume', 'Trend', 'Momentum', 'Volatility', 'Signals'];
 
   // Muat data skrip tersimpan dan daftar favorit saat modal dibuka
   $effect(() => {

@@ -3,7 +3,7 @@
 export interface IndicatorPreset {
   id: string;
   name: string;
-  category: 'Trend' | 'Momentum' | 'Volatility' | 'Signals';
+  category: 'Trend' | 'Momentum' | 'Volatility' | 'Signals' | 'Volume';
   description: string;
   overlay: boolean;
   sourceCode: string;
@@ -122,6 +122,59 @@ downTrend = plot(direction > 0 ? supertrend : na, "Down Trend", color=#f6465d, s
 
 fill(bodyMiddle, upTrend, color.rgb(14, 203, 129, 90), fillgaps=false)
 fill(bodyMiddle, downTrend, color.rgb(246, 70, 93, 90), fillgaps=false)
+`,
+  },
+  {
+    id: 'vwap',
+    name: 'Volume Weighted Average Price (VWAP)',
+    category: 'Volume',
+    description: 'Rata-rata harga terbobot volume kumulatif dengan reset harian sesi bursa, dilengkapi pita deviasi standar ganda (+1σ/-1σ dan +2σ/-2σ) untuk identifikasi area nilai wajar intraday.',
+    overlay: true,
+    sourceCode: `//@version=5
+indicator("Volume Weighted Average Price", shorttitle="VWAP", overlay=true)
+
+computeCustomBands = input.bool(true, "Show StdDev Bands", group="Bands Calculation")
+mult1 = input.float(1.0, "Band Multiplier 1", step=0.5, group="Bands Calculation")
+mult2 = input.float(2.0, "Band Multiplier 2", step=0.5, group="Bands Calculation")
+
+// VWAP kalkulasi harian bursa
+vwapValue = ta.vwap(hlc3)
+
+// Deviasi standar untuk pita nilai wajar
+dev = ta.stdev(hlc3, 20)
+
+band1Upper = computeCustomBands ? vwapValue + (dev * mult1) : na
+band1Lower = computeCustomBands ? vwapValue - (dev * mult1) : na
+band2Upper = computeCustomBands ? vwapValue + (dev * mult2) : na
+band2Lower = computeCustomBands ? vwapValue - (dev * mult2) : na
+
+p_vwap = plot(vwapValue, "VWAP", color=#00f2fe, linewidth=2)
+p_b1_up = plot(band1Upper, "Upper Band 1", color=#ffeb3b, linewidth=1)
+p_b1_low = plot(band1Lower, "Lower Band 1", color=#ffeb3b, linewidth=1)
+p_b2_up = plot(band2Upper, "Upper Band 2", color=#ff9800, linewidth=1)
+p_b2_low = plot(band2Lower, "Lower Band 2", color=#ff9800, linewidth=1)
+
+fill(p_b1_up, p_b1_low, title="Inner Value Area", color=color.rgb(0, 242, 254, 90))
+fill(p_b2_up, p_b2_low, title="Outer Value Area", color=color.rgb(255, 152, 0, 94))
+`,
+  },
+  {
+    id: 'volume',
+    name: 'Volume (with 20 SMA)',
+    category: 'Volume',
+    description: 'Indikator volume perdagangan dengan pewarnaan kondisi lilin (bullish/bearish) dan garis penghalus rata-rata bergerak 20-periode.',
+    overlay: false,
+    sourceCode: `//@version=5
+indicator("Volume", shorttitle="Vol", overlay=false, format=format.volume)
+
+showMA = input.bool(true, "Show Volume MA", group="Volume Moving Average")
+maLength = input.int(20, "MA Length", minval=1, group="Volume Moving Average")
+
+volMA = ta.sma(volume, maLength)
+
+barColor = close >= open ? #0ecb81 : #f6465d
+plot(volume, "Volume", style=plot.style_columns, color=barColor)
+plot(showMA ? volMA : na, "Volume MA", color=#ff9800, linewidth=2)
 `,
   },
 ];

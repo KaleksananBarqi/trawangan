@@ -41,6 +41,7 @@ export interface ChartSessionOptions {
   customBullColor?: string;
   customBearColor?: string;
   showCurrentPriceLine?: boolean;
+  showVolume?: boolean;
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
@@ -60,6 +61,7 @@ export interface ChartSessionSnapshot {
   customBullColor?: string;
   customBearColor?: string;
   showCurrentPriceLine: boolean;
+  showVolume: boolean;
   activeCell: { symbol: string; timeframe: Timeframe } | null;
   activeIndicators: ActiveIndicatorInfo[];
   syncConfig: MultiChartSyncConfig;
@@ -367,6 +369,7 @@ export class ChartSessionController {
   private fontSize: number;
   private timezone: string;
   private showCurrentPriceLine: boolean;
+  private showVolume: boolean;
   private syncConfig: MultiChartSyncConfig;
   private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
@@ -386,6 +389,7 @@ export class ChartSessionController {
     this.fontSize = options.fontSize || 12;
     this.timezone = options.timezone || 'Asia/Jakarta';
     this.showCurrentPriceLine = options.showCurrentPriceLine ?? true;
+    this.showVolume = options.showVolume ?? true;
     if (options.customBullColor || options.customBearColor) {
       this.customCandleColors = {
         bullColor: options.customBullColor,
@@ -420,6 +424,7 @@ export class ChartSessionController {
       customBullColor: this.customCandleColors?.bullColor,
       customBearColor: this.customCandleColors?.bearColor,
       showCurrentPriceLine: this.showCurrentPriceLine,
+      showVolume: this.showVolume,
       activeCell: this.activeCellInfo
         ? { ...this.activeCellInfo }
         : { symbol: this.symbol, timeframe: this.timeframe },
@@ -464,6 +469,8 @@ export class ChartSessionController {
     if (options.themePreset) this.themePreset = options.themePreset;
     if (options.fontSize) this.fontSize = options.fontSize;
     if (options.syncConfig) this.syncConfig = options.syncConfig;
+    if (options.showVolume !== undefined) this.showVolume = options.showVolume;
+    if (options.workspaceFactory) this.workspaceFactory = options.workspaceFactory;
 
     this.container = container;
     ensurePineEngine();
@@ -489,6 +496,7 @@ export class ChartSessionController {
       topbar: { left: [], right: [] },
       live: true,
       currentPriceLine: this.showCurrentPriceLine,
+      volume: this.showVolume,
       theme: velaTheme,
       timezone: this.timezone,
       providers: {
@@ -660,6 +668,35 @@ export class ChartSessionController {
   public setShowCurrentPriceLine(show: boolean): void {
     this.showCurrentPriceLine = show;
     this.enforceCurrentPriceLine();
+    this.notify();
+  }
+
+  /**
+   * Menyetel status visibilitas volume pasar native WebGL2
+   */
+  public setShowVolume(show: boolean): void {
+    this.showVolume = show;
+    for (const cell of this.getAllCells()) {
+      if (!cell) continue;
+      (cell as any).volumeHidden = !show;
+      const chart = (cell as any).chart || (cell as any).inner;
+      if (chart) {
+        (chart as any).volumeHidden = !show;
+        if (typeof chart.indicators === 'function') {
+          for (const ind of Array.from(chart.indicators() || []) as any[]) {
+            if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
+              try {
+                if (typeof ind.setVisible === 'function') ind.setVisible(show);
+              } catch (_) {}
+            }
+          }
+        }
+        try {
+          chart.renderer?.renderer?.set?.('volumeHidden', !show);
+          chart.renderer?.invalidate?.(4);
+        } catch (_) {}
+      }
+    }
     this.notify();
   }
 
@@ -1511,6 +1548,7 @@ export class ChartSessionController {
       priceScaleState: this.getPriceScaleState(),
       priceStyle: this.getPriceStyle(),
       barSpacing: this.getBarSpacing(),
+      showVolume: this.showVolume,
       syncConfig: { ...this.syncConfig },
     };
   }
@@ -1522,6 +1560,10 @@ export class ChartSessionController {
     if (!snapshot) return;
 
     this.clearAllIndicators();
+
+    if (snapshot.showVolume !== undefined) {
+      this.setShowVolume(snapshot.showVolume);
+    }
 
     if (snapshot.providerId && snapshot.providerId !== this.providerId) {
       this.providerId = snapshot.providerId;

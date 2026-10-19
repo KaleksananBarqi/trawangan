@@ -71,6 +71,8 @@
     activeIndicators?: { id: string; title: string; visible: boolean; source?: string; inputs?: any }[];
     activeDrawings?: any[];
     selectedDrawingId?: string | null;
+    showVolume?: boolean;
+    onToggleVolumeVisibility?: () => void;
     onSelectSymbol: (symbol: string, providerId?: string) => void;
     onToggleCollapse: () => void;
     onToggleIndicatorVisibility?: (id: string) => void;
@@ -100,6 +102,8 @@
     activeIndicators = [],
     activeDrawings = [],
     selectedDrawingId = null,
+    showVolume = true,
+    onToggleVolumeVisibility,
     onSelectSymbol,
     onToggleCollapse,
     onToggleIndicatorVisibility,
@@ -759,9 +763,7 @@
         >
           <Layers size={13} />
           <span>Layers</span>
-          {#if activeIndicators.length > 0}
-            <span class="count-pill mono-nums">{activeIndicators.length}</span>
-          {/if}
+          <span class="count-pill mono-nums">{1 + activeIndicators.length}</span>
         </button>
       </nav>
 
@@ -1390,7 +1392,7 @@
     {:else if activeTab === 'objects'}
       <div class="sub-toolbar">
         <span class="sub-title">Unified Object Tree</span>
-        <span class="layer-count mono-nums">{activeIndicators.length + activeDrawings.length} Total</span>
+        <span class="layer-count mono-nums">{1 + activeIndicators.length + activeDrawings.length} Total</span>
       </div>
 
       <div class="items-list objects-list">
@@ -1412,12 +1414,34 @@
                 {/if}
               </span>
               <span>Indikator</span>
-              <span class="group-count mono-nums">{activeIndicators.length}</span>
+              <span class="group-count mono-nums">{1 + activeIndicators.length}</span>
             </div>
           </div>
 
           {#if isIndicatorsGroupOpen}
             <div class="tree-group-content">
+              <!-- Layer Native Volume Overlay (Bawaan WebGL Engine) -->
+              <div class="layer-item">
+                <div class="layer-info">
+                  <span class="layer-icon"><Layers size={13} /></span>
+                  <span class="layer-name" title="Volume (Native Overlay)">Volume (Native Overlay)</span>
+                </div>
+
+                <div class="layer-actions">
+                  <button
+                    class="icon-action-btn {showVolume ? 'visible' : 'hidden'}"
+                    title={showVolume ? 'Sembunyikan Volume' : 'Tampilkan Volume'}
+                    onclick={() => onToggleVolumeVisibility?.()}
+                  >
+                    {#if showVolume}
+                      <Eye size={12} />
+                    {:else}
+                      <EyeOff size={12} />
+                    {/if}
+                  </button>
+                </div>
+              </div>
+
               {#each activeIndicators as ind (ind.id)}
                 <div class="layer-item">
                   <div class="layer-info">
@@ -1466,12 +1490,6 @@
                   </div>
                 </div>
               {/each}
-
-              {#if activeIndicators.length === 0}
-                <div class="empty-subgroup">
-                  <span>Tidak ada indikator aktif</span>
-                </div>
-              {/if}
             </div>
           {/if}
         </div>

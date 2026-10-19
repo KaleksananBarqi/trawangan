@@ -120,3 +120,10 @@ _Avoid_: Single global watchlist, Overwriting preset lists
 Baris penanda kategori struktural di dalam sebuah daftar pantau yang mengelompokkan instrumen sejenis, mendukung status lipat/bentang (*collapse/expand*), dan secara otomatis diabaikan oleh subsistem polling pasar agar tidak memicu permintaan ticker palsu.
 _Avoid_: Fake ticker row, Hardcoded section, Flat uncategorized list
 
+**Native Volume Overlay**:
+Visualisasi histogram volume berbasis WebGL2 yang di-render langsung di sub-lapisan dasar kanvas harga utama oleh engine grafik tanpa alokasi thread worker Pine Script tambahan, menghasilkan pembacaan likuiditas ultra-efisien 60 FPS.
+_Avoid_: Scripted volume panel, Detached volume sub-pane, Heavy volume worker
+
+**Session VWAP**:
+Indikator analisis teknikal berbasis Pine Script yang menghitung rata-rata harga terbobot volume kumulatif dengan mekanisme *reset* otomatis pada awal sesi hari perdagangan bursa (exchange timezone), dilengkapi pita deviasi standar untuk membaca batas nilai wajar institusional.
+_Avoid_: Rolling VWAP, Fixed-window moving average, Raw average price
