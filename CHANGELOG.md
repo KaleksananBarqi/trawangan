@@ -5,6 +5,34 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.17.0] - 2026-10-19
+
+### 🚀 Ditambahkan (Added)
+- **Unified Object Tree & Layer Inspector (ADR 0007):**
+  - Menyatukan layer Indikator Aktif dan Objek Gambar Teknikal ke dalam dua grup hierarki *collapsible* pada dock panel kanan.
+  - Kontrol granular per item: toggle visibilitas, gembok (lock/unlock), hapus individual, konfigurasi parameter (gear), dan tombol pembuka source code langsung di Pine IDE.
+  - Aksi massal: sembunyikan semua gambar, kunci semua gambar, dan hapus semua gambar secara serentak dengan modal konfirmasi.
+  - Sinkronisasi dua arah (*Two-Way Selection Sync*): klik item di layer menyorot objek di kanvas; klik objek gambar di kanvas menyorot dan menggulir otomatis (*smooth scroll into view*) item di panel layer, serta membuka grup yang tertutup secara reaktif.
+- **Chart Deep Link Bridge & Browser Interception (ADR 0007):**
+  - Mendaftarkan skema protokol native OS `trawangan://` dengan Single-Instance Guard (`tauri-plugin-single-instance` & `tauri-plugin-deep-link`) agar tautan dari browser eksternal langsung memfokuskan jendela Trawangan aktif tanpa membuat proses baru.
+  - Normalisasi simbol otomatis: membersihkan sufiks kontrak derivatif (`.P`, `-PERP`, `SWAP`) dan parsing base/quote currency.
+  - **Multi-Provider Fallback Routing:** Memprioritaskan feed bursa asal (misal Binance), dan secara otomatis mengalihkan feed ke bursa cadangan terbaik (`bitunix`, `indodax`, `bybit`) jika pair tidak tersedia di bursa asal, disertai notifikasi visual transparan.
+- **Companion Userscript Tampermonkey v1.1.0 & Interactive Floating HUD:**
+  - Skrip browser pendamping (`scripts/trawangan-browser-bridge.user.js`) dengan metode peluncuran anchor click dan Floating Action Banner interaktif di halaman TradingView untuk memintas pemblokiran pop-up browser.
+  - Sinkronisasi otomatis ke clipboard untuk memicu Smart Clipboard Watcher di latar belakang.
+- **Smart Clipboard Link Sentry:**
+  - Pemantau papan klip lokal pasif dengan deduplikasi hash saat jendela Trawangan difokuskan, memunculkan toast konfirmasi non-intrusif ("Buka di Trawangan" / "Abaikan") di pojok kanan bawah terminal.
+- **Panduan & Skrip Browser Terintegrasi di Pengaturan:**
+  - Seksi panduan dan tombol 1-klik salin skrip Tampermonkey terpasang di tab **Bantuan & Shortcut (F1)** dan **Sistem & Skrip Browser**.
+
+### 🔄 Diubah (Changed)
+- **Peningkatan Tipografi & Keamanan Tipe (Type Safety):**
+  - Menambahkan metode formal `getSearchEngine(): SymbolSearchEngine` pada antarmuka `IMarketFeedService` dan `MarketFeedService`, mengeliminasi unsafe type assertion `(marketFeed as any)`.
+  - Mengganti repeated switches pemetaan bursa dengan kamus pemetaan konstan `EXCHANGE_MAP`.
+
+### 🧪 Pengujian (Tests)
+- Menambahkan 25 unit test baru pada `tests/urlInterceptorService.test.ts`, `tests/clipboardWatcherService.test.ts`, dan `tests/chartDrawingLayerOperations.test.ts` (total 237 tests passing di 36 suites, 100% lulus).
+
 ## [0.16.0] - 2026-10-18
 
 ### 🚀 Ditambahkan (Added)
