@@ -135,6 +135,8 @@
   // State Collapsible Groups di Tab Objects
   let isIndicatorsGroupOpen = $state(true);
   let isDrawingsGroupOpen = $state(true);
+  let nativeVolumeCount = $derived(showVolume ? 1 : 0);
+  let totalIndicatorsCount = $derived(activeIndicators.length + nativeVolumeCount);
 
   // Action untuk otomatis scroll item layer yang aktif ke pandangan
   function scrollIntoViewIfSelected(node: HTMLElement, isSelected: boolean) {
@@ -763,7 +765,9 @@
         >
           <Layers size={13} />
           <span>Layers</span>
-          <span class="count-pill mono-nums">{1 + activeIndicators.length}</span>
+          {#if totalIndicatorsCount > 0}
+            <span class="count-pill mono-nums">{totalIndicatorsCount}</span>
+          {/if}
         </button>
       </nav>
 
@@ -1392,7 +1396,7 @@
     {:else if activeTab === 'objects'}
       <div class="sub-toolbar">
         <span class="sub-title">Unified Object Tree</span>
-        <span class="layer-count mono-nums">{1 + activeIndicators.length + activeDrawings.length} Total</span>
+        <span class="layer-count mono-nums">{totalIndicatorsCount + activeDrawings.length} Total</span>
       </div>
 
       <div class="items-list objects-list">
@@ -1414,7 +1418,7 @@
                 {/if}
               </span>
               <span>Indikator</span>
-              <span class="group-count mono-nums">{1 + activeIndicators.length}</span>
+              <span class="group-count mono-nums">{totalIndicatorsCount}</span>
             </div>
           </div>
 
@@ -1490,6 +1494,12 @@
                   </div>
                 </div>
               {/each}
+
+              {#if activeIndicators.length === 0 && !showVolume}
+                <div class="empty-subgroup">
+                  <span>Tidak ada indikator aktif</span>
+                </div>
+              {/if}
             </div>
           {/if}
         </div>

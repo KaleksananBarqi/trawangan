@@ -192,5 +192,74 @@ describe('Ticket 1 & 2: Volume and Session VWAP Indicator Presets', () => {
 
     assert.equal(controller.getSnapshot().showVolume, false, 'loadWorkspaceState harus memulihkan showVolume: false');
   });
+
+  it('8. Kategori Preset: filter kategori Volume mengembalikan preset vwap dan volume', () => {
+    const volumePresets = INDICATOR_PRESETS.filter((p) => p.category === 'Volume');
+    assert.equal(volumePresets.length, 2, 'Kategori Volume harus memuat tepat 2 preset');
+    const ids = volumePresets.map((p) => p.id);
+    assert.ok(ids.includes('vwap'), 'Harus menyertakan vwap');
+    assert.ok(ids.includes('volume'), 'Harus menyertakan volume');
+  });
+
+  it('9. Multi-Chart Synchronization: setShowVolume menghormati syncConfig.indicators', async () => {
+    const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+    const controller = new ChartSessionController({
+      layout: '2-1',
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: false },
+    });
+
+    let cell1Vis = true;
+    let cell2Vis = true;
+
+    const cell1 = {
+      id: 'cell_1',
+      symbol: 'BTCUSDT',
+      timeframe: '15',
+      volumeHidden: false,
+      chart: {
+        indicators: () => [{ nativeType: 'volume', setVisible: (v: boolean) => { cell1Vis = v; } }],
+      },
+    };
+
+    const cell2 = {
+      id: 'cell_2',
+      symbol: 'ETHUSDT',
+      timeframe: '15',
+      volumeHidden: false,
+      chart: {
+        indicators: () => [{ nativeType: 'volume', setVisible: (v: boolean) => { cell2Vis = v; } }],
+      },
+    };
+
+    const mockWs = {
+      cells: () => [cell1, cell2],
+      active: cell1,
+      on: () => {},
+    };
+
+    const mockContainer = {
+      nodeType: 1,
+      tagName: 'DIV',
+      clientWidth: 1000,
+      clientHeight: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    };
+
+    controller.attach(mockContainer as any, {
+      workspaceFactory: () => mockWs,
+    } as any);
+
+    // Saat syncConfig.indicators === false, toggle dengan targetCell cell1 hanya memutasi cell1
+    controller.setShowVolume(false, cell1);
+    assert.equal(cell1Vis, false, 'Cell 1 visibilitas harus false');
+    assert.equal(cell2Vis, true, 'Cell 2 visibilitas harus tetap true saat sync nonaktif');
+
+    // Aktifkan syncConfig.indicators
+    controller.syncLayout({ indicators: true });
+    controller.setShowVolume(false);
+    assert.equal(cell1Vis, false, 'Cell 1 harus false saat sync aktif');
+    assert.equal(cell2Vis, false, 'Cell 2 harus ikut diselaraskan saat sync aktif');
+  });
 });
+
 

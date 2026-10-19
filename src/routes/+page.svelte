@@ -722,7 +722,6 @@
   function handleToggleVolumeVisibility() {
     const next = !(appSettings.showVolume ?? true);
     handleUpdateSettings({ showVolume: next });
-    chartComponent?.setShowVolume(next);
   }
 
   function handleWatchlistChange(newSymbols: string[]) {
@@ -849,7 +848,6 @@
 
       if (w.showVolume !== undefined) {
         handleUpdateSettings({ showVolume: w.showVolume });
-        chartComponent?.setShowVolume(w.showVolume);
       }
 
       // Tunggu layout grid dan WebGL render settle secara penuh

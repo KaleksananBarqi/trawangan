@@ -140,8 +140,21 @@ mult2 = input.float(2.0, "Band Multiplier 2", step=0.5, group="Bands Calculation
 // VWAP kalkulasi harian bursa
 vwapValue = ta.vwap(hlc3)
 
-// Deviasi standar untuk pita nilai wajar
-dev = ta.stdev(hlc3, 20)
+// Deteksi batas sesi harian baru untuk deviasi kumulatif
+newSession = ta.change(time("D")) != 0
+
+// Deviasi standar kumulatif terbobot volume berbasis sesi (Volume-Weighted StdDev)
+var float sumVol = 0.0
+var float sumDevSqVol = 0.0
+
+if newSession
+    sumVol := volume
+    sumDevSqVol := (hlc3 - vwapValue) * (hlc3 - vwapValue) * volume
+else
+    sumVol := sumVol + volume
+    sumDevSqVol := sumDevSqVol + ((hlc3 - vwapValue) * (hlc3 - vwapValue) * volume)
+
+dev = sumVol > 0 ? math.sqrt(sumDevSqVol / sumVol) : 0.0
 
 band1Upper = computeCustomBands ? vwapValue + (dev * mult1) : na
 band1Lower = computeCustomBands ? vwapValue - (dev * mult1) : na

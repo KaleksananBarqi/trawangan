@@ -672,29 +672,49 @@ export class ChartSessionController {
   }
 
   /**
-   * Menyetel status visibilitas volume pasar native WebGL2
+   * Menerapkan status visibilitas volume pasar native WebGL2 pada satu sel tertentu
    */
-  public setShowVolume(show: boolean): void {
-    this.showVolume = show;
-    for (const cell of this.getAllCells()) {
-      if (!cell) continue;
-      (cell as any).volumeHidden = !show;
-      const chart = (cell as any).chart || (cell as any).inner;
-      if (chart) {
-        (chart as any).volumeHidden = !show;
-        if (typeof chart.indicators === 'function') {
-          for (const ind of Array.from(chart.indicators() || []) as any[]) {
-            if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
-              try {
-                if (typeof ind.setVisible === 'function') ind.setVisible(show);
-              } catch (_) {}
-            }
+  public applyCellVolumeVisibility(cell: any, show: boolean): void {
+    if (!cell) return;
+    cell.volumeHidden = !show;
+    const chart = cell.chart || cell.inner;
+    if (chart) {
+      chart.volumeHidden = !show;
+      if (typeof chart.indicators === 'function') {
+        for (const ind of Array.from(chart.indicators() || []) as any[]) {
+          if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
+            try {
+              if (typeof ind.setVisible === 'function') ind.setVisible(show);
+            } catch (_) {}
           }
         }
-        try {
-          chart.renderer?.renderer?.set?.('volumeHidden', !show);
-          chart.renderer?.invalidate?.(4);
-        } catch (_) {}
+      }
+      try {
+        const nativeRenderer = chart.renderer?.renderer || chart.renderer;
+        if (typeof nativeRenderer?.set === 'function') {
+          nativeRenderer.set('volumeHidden', !show);
+        }
+        if (typeof chart.renderer?.invalidate === 'function') {
+          chart.renderer.invalidate(4);
+        }
+      } catch (_) {}
+    }
+  }
+
+  /**
+   * Menyetel status visibilitas volume pasar native WebGL2.
+   * Jika targetCell diberikan dan syncConfig.indicators nonaktif, hanya ubah sel tersebut.
+   * Jika syncConfig.indicators aktif (atau layout single '1'), selaraskan ke seluruh sel.
+   */
+  public setShowVolume(show: boolean, targetCell?: any): void {
+    this.showVolume = show;
+    const isSyncEnabled = Boolean(this.syncConfig.indicators !== false || this.layout === '1');
+
+    if (!isSyncEnabled && targetCell) {
+      this.applyCellVolumeVisibility(targetCell, show);
+    } else {
+      for (const cell of this.getAllCells()) {
+        this.applyCellVolumeVisibility(cell, show);
       }
     }
     this.notify();
@@ -1327,6 +1347,13 @@ export class ChartSessionController {
       }
 
       this.cloneIndicatorsToCells(activeSnapshot);
+
+      // Selaraskan juga status volume native dari activeCell ke follower cells
+      const activeVolumeHidden = Boolean((activeCell as any).volumeHidden);
+      for (const cell of cells) {
+        if (cell === activeCell) continue;
+        this.applyCellVolumeVisibility(cell, !activeVolumeHidden);
+      }
     } catch (err) {
       console.warn('[ChartSessionController] Gagal rekonsiliasi indikator dari active cell:', err);
     }
