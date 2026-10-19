@@ -260,7 +260,7 @@
   let lastSyncedHash = '';
 
   $effect(() => {
-    if (propSymbols && propSymbols.length > 0) {
+    if (propSymbols) {
       const h = JSON.stringify(propSymbols);
       if (h !== lastSyncedHash) {
         lastSyncedHash = h;
@@ -388,11 +388,18 @@
     }, 150);
   });
 
-  async function handleAddSymbolFromExchange(e: MouseEvent, sym: string) {
+  async function handleAddSymbolFromExchange(e: MouseEvent, sym: string, providerId?: string) {
     e.stopPropagation();
     e.preventDefault();
-    if (!symbols.includes(sym)) {
-      const next = insertSymbolIntoSection(symbols, sym, lastActiveSectionId);
+    const entry = formatWatchlistEntry(sym, providerId || activeProviderId);
+    const target = parseWatchlistEntry(entry);
+    const exists = symbols.some((s) => {
+      if (s === entry) return true;
+      const p = parseWatchlistEntry(s);
+      return p.symbol === target.symbol && p.providerId === target.providerId;
+    });
+    if (!exists) {
+      const next = insertSymbolIntoSection(symbols, entry, lastActiveSectionId);
       await applyWatchlistUpdate(next);
     }
   }
@@ -945,7 +952,10 @@
 
             {#each exchangeSearchResults as item, exIdx (getSearchResultKey(item))}
               {@const globalIdx = filteredSymbols.length + exIdx}
-              {@const isInWatchlist = symbols.includes(item.symbol)}
+              {@const isInWatchlist = symbols.some((w) => {
+                const p = parseWatchlistEntry(w);
+                return p.symbol === item.symbol.toUpperCase() && p.providerId === normalizeProviderId(item.provider);
+              })}
               {@const isHighlighted = selectedOmniIndex === globalIdx}
               <div class="watchlist-row exchange-row {activeSymbol === item.symbol ? 'active-row' : ''} {isHighlighted ? 'omni-highlighted' : ''}">
                 <button
@@ -976,7 +986,7 @@
                   type="button"
                   class="add-exchange-btn {isInWatchlist ? 'already-added' : ''}"
                   title={isInWatchlist ? 'Sudah ada di daftar pantau' : 'Tambahkan ke watchlist'}
-                  onclick={(e) => handleAddSymbolFromExchange(e, item.symbol)}
+                  onclick={(e) => handleAddSymbolFromExchange(e, item.symbol, item.provider)}
                   disabled={isInWatchlist}
                 >
                   {#if isInWatchlist}
@@ -1165,7 +1175,7 @@
                             }}
                           >
                             <Folder size={11} />
-                            <span class="menu-label">Daftar Utama (Tanpa Kategori)</span>
+                            <span class="menu-label">Tanpa Kategori (Bagian Atas)</span>
                             {#if currentSecId === null}
                               <Check size={11} class="menu-check" />
                             {/if}

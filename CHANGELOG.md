@@ -5,6 +5,21 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.18.1] - 2026-10-19
+
+### 🐛 Diperbaiki (Fixed)
+- **Sinkronisasi Multi-Watchlist Registry & Modal Pencarian Simbol:**
+  - Memperbaiki `handleToggleWatchlistSymbolFromSearch` di root page agar memutasi `watchlistRegistry.updateActiveItems` dan `insertSymbolIntoSection`, memastikan koin yang disimpan dari dialog `SymbolSearchModal` (`Ctrl+K` / Header / *Cari Pair*) langsung tercatat ke registry dan counter pada dropdown switcher seketika bertambah.
+  - Menghubungkan root page secara reaktif ke `watchlistRegistry.subscribe()` sehingga instrumen pada watchlist aktif non-default (seperti watchlist kustom "futures") selalu sinkron saat beralih daftar pantau.
+- **Klarifikasi Label Menu Klik Kanan Koin:**
+  - Mengubah label menu context klik kanan pada baris koin dari *"Daftar Utama (Tanpa Kategori)"* menjadi *"Tanpa Kategori (Bagian Atas)"* untuk mengeliminasi kebingungan pengguna saat berada di watchlist selain "Daftar Utama".
+- **Normalisasi Format Bursa & Pencarian Omni-Search:**
+  - Memperbaiki `handleAddSymbolFromExchange` dan pengecekan `isInWatchlist` pada template omni-search agar menggunakan `formatWatchlistEntry` dan `parseWatchlistEntry` yang konsisten dengan provider.
+  - Memperbolehkan sinkronisasi daftar simbol lokal ketika bernilai array kosong (`[]`) untuk watchlist baru yang belum memiliki instrumen.
+  - Menambahkan guard idempotensi `if (this.isLoaded)` pada `WatchlistRegistryService.load()` untuk mencegah *race condition* reload.
+- **Proteksi Navigasi Shortcut Keyboard:**
+  - Menyaring token divider kategori (`#section:`) pada navigasi instrumen keyboard (`Space` / `Shift+Space`), memastikan chart hanya berpindah ke pair perdagangan valid.
+
 ## [0.18.0] - 2026-10-19
 
 ### 🚀 Ditambahkan (Added)

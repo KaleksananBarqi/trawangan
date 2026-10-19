@@ -24,7 +24,8 @@
   import { replaySession, type ReplaySnapshot } from '../lib/services/replay';
   import { commandDispatcher } from '../lib/services/commandDispatcher';
   import { chartDrawingController } from '../lib/services/chartDrawingController';
-  import { parseWatchlistEntry, formatWatchlistEntry } from '../lib/services/watchlistUtils';
+  import { parseWatchlistEntry, formatWatchlistEntry, insertSymbolIntoSection, isSectionToken } from '../lib/services/watchlistUtils';
+  import { watchlistRegistry } from '../lib/services/watchlistRegistryService';
   import {
     parseExternalChartUrl,
     resolveChartTargetWithFallback,
@@ -129,6 +130,7 @@
   let unsubRightDock: (() => void) | null = null;
   let unsubLeftToolbar: (() => void) | null = null;
   let unsubAlertsList: (() => void) | null = null;
+  let unsubWatchlistRegistry: (() => void) | null = null;
 
   // Price Alerts Modals & Toast State
   let isCreateAlertModalOpen = $state(false);
@@ -187,10 +189,12 @@
   let quickSymbolsConfig = $state<QuickSymbolsConfig>(DEFAULT_QUICK_SYMBOLS_CONFIG);
 
   function handleNavigateWatchlist(direction: number) {
-    const list = watchlistSymbols.length > 0 ? watchlistSymbols : [
+    const rawList = watchlistSymbols.length > 0 ? watchlistSymbols : [
       'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
       'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
     ];
+    const list = rawList.filter((item) => !isSectionToken(item));
+    if (list.length === 0) return;
     const idx = list.indexOf(activeSymbol);
     if (idx === -1) {
       handleSymbolChange(list[0]);
@@ -343,8 +347,14 @@
       }
     });
 
-    loadWatchlist().then((list) => {
-      if (list && list.length > 0) watchlistSymbols = list;
+    unsubWatchlistRegistry = watchlistRegistry.subscribe(({ watchlists, activeId }) => {
+      const current = watchlists.find((w) => w.id === activeId);
+      if (current) {
+        watchlistSymbols = [...current.items];
+      }
+    });
+    watchlistRegistry.load().catch((err) => {
+      console.warn('[Page] Gagal memuat multi-watchlist:', err);
     });
 
     loadQuickSymbolsConfig().then((cfg) => {
@@ -547,6 +557,7 @@
     if (unsubRightDock) unsubRightDock();
     if (unsubLeftToolbar) unsubLeftToolbar();
     if (unsubAlertsList) unsubAlertsList();
+    if (unsubWatchlistRegistry) unsubWatchlistRegistry();
   });
 
   function handleSymbolChange(newSym: string, providerHint?: string) {
@@ -732,10 +743,10 @@
         return !(p.symbol === target.symbol && p.providerId === target.providerId);
       });
     } else {
-      next = [...watchlistSymbols, entry];
+      next = insertSymbolIntoSection(watchlistSymbols, entry, null);
     }
     handleWatchlistChange(next);
-    await saveWatchlist(next);
+    await watchlistRegistry.updateActiveItems(next);
   }
 
   function handleQuickSymbolsConfigChange(newConfig: QuickSymbolsConfig) {

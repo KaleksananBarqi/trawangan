@@ -70,6 +70,10 @@ export class WatchlistRegistryService {
    * Pemuatan inisial data multi-watchlist dengan dukungan migrasi data warisan
    */
   async load(): Promise<void> {
+    if (this.isLoaded) {
+      this.notify();
+      return;
+    }
     try {
       const raw = await this.persistence.loadLayoutSlot(LAYOUT_SLOT_ID);
       if (raw) {
