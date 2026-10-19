@@ -8,6 +8,7 @@
     Radio
   } from '@lucide/svelte';
   import { SHORTCUT_GLOSSARY, filterShortcuts } from '../../services/shortcutService';
+  import BrowserBridgeGuide from './BrowserBridgeGuide.svelte';
 
   let helpSearchQuery = $state('');
 
@@ -92,6 +93,11 @@
         </div>
       {/each}
     </div>
+  </div>
+
+  <!-- Panduan Skrip Browser (Deep Link Bridge) -->
+  <div class="section-group">
+    <BrowserBridgeGuide />
   </div>
 
   <!-- Panduan Fitur Inti (Quick Guide) -->

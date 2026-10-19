@@ -1,59 +1,11 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { Database, Wifi, Link2, Copy, Check, ExternalLink } from '@lucide/svelte';
+  import { Database, Wifi } from '@lucide/svelte';
   import { telemetryService, type TelemetryData } from '../../services/telemetryService';
+  import BrowserBridgeGuide from './BrowserBridgeGuide.svelte';
 
   let telemetry = $state<TelemetryData>(telemetryService.getSnapshot());
   let unsubTelemetry: (() => void) | null = null;
-  let copyFeedback = $state(false);
-
-  const USERSCRIPT_CONTENT = `// ==UserScript==
-// @name         Trawangan Chart Deep Link Bridge
-// @namespace    https://trawangan.app/
-// @version      1.0.0
-// @description  Secara otomatis mengalihkan tautan chart TradingView ke terminal desktop Trawangan
-// @author       trawangan
-// @match        https://*.tradingview.com/chart/*
-// @match        https://*.tradingview.com/symbols/*
-// @match        https://tradingview.com/chart/*
-// @match        https://tradingview.com/symbols/*
-// @run-at       document-start
-// @grant        none
-// ==/UserScript==
-
-(function () {
-  'use strict';
-  function redirectIfMatching() {
-    try {
-      const url = new URL(window.location.href);
-      if (url.pathname.startsWith('/chart')) {
-        const symbol = url.searchParams.get('symbol');
-        if (symbol) {
-          window.location.href = 'trawangan://chart?symbol=' + encodeURIComponent(symbol);
-        }
-      } else if (url.pathname.includes('/symbols/')) {
-        const parts = url.pathname.split('/').filter(Boolean);
-        const idx = parts.indexOf('symbols');
-        if (idx !== -1 && parts[idx + 1]) {
-          const symSeg = parts[idx + 1].replace('-', ':');
-          window.location.href = 'trawangan://chart?symbol=' + encodeURIComponent(symSeg);
-        }
-      }
-    } catch (_) {}
-  }
-  redirectIfMatching();
-  window.addEventListener('popstate', redirectIfMatching);
-})();`;
-
-  async function handleCopyScript() {
-    try {
-      await navigator.clipboard.writeText(USERSCRIPT_CONTENT);
-      copyFeedback = true;
-      setTimeout(() => (copyFeedback = false), 3500);
-    } catch (e) {
-      console.warn('Gagal menyalin userscript:', e);
-    }
-  }
 
   onMount(() => {
     unsubTelemetry = telemetryService.subscribe((data) => {
@@ -117,64 +69,7 @@
 
 <!-- SEKSI INTEGRASI BROWSER & DEEP LINK BRIDGE -->
 <div class="section-group">
-  <div class="bridge-header">
-    <div class="bridge-title-col">
-      <h4 class="section-title">
-        <Link2 size={14} class="text-brand" /> Integrasi Browser (Chart Deep Link Bridge)
-      </h4>
-      <p class="section-desc">
-        Tangkap seluruh tautan grafik dari browser (TradingView, Binance Web, Bybit, DexScreener) dan arahkan langsung ke terminal Trawangan via skema protokol <code>trawangan://</code>.
-      </p>
-    </div>
-
-    <button
-      type="button"
-      class="copy-script-btn {copyFeedback ? 'copied' : ''}"
-      onclick={handleCopyScript}
-    >
-      {#if copyFeedback}
-        <Check size={13} />
-        <span>Skrip Tersalin!</span>
-      {:else}
-        <Copy size={13} />
-        <span>Salin Skrip Tampermonkey</span>
-      {/if}
-    </button>
-  </div>
-
-  <!-- TUTORIAL LANGKAH DEMI LANGKAH -->
-  <div class="tutorial-card obsidian-card">
-    <div class="tutorial-step">
-      <span class="step-num">1</span>
-      <div class="step-content">
-        <strong>Pasang Ekstensi Userscript di Browser</strong>
-        <p>Pasang ekstensi <em>Tampermonkey</em> atau <em>Violentmonkey</em> dari Chrome Web Store, Edge Add-ons, atau Firefox Add-ons.</p>
-      </div>
-    </div>
-
-    <div class="tutorial-step">
-      <span class="step-num">2</span>
-      <div class="step-content">
-        <strong>Buat Skrip Baru & Tempel Kode</strong>
-        <p>Klik ikon Tampermonkey di pojok atas browser &rarr; pilih <em>"Create a new script"</em> &rarr; tempelkan kode yang telah disalin dari tombol di atas &rarr; simpan (<code>Ctrl+S</code>).</p>
-      </div>
-    </div>
-
-    <div class="tutorial-step">
-      <span class="step-num">3</span>
-      <div class="step-content">
-        <strong>Selesai! Nikmati Intersepsi Otomatis</strong>
-        <p>Setiap kali Anda membuka tautan TradingView (contoh: <code>tradingview.com/chart/?symbol=BINANCE:ARIAUSDT.P</code>), tab browser otomatis melempar instrumen tersebut ke terminal Trawangan desktop.</p>
-      </div>
-    </div>
-
-    <div class="test-row">
-      <span class="test-label">Uji Coba Tautan Protokol Native:</span>
-      <a href="trawangan://chart?symbol=BINANCE:BTCUSDT" class="btn-test-link">
-        <ExternalLink size={12} /> Buka BTCUSDT di Trawangan
-      </a>
-    </div>
-  </div>
+  <BrowserBridgeGuide />
 </div>
 
 <style>

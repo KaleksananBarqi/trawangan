@@ -135,7 +135,7 @@
             onclick={() => (activeTab = 'system')}
           >
             <Cpu size={14} />
-            <span>Telemetri & WebGL2</span>
+            <span>Sistem & Skrip Browser</span>
           </button>
 
           <button

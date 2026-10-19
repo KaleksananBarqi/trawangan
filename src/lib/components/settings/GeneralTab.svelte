@@ -156,6 +156,14 @@
       </button>
     </div>
   {/if}
+
+  <div class="setting-row sub-row bridge-tip-row">
+    <div class="setting-info">
+      <span class="setting-desc tip-text">
+        💡 <strong>Integrasi Browser Web:</strong> Untuk mengalihkan tautan secara otomatis saat browsing di TradingView/Binance, buka tab <strong>Bantuan & Shortcut</strong> atau <strong>Sistem & Skrip Browser</strong> untuk menyalin skrip Tampermonkey.
+      </span>
+    </div>
+  </div>
 </div>
 
 <style>
