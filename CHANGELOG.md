@@ -5,6 +5,35 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.18.0] - 2026-10-19
+
+### 🚀 Ditambahkan (Added)
+- **Multi-Watchlist Registry & Switcher Popover (ADR-0008, #70, #71, #72):**
+  - Menggantikan bilah preset statis lama dengan bilah dropdown selektor popover di bagian atas panel Watchlist (`WatchlistSwitcher.svelte`).
+  - Mendukung pembuatan daftar pantau tak terbatas dengan nama kustom, duplikasi cepat, ganti nama, dan penghapusan dengan modal konfirmasi aman.
+  - Menyediakan preset sistem pabrik (`Binance Top 10` dan `Indodax IDR`) yang bebas dimodifikasi dengan tombol penyelamat *"Reset ke Bawaan"*.
+  - Proteksi terminal: daftar pantau terakhir dan "Daftar Utama" tidak dapat dihapus, dengan auto-fallback otomatis saat penghapusan watchlist aktif.
+  - Migrasi transparan tanpa kehilangan koin dari format penyimpanan warisan (*legacy storage*) ke slot `user_multi_watchlists`.
+- **Watchlist Section Dividers & Grouping (ADR-0008, #70, #73, #74):**
+  - Format data linier *Flat Ordered List* berbasis token `#section:<id>:<name>:<isCollapsed>`, memastikan operasi pembacaan dan reordering berkecepatan $O(1)$.
+  - Baris pembatas kategori (*Section Dividers*) visual dengan status *collapse/expand* yang tersimpan persisten di penyimpanan lokal.
+  - Menu aksi kategori titik tiga (`···`) untuk *"Ganti Nama Kategori"* dan *"Hapus Kategori (Simpan Koin)"* (menghapus kategori tidak menghapus instrumen di dalamnya).
+  - Tombol toolbar [`FolderPlus`] untuk penambahan kategori baru secara instan.
+- **Symbol Placement Cerdas, Drag & Drop, dan Menu Aksi Koin (#70, #75):**
+  - **Penempatan Simbol Otomatis:** Koin baru yang ditambahkan via input cepat `+`, Omni-Search, maupun menu `Ctrl+K` otomatis disisipkan ke bawah kategori terbuka terakhir (atau di paling atas daftar jika tanpa kategori).
+  - **Drag & Drop Reordering:** Menyeret (*drag and drop*) koin maupun baris pembatas kategori melintasi seksi dengan indikator garis pemandu aksen (*accent drop target line*).
+  - **Menu Aksi & Klik Kanan Koin:** Tombol opsi hover `···` dan klik kanan (`oncontextmenu`) pada baris instrumen untuk *"Pindahkan ke Kategori..."* dengan submenu pilihan kategori.
+- **Multiplexer Safe Polling Filter:**
+  - Token seksi disaring di tingkat `subscribeWatchlistTickers` dan `pollTick` sehingga adapter bursa tidak pernah menerima string non-ticker.
+  - Instrumen di bawah kategori terlipat (*collapsed*) tetap dipolling secara aktif di latar belakang sehingga Price Alert dan data harga seketika segar saat kategori dibuka kembali.
+
+### 🔄 Diubah (Changed)
+- Mengisolasi perubahan multi-watchlist murni di dalam tab Watchlist, menjaga bilah *Quick Symbols* di Header tetap bersih dan ringkas.
+- Sinkronisasi instrumen watchlist aktif ke penyimpanan legacy secara otomatis menyaring token kategori agar tidak mencemari pembacaan data eksternal.
+
+### 🐛 Diperbaiki (Fixed)
+- Memperbaiki kompilasi Linux pada `tauri-plugin-deep-link` dengan mengunci dependensi `rust-ini` ke versi `0.21.1`.
+
 ## [0.17.0] - 2026-10-19
 
 ### 🚀 Ditambahkan (Added)
