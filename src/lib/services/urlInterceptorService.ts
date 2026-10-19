@@ -27,15 +27,23 @@ export interface FallbackResolutionResult {
 /**
  * Memetakan nama bursa eksternal ke internal provider ID Trawangan
  */
+const EXCHANGE_MAP: Record<string, string> = {
+  binance: 'binance',
+  bybit: 'bybit',
+  bitunix: 'bitunix',
+  indodax: 'indodax',
+  coinbase: 'coinbase',
+  okx: 'okx',
+  kucoin: 'kucoin',
+  hyperliquid: 'hyperliquid',
+};
+
 export function mapExchangeToProviderId(exchange: string): string {
+  if (!exchange) return 'binance';
   const norm = exchange.trim().toLowerCase();
-  if (norm.includes('binance')) return 'binance';
-  if (norm.includes('bybit')) return 'bybit';
-  if (norm.includes('bitunix')) return 'bitunix';
-  if (norm.includes('indodax')) return 'indodax';
-  if (norm.includes('coinbase')) return 'coinbase';
-  if (norm.includes('okx')) return 'okx';
-  if (norm.includes('kucoin')) return 'kucoin';
+  for (const [key, val] of Object.entries(EXCHANGE_MAP)) {
+    if (norm.includes(key)) return val;
+  }
   return norm;
 }
 

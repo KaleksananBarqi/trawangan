@@ -81,6 +81,10 @@ export class MarketFeedService implements IMarketFeedService {
     this.searchEngine.registerAdapter(adapter);
   }
 
+  public getSearchEngine(): SymbolSearchEngine {
+    return this.searchEngine;
+  }
+
   public getConnectionStatus(): FeedConnectionStatus {
     return {
       state: this.connectionState,

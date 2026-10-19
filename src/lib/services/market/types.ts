@@ -1,5 +1,6 @@
 // Kontrak Antarmuka (Interface) Modul Deep Market Feed Trawangan
 import type { Candle, ProviderConfig, TickerInfo, MarketSearchResult } from '../../types/market';
+import type { SymbolSearchEngine } from './symbolSearchService';
 
 export type TickerListener = (ticker: TickerInfo) => void;
 export type WatchlistTickersListener = (tickers: Record<string, TickerInfo>) => void;
@@ -50,6 +51,9 @@ export interface IMarketFeedService {
   // ─── Langganan Ticker Real-Time (Multiplexed) ───
   subscribeActiveTicker(symbol: string, listener: TickerListener): () => void;
   subscribeWatchlistTickers(symbols: string[], listener: WatchlistTickersListener): () => void;
+
+  // ─── Mesin Pencarian Simbol Terpadu ───
+  getSearchEngine(): SymbolSearchEngine;
 
   // ─── Feed Connection Guard ───
   getConnectionStatus(): FeedConnectionStatus;

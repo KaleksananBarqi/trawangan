@@ -114,6 +114,27 @@
   let isIndicatorsGroupOpen = $state(true);
   let isDrawingsGroupOpen = $state(true);
 
+  // Action untuk otomatis scroll item layer yang aktif ke pandangan
+  function scrollIntoViewIfSelected(node: HTMLElement, isSelected: boolean) {
+    if (isSelected) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    return {
+      update(selected: boolean) {
+        if (selected) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    };
+  }
+
+  // Jika ada drawing yang dipilih dari kanvas dan grup drawings tertutup, otomatis buka
+  $effect(() => {
+    if (selectedDrawingId && !isDrawingsGroupOpen) {
+      isDrawingsGroupOpen = true;
+    }
+  });
+
   function getDrawingMeta(drawing: any) {
     const type = drawing.type || 'drawing';
     const anchors = Array.isArray(drawing.anchors) ? drawing.anchors : [];
@@ -1141,6 +1162,7 @@
                 {@const IconComp = meta.icon}
                 <div
                   class="layer-item drawing-item {isSelected ? 'selected' : ''}"
+                  use:scrollIntoViewIfSelected={isSelected}
                   role="button"
                   tabindex="0"
                   onclick={() => onSelectDrawing?.(drawing.id)}

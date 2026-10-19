@@ -4,8 +4,10 @@ import {
   parseExternalChartUrl,
   normalizeSymbolAndContract,
   resolveChartTargetWithFallback,
+  mapExchangeToProviderId,
   type ParsedChartTarget
 } from '../src/lib/services/urlInterceptorService';
+import { marketFeed } from '../src/lib/services/market';
 
 describe('URL Interceptor Service Seam Suite', () => {
   describe('1. Parsing URL Eksternal & Skema Native trawangan://', () => {
@@ -135,6 +137,26 @@ describe('URL Interceptor Service Seam Suite', () => {
         return [];
       }
     };
+
+    test('mapExchangeToProviderId memetakan nama bursa secara akurat via dictionary', () => {
+      assert.equal(mapExchangeToProviderId('BINANCE'), 'binance');
+      assert.equal(mapExchangeToProviderId('ByBit_Spot'), 'bybit');
+      assert.equal(mapExchangeToProviderId('BitUnix-Perp'), 'bitunix');
+      assert.equal(mapExchangeToProviderId('Indodax'), 'indodax');
+      assert.equal(mapExchangeToProviderId('Coinbase_Pro'), 'coinbase');
+      assert.equal(mapExchangeToProviderId('OKX_Web'), 'okx');
+      assert.equal(mapExchangeToProviderId('Kucoin_V2'), 'kucoin');
+      assert.equal(mapExchangeToProviderId('Hyperliquid_DEX'), 'hyperliquid');
+      assert.equal(mapExchangeToProviderId('unknown_exchange'), 'unknown_exchange');
+      assert.equal(mapExchangeToProviderId(''), 'binance');
+    });
+
+    test('MarketFeedService mengekspos getSearchEngine() secara formal bertipe', () => {
+      assert.ok(typeof marketFeed.getSearchEngine === 'function');
+      const engine = marketFeed.getSearchEngine();
+      assert.ok(engine, 'SearchEngine instance harus tersedia');
+      assert.ok(typeof engine.search === 'function');
+    });
 
     test('Jika bursa asal (binance) memiliki koin BTCUSDT, gunakan bursa asal', async () => {
       const target: ParsedChartTarget = {

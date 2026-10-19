@@ -1078,7 +1078,7 @@
     let finalSymbol = target.symbol;
 
     try {
-      const searchEngine = (marketFeed as any).getSearchEngine ? (marketFeed as any).getSearchEngine() : null;
+      const searchEngine = typeof marketFeed.getSearchEngine === 'function' ? marketFeed.getSearchEngine() : null;
       if (searchEngine) {
         const resolved = await resolveChartTargetWithFallback(target, searchEngine);
         finalProvider = resolved.providerId;
