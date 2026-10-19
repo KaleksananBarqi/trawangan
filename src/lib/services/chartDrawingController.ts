@@ -16,6 +16,7 @@ export interface DrawingState {
   activeDrawings: any[];
   canUndo: boolean;
   canRedo: boolean;
+  selectedDrawingId: string | null;
 }
 
 type Subscriber = (state: DrawingState) => void;
@@ -48,6 +49,7 @@ export class ChartDrawingController {
   private isLocked = false;
   private isHidden = false;
   private activeDrawings: any[] = [];
+  private selectedDrawingId: string | null = null;
   private canUndo = true;
   private canRedo = true;
   private isRestoring = false;
@@ -173,6 +175,8 @@ export class ChartDrawingController {
 
     const onMutated = () => this.handleDrawingMutated();
     const onDraft = () => this.handleDrawingDraft();
+    const onSelect = (d: any) => this.handleDrawingSelected(d?.id || (typeof d === 'string' ? d : null));
+    const onDeselect = () => this.handleDrawingSelected(null);
 
     try {
       chart.on('drawing:created', onMutated);
@@ -180,6 +184,8 @@ export class ChartDrawingController {
       chart.on('drawing:draft', onDraft);
       chart.on('drawing:removed', onMutated);
       chart.on('drawing:settings', onMutated);
+      chart.on('drawing:select', onSelect);
+      chart.on('drawing:deselect', onDeselect);
     } catch (err) {
       console.warn('Gagal memasang drawing listeners ke chart:', err);
     }
@@ -192,6 +198,8 @@ export class ChartDrawingController {
           chart.off('drawing:draft', onDraft);
           chart.off('drawing:removed', onMutated);
           chart.off('drawing:settings', onMutated);
+          chart.off('drawing:select', onSelect);
+          chart.off('drawing:deselect', onDeselect);
         } catch (_) {}
       }
     };
@@ -208,6 +216,7 @@ export class ChartDrawingController {
       isLocked: this.isLocked,
       isHidden: this.isHidden,
       activeDrawings: [...this.activeDrawings],
+      selectedDrawingId: this.selectedDrawingId,
       canUndo: this.canUndo,
       canRedo: this.canRedo
     };
@@ -449,7 +458,124 @@ export class ChartDrawingController {
     await clearDrawings(curSym, 'GLOBAL');
 
     this.activeDrawings = [];
+    this.selectedDrawingId = null;
     this.notify();
+  }
+
+  /**
+   * Menangani event seleksi gambar dari kanvas
+   */
+  handleDrawingSelected(id: string | null): void {
+    if (this.selectedDrawingId !== id) {
+      this.selectedDrawingId = id;
+      this.notify();
+    }
+  }
+
+  /**
+   * Menyeleksi atau membatalkan seleksi objek gambar secara programatik
+   */
+  selectDrawing(id: string | null): void {
+    this.selectedDrawingId = id;
+    const activeChart = this.getActiveChart();
+    if (activeChart?.drawings) {
+      try {
+        if (id) {
+          activeChart.drawings.select?.(id);
+        } else {
+          activeChart.drawings.deselect?.();
+        }
+      } catch (err) {
+        console.warn('Gagal menyeleksi objek gambar:', err);
+      }
+    }
+    this.notify();
+  }
+
+  /**
+   * Mengambil ID objek gambar yang sedang terseleksi
+   */
+  getSelectedDrawingId(): string | null {
+    return this.selectedDrawingId;
+  }
+
+  /**
+   * Toggle visibilitas objek gambar individual berdasarkan ID
+   */
+  toggleDrawingVisibility(id: string): void {
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return;
+
+    try {
+      const all = activeChart.drawings.all?.() || [];
+      const target = all.find((d: any) => d.id === id);
+      const isVisible = target ? target.visible !== false : true;
+      activeChart.drawings.show?.(id, !isVisible);
+      this.handleDrawingMutated();
+    } catch (err) {
+      console.warn(`Gagal toggle visibilitas drawing ${id}:`, err);
+    }
+  }
+
+  /**
+   * Toggle kunci objek gambar individual berdasarkan ID
+   */
+  toggleDrawingLock(id: string): void {
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return;
+
+    try {
+      const all = activeChart.drawings.all?.() || [];
+      const target = all.find((d: any) => d.id === id);
+      const isLocked = target ? target.locked === true : false;
+      activeChart.drawings.lock?.(id, !isLocked);
+      this.handleDrawingMutated();
+    } catch (err) {
+      console.warn(`Gagal toggle lock drawing ${id}:`, err);
+    }
+  }
+
+  /**
+   * Hapus objek gambar individual berdasarkan ID
+   */
+  deleteDrawing(id: string): void {
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return;
+
+    try {
+      if (typeof activeChart.drawings.removeMany === 'function') {
+        activeChart.drawings.removeMany([id]);
+      } else if (typeof activeChart.drawings.remove === 'function') {
+        activeChart.drawings.remove(id);
+      }
+      if (this.selectedDrawingId === id) {
+        this.selectedDrawingId = null;
+      }
+      this.handleDrawingMutated();
+    } catch (err) {
+      console.warn(`Gagal menghapus drawing ${id}:`, err);
+    }
+  }
+
+  /**
+   * Aksi Massal: Sembunyikan atau tampilkan seluruh gambar
+   */
+  bulkHideDrawings(hidden: boolean): void {
+    this.setHide(hidden);
+  }
+
+  /**
+   * Aksi Massal: Kunci atau buka kunci seluruh gambar
+   */
+  bulkLockDrawings(locked: boolean): void {
+    this.setLock(locked);
+  }
+
+  /**
+   * Aksi Massal: Hapus seluruh gambar
+   */
+  async bulkDeleteDrawings(): Promise<void> {
+    await this.clearAll();
   }
 
   /**

@@ -243,6 +243,8 @@ export interface AppSettings {
   syncConfig?: MultiChartSyncConfig;
   autoSaveWorkspace?: boolean;
   autoLoadLastWorkspace?: boolean;
+  clipboardWatcherEnabled?: boolean;
+  clipboardAutoOpen?: boolean;
 }
 
 

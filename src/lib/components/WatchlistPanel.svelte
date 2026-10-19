@@ -24,7 +24,16 @@
     SlidersHorizontal,
     Globe,
     Check,
-    Loader2
+    Loader2,
+    Lock,
+    Unlock,
+    Settings,
+    Code,
+    ChevronDown,
+    ChevronUp,
+    Square,
+    Type,
+    Minus
   } from '@lucide/svelte';
   import { loadWatchlist, saveWatchlist } from '../services/persistence';
   import { marketFeed } from '../services/market';
@@ -41,11 +50,22 @@
     activeSymbol: string;
     activeProviderId?: string;
     watchlistSymbols?: string[];
-    activeIndicators?: { id: string; title: string; visible: boolean }[];
+    activeIndicators?: { id: string; title: string; visible: boolean; source?: string; inputs?: any }[];
+    activeDrawings?: any[];
+    selectedDrawingId?: string | null;
     onSelectSymbol: (symbol: string, providerId?: string) => void;
     onToggleCollapse: () => void;
     onToggleIndicatorVisibility?: (id: string) => void;
     onRemoveIndicator?: (id: string) => void;
+    onConfigureIndicator?: (id: string) => void;
+    onOpenIndicatorInPine?: (id: string, source?: string) => void;
+    onToggleDrawingVisibility?: (id: string) => void;
+    onToggleDrawingLock?: (id: string) => void;
+    onRemoveDrawing?: (id: string) => void;
+    onSelectDrawing?: (id: string | null) => void;
+    onBulkHideDrawings?: (hidden: boolean) => void;
+    onBulkLockDrawings?: (locked: boolean) => void;
+    onBulkDeleteDrawings?: () => void;
     onWatchlistChange?: (symbols: string[]) => void;
     onRequestCreateAlert?: () => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
@@ -60,10 +80,21 @@
     activeProviderId = 'binance',
     watchlistSymbols: propSymbols,
     activeIndicators = [],
+    activeDrawings = [],
+    selectedDrawingId = null,
     onSelectSymbol,
     onToggleCollapse,
     onToggleIndicatorVisibility,
     onRemoveIndicator,
+    onConfigureIndicator,
+    onOpenIndicatorInPine,
+    onToggleDrawingVisibility,
+    onToggleDrawingLock,
+    onRemoveDrawing,
+    onSelectDrawing,
+    onBulkHideDrawings,
+    onBulkLockDrawings,
+    onBulkDeleteDrawings,
     onWatchlistChange,
     onRequestCreateAlert,
     onRequestEditAlert,
@@ -78,6 +109,49 @@
     onTabChange?.(tab);
   }
   let isSymbolSearchOpen = $state(false);
+
+  // State Collapsible Groups di Tab Objects
+  let isIndicatorsGroupOpen = $state(true);
+  let isDrawingsGroupOpen = $state(true);
+
+  function getDrawingMeta(drawing: any) {
+    const type = drawing.type || 'drawing';
+    const anchors = Array.isArray(drawing.anchors) ? drawing.anchors : [];
+    let priceStr = '';
+    if (anchors.length > 0 && typeof anchors[0]?.price === 'number') {
+      priceStr = `@ ${anchors[0].price.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
+    }
+
+    switch (type) {
+      case 'trendline':
+        return { title: 'Garis Tren (Trendline)', icon: TrendingUp, subtitle: priceStr };
+      case 'hline':
+        return { title: 'Garis Horisontal (H-Line)', icon: MoveHorizontal, subtitle: priceStr };
+      case 'hray':
+        return { title: 'Sinar Horisontal (H-Ray)', icon: ArrowUpRight, subtitle: priceStr };
+      case 'vline':
+        return { title: 'Garis Vertikal', icon: Minus, subtitle: 'Time axis' };
+      case 'fibonacci':
+        return { title: 'Fibonacci Retracement', icon: SlidersHorizontal, subtitle: priceStr };
+      case 'rectangle':
+        return { title: 'Kotak (Rectangle)', icon: Square, subtitle: priceStr };
+      case 'position':
+        return { title: 'Posisi Long/Short', icon: TrendingUp, subtitle: priceStr };
+      case 'text':
+      case 'note':
+      case 'callout':
+        return {
+          title: drawing.text?.content ? `Teks: "${drawing.text.content.slice(0, 16)}"` : 'Anotasi Teks',
+          icon: Type,
+          subtitle: priceStr
+        };
+      case 'pricelabel':
+      case 'pricenote':
+        return { title: 'Label Harga', icon: MoveHorizontal, subtitle: priceStr };
+      default:
+        return { title: drawing.name || drawing.type || 'Objek Gambar', icon: Layers, subtitle: priceStr };
+    }
+  }
 
   // Watchlist state & Preset categories
   let selectedPresetCategory = $state<'binance' | 'indodax'>('binance');
@@ -911,50 +985,223 @@
         {/if}
       </div>
 
-    <!-- TAB 3: OBJECT TREE & INDICATOR LAYERS -->
+    <!-- TAB 3: UNIFIED OBJECT TREE & INDICATOR LAYERS -->
     {:else if activeTab === 'objects'}
       <div class="sub-toolbar">
-        <span class="sub-title">Layer Objek & Indikator</span>
-        <span class="layer-count mono-nums">{activeIndicators.length} Aktif</span>
+        <span class="sub-title">Unified Object Tree</span>
+        <span class="layer-count mono-nums">{activeIndicators.length + activeDrawings.length} Total</span>
       </div>
 
       <div class="items-list objects-list">
-        {#each activeIndicators as ind (ind.id)}
-          <div class="layer-item">
-            <div class="layer-info">
-              <span class="layer-icon"><Layers size={13} /></span>
-              <span class="layer-name">{ind.title}</span>
-            </div>
-
-            <div class="layer-actions">
-              <button
-                class="icon-action-btn {ind.visible ? 'visible' : 'hidden'}"
-                title={ind.visible ? 'Sembunyikan' : 'Tampilkan'}
-                onclick={() => onToggleIndicatorVisibility?.(ind.id)}
-              >
-                {#if ind.visible}
-                  <Eye size={13} />
+        <!-- 1. GRUP INDIKATOR AKTIF -->
+        <div class="tree-group">
+          <div
+            class="tree-group-header"
+            role="button"
+            tabindex="0"
+            onclick={() => (isIndicatorsGroupOpen = !isIndicatorsGroupOpen)}
+            onkeydown={(e) => e.key === 'Enter' && (isIndicatorsGroupOpen = !isIndicatorsGroupOpen)}
+          >
+            <div class="tree-group-title">
+              <span class="chevron-icon">
+                {#if isIndicatorsGroupOpen}
+                  <ChevronDown size={13} />
                 {:else}
-                  <EyeOff size={13} />
+                  <ChevronRight size={13} />
                 {/if}
-              </button>
+              </span>
+              <span>Indikator</span>
+              <span class="group-count mono-nums">{activeIndicators.length}</span>
+            </div>
+          </div>
 
+          {#if isIndicatorsGroupOpen}
+            <div class="tree-group-content">
+              {#each activeIndicators as ind (ind.id)}
+                <div class="layer-item">
+                  <div class="layer-info">
+                    <span class="layer-icon"><Layers size={13} /></span>
+                    <span class="layer-name" title={ind.title}>{ind.title}</span>
+                  </div>
+
+                  <div class="layer-actions">
+                    <button
+                      class="icon-action-btn"
+                      title="Pengaturan Parameter Indikator"
+                      onclick={() => onConfigureIndicator?.(ind.id)}
+                    >
+                      <Settings size={12} />
+                    </button>
+
+                    {#if ind.source || ind.id.includes('pine')}
+                      <button
+                        class="icon-action-btn pine-btn"
+                        title="Buka Skrip di Pine IDE"
+                        onclick={() => onOpenIndicatorInPine?.(ind.id, ind.source)}
+                      >
+                        <Code size={12} />
+                      </button>
+                    {/if}
+
+                    <button
+                      class="icon-action-btn {ind.visible ? 'visible' : 'hidden'}"
+                      title={ind.visible ? 'Sembunyikan' : 'Tampilkan'}
+                      onclick={() => onToggleIndicatorVisibility?.(ind.id)}
+                    >
+                      {#if ind.visible}
+                        <Eye size={12} />
+                      {:else}
+                        <EyeOff size={12} />
+                      {/if}
+                    </button>
+
+                    <button
+                      class="icon-action-btn delete"
+                      title="Hapus Indikator"
+                      onclick={() => onRemoveIndicator?.(ind.id)}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              {/each}
+
+              {#if activeIndicators.length === 0}
+                <div class="empty-subgroup">
+                  <span>Tidak ada indikator aktif</span>
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+
+        <!-- 2. GRUP OBJEK GAMBAR (DRAWINGS) -->
+        <div class="tree-group">
+          <div class="tree-group-header">
+            <div
+              class="tree-group-title clickable"
+              role="button"
+              tabindex="0"
+              onclick={() => (isDrawingsGroupOpen = !isDrawingsGroupOpen)}
+              onkeydown={(e) => e.key === 'Enter' && (isDrawingsGroupOpen = !isDrawingsGroupOpen)}
+            >
+              <span class="chevron-icon">
+                {#if isDrawingsGroupOpen}
+                  <ChevronDown size={13} />
+                {:else}
+                  <ChevronRight size={13} />
+                {/if}
+              </span>
+              <span>Objek Gambar</span>
+              <span class="group-count mono-nums">{activeDrawings.length}</span>
+            </div>
+
+            <!-- Tombol Aksi Massal Objek Gambar -->
+            <div class="group-bulk-actions">
               <button
-                class="icon-action-btn delete"
-                title="Hapus Indikator"
-                onclick={() => onRemoveIndicator?.(ind.id)}
+                class="bulk-action-btn"
+                title="Sembunyikan / Tampilkan Semua Gambar"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  onBulkHideDrawings?.(activeDrawings.some((d) => d.visible !== false));
+                }}
               >
-                <Trash2 size={13} />
+                <Eye size={11} />
+              </button>
+              <button
+                class="bulk-action-btn"
+                title="Kunci / Buka Semua Gambar"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  onBulkLockDrawings?.(activeDrawings.some((d) => !d.locked));
+                }}
+              >
+                <Lock size={11} />
+              </button>
+              <button
+                class="bulk-action-btn delete"
+                title="Hapus Semua Gambar"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  onBulkDeleteDrawings?.();
+                }}
+              >
+                <Trash2 size={11} />
               </button>
             </div>
           </div>
-        {/each}
 
-        {#if activeIndicators.length === 0}
-          <div class="empty-state">
-            <span>Tidak ada indikator kustom aktif di chart.</span>
-          </div>
-        {/if}
+          {#if isDrawingsGroupOpen}
+            <div class="tree-group-content">
+              {#each activeDrawings as drawing (drawing.id)}
+                {@const meta = getDrawingMeta(drawing)}
+                {@const isSelected = selectedDrawingId === drawing.id}
+                {@const isVisible = drawing.visible !== false}
+                {@const isLocked = drawing.locked === true}
+                {@const IconComp = meta.icon}
+                <div
+                  class="layer-item drawing-item {isSelected ? 'selected' : ''}"
+                  role="button"
+                  tabindex="0"
+                  onclick={() => onSelectDrawing?.(drawing.id)}
+                  onkeydown={(e) => e.key === 'Enter' && onSelectDrawing?.(drawing.id)}
+                >
+                  <div class="layer-info">
+                    <span class="layer-icon drawing-icon">
+                      <IconComp size={13} />
+                    </span>
+                    <div class="drawing-labels">
+                      <span class="layer-name">{meta.title}</span>
+                      {#if meta.subtitle}
+                        <span class="layer-sub mono-nums">{meta.subtitle}</span>
+                      {/if}
+                    </div>
+                  </div>
+
+                  <div class="layer-actions" role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+                    <button
+                      class="icon-action-btn {isVisible ? 'visible' : 'hidden'}"
+                      title={isVisible ? 'Sembunyikan Objek' : 'Tampilkan Objek'}
+                      onclick={() => onToggleDrawingVisibility?.(drawing.id)}
+                    >
+                      {#if isVisible}
+                        <Eye size={12} />
+                      {:else}
+                        <EyeOff size={12} />
+                      {/if}
+                    </button>
+
+                    <button
+                      class="icon-action-btn {isLocked ? 'locked' : ''}"
+                      title={isLocked ? 'Buka Kunci Objek' : 'Kunci Objek'}
+                      onclick={() => onToggleDrawingLock?.(drawing.id)}
+                    >
+                      {#if isLocked}
+                        <Lock size={12} />
+                      {:else}
+                        <Unlock size={12} />
+                      {/if}
+                    </button>
+
+                    <button
+                      class="icon-action-btn delete"
+                      title="Hapus Objek Gambar"
+                      onclick={() => onRemoveDrawing?.(drawing.id)}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              {/each}
+
+              {#if activeDrawings.length === 0}
+                <div class="empty-subgroup">
+                  <span>Belum ada coretan gambar pada pair ini</span>
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
       </div>
     {/if}
   </aside>
@@ -1890,42 +2137,166 @@
   }
 
   /* Layer Objects */
+  /* Unified Object Tree */
   .objects-list {
     padding: 6px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
+    overflow-y: auto;
+  }
+
+  .tree-group {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .tree-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    background-color: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid var(--border-hairline);
+    user-select: none;
+  }
+
+  .tree-group-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .tree-group-title.clickable {
+    cursor: pointer;
+  }
+
+  .chevron-icon {
+    display: flex;
+    align-items: center;
+    color: var(--text-dim);
+  }
+
+  .group-count {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--text-dim);
+  }
+
+  .group-bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .bulk-action-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    padding: 2px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+  }
+
+  .bulk-action-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .bulk-action-btn.delete:hover {
+    color: var(--bear-color);
+  }
+
+  .tree-group-content {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px;
   }
 
   .layer-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 5px 8px;
+    padding: 4px 6px;
     background-color: var(--bg-base);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
+    transition: all 0.12s ease;
+  }
+
+  .layer-item.drawing-item {
+    cursor: pointer;
+  }
+
+  .layer-item.drawing-item:hover {
+    background-color: var(--bg-hover);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .layer-item.drawing-item.selected {
+    background-color: rgba(0, 240, 144, 0.08);
+    border-color: rgba(0, 240, 144, 0.4);
   }
 
   .layer-info {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+    flex: 1;
   }
 
   .layer-icon {
+    display: flex;
+    align-items: center;
     color: var(--brand-primary);
+    flex-shrink: 0;
+  }
+
+  .drawing-icon {
+    color: #60a5fa;
+  }
+
+  .drawing-labels {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
   }
 
   .layer-name {
     font-size: 11px;
     color: var(--text-main);
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .layer-sub {
+    font-size: 9px;
+    color: var(--text-dim);
+    line-height: 1;
   }
 
   .layer-actions {
     display: flex;
-    gap: 4px;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
   }
 
   .icon-action-btn {
@@ -1935,6 +2306,10 @@
     padding: 3px;
     border-radius: var(--radius-xs);
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
   }
 
   .icon-action-btn:hover {
@@ -1942,8 +2317,25 @@
     background-color: var(--bg-hover);
   }
 
+  .icon-action-btn.pine-btn:hover {
+    color: #a855f7;
+    background-color: rgba(168, 85, 247, 0.15);
+  }
+
+  .icon-action-btn.locked {
+    color: #eab308;
+  }
+
   .icon-action-btn.delete:hover {
     color: var(--bear-color);
+  }
+
+  .empty-subgroup {
+    padding: 12px 8px;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-dim);
+    font-style: italic;
   }
 
   .empty-state {

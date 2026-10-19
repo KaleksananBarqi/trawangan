@@ -96,4 +96,18 @@ _Avoid_: Raw symbol watchlist, Single exchange watchlist
 Mekanisme polling harga berkala pada daftar pantau yang secara otomatis mengelompokkan instrumen per bursa asal dan menyalurkannya ke adapter yang tepat, mencegah kegagalan polling palsu (*Network Error/Stalled Feed*).
 _Avoid_: Uniform provider polling, Misrouted feed request
 
+**Unified Object Tree**:
+Panel hierarki terpadu pada bilah dock kanan terminal trawangan yang memvisualisasikan layer indikator aktif dan seluruh objek coretan gambar teknikal dengan kontrol visibilitas individual, penguncian, penyorotan dua arah kanvas, serta konfigurasi parameter.
+_Avoid_: Split indicator list, Floating drawing manager, Disconnected layers
 
+**Chart Deep Link Bridge**:
+Subsistem penangkap tautan platform charting eksternal (TradingView, Binance, Bybit) berbasis skema URI native `trawangan://` dan skrip browser pendamping (*companion script*) yang mengekstraksi bursa serta simbol untuk diarahkan langsung ke chart trawangan.
+_Avoid_: External link scraper, Browser tab sniffer, Manual symbol re-entry
+
+**Smart Clipboard Watcher**:
+Modul pengawas papan klip lokal pada trawangan yang secara aman dan pasif mendeteksi penyalinan URL platform charting kripto serta menampilkan notifikasi toast konfirmasi cepat untuk membuka simbol terkait dalam 1 klik.
+_Avoid_: Aggressive clipboard hijacker, Silent auto-navigating watcher
+
+**Multi-Provider Fallback Routing**:
+Mekanisme resolusi data feed yang memprioritaskan bursa sumber dari tautan eksternal (misal Binance), dan secara cerdas mengalihkan ke bursa cadangan terbaik (Bitunix, Indodax, Bybit) jika bursa asal tidak menyediakan instrumen tersebut.
+_Avoid_: Hard failing feed, Blank chart error

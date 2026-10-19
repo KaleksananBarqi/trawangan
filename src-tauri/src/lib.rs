@@ -5,11 +5,23 @@ pub mod commands;
 use db::{init_db, DbState};
 use market::MarketService;
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(main_win) = app.get_webview_window("main") {
+                let _ = main_win.set_focus();
+                let _ = main_win.unminimize();
+            }
+            for arg in argv {
+                if arg.starts_with("trawangan://") || arg.contains("tradingview.com") || arg.contains("binance.com") {
+                    let _ = app.emit("deep-link-received", arg);
+                }
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {

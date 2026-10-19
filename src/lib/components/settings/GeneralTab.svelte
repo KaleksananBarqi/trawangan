@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Volume2, VolumeX, Bell, BellOff, Palette } from '@lucide/svelte';
+  import { Volume2, VolumeX, Bell, BellOff, Palette, Clipboard, ClipboardCheck } from '@lucide/svelte';
   import { THEME_PRESETS } from '../../constants/themes';
   import { sendTestNotification } from '../../services/systemNotificationService';
   import type { AppSettings } from '../../types/market';
@@ -121,6 +121,41 @@
       <span>{THEME_PRESETS[settings.themePreset || 'signature']?.name || 'trawangan (Signature)'}</span>
     </button>
   </div>
+
+  <!-- Smart Clipboard Link Sentry -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Smart Clipboard Link Sentry</span>
+      <span class="setting-desc">Deteksi otomatis saat menyalin tautan TradingView/bursa dari browser</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.clipboardWatcherEnabled !== false ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ clipboardWatcherEnabled: settings.clipboardWatcherEnabled === false })}
+    >
+      {#if settings.clipboardWatcherEnabled !== false}
+        <ClipboardCheck size={14} /> Aktif
+      {:else}
+        <Clipboard size={14} /> Nonaktif
+      {/if}
+    </button>
+  </div>
+
+  {#if settings.clipboardWatcherEnabled !== false}
+    <div class="setting-row sub-row">
+      <div class="setting-info">
+        <span class="setting-label">Buka Tautan Langsung Tanpa Konfirmasi</span>
+        <span class="setting-desc">Langsung arahkan grafik saat link tersalin tanpa memunculkan toast konfirmasi</span>
+      </div>
+      <button
+        type="button"
+        class="toggle-btn {settings.clipboardAutoOpen ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ clipboardAutoOpen: !settings.clipboardAutoOpen })}
+      >
+        {settings.clipboardAutoOpen ? 'Otomatis' : 'Tanya Dulu (Toast)'}
+      </button>
+    </div>
+  {/if}
 </div>
 
 <style>
