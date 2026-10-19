@@ -584,6 +584,14 @@ export class ChartSessionController {
 
     this.notify();
 
+    // Selaraskan warna volume saat data bar pertama kali tiba dan diaktifkan secara asinkron
+    setTimeout(() => {
+      this.syncNativeVolumeColors();
+    }, 200);
+    setTimeout(() => {
+      this.syncNativeVolumeColors();
+    }, 800);
+
     return () => {
       this.destroy();
     };
@@ -605,6 +613,12 @@ export class ChartSessionController {
           this.enforceCurrentPriceLine(cell);
           this.syncNativeVolumeColors(cell);
         });
+        chart.on('indicator:added', () => {
+          this.syncNativeVolumeColors(cell);
+        });
+        chart.on('history:complete', () => {
+          this.syncNativeVolumeColors(cell);
+        });
         chart.on('indicator:removed', (ev: any) => {
           this.handleIndicatorRemoved(ev?.id);
         });
@@ -623,12 +637,28 @@ export class ChartSessionController {
 
     for (const c of cells) {
       const chart = c?.chart || c?.inner;
-      if (chart && typeof chart.indicators === 'function') {
-        for (const ind of Array.from(chart.indicators() || []) as any[]) {
-          if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
-            if (typeof ind.setInputs === 'function') {
-              ind.setInputs({ upColor: effectiveUp, downColor: effectiveDown });
+      if (chart) {
+        if (typeof chart.indicators === 'function') {
+          for (const ind of Array.from(chart.indicators() || []) as any[]) {
+            if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
+              if (typeof ind.setInputs === 'function') {
+                ind.setInputs({ upColor: effectiveUp, downColor: effectiveDown });
+              }
             }
+          }
+        }
+        const renderer = chart.renderer?.renderer || chart.renderer;
+        if (renderer) {
+          if (typeof renderer.setNativeData === 'function') {
+            renderer.setNativeData('volume', {
+              upColor: effectiveUp,
+              downColor: effectiveDown,
+              heightFrac: 0.15,
+            });
+          } else if (renderer.scene?.volumeLayer) {
+            renderer.scene.volumeLayer.upColor = effectiveUp;
+            renderer.scene.volumeLayer.downColor = effectiveDown;
+            renderer.scheduler?.invalidate?.(3);
           }
         }
       }
@@ -793,9 +823,11 @@ export class ChartSessionController {
       for (const cell of targetCells as any[]) {
         const chart = cell?.chart || cell?.inner;
         if (!chart || typeof chart.addIndicator !== 'function') continue;
+        const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
         const addOptions: any = {
           language: 'pine',
           title: cleanTitle,
+          ...(isOverlay ? { overlay: true, pane: 'price' } : {}),
         };
         if (savedInputs && Object.keys(savedInputs).length > 0) {
           addOptions.inputs = savedInputs;

@@ -312,11 +312,115 @@ describe('Ticket 1 & 2: Volume and Session VWAP Indicator Presets', () => {
     controller.syncNativeVolumeColors();
     assert.ok(volumeInputs.upColor, 'Harus memiliki upColor');
     assert.ok(volumeInputs.downColor, 'Harus memiliki downColor');
-
     // Ubah dengan custom candle color via setTheme
     controller.setTheme('signature', 12, { bullColor: '#00ff00', bearColor: '#ff0000' });
     assert.equal(volumeInputs.upColor, '#00ff00', 'upColor volume harus sinkron dengan custom bullColor');
     assert.equal(volumeInputs.downColor, '#ff0000', 'downColor volume harus sinkron dengan custom bearColor');
+  });
+
+  it('11. PineEngine: VWAP preset dieksekusi menghasilkan series numerik valid (non-null)', async () => {
+    const { PineEngine } = await import('@luxalgo/vela-pinets');
+    const vwapPreset = INDICATOR_PRESETS.find((p) => p.id === 'vwap')!;
+    assert.ok(vwapPreset);
+
+    const engine = new PineEngine();
+    const prepared = await engine.prepare(vwapPreset.sourceCode, 'test-vwap');
+    assert.equal(prepared.meta.overlay, true);
+
+    const baseTime = 1700000000;
+    const bars: any[] = [];
+    for (let i = 0; i < 20; i++) {
+      bars.push({
+        time: baseTime + i * 60,
+        open: 100 + i,
+        high: 105 + i,
+        low: 95 + i,
+        close: 102 + i,
+        volume: 1000 + i * 50,
+      });
+    }
+
+    const inputDefaults: Record<string, any> = {};
+    for (const inp of prepared.inputs ?? []) inputDefaults[inp.key] = inp.defval;
+
+    let modelResult: any = null;
+    await new Promise<void>((resolve, reject) => {
+      engine.execute(
+        {
+          prepared,
+          market: { symbol: 'BTCUSDT', timeframe: '1m' },
+          bars,
+          getBars: () => bars,
+          fetchSeries: async () => [],
+          inputs: inputDefaults,
+          props: {},
+          visibleRange: { left: bars[0].time, right: bars[bars.length - 1].time },
+          mode: 'static',
+          historyState: 'complete',
+        },
+        {
+          onModel: (model) => {
+            modelResult = model;
+            resolve();
+          },
+          onError: reject,
+        }
+      );
+    });
+
+    assert.ok(modelResult, 'Model harus terkirim dari execute');
+    assert.equal(modelResult.overlay, true);
+    assert.equal(modelResult.paneHint, 'price');
+    const vwapSeries = modelResult.series.find((s: any) => s.title === 'VWAP');
+    assert.ok(vwapSeries, 'Series VWAP harus ditemukan');
+    assert.equal(vwapSeries.points.length, 20);
+    const validNumeric = vwapSeries.points.filter((p: any) => typeof p.value === 'number' && !Number.isNaN(p.value));
+    assert.equal(validNumeric.length, 20, 'Seluruh 20 bar wajib menghasilkan nilai VWAP numerik valid (bukan null)');
+  });
+
+  it('12. WebGL Renderer: syncNativeVolumeColors memutasi setNativeData layer volume', async () => {
+    const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+    const controller = new ChartSessionController();
+
+    let nativeVolumeData: any = null;
+    const mockRenderer = {
+      setNativeData: (type: string, data: any) => {
+        if (type === 'volume') nativeVolumeData = data;
+      },
+    };
+
+    const mockCell = {
+      id: 'cell_0',
+      chart: {
+        indicators: () => [],
+        renderer: mockRenderer,
+      },
+      inner: {
+        setTheme: () => {},
+      },
+    };
+
+    const mockWs = {
+      cells: () => [mockCell],
+      cell: () => mockCell,
+      active: mockCell,
+      on: () => {},
+    };
+
+    controller.attach({
+      nodeType: 1,
+      tagName: 'DIV',
+      clientWidth: 1000,
+      clientHeight: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    } as any, {
+      workspaceFactory: () => mockWs,
+    } as any);
+
+    controller.setTheme('signature', 12, { bullColor: '#123456', bearColor: '#654321' });
+    assert.ok(nativeVolumeData, 'Renderer setNativeData volume harus dipanggil');
+    assert.equal(nativeVolumeData.upColor, '#123456');
+    assert.equal(nativeVolumeData.downColor, '#654321');
   });
 });
 

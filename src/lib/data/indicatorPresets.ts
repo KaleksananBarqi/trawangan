@@ -131,11 +131,11 @@ fill(bodyMiddle, downTrend, color.rgb(246, 70, 93, 90), fillgaps=false)
     description: 'Volume-weighted average price resmi TradingView v6 dengan multi-anchor (Session, Week, Month, Year), 3 set pita deviasi standar (+1σ, +2σ, +3σ), serta mode Standard Deviation dan Percentage.',
     overlay: true,
     sourceCode: `//@version=6
-indicator(title="Volume-weighted average price", shorttitle="VWAP", overlay=true, timeframe="", timeframe_gaps=true)
+indicator(title="Volume-weighted average price", shorttitle="VWAP", overlay=true)
 
 hideonDWM = input(false, title="Hide VWAP on 1D or Above", group="VWAP Settings", display=display.none)
 anchor = input.string(defval="Session", title="Anchor Period", options=["Session", "Week", "Month", "Quarter", "Year", "Decade", "Century", "Earnings", "Dividends", "Splits"], group="VWAP Settings")
-src = input(title="Source", defval=hlc3, group="VWAP Settings", display=display.none)
+src = hlc3
 offset = input.int(0, title="Offset", group="VWAP Settings", display=display.none)
 
 BANDS_GROUP = "Bands Settings"
