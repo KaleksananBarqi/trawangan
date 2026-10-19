@@ -1,4 +1,7 @@
-// Katalog Preset Indikator Pine Script v5 Resmi untuk Trawangan
+import { THEME_PRESETS, resolveEffectiveVolumeColors } from '../constants/themes';
+import type { ThemePresetId } from '../types/market';
+
+// Katalog Preset Indikator Pine Script v5 & v6 Resmi untuk Trawangan
 
 export interface IndicatorPreset {
   id: string;
@@ -7,6 +10,42 @@ export interface IndicatorPreset {
   description: string;
   overlay: boolean;
   sourceCode: string;
+}
+
+/**
+ * Memeriksa apakah judul indikator merepresentasikan indikator Volume resmi
+ */
+export function isVolumeIndicator(title?: string): boolean {
+  if (!title) return false;
+  const t = title.trim().toLowerCase();
+  return t === 'volume' || t === 'volume (with 20 sma)' || t === 'vol';
+}
+
+/**
+ * Menghasilkan kode Pine Script untuk indikator Volume yang diselaraskan
+ * secara dinamis dengan warna lilin dan aksen brand dari tema aktif.
+ */
+export function buildVolumePresetSource(
+  themePresetId: ThemePresetId = 'signature',
+  customColors?: { bullColor?: string; bearColor?: string }
+): string {
+  const { upColor, downColor, maColor } = resolveEffectiveVolumeColors(themePresetId, customColors);
+
+  return `//@version=5
+indicator("Volume", shorttitle="Vol", overlay=false, format=format.volume)
+
+showMA = input.bool(true, "Show Volume MA", group="Volume Moving Average")
+maLength = input.int(20, "MA Length", minval=1, group="Volume Moving Average")
+upColor = input.color(${upColor}, "Up Color", group="Color Settings")
+downColor = input.color(${downColor}, "Down Color", group="Color Settings")
+maColor = input.color(${maColor}, "MA Color", group="Volume Moving Average")
+
+volMA = ta.sma(volume, maLength)
+
+barColor = close >= open ? upColor : downColor
+plot(volume, "Volume", style=plot.style_columns, color=barColor)
+plot(showMA ? volMA : na, "Volume MA", color=maColor, linewidth=2)
+`;
 }
 
 export const INDICATOR_PRESETS: IndicatorPreset[] = [
@@ -228,12 +267,15 @@ indicator("Volume", shorttitle="Vol", overlay=false, format=format.volume)
 
 showMA = input.bool(true, "Show Volume MA", group="Volume Moving Average")
 maLength = input.int(20, "MA Length", minval=1, group="Volume Moving Average")
+upColor = input.color(#F7F7F7, "Up Color", group="Color Settings")
+downColor = input.color(#FF69B4, "Down Color", group="Color Settings")
+maColor = input.color(#FF69B4, "MA Color", group="Volume Moving Average")
 
 volMA = ta.sma(volume, maLength)
 
-barColor = close >= open ? #0ecb81 : #f6465d
+barColor = close >= open ? upColor : downColor
 plot(volume, "Volume", style=plot.style_columns, color=barColor)
-plot(showMA ? volMA : na, "Volume MA", color=#ff9800, linewidth=2)
+plot(showMA ? volMA : na, "Volume MA", color=maColor, linewidth=2)
 `,
   },
 ];

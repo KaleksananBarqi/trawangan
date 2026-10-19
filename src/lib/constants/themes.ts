@@ -251,3 +251,25 @@ export const MIN_FONT_SIZE = 9;
 export const MAX_FONT_SIZE = 20;
 export const DEFAULT_FONT_SIZE = 12;
 
+export interface EffectiveVolumeColors {
+  upColor: string;
+  downColor: string;
+  maColor: string;
+}
+
+/**
+ * Menghitung warna efektif volume (bull, bear, dan MA) berdasarkan tema aktif
+ * dengan memprioritaskan kustomisasi lilin pengguna jika tersedia.
+ */
+export function resolveEffectiveVolumeColors(
+  themePresetId: ThemePresetId = 'signature',
+  customColors?: { bullColor?: string; bearColor?: string }
+): EffectiveVolumeColors {
+  const cfg = THEME_PRESETS[themePresetId] || THEME_PRESETS.signature;
+  return {
+    upColor: customColors?.bullColor || cfg.chart.upColor,
+    downColor: customColors?.bearColor || cfg.chart.downColor,
+    maColor: cfg.tokens.brandPrimary || cfg.tokens.brandCyan || '#ff9800',
+  };
+}
+

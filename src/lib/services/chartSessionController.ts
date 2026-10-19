@@ -20,7 +20,8 @@ import type {
   ActiveIndicatorInfo,
   SavedWorkspace
 } from '../types/market';
-import { THEME_PRESETS } from '../constants/themes';
+import { THEME_PRESETS, resolveEffectiveVolumeColors } from '../constants/themes';
+import { isVolumeIndicator } from '../data/indicatorPresets';
 import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 import { applyLayoutTimeframePolicy } from '../constants/defaults';
 import {
@@ -611,13 +612,13 @@ export class ChartSessionController {
       try {
         chart.on('market:changed', () => {
           this.enforceCurrentPriceLine(cell);
-          this.syncNativeVolumeColors(cell);
+          this.syncNativeVolumeColors(cell, false);
         });
         chart.on('indicator:added', () => {
-          this.syncNativeVolumeColors(cell);
+          this.syncNativeVolumeColors(cell, false);
         });
         chart.on('history:complete', () => {
-          this.syncNativeVolumeColors(cell);
+          this.syncNativeVolumeColors(cell, false);
         });
         chart.on('indicator:removed', (ev: any) => {
           this.handleIndicatorRemoved(ev?.id);
@@ -627,12 +628,13 @@ export class ChartSessionController {
   }
 
   /**
-   * Menyelaraskan input warna (upColor dan downColor) pada indikator native volume ke warna tema aktif
+   * Menyelaraskan input warna (upColor, downColor, maColor) pada indikator volume ke warna tema aktif
+   * @param cell Sel spesifik opsional untuk sinkronisasi lokal
+   * @param syncPineIndicators Apakah indikator Pine Script ikut disinkronkan (default: true saat pergantian tema)
    */
-  public syncNativeVolumeColors(cell?: any): void {
-    const cfg = THEME_PRESETS[this.themePreset] || THEME_PRESETS.signature;
-    const effectiveUp = this.customCandleColors?.bullColor || cfg.chart.upColor;
-    const effectiveDown = this.customCandleColors?.bearColor || cfg.chart.downColor;
+  public syncNativeVolumeColors(cell?: any, syncPineIndicators: boolean = true): void {
+    const { upColor: effectiveUp, downColor: effectiveDown, maColor: effectiveMA } =
+      resolveEffectiveVolumeColors(this.themePreset, this.customCandleColors || undefined);
     const cells = cell ? [cell] : this.getAllCells();
 
     for (const c of cells) {
@@ -640,9 +642,20 @@ export class ChartSessionController {
       if (chart) {
         if (typeof chart.indicators === 'function') {
           for (const ind of Array.from(chart.indicators() || []) as any[]) {
-            if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
+            const isNativeVol = ind?.nativeType === 'volume';
+            const isPineVol = isVolumeIndicator(ind?.title);
+
+            if (isNativeVol || (syncPineIndicators && isPineVol)) {
               if (typeof ind.setInputs === 'function') {
-                ind.setInputs({ upColor: effectiveUp, downColor: effectiveDown });
+                try {
+                  ind.setInputs({
+                    upColor: effectiveUp,
+                    downColor: effectiveDown,
+                    maColor: effectiveMA,
+                  });
+                } catch (err) {
+                  console.warn('[ChartSessionController] syncVolumeColors setInputs error:', err);
+                }
               }
             }
           }
@@ -660,6 +673,19 @@ export class ChartSessionController {
             renderer.scene.volumeLayer.downColor = effectiveDown;
             renderer.scheduler?.invalidate?.(3);
           }
+        }
+      }
+    }
+
+    // Selaraskan juga entri tersimpan di indicatorRegistry saat pergantian tema global
+    if (syncPineIndicators && this.indicatorRegistry) {
+      for (const item of this.indicatorRegistry.getActiveIndicators()) {
+        if (isVolumeIndicator(item.title)) {
+          this.indicatorRegistry.updateInputs(item.id, {
+            upColor: effectiveUp,
+            downColor: effectiveDown,
+            maColor: effectiveMA,
+          });
         }
       }
     }
@@ -817,6 +843,20 @@ export class ChartSessionController {
       }
 
       // 3. Tambahkan indikator ke cell target
+      const isVolumeScript = isVolumeIndicator(cleanTitle);
+      let effectiveInputs = savedInputs ? { ...savedInputs } : undefined;
+      if (isVolumeScript) {
+        const { upColor: effectiveUp, downColor: effectiveDown, maColor: effectiveMA } =
+          resolveEffectiveVolumeColors(this.themePreset, this.customCandleColors || undefined);
+
+        effectiveInputs = {
+          upColor: effectiveUp,
+          downColor: effectiveDown,
+          maColor: effectiveMA,
+          ...(effectiveInputs || {}),
+        };
+      }
+
       const createdHandles: any[] = [];
       let firstHandle: any = null;
 
@@ -829,8 +869,8 @@ export class ChartSessionController {
           title: cleanTitle,
           ...(isOverlay ? { overlay: true, pane: 'price' } : {}),
         };
-        if (savedInputs && Object.keys(savedInputs).length > 0) {
-          addOptions.inputs = savedInputs;
+        if (effectiveInputs && Object.keys(effectiveInputs).length > 0) {
+          addOptions.inputs = effectiveInputs;
         }
         if (savedProps && Object.keys(savedProps).length > 0) {
           addOptions.props = savedProps;
@@ -838,8 +878,8 @@ export class ChartSessionController {
 
         const handle = chart.addIndicator(source, addOptions);
         if (handle) {
-          if (savedInputs && typeof handle.setInputs === 'function') {
-            try { handle.setInputs(savedInputs); } catch (_) {}
+          if (effectiveInputs && typeof handle.setInputs === 'function') {
+            try { handle.setInputs(effectiveInputs); } catch (_) {}
           }
           if (savedProps && typeof handle.setProps === 'function') {
             try { handle.setProps(savedProps); } catch (_) {}
@@ -857,16 +897,16 @@ export class ChartSessionController {
           title: cleanTitle,
           source,
           visible: firstHandle.visible ?? true,
-          inputs: savedInputs,
+          inputs: effectiveInputs,
           props: savedProps,
         });
 
-        if (savedInputs && Object.keys(savedInputs).length > 0) {
+        if (effectiveInputs && Object.keys(effectiveInputs).length > 0) {
           setTimeout(() => {
             for (const h of createdHandles) {
               try {
                 if (typeof h?.setInputs === 'function') {
-                  h.setInputs(savedInputs);
+                  h.setInputs(effectiveInputs);
                 }
               } catch (_) {}
             }

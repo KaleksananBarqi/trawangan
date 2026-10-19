@@ -422,6 +422,193 @@ describe('Ticket 1 & 2: Volume and Session VWAP Indicator Presets', () => {
     assert.equal(nativeVolumeData.upColor, '#123456');
     assert.equal(nativeVolumeData.downColor, '#654321');
   });
+
+  it('13. Pine Volume Preset: mendukung input.color upColor, downColor, dan maColor', () => {
+    const volPreset = INDICATOR_PRESETS.find((p) => p.id === 'volume');
+    assert.ok(volPreset);
+    assert.ok(volPreset.sourceCode.includes('input.color'), 'Preset volume wajib memuat input.color');
+    assert.ok(volPreset.sourceCode.includes('upColor'), 'Wajib memuat input upColor');
+    assert.ok(volPreset.sourceCode.includes('downColor'), 'Wajib memuat input downColor');
+    assert.ok(volPreset.sourceCode.includes('maColor'), 'Wajib memuat input maColor');
+  });
+
+  it('14. ChartSessionController: syncNativeVolumeColors menyelaraskan indikator Pine Script Volume', async () => {
+    const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+    const controller = new ChartSessionController();
+
+    let pineInputsUpdated: any = null;
+    const mockPineHandle = {
+      id: 'vol_pine_handle',
+      title: 'Volume',
+      source: '//@version=5\nindicator("Volume", shorttitle="Vol", overlay=false, format=format.volume)\n',
+      visible: true,
+      setInputs: (inputs: any) => {
+        pineInputsUpdated = inputs;
+      },
+    };
+
+    const mockCell = {
+      id: 'cell_0',
+      chart: {
+        indicators: () => [mockPineHandle],
+      },
+      inner: {
+        setTheme: () => {},
+      },
+    };
+
+    const mockWs = {
+      cells: () => [mockCell],
+      cell: () => mockCell,
+      active: mockCell,
+      on: () => {},
+    };
+
+    controller.attach({
+      nodeType: 1,
+      tagName: 'DIV',
+      clientWidth: 1000,
+      clientHeight: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    } as any, {
+      workspaceFactory: () => mockWs,
+    } as any);
+
+    // Ganti ke tema Signature (Cyber-Monochrome: bull #F7F7F7, bear #FF69B4, brandPrimary #FF69B4)
+    controller.setTheme('signature', 12);
+    assert.ok(pineInputsUpdated, 'setInputs pada Pine indicator Volume harus dipanggil');
+    assert.equal(pineInputsUpdated.upColor, '#F7F7F7');
+    assert.equal(pineInputsUpdated.downColor, '#FF69B4');
+    assert.equal(pineInputsUpdated.maColor, '#FF69B4');
+
+    // Uji dengan Custom Candle Colors (bull: #00FF00, bear: #FF0000)
+    controller.setTheme('signature', 12, { bullColor: '#00FF00', bearColor: '#FF0000' });
+    assert.equal(pineInputsUpdated.upColor, '#00FF00');
+    assert.equal(pineInputsUpdated.downColor, '#FF0000');
+  });
+
+  it('15. ChartSessionController: addPineIndicator untuk Volume menyuntikkan input warna tema aktif', async () => {
+    const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+    const controller = new ChartSessionController();
+
+    let passedOptions: any = null;
+    const mockHandle = {
+      id: 'vol_add_handle',
+      title: 'Volume',
+      visible: true,
+      setInputs: () => {},
+    };
+
+    const mockCell = {
+      id: 'cell_0',
+      chart: {
+        indicators: () => [],
+        addIndicator: (src: string, opts: any) => {
+          passedOptions = opts;
+          return mockHandle;
+        },
+      },
+      inner: { setTheme: () => {} },
+    };
+
+    const mockWs = {
+      cells: () => [mockCell],
+      cell: () => mockCell,
+      active: mockCell,
+      on: () => {},
+    };
+
+    controller.attach({
+      nodeType: 1,
+      clientWidth: 1000,
+      clientHeight: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    } as any, {
+      workspaceFactory: () => mockWs,
+    } as any);
+
+    // Set tema Binance (bull: #0ECB81, bear: #F6465D, brandPrimary: #F0B90B)
+    controller.setTheme('binance', 12);
+
+    const volPreset = INDICATOR_PRESETS.find((p) => p.id === 'volume')!;
+    const ok = await controller.addPineIndicator(volPreset.sourceCode, 'Volume');
+    assert.equal(ok, true);
+    assert.ok(passedOptions, 'addIndicator options harus ada');
+    assert.ok(passedOptions.inputs, 'inputs harus disuntikkan');
+    assert.equal(passedOptions.inputs.upColor, '#0ECB81');
+    assert.equal(passedOptions.inputs.downColor, '#F6465D');
+    assert.equal(passedOptions.inputs.maColor, '#F0B90B');
+  });
+
+  it('16. buildVolumePresetSource: menghasilkan Pine Script dengan warna sesuai tema dan kustom lilin', async () => {
+    const { buildVolumePresetSource } = await import('../src/lib/data/indicatorPresets');
+    
+    // Signature
+    const sigCode = buildVolumePresetSource('signature');
+    assert.ok(sigCode.includes('input.color(#F7F7F7, "Up Color"'));
+    assert.ok(sigCode.includes('input.color(#FF69B4, "Down Color"'));
+    assert.ok(sigCode.includes('input.color(#FF69B4, "MA Color"'));
+
+    // Binance
+    const binanceCode = buildVolumePresetSource('binance');
+    assert.ok(binanceCode.includes('input.color(#0ECB81, "Up Color"'));
+    assert.ok(binanceCode.includes('input.color(#F6465D, "Down Color"'));
+    assert.ok(binanceCode.includes('input.color(#F0B90B, "MA Color"'));
+
+    // Custom Colors
+    const customCode = buildVolumePresetSource('signature', { bullColor: '#ABCDEF', bearColor: '#FEDCBA' });
+    assert.ok(customCode.includes('input.color(#ABCDEF, "Up Color"'));
+    assert.ok(customCode.includes('input.color(#FEDCBA, "Down Color"'));
+  });
+
+  it('17. ChartSessionController: syncNativeVolumeColors dengan syncPineIndicators=false mempertahankan kustomisasi pengguna', async () => {
+    const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+    const controller = new ChartSessionController();
+
+    let callCount = 0;
+    const mockPineHandle = {
+      id: 'vol_pine_handle',
+      title: 'Volume',
+      visible: true,
+      setInputs: () => {
+        callCount++;
+      },
+    };
+
+    const mockCell = {
+      id: 'cell_0',
+      chart: {
+        indicators: () => [mockPineHandle],
+      },
+      inner: {
+        setTheme: () => {},
+      },
+    };
+
+    const mockWs = {
+      cells: () => [mockCell],
+      cell: () => mockCell,
+      active: mockCell,
+      on: () => {},
+    };
+
+    controller.attach({
+      nodeType: 1,
+      clientWidth: 1000,
+      clientHeight: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    } as any, {
+      workspaceFactory: () => mockWs,
+    } as any);
+
+    // Initial count
+    const initialCalls = callCount;
+
+    // Saat market:changed / history:complete terjadi, syncPineIndicators adalah false
+    controller.syncNativeVolumeColors(mockCell, false);
+
+    assert.equal(callCount, initialCalls, 'Pine indicator setInputs tidak boleh dipanggil saat syncPineIndicators=false');
+  });
 });
 
 
