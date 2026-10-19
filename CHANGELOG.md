@@ -5,6 +5,32 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.19.0] - 2026-10-19
+
+### 🚀 Ditambahkan (Added)
+- **Arsitektur Dual-Track Volume & Native WebGL2 Overlay (ADR 0009, #76):**
+  - Menerapkan arsitektur volume jalur ganda (*Dual-Track Volume Architecture*): layer histogram volume bawaan engine WebGL2 Vela (`nativeType: 'volume'`) aktif secara default di bagian bawah kanvas harga utama untuk setiap sel grafik baru. Memberikan render 60 FPS bebas *latency* tanpa membebani Web Worker Pine Script.
+  - Menyediakan skrip resmi Pine Script v5 untuk Volume di katalog indikator, dilengkapi garis Moving Average (SMA 20) dan pewarnaan lilin *up/down* bagi pengguna yang membutuhkan kustomisasi formula atau sinyal *alert*.
+  - Menambahkan kontrol visibilitas volume (`showVolume`) terintegrasi pada **Settings Modal -> General/Chart** dan langsung di bilah dock **Unified Object Tree** (ikon mata).
+- **Session VWAP dengan Dual Standard Deviation Bands (ADR 0009, #76):**
+  - Menyediakan preset resmi **Session VWAP** Pine Script v5 (mengadopsi basis formula resmi TradingView v6) dengan atribut `overlay=true`.
+  - Kalkulasi kumulatif `ta.vwap` dengan *session reset* harian berbasis zona waktu bursa (*exchange timezone*).
+  - Dilengkapi pita deviasi standar ganda (±1σ dan ±2σ) serta arsiran transparan (*translucent fills*), dengan parameter pengganda deviasi dan visibilitas band yang dapat dikonfigurasi melalui dialog *Inputs*.
+- **Kategori Khusus 'Volume' pada Pustaka Indikator (ADR 0009):**
+  - Menambahkan kategori resmi baru **`Volume`** pada modal katalog indikator (`IndicatorModal.svelte`), mengelompokkan preset Volume dan Session VWAP agar mudah ditemukan.
+- **Sinkronisasi Multi-Chart & Persistensi Workspace:**
+  - Status visibilitas volume disimpan persisten di dalam skema `SavedWorkspace` dan snapshot sesi `ChartSessionController`.
+  - Sinkronisasi perubahan visibilitas volume otomatis menyebar ke seluruh sel grafik saat multi-chart sync aktif.
+- **Lisensi Proyek:**
+  - Menambahkan berkas lisensi resmi open-source MIT License ke repositori.
+
+### 🔄 Diubah (Changed)
+- **Sinkronisasi Warna Volume Otomatis Mengikuti Tema Aktif:**
+  - Menyelaraskan palet warna volume (baik Native WebGL2 histogram maupun Pine Script Volume study) secara otomatis dan *real-time* saat berganti tema terminal (Dark, Light, Retro Terminal, dll.), memastikan kontras lilin *bullish* dan *bearish* tetap optimal tanpa perlu reload halaman.
+
+### 🐛 Diperbaiki (Fixed)
+- Memperbaiki evaluasi eksekusi formula VWAP Pine Script dan penanganan sinkronisasi multi-chart layout.
+
 ## [0.18.1] - 2026-10-19
 
 ### 🐛 Diperbaiki (Fixed)
