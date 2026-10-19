@@ -338,7 +338,18 @@ export class PersistenceService implements IPersistenceService {
       } catch (_) {}
     }
   }
+
+  // ─── Layout Slot Direct Access ───
+
+  async loadLayoutSlot(id: string): Promise<string | null> {
+    return this.adapter.loadLayoutSlot(id);
+  }
+
+  async saveLayoutSlot(id: string, name: string, json: string): Promise<void> {
+    await this.adapter.saveLayoutSlot(id, name, json);
+  }
 }
+
 
 // Singleton Service Instance
 export const storage = new PersistenceService();
@@ -374,3 +385,7 @@ export const saveSettings = (cfg: Partial<AppSettings>) => storage.saveSettings(
 export const loadChartDefaultConfig = () => storage.loadChartDefaultConfig();
 export const saveChartDefaultConfig = (cfg: any) => storage.saveChartDefaultConfig(cfg);
 export const clearChartDefaultConfig = () => storage.clearChartDefaultConfig();
+
+export const loadLayoutSlot = (id: string) => storage.loadLayoutSlot(id);
+export const saveLayoutSlot = (id: string, name: string, json: string) => storage.saveLayoutSlot(id, name, json);
+

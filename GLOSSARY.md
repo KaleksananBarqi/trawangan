@@ -111,3 +111,12 @@ _Avoid_: Aggressive clipboard hijacker, Silent auto-navigating watcher
 **Multi-Provider Fallback Routing**:
 Mekanisme resolusi data feed yang memprioritaskan bursa sumber dari tautan eksternal (misal Binance), dan secara cerdas mengalihkan ke bursa cadangan terbaik (Bitunix, Indodax, Bybit) jika bursa asal tidak menyediakan instrumen tersebut.
 _Avoid_: Hard failing feed, Blank chart error
+
+**Multi-Watchlist Registry**:
+Mekanisme pengelolaan banyak daftar pantau independen dalam satu terminal, memungkinkan pengguna mengisolasi konteks analisis (seperti Portofolio Spot, Futures Scalp, Altcoin Ecosystem, dan Indodax IDR) via bilah popover selektor tanpa risiko data saling menimpa.
+_Avoid_: Single global watchlist, Overwriting preset lists
+
+**Watchlist Section Divider**:
+Baris penanda kategori struktural di dalam sebuah daftar pantau yang mengelompokkan instrumen sejenis, mendukung status lipat/bentang (*collapse/expand*), dan secara otomatis diabaikan oleh subsistem polling pasar agar tidak memicu permintaan ticker palsu.
+_Avoid_: Fake ticker row, Hardcoded section, Flat uncategorized list
+

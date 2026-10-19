@@ -73,5 +73,10 @@ export interface IPersistenceService {
   loadChartDefaultConfig(): Promise<any | null>;
   saveChartDefaultConfig(config: any): Promise<void>;
   clearChartDefaultConfig(): Promise<void>;
+
+  // Layout Slots
+  loadLayoutSlot(id: string): Promise<string | null>;
+  saveLayoutSlot(id: string, name: string, json: string): Promise<void>;
 }
+
 

@@ -25,8 +25,9 @@ export function resolveSymbolProvider(
   rawSymbol: string,
   defaultProvider = 'binance'
 ): { providerId: string; cleanSymbol: string } {
-  if (!rawSymbol) return { providerId: defaultProvider.toLowerCase(), cleanSymbol: '' };
+  if (!rawSymbol || rawSymbol.startsWith('#section:')) return { providerId: '', cleanSymbol: '' };
   const trimmed = rawSymbol.trim();
+  if (trimmed.startsWith('#section:')) return { providerId: '', cleanSymbol: '' };
   if (trimmed.includes(':')) {
     const [p, s] = trimmed.split(':');
     return {
@@ -34,6 +35,7 @@ export function resolveSymbolProvider(
       cleanSymbol: s.toUpperCase(),
     };
   }
+
   const upper = trimmed.toUpperCase();
   if (upper.endsWith('IDR')) {
     return { providerId: 'indodax', cleanSymbol: upper };
@@ -197,6 +199,7 @@ export class MarketFeedService implements IMarketFeedService {
     // Kirim data cache awal yang tersedia
     const initialMap: Record<string, TickerInfo> = {};
     for (const s of symbols) {
+      if (!s || s.startsWith('#section:')) continue;
       const c = this.tickerCache.get(normalizeTicker(s));
       if (c) initialMap[s] = c;
     }
@@ -256,11 +259,15 @@ export class MarketFeedService implements IMarketFeedService {
     const allSymbolsSet = new Set<string>();
 
     for (const sym of this.activeSymbolSubscribers.keys()) {
-      allSymbolsSet.add(sym);
+      if (sym && !sym.startsWith('#section:')) {
+        allSymbolsSet.add(sym);
+      }
     }
     for (const sub of this.watchlistSubscribers) {
       for (const s of sub.symbols) {
-        allSymbolsSet.add(s);
+        if (s && !s.startsWith('#section:')) {
+          allSymbolsSet.add(s);
+        }
       }
     }
 
@@ -270,12 +277,15 @@ export class MarketFeedService implements IMarketFeedService {
     const providerMap = new Map<string, Array<{ raw: string; clean: string }>>();
 
     for (const rawSym of allSymbolsSet) {
+      if (!rawSym || rawSym.startsWith('#section:')) continue;
       const { providerId, cleanSymbol } = resolveSymbolProvider(rawSym, this.activeProviderId);
+      if (!providerId || !cleanSymbol) continue;
       if (!providerMap.has(providerId)) {
         providerMap.set(providerId, []);
       }
       providerMap.get(providerId)!.push({ raw: rawSym, clean: cleanSymbol });
     }
+
 
     const mergedBatchData: Record<string, TickerInfo> = {};
     let activeProviderSucceeded = false;

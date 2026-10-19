@@ -33,15 +33,33 @@
     ChevronUp,
     Square,
     Type,
-    Minus
+    Minus,
+    FolderPlus,
+    Pencil,
+    MoreHorizontal,
+    Folder,
+    GripVertical
   } from '@lucide/svelte';
   import { loadWatchlist, saveWatchlist } from '../services/persistence';
   import { marketFeed } from '../services/market';
   import { alertService } from '../services/alertService';
-  import { parseWatchlistEntry, formatWatchlistEntry, normalizeProviderId } from '../services/watchlistUtils';
+  import {
+    parseWatchlistEntry,
+    formatWatchlistEntry,
+    normalizeProviderId,
+    isSectionToken,
+    formatSectionToken,
+    parseSectionToken,
+    insertSymbolIntoSection,
+    moveItemToSection,
+    reorderWatchlistItems,
+    type WatchlistSectionToken
+  } from '../services/watchlistUtils';
   import SymbolSearchModal from './SymbolSearchModal.svelte';
+  import WatchlistSwitcher from './WatchlistSwitcher.svelte';
+  import { watchlistRegistry } from '../services/watchlistRegistryService';
   import { getSearchResultKey } from '../services/market/symbolSearchService';
-  import type { PriceAlert, ObjectTreeItem, MarketSearchResult } from '../types/market';
+  import type { PriceAlert, ObjectTreeItem, MarketSearchResult, WatchlistRecord } from '../types/market';
 
   interface Props {
     isOpen: boolean;
@@ -174,29 +192,40 @@
     }
   }
 
-  // Watchlist state & Preset categories
-  let selectedPresetCategory = $state<'binance' | 'indodax'>('binance');
+  // Multi-Watchlist state & Registry integration
+  let registryWatchlists = $state<WatchlistRecord[]>([]);
+  let registryActiveId = $state<string>('default');
+  let unsubRegistry: (() => void) | null = null;
 
-  const BINANCE_PRESET_SYMBOLS = [
-    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
-    'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
-  ];
+  const activeWatchlist = $derived.by<WatchlistRecord>(() => {
+    const found = registryWatchlists.find((w) => w.id === registryActiveId);
+    if (found) return found;
+    return {
+      id: registryActiveId,
+      name: 'Daftar Utama',
+      items: symbols,
+      isPreset: false,
+    };
+  });
 
-  const INDODAX_PRESET_SYMBOLS = [
-    'BTCIDR', 'ETHIDR', 'USDTIDR', 'SOLIDR', 'DOGEIDR', 'XRPIDR', 'ADAIDR'
-  ];
+  let lastActiveSectionId = $state<string | null | undefined>(undefined);
 
-  async function switchPresetCategory(category: 'binance' | 'indodax') {
-    selectedPresetCategory = category;
-    if (category === 'indodax') {
-      await applyWatchlistUpdate(INDODAX_PRESET_SYMBOLS);
-    } else {
-      await applyWatchlistUpdate(BINANCE_PRESET_SYMBOLS);
+  function getSectionIdForSymbol(sym: string): string | null {
+    let currentId: string | null = null;
+    for (const item of symbols) {
+      if (isSectionToken(item)) {
+        const parsed = parseSectionToken(item);
+        currentId = parsed ? parsed.id : null;
+      } else if (item === sym) {
+        return currentId;
+      }
     }
+    return null;
   }
 
   function handleSelectSymbol(rawEntry: string) {
     const { providerId, symbol } = parseWatchlistEntry(rawEntry);
+    lastActiveSectionId = getSectionIdForSymbol(rawEntry);
     onSelectSymbol(symbol, providerId);
   }
 
@@ -246,26 +275,14 @@
     if (JSON.stringify(newSymbols) !== JSON.stringify(propSymbols)) {
       onWatchlistChange?.(newSymbols);
     }
-    await saveWatchlist(newSymbols);
+    await watchlistRegistry.updateActiveItems(newSymbols);
   }
 
   async function loadInitialWatchlist() {
     try {
-      if (propSymbols && propSymbols.length > 0) {
-        symbols = [...propSymbols];
-        lastSyncedHash = JSON.stringify(symbols);
-      } else {
-        const saved = await loadWatchlist();
-        if (saved && saved.length > 0) {
-          symbols = [...saved];
-          lastSyncedHash = JSON.stringify(symbols);
-          if (JSON.stringify(saved) !== JSON.stringify(propSymbols)) {
-            onWatchlistChange?.(symbols);
-          }
-        }
-      }
+      await watchlistRegistry.load();
     } catch (err) {
-      console.warn('Gagal memuat awal watchlist:', err);
+      console.warn('Gagal memuat awal multi-watchlist:', err);
     }
   }
 
@@ -288,6 +305,18 @@
   });
 
   onMount(() => {
+    unsubRegistry = watchlistRegistry.subscribe(({ watchlists: list, activeId }) => {
+      registryWatchlists = list;
+      registryActiveId = activeId;
+      const current = list.find((w) => w.id === activeId);
+      if (current) {
+        symbols = [...current.items];
+        lastSyncedHash = JSON.stringify(symbols);
+        if (JSON.stringify(symbols) !== JSON.stringify(propSymbols)) {
+          onWatchlistChange?.(symbols);
+        }
+      }
+    });
     loadInitialWatchlist();
     unsubAlerts = alertService.subscribe((list) => {
       alerts = list;
@@ -297,7 +326,9 @@
   onDestroy(() => {
     if (unsubWatchlistFeed) unsubWatchlistFeed();
     if (unsubAlerts) unsubAlerts();
+    if (unsubRegistry) unsubRegistry();
   });
+
 
   async function handleAddSymbol(e: Event) {
     e.preventDefault();
@@ -314,7 +345,8 @@
 
     const entry = formatWatchlistEntry(formatted, activeProviderId);
     if (!symbols.includes(entry)) {
-      await applyWatchlistUpdate([...symbols, entry]);
+      const next = insertSymbolIntoSection(symbols, entry, lastActiveSectionId);
+      await applyWatchlistUpdate(next);
     }
     newSymbolInput = '';
     showAddInput = false;
@@ -360,7 +392,8 @@
     e.stopPropagation();
     e.preventDefault();
     if (!symbols.includes(sym)) {
-      await applyWatchlistUpdate([...symbols, sym]);
+      const next = insertSymbolIntoSection(symbols, sym, lastActiveSectionId);
+      await applyWatchlistUpdate(next);
     }
   }
 
@@ -407,7 +440,7 @@
         return !(p.symbol === target.symbol && p.providerId === target.providerId);
       });
     } else {
-      next = [...symbols, entry];
+      next = insertSymbolIntoSection(symbols, entry, lastActiveSectionId);
     }
     await applyWatchlistUpdate(next);
   }
@@ -498,10 +531,182 @@
   }
 
   const filteredSymbols = $derived(
-    symbols.filter((s) => s.toLowerCase().includes(searchQuery.toLowerCase()))
+    symbols.filter((s) => !isSectionToken(s) && s.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  interface SectionGroup {
+    section: WatchlistSectionToken | null;
+    items: string[];
+  }
+
+  const groupedSections = $derived.by<SectionGroup[]>(() => {
+    const groups: SectionGroup[] = [];
+    let current: SectionGroup = { section: null, items: [] };
+
+    for (const item of symbols) {
+      if (isSectionToken(item)) {
+        const parsed = parseSectionToken(item);
+        if (parsed) {
+          if (current.section !== null || current.items.length > 0) {
+            groups.push(current);
+          }
+          current = { section: parsed, items: [] };
+          continue;
+        }
+      }
+      current.items.push(item);
+    }
+
+    if (current.section !== null || current.items.length > 0) {
+      groups.push(current);
+    }
+
+    return groups;
+  });
+
+  // Section Modal & Menu States
+  let showAddSectionModal = $state(false);
+  let newSectionName = $state('');
+
+  let showRenameSectionModal = $state(false);
+  let renameSectionId = $state<string | null>(null);
+  let renameSectionValue = $state('');
+
+  let activeSectionMenuId = $state<string | null>(null);
+
+  async function handleAddSectionSubmit() {
+    const clean = newSectionName.trim().toUpperCase();
+    if (!clean) return;
+    const token = formatSectionToken(clean);
+    await applyWatchlistUpdate([...symbols, token]);
+    newSectionName = '';
+    showAddSectionModal = false;
+  }
+
+  async function handleToggleSectionCollapse(sectionId: string) {
+    lastActiveSectionId = sectionId;
+    const next = symbols.map((item) => {
+      if (isSectionToken(item)) {
+        const parsed = parseSectionToken(item);
+        if (parsed && parsed.id === sectionId) {
+          return formatSectionToken(parsed.name, parsed.id, !parsed.isCollapsed);
+        }
+      }
+      return item;
+    });
+    await applyWatchlistUpdate(next);
+  }
+
+  function openRenameSection(section: WatchlistSectionToken, e: MouseEvent) {
+    e.stopPropagation();
+    renameSectionId = section.id;
+    renameSectionValue = section.name;
+    showRenameSectionModal = true;
+    activeSectionMenuId = null;
+  }
+
+  async function handleRenameSectionSubmit() {
+    if (!renameSectionId || !renameSectionValue.trim()) return;
+    const clean = renameSectionValue.trim().toUpperCase();
+    const next = symbols.map((item) => {
+      if (isSectionToken(item)) {
+        const parsed = parseSectionToken(item);
+        if (parsed && parsed.id === renameSectionId) {
+          return formatSectionToken(clean, parsed.id, parsed.isCollapsed);
+        }
+      }
+      return item;
+    });
+    await applyWatchlistUpdate(next);
+    showRenameSectionModal = false;
+    renameSectionId = null;
+    renameSectionValue = '';
+  }
+
+  async function handleDeleteSection(sectionId: string, e: MouseEvent) {
+    e.stopPropagation();
+    activeSectionMenuId = null;
+    const next = symbols.filter((item) => {
+      if (isSectionToken(item)) {
+        const parsed = parseSectionToken(item);
+        return parsed?.id !== sectionId;
+      }
+      return true;
+    });
+    await applyWatchlistUpdate(next);
+  }
+
+  // ─── Drag & Drop Reordering ───
+  let draggedItemIndex = $state<number | null>(null);
+  let dragOverItemIndex = $state<number | null>(null);
+  let dragOverPosition = $state<'before' | 'after'>('before');
+
+  function handleDragStart(e: DragEvent, index: number) {
+    draggedItemIndex = index;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(index));
+    }
+  }
+
+  function handleDragOver(e: DragEvent, index: number) {
+    if (draggedItemIndex === null || draggedItemIndex === index) return;
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+    const currentTarget = e.currentTarget as HTMLElement;
+    const rect = currentTarget.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    dragOverPosition = e.clientY < midY ? 'before' : 'after';
+    dragOverItemIndex = index;
+  }
+
+  function handleDragLeave() {
+    // Biarkan dragOverItemIndex tetap aktif untuk kestabilan visual
+  }
+
+  async function handleDrop(e: DragEvent, targetIndex: number) {
+    e.preventDefault();
+    if (draggedItemIndex === null || draggedItemIndex === targetIndex) {
+      draggedItemIndex = null;
+      dragOverItemIndex = null;
+      return;
+    }
+
+    const reordered = reorderWatchlistItems(symbols, draggedItemIndex, targetIndex, dragOverPosition);
+    draggedItemIndex = null;
+    dragOverItemIndex = null;
+    await applyWatchlistUpdate(reordered);
+  }
+
+  function handleDragEnd() {
+    draggedItemIndex = null;
+    dragOverItemIndex = null;
+  }
+
+  // ─── Coin Context Menu State ("Pindahkan ke Kategori...") ───
+  let activeCoinMenuSymbol = $state<string | null>(null);
+
+  const availableSections = $derived.by<WatchlistSectionToken[]>(() => {
+    const list: WatchlistSectionToken[] = [];
+    for (const item of symbols) {
+      if (isSectionToken(item)) {
+        const parsed = parseSectionToken(item);
+        if (parsed) list.push(parsed);
+      }
+    }
+    return list;
+  });
+
+  async function handleMoveSymbolToSection(sym: string, targetSecId: string | null) {
+    activeCoinMenuSymbol = null;
+    const updated = moveItemToSection(symbols, sym, targetSecId);
+    await applyWatchlistUpdate(updated);
+  }
+
   function formatPrice(p?: number, sym?: string): string {
+
     if (!p) return '--';
     if (sym && (sym.endsWith('IDR') || sym.includes('/IDR'))) {
       if (p >= 1) return `Rp ${Math.round(p).toLocaleString('id-ID')}`;
@@ -598,27 +803,44 @@
         >
           <Plus size={13} />
         </button>
+
+        <button
+          type="button"
+          class="add-section-toolbar-btn"
+          title="Tambah Kategori / Section"
+          onclick={() => (showAddSectionModal = true)}
+        >
+          <FolderPlus size={13} />
+        </button>
       </div>
 
-      <!-- Preset Category Tabs: Binance USDT & Indodax IDR -->
+
+      <!-- Multi-Watchlist Switcher Popover -->
       {#if !searchQuery.trim()}
-        <div class="preset-category-bar">
-          <button
-            type="button"
-            class="preset-cat-btn {selectedPresetCategory === 'binance' ? 'active' : ''}"
-            onclick={() => switchPresetCategory('binance')}
-          >
-            Binance USDT
-          </button>
-          <button
-            type="button"
-            class="preset-cat-btn {selectedPresetCategory === 'indodax' ? 'active' : ''}"
-            onclick={() => switchPresetCategory('indodax')}
-          >
-            Indodax IDR
-          </button>
-        </div>
+        <WatchlistSwitcher
+          {activeWatchlist}
+          watchlists={registryWatchlists}
+          onSelectWatchlist={async (id) => {
+            await watchlistRegistry.setActiveWatchlistId(id);
+          }}
+          onCreateWatchlist={async (name) => {
+            await watchlistRegistry.createWatchlist(name);
+          }}
+          onRenameWatchlist={async (id, name) => {
+            await watchlistRegistry.renameWatchlist(id, name);
+          }}
+          onDuplicateWatchlist={async (id) => {
+            await watchlistRegistry.duplicateWatchlist(id);
+          }}
+          onDeleteWatchlist={async (id) => {
+            await watchlistRegistry.deleteWatchlist(id);
+          }}
+          onResetPreset={async (id) => {
+            await watchlistRegistry.resetPresetWatchlist(id);
+          }}
+        />
       {/if}
+
 
       <!-- Feed Status & Column Headers -->
       <div class="table-head mono-nums">
@@ -786,63 +1008,203 @@
           {/if}
 
         {:else}
-          <!-- ─── 3. Tampilan Normal (Seluruh Koin Watchlist) ─── -->
-          {#each filteredSymbols as sym (sym)}
-            {@const entry = parseWatchlistEntry(sym)}
-            {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
-            {@const isBull = (ticker?.change24h ?? 0) >= 0}
-            {@const isCurrentActive = activeSymbol === entry.symbol && activeProviderId === entry.providerId}
-            <div class="watchlist-row {isCurrentActive ? 'active-row' : ''}">
-              <button
-                type="button"
-                class="row-select-btn"
-                onclick={() => handleSelectSymbol(sym)}
+          <!-- ─── 3. Tampilan Normal Terkelompok Kategori / Section ─── -->
+          {#each groupedSections as group (group.section ? group.section.id : '__uncat__')}
+            {#if group.section}
+              {@const sec = group.section}
+              {@const secTokenStr = symbols.find((s) => isSectionToken(s) && parseSectionToken(s)?.id === sec.id) || ''}
+              {@const secGlobalIndex = symbols.indexOf(secTokenStr)}
+              <div
+                class="section-divider-row {sec.isCollapsed ? 'collapsed' : ''} {dragOverItemIndex === secGlobalIndex && dragOverPosition === 'before' ? 'drop-target-before' : ''} {dragOverItemIndex === secGlobalIndex && dragOverPosition === 'after' ? 'drop-target-after' : ''} {draggedItemIndex === secGlobalIndex ? 'is-dragging' : ''}"
+                draggable="true"
+                ondragstart={(e) => handleDragStart(e, secGlobalIndex)}
+                ondragover={(e) => handleDragOver(e, secGlobalIndex)}
+                ondragleave={handleDragLeave}
+                ondrop={(e) => handleDrop(e, secGlobalIndex)}
+                ondragend={handleDragEnd}
               >
-                <div class="row-symbol">
-                  <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                  <span class="symbol-name">{entry.symbol.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
-                  <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
-                  {#if entry.symbol.endsWith('.P')}
-                    <span class="type-tag perp mono-nums">.P</span>
-                  {:else if entry.symbol.endsWith('IDR')}
-                    <span class="type-tag idr mono-nums">IDR</span>
-                  {:else}
-                    <span class="type-tag spot mono-nums">SPOT</span>
+                <button
+                  type="button"
+                  class="section-toggle-btn"
+                  onclick={() => handleToggleSectionCollapse(sec.id)}
+                  title={sec.isCollapsed ? 'Bentangkan kategori' : 'Lipat kategori'}
+                >
+                  <ChevronDown size={11} class="section-chevron {sec.isCollapsed ? 'collapsed' : ''}" />
+                  <span class="section-title">{sec.name}</span>
+                  <span class="section-count mono-nums">{group.items.length}</span>
+                </button>
+
+                <div class="section-menu-wrapper">
+                  <button
+                    type="button"
+                    class="btn-section-menu {activeSectionMenuId === sec.id ? 'active' : ''}"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      activeSectionMenuId = activeSectionMenuId === sec.id ? null : sec.id;
+                    }}
+                    title="Opsi kategori"
+                  >
+                    <MoreHorizontal size={12} />
+                  </button>
+
+                  {#if activeSectionMenuId === sec.id}
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <div class="section-menu-backdrop" onclick={() => (activeSectionMenuId = null)}></div>
+                    <div class="section-dropdown-menu">
+                      <button
+                        type="button"
+                        class="section-menu-item"
+                        onclick={(e) => openRenameSection(sec, e)}
+                      >
+                        <Pencil size={11} />
+                        <span>Ganti Nama Kategori</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="section-menu-item danger"
+                        onclick={(e) => handleDeleteSection(sec.id, e)}
+                      >
+                        <Trash2 size={11} />
+                        <span>Hapus Kategori (Simpan Koin)</span>
+                      </button>
+                    </div>
                   {/if}
                 </div>
+              </div>
+            {/if}
 
-                <div class="row-price mono-nums">
-                  {formatPrice(ticker?.price, entry.symbol)}
+            {#if !group.section || !group.section.isCollapsed}
+              {#each group.items as sym (sym)}
+                {@const symGlobalIndex = symbols.indexOf(sym)}
+                {@const entry = parseWatchlistEntry(sym)}
+                {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
+                {@const isBull = (ticker?.change24h ?? 0) >= 0}
+                {@const isCurrentActive = activeSymbol === entry.symbol && activeProviderId === entry.providerId}
+                <div
+                  class="watchlist-row {isCurrentActive ? 'active-row' : ''} {dragOverItemIndex === symGlobalIndex && dragOverPosition === 'before' ? 'drop-target-before' : ''} {dragOverItemIndex === symGlobalIndex && dragOverPosition === 'after' ? 'drop-target-after' : ''} {draggedItemIndex === symGlobalIndex ? 'is-dragging' : ''}"
+                  draggable="true"
+                  ondragstart={(e) => handleDragStart(e, symGlobalIndex)}
+                  ondragover={(e) => handleDragOver(e, symGlobalIndex)}
+                  ondragleave={handleDragLeave}
+                  ondrop={(e) => handleDrop(e, symGlobalIndex)}
+                  ondragend={handleDragEnd}
+                >
+                  <button
+                    type="button"
+                    class="row-select-btn"
+                    onclick={() => handleSelectSymbol(sym)}
+                  >
+                    <div class="row-symbol">
+                      <span class="row-drag-handle" title="Tarik untuk menata ulang urutan">
+                        <GripVertical size={10} />
+                      </span>
+                      <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
+                      <span class="symbol-name">{entry.symbol.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
+                      <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
+                      {#if entry.symbol.endsWith('.P')}
+                        <span class="type-tag perp mono-nums">.P</span>
+                      {:else if entry.symbol.endsWith('IDR')}
+                        <span class="type-tag idr mono-nums">IDR</span>
+                      {:else}
+                        <span class="type-tag spot mono-nums">SPOT</span>
+                      {/if}
+                    </div>
+
+                    <div class="row-price mono-nums">
+                      {formatPrice(ticker?.price, entry.symbol)}
+                    </div>
+
+                    <div class="row-change mono-nums">
+                      {#if ticker?.change24h !== undefined}
+                        <span class="change-pill {isBull ? 'pill-bull' : 'pill-bear'}">
+                          {#if isBull}+{/if}{ticker.change24h.toFixed(2)}%
+                        </span>
+                      {:else}
+                        <span class="change-placeholder">--</span>
+                      {/if}
+                    </div>
+                  </button>
+
+                  <div class="coin-row-actions">
+                    <!-- Tombol Opsi Koin / Pindahkan Kategori -->
+                    <div class="coin-menu-wrapper">
+                      <button
+                        type="button"
+                        class="btn-coin-menu {activeCoinMenuSymbol === sym ? 'active' : ''}"
+                        title="Pindahkan koin ke kategori..."
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          activeCoinMenuSymbol = activeCoinMenuSymbol === sym ? null : sym;
+                        }}
+                      >
+                        <MoreHorizontal size={11} />
+                      </button>
+
+                      {#if activeCoinMenuSymbol === sym}
+                        {@const currentSecId = getSectionIdForSymbol(sym)}
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <div class="coin-menu-backdrop" onclick={(e) => { e.stopPropagation(); activeCoinMenuSymbol = null; }}></div>
+                        <div class="coin-dropdown-menu" role="menu">
+                          <div class="coin-dropdown-header">Pindahkan ke Kategori:</div>
+                          <button
+                            type="button"
+                            class="coin-menu-item {currentSecId === null ? 'current' : ''}"
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              handleMoveSymbolToSection(sym, null);
+                            }}
+                          >
+                            <Folder size={11} />
+                            <span class="menu-label">Daftar Utama (Tanpa Kategori)</span>
+                            {#if currentSecId === null}
+                              <Check size={11} class="menu-check" />
+                            {/if}
+                          </button>
+
+                          {#each availableSections as avSec (avSec.id)}
+                            <button
+                              type="button"
+                              class="coin-menu-item {currentSecId === avSec.id ? 'current' : ''}"
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                handleMoveSymbolToSection(sym, avSec.id);
+                              }}
+                            >
+                              <Folder size={11} />
+                              <span class="menu-label">{avSec.name}</span>
+                              {#if currentSecId === avSec.id}
+                                <Check size={11} class="menu-check" />
+                              {/if}
+                            </button>
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
+
+                    <!-- Tombol Hapus Koin -->
+                    <button
+                      type="button"
+                      class="delete-item-btn"
+                      title="Hapus dari watchlist"
+                      onclick={(e) => handleRemoveSymbol(e, sym)}
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
                 </div>
-
-                <div class="row-change mono-nums">
-                  {#if ticker?.change24h !== undefined}
-                    <span class="change-pill {isBull ? 'pill-bull' : 'pill-bear'}">
-                      {#if isBull}+{/if}{ticker.change24h.toFixed(2)}%
-                    </span>
-                  {:else}
-                    <span class="change-placeholder">--</span>
-                  {/if}
-                </div>
-              </button>
-
-              <button
-                type="button"
-                class="delete-item-btn"
-                title="Hapus dari watchlist"
-                onclick={(e) => handleRemoveSymbol(e, sym)}
-              >
-                <X size={11} />
-              </button>
-            </div>
+              {/each}
+            {/if}
           {/each}
 
-          {#if filteredSymbols.length === 0}
+          {#if symbols.filter((s) => !isSectionToken(s)).length === 0}
             <div class="empty-state">
               <span>Daftar pantau kosong. Tambahkan koin dengan tombol + di atas.</span>
             </div>
           {/if}
         {/if}
+
       </div>
 
     <!-- TAB 2: PRICE ALERTS -->
@@ -1239,6 +1601,74 @@
   onClose={() => (isSymbolSearchOpen = false)}
 />
 
+<!-- Modal Tambah Kategori / Section -->
+{#if showAddSectionModal}
+  <div class="modal-backdrop">
+    <div class="switcher-modal obsidian-modal">
+      <div class="modal-header">
+        <span>Tambah Kategori Watchlist</span>
+        <button type="button" class="btn-close-modal" onclick={() => (showAddSectionModal = false)}>
+          <X size={13} />
+        </button>
+      </div>
+      <form onsubmit={(e) => { e.preventDefault(); handleAddSectionSubmit(); }}>
+        <div class="modal-body">
+          <label class="modal-label" for="add-section-name">Nama Kategori / Section</label>
+          <input
+            id="add-section-name"
+            type="text"
+            class="modal-input"
+            placeholder="e.g. DEFI, LAYER 1, MEMECOIN"
+            bind:value={newSectionName}
+          />
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-cancel" onclick={() => (showAddSectionModal = false)}>
+            Batal
+          </button>
+          <button type="submit" class="btn-modal-submit" disabled={!newSectionName.trim()}>
+            Simpan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
+
+<!-- Modal Ganti Nama Kategori / Section -->
+{#if showRenameSectionModal}
+  <div class="modal-backdrop">
+    <div class="switcher-modal obsidian-modal">
+      <div class="modal-header">
+        <span>Ganti Nama Kategori</span>
+        <button type="button" class="btn-close-modal" onclick={() => { showRenameSectionModal = false; renameSectionId = null; }}>
+          <X size={13} />
+        </button>
+      </div>
+      <form onsubmit={(e) => { e.preventDefault(); handleRenameSectionSubmit(); }}>
+        <div class="modal-body">
+          <label class="modal-label" for="rename-section-name">Nama Baru Kategori</label>
+          <input
+            id="rename-section-name"
+            type="text"
+            class="modal-input"
+            placeholder="Nama kategori baru"
+            bind:value={renameSectionValue}
+          />
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-cancel" onclick={() => { showRenameSectionModal = false; renameSectionId = null; }}>
+            Batal
+          </button>
+          <button type="submit" class="btn-modal-submit" disabled={!renameSectionValue.trim()}>
+            Simpan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
+
 <style>
   .collapsed-toggle-btn {
     position: absolute;
@@ -1605,38 +2035,7 @@
     line-height: 1;
   }
 
-  .preset-category-bar {
-    display: flex;
-    padding: 5px 8px;
-    background-color: var(--bg-panel);
-    border-bottom: 1px solid var(--border-hairline);
-    gap: 5px;
-  }
 
-  .preset-cat-btn {
-    flex: 1;
-    background: none;
-    border: 1px solid var(--border-hairline);
-    color: var(--text-dim);
-    font-size: var(--font-size-sm, 10px);
-    font-weight: 600;
-    padding: 3px 6px;
-    border-radius: var(--radius-xs);
-    cursor: pointer;
-    transition: all 0.12s ease;
-    text-align: center;
-  }
-
-  .preset-cat-btn:hover {
-    color: var(--text-main);
-    background-color: rgba(255, 255, 255, 0.05);
-  }
-
-  .preset-cat-btn.active {
-    background-color: rgba(0, 240, 144, 0.12);
-    border-color: rgba(0, 240, 144, 0.35);
-    color: var(--brand-primary);
-  }
 
   .type-tag.perp {
     background-color: rgba(234, 179, 8, 0.15);
@@ -1725,6 +2124,161 @@
     background-color: rgba(255, 59, 105, 0.1);
   }
 
+  /* ─── Drag & Drop Visual Indicators ─── */
+  .row-drag-handle {
+    opacity: 0;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    cursor: grab;
+    transition: opacity 0.12s ease;
+    margin-right: -2px;
+  }
+
+  .watchlist-row:hover .row-drag-handle {
+    opacity: 0.6;
+  }
+
+  .row-drag-handle:hover {
+    opacity: 1 !important;
+    color: var(--text-main);
+  }
+
+  .watchlist-row.drop-target-before,
+  .section-divider-row.drop-target-before {
+    border-top: 2px solid var(--brand-primary) !important;
+  }
+
+  .watchlist-row.drop-target-after,
+  .section-divider-row.drop-target-after {
+    border-bottom: 2px solid var(--brand-primary) !important;
+  }
+
+  .watchlist-row.is-dragging,
+  .section-divider-row.is-dragging {
+    opacity: 0.35 !important;
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  /* ─── Coin Row Actions & Context Menu ─── */
+  .coin-row-actions {
+    opacity: 0;
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    transition: all 0.15s ease;
+  }
+
+  .watchlist-row:hover .coin-row-actions {
+    opacity: 1;
+  }
+
+  .coin-menu-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .btn-coin-menu {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-dim);
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    transition: all 0.15s ease;
+  }
+
+  .btn-coin-menu:hover,
+  .btn-coin-menu.active {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .coin-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+  }
+
+  .coin-dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 111;
+    min-width: 190px;
+    background-color: #181818;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .coin-dropdown-header {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    padding: 4px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 2px;
+  }
+
+  .coin-menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 8px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: #e5e5e5;
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    transition: all 0.1s ease;
+  }
+
+  .coin-menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+  }
+
+  .coin-menu-item.current {
+    color: var(--brand-primary);
+    font-weight: 600;
+  }
+
+  .menu-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  :global(.menu-check) {
+    color: var(--brand-primary);
+    flex-shrink: 0;
+  }
+
   .delete-item-btn {
     opacity: 0;
     position: absolute;
@@ -1745,6 +2299,12 @@
     padding: 0;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
     transition: all 0.15s ease;
+  }
+
+  .coin-row-actions .delete-item-btn {
+    position: static;
+    transform: none;
+    opacity: 1;
   }
 
   .watchlist-row:hover .delete-item-btn {
@@ -2365,5 +2925,293 @@
     text-align: center;
     font-size: 11px;
     color: var(--text-dim);
+  }
+
+  /* Add Section Button in Toolbar */
+  .add-section-toolbar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-container);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-dim);
+    padding: 3px 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .add-section-toolbar-btn:hover {
+    color: var(--brand-primary);
+    background-color: rgba(0, 240, 144, 0.12);
+    border-color: var(--brand-primary);
+  }
+
+  /* Section Divider Row */
+  .section-divider-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background-color: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    position: relative;
+    user-select: none;
+    transition: background-color 0.12s ease;
+  }
+
+  .section-divider-row:hover {
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+
+  .section-divider-row.collapsed {
+    opacity: 0.8;
+  }
+
+  .section-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    padding: 0;
+    flex: 1;
+    text-align: left;
+    transition: color 0.12s ease;
+  }
+
+  .section-toggle-btn:hover {
+    color: var(--text-main);
+  }
+
+  :global(.section-chevron) {
+    color: var(--text-dim);
+    transition: transform 0.15s ease;
+  }
+
+  :global(.section-chevron.collapsed) {
+    transform: rotate(-90deg);
+  }
+
+  .section-title {
+    color: var(--text-muted);
+  }
+
+  .section-toggle-btn:hover .section-title {
+    color: var(--text-main);
+  }
+
+  .section-count {
+    font-size: 9px;
+    color: var(--text-dim);
+    background-color: rgba(255, 255, 255, 0.06);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+
+  .section-menu-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .btn-section-menu {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 2px 4px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+    opacity: 0.6;
+  }
+
+  .section-divider-row:hover .btn-section-menu,
+  .btn-section-menu.active {
+    opacity: 1;
+  }
+
+  .btn-section-menu:hover,
+  .btn-section-menu.active {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+  }
+
+  .section-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+  }
+
+  .section-dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 101;
+    min-width: 170px;
+    background-color: #181818;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .section-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: #e5e5e5;
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    transition: all 0.1s ease;
+  }
+
+  .section-menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+  }
+
+  .section-menu-item.danger {
+    color: #f87171;
+  }
+
+  .section-menu-item.danger:hover {
+    background-color: rgba(248, 113, 113, 0.12);
+    color: #fca5a5;
+  }
+
+  /* Modal Backdrop & Shared Modal Classes for WatchlistPanel */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(2px);
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .switcher-modal {
+    background: #181818;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    width: 100%;
+    max-width: 320px;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8);
+    overflow: hidden;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #202020;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 12px;
+    font-weight: 600;
+    color: #e5e5e5;
+  }
+
+  .btn-close-modal {
+    background: transparent;
+    border: none;
+    color: #777777;
+    cursor: pointer;
+    padding: 2px;
+  }
+
+  .btn-close-modal:hover {
+    color: #ffffff;
+  }
+
+  .modal-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .modal-label {
+    font-size: 11px;
+    color: #a3a3a3;
+  }
+
+  .modal-input {
+    width: 100%;
+    padding: 7px 10px;
+    background: #101010;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 5px;
+    color: #ffffff;
+    font-size: 12px;
+    outline: none;
+    box-sizing: border-box;
+  }
+
+  .modal-input:focus {
+    border-color: #ff69b4;
+  }
+
+  .modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #1a1a1a;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .btn-modal-cancel {
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    color: #aaaaaa;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+
+  .btn-modal-cancel:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+  }
+
+  .btn-modal-submit {
+    padding: 6px 14px;
+    background: #ff69b4;
+    border: none;
+    border-radius: 5px;
+    color: #ffffff;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-modal-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

@@ -118,4 +118,39 @@ describe('Tiket #67: Multi-Provider Watchlist Polling Multiplexer', () => {
 
     service.destroy();
   });
+
+  it('3. pollTick menyaring dan mengabaikan token #section: sehingga adapter tidak pernah menerima string non-ticker', async () => {
+    const service = new MarketFeedService();
+    const binanceMock = new MockAdapter('binance', 'Binance Mock');
+    service.registerAdapter(binanceMock);
+    service.setActiveProvider('binance');
+
+    // Watchlist yang memiliki pembatas seksi / kategori
+    const listWithSections = [
+      '#section:sec_1:LAYER 1:0',
+      'binance:BTCUSDT',
+      'binance:ETHUSDT',
+      '#section:sec_2:MEME:1', // collapsed
+      'binance:DOGEUSDT',
+    ];
+
+    service.subscribeWatchlistTickers(listWithSections, () => {});
+    await service.pollTick();
+
+    const allRequests = binanceMock.requestedSymbols.flat();
+    const uniqueRequests = Array.from(new Set(allRequests));
+    assert.ok(uniqueRequests.includes('BTCUSDT'), 'BTCUSDT harus dipolling');
+
+    assert.ok(uniqueRequests.includes('ETHUSDT'), 'ETHUSDT harus dipolling');
+    assert.ok(uniqueRequests.includes('DOGEUSDT'), 'DOGEUSDT harus tetap dipolling meski seksi collapsed');
+    assert.equal(uniqueRequests.length, 3, 'Hanya 3 simbol koin unik yang boleh diminta (BTCUSDT, ETHUSDT, DOGEUSDT)');
+
+
+    // Pastikan tidak ada token section yang masuk
+    assert.ok(!allRequests.some((s) => s.includes('#section')), 'Token #section tidak boleh ditembak ke adapter');
+    assert.ok(!allRequests.some((s) => s.includes('LAYER 1')), 'Nama seksi tidak boleh masuk ke query bursa');
+
+    service.destroy();
+  });
 });
+

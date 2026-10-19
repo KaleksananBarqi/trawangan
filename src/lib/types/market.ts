@@ -336,3 +336,18 @@ export interface MarketSearchResult {
   price?: number;
   change24h?: number;
 }
+
+export interface WatchlistRecord {
+  id: string;
+  name: string;
+  items: string[];
+  isPreset?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface MultiWatchlistRegistry {
+  activeWatchlistId: string;
+  watchlists: WatchlistRecord[];
+}
+
