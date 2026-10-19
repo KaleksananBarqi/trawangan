@@ -17,6 +17,7 @@ import { MockMarketAdapter } from './adapters/mockAdapter';
 import { DEFAULT_PROVIDERS, normalizeTicker } from './constants';
 import { alertService } from '../alertService';
 import { SymbolSearchEngine } from './symbolSearchService';
+import { isSectionToken } from '../watchlistUtils';
 
 /**
  * Memecah simbol pair (baik ber-prefix 'provider:symbol' atau raw) dan menginfer bursa target
@@ -25,9 +26,9 @@ export function resolveSymbolProvider(
   rawSymbol: string,
   defaultProvider = 'binance'
 ): { providerId: string; cleanSymbol: string } {
-  if (!rawSymbol || rawSymbol.startsWith('#section:')) return { providerId: '', cleanSymbol: '' };
+  if (!rawSymbol || isSectionToken(rawSymbol)) return { providerId: '', cleanSymbol: '' };
   const trimmed = rawSymbol.trim();
-  if (trimmed.startsWith('#section:')) return { providerId: '', cleanSymbol: '' };
+  if (isSectionToken(trimmed)) return { providerId: '', cleanSymbol: '' };
   if (trimmed.includes(':')) {
     const [p, s] = trimmed.split(':');
     return {
@@ -199,7 +200,7 @@ export class MarketFeedService implements IMarketFeedService {
     // Kirim data cache awal yang tersedia
     const initialMap: Record<string, TickerInfo> = {};
     for (const s of symbols) {
-      if (!s || s.startsWith('#section:')) continue;
+      if (!s || isSectionToken(s)) continue;
       const c = this.tickerCache.get(normalizeTicker(s));
       if (c) initialMap[s] = c;
     }
@@ -259,13 +260,13 @@ export class MarketFeedService implements IMarketFeedService {
     const allSymbolsSet = new Set<string>();
 
     for (const sym of this.activeSymbolSubscribers.keys()) {
-      if (sym && !sym.startsWith('#section:')) {
+      if (sym && !isSectionToken(sym)) {
         allSymbolsSet.add(sym);
       }
     }
     for (const sub of this.watchlistSubscribers) {
       for (const s of sub.symbols) {
-        if (s && !s.startsWith('#section:')) {
+        if (s && !isSectionToken(s)) {
           allSymbolsSet.add(s);
         }
       }
@@ -277,7 +278,7 @@ export class MarketFeedService implements IMarketFeedService {
     const providerMap = new Map<string, Array<{ raw: string; clean: string }>>();
 
     for (const rawSym of allSymbolsSet) {
-      if (!rawSym || rawSym.startsWith('#section:')) continue;
+      if (!rawSym || isSectionToken(rawSym)) continue;
       const { providerId, cleanSymbol } = resolveSymbolProvider(rawSym, this.activeProviderId);
       if (!providerId || !cleanSymbol) continue;
       if (!providerMap.has(providerId)) {

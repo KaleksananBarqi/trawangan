@@ -56,7 +56,7 @@ export function formatWatchlistEntry(symbol: string, rawProvider?: string): stri
   return `${providerId}:${cleanSym}`;
 }
 
-// ─── Watchlist Section Dividers ───
+// ─── Pembatas Kategori Watchlist (Section Dividers) ───
 
 export interface WatchlistSectionToken {
   id: string;
@@ -109,7 +109,7 @@ export function insertSymbolIntoSection(
   if (targetSectionId === null) {
     const firstSecIdx = filtered.findIndex(isSectionToken);
     if (firstSecIdx === -1) {
-      return [...filtered, newEntry];
+      return [newEntry, ...filtered];
     }
     const next = [...filtered];
     next.splice(firstSecIdx, 0, newEntry);
@@ -162,6 +162,12 @@ export function insertSymbolIntoSection(
     const next = [...filtered];
     next.splice(insertIdx, 0, newEntry);
     return next;
+  }
+
+  // Jika belum ada kategori sama sekali, letakkan di paling atas daftar (US-10 & Tiket #75)
+  const firstSecIdx = filtered.findIndex(isSectionToken);
+  if (firstSecIdx === -1) {
+    return [newEntry, ...filtered];
   }
 
   return [...filtered, newEntry];

@@ -578,6 +578,10 @@
     const clean = newSectionName.trim().toUpperCase();
     if (!clean) return;
     const token = formatSectionToken(clean);
+    const parsed = parseSectionToken(token);
+    if (parsed) {
+      lastActiveSectionId = parsed.id;
+    }
     await applyWatchlistUpdate([...symbols, token]);
     newSectionName = '';
     showAddSectionModal = false;
@@ -1089,6 +1093,10 @@
                   ondragleave={handleDragLeave}
                   ondrop={(e) => handleDrop(e, symGlobalIndex)}
                   ondragend={handleDragEnd}
+                  oncontextmenu={(e) => {
+                    e.preventDefault();
+                    activeCoinMenuSymbol = activeCoinMenuSymbol === sym ? null : sym;
+                  }}
                 >
                   <button
                     type="button"

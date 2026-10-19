@@ -39,7 +39,7 @@
   let isOpen = $state(false);
   let activeMenuId = $state<string | null>(null);
 
-  // Modal dialog states
+  // Status dialog modal
   let showCreateModal = $state(false);
   let newWatchlistName = $state('');
 
@@ -109,8 +109,15 @@
     closeDropdown();
   }
 
-  function openDeleteConfirm(w: WatchlistRecord, e: MouseEvent) {
+  async function openDeleteConfirm(w: WatchlistRecord, e: MouseEvent) {
     e.stopPropagation();
+    // Jika watchlist kosong, hapus langsung tanpa modal konfirmasi (US-15 & Tiket #72)
+    if (getTickerCount(w.items) === 0) {
+      await onDeleteWatchlist(w.id);
+      activeMenuId = null;
+      closeDropdown();
+      return;
+    }
     deleteTargetId = w.id;
     deleteTargetName = w.name;
     showDeleteConfirm = true;
@@ -139,7 +146,7 @@
     activeMenuId = activeMenuId === id ? null : id;
   }
 
-  // Count helper: ignores #section: tokens
+  // Helper penghitung koin: mengabaikan token #section:
   function getTickerCount(items: string[]): number {
     return items.filter((item) => !item.startsWith('#section:')).length;
   }
@@ -233,7 +240,7 @@
                       <Copy size={11} />
                       <span>Duplikasi</span>
                     </button>
-                    {#if watchlists.length > 1}
+                    {#if watchlists.length > 1 && w.id !== 'default'}
                       <button
                         type="button"
                         class="sub-action-item danger"

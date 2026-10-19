@@ -1,5 +1,6 @@
 import type { WatchlistRecord, MultiWatchlistRegistry } from '../types/market';
 import { storage as defaultPersistence, PersistenceService } from './persistence';
+import { isSectionToken } from './watchlistUtils';
 
 export const DEFAULT_FACTORY_WATCHLISTS: WatchlistRecord[] = [
   {
@@ -142,10 +143,11 @@ export class WatchlistRegistryService {
     );
 
     // Selalu sinkronkan item watchlist aktif ke loadWatchlist/saveWatchlist lama
-    // untuk kompatibilitas ke Quick Symbols & komponen eksternal
+    // untuk kompatibilitas ke Quick Symbols & komponen eksternal (dengan menyaring token #section:)
     const active = this.getActiveWatchlist();
     if (active) {
-      await this.persistence.saveWatchlist(active.items);
+      const cleanTickers = active.items.filter((item) => !isSectionToken(item));
+      await this.persistence.saveWatchlist(cleanTickers);
     }
   }
 
@@ -272,8 +274,8 @@ export class WatchlistRegistryService {
   }
 
   async deleteWatchlist(id: string): Promise<boolean> {
-    // Proteksi batas minimum: tidak boleh menghapus watchlist terakhir
-    if (this.watchlists.length <= 1) {
+    // Proteksi batas minimum & identitas bawaan: tidak boleh menghapus 'default' atau jika hanya tersisa 1
+    if (id === 'default' || this.watchlists.length <= 1) {
       return false;
     }
 
@@ -324,5 +326,5 @@ export class WatchlistRegistryService {
   }
 }
 
-// Singleton global instance
+// Instans global tunggal (singleton)
 export const watchlistRegistry = new WatchlistRegistryService();
