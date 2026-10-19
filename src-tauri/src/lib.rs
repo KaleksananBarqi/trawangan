@@ -6,6 +6,7 @@ use db::{init_db, DbState};
 use market::MarketService;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
+use tauri_plugin_deep_link::DeepLinkExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,6 +26,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            // Daftarkan skema custom URI trawangan:// ke OS desktop saat runtime dev/production
+            #[cfg(desktop)]
+            {
+                let _ = app.deep_link().register_all();
+            }
+
             // Inisialisasi basis data SQLite
             let conn = init_db(app.handle())
                 .expect("Gagal menginisialisasi basis data SQLite Trawangan");
