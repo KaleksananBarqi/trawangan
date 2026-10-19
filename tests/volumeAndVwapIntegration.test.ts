@@ -10,7 +10,7 @@ describe('Ticket 1 & 2: Volume and Session VWAP Indicator Presets', () => {
     assert.equal(vwapPreset.name, 'Volume Weighted Average Price (VWAP)');
     assert.equal(vwapPreset.category, 'Volume');
     assert.equal(vwapPreset.overlay, true, 'VWAP wajib bertipe overlay=true agar menempel di lilin harga');
-    assert.ok(vwapPreset.sourceCode.includes('//@version=5'), 'Wajib Pine Script v5');
+    assert.ok(vwapPreset.sourceCode.includes('//@version=6'), 'Wajib Pine Script v6');
     assert.ok(vwapPreset.sourceCode.includes('ta.vwap'), 'Wajib memanggil ta.vwap');
   });
 
@@ -51,9 +51,11 @@ describe('Ticket 1 & 2: Volume and Session VWAP Indicator Presets', () => {
     const plotKeys = Object.keys(ctx.plots).filter((k) => !k.startsWith('__'));
     assert.ok(plotKeys.length >= 1, 'Harus memuat minimal garis VWAP dan bands');
     
-    const firstPlot = ctx.plots[plotKeys[0]];
-    assert.ok(firstPlot.data.length > 0, 'Data plot tidak boleh kosong');
-    const validPoint = firstPlot.data.find((pt: any) => typeof pt.value === 'number' && !Number.isNaN(pt.value));
+    // Plot VWAP harus ada dan menghasilkan nilai numerik valid
+    const vwapPlot = Object.values(ctx.plots).find((p: any) => p.title === 'VWAP') as any;
+    assert.ok(vwapPlot, 'Garis VWAP harus ditemukan pada plot');
+    assert.ok(vwapPlot.data.length > 0, 'Data plot VWAP tidak boleh kosong');
+    const validPoint = vwapPlot.data.find((pt: any) => typeof pt.value === 'number' && !Number.isNaN(pt.value));
     assert.ok(validPoint, 'Garis VWAP harus menghasilkan nilai numerik valid');
   });
 
@@ -260,6 +262,63 @@ describe('Ticket 1 & 2: Volume and Session VWAP Indicator Presets', () => {
     assert.equal(cell1Vis, false, 'Cell 1 harus false saat sync aktif');
     assert.equal(cell2Vis, false, 'Cell 2 harus ikut diselaraskan saat sync aktif');
   });
+
+  it('10. Native Volume: syncNativeVolumeColors menyelaraskan warna bar volume dengan tema dan custom candle color', async () => {
+    const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+    const controller = new ChartSessionController();
+
+    let volumeInputs: any = {};
+    const volumeHandle = {
+      id: 'vol_native',
+      nativeType: 'volume',
+      title: 'Volume',
+      visible: true,
+      setInputs: (inputs: any) => {
+        volumeInputs = { ...volumeInputs, ...inputs };
+      },
+    };
+
+    const mockCell = {
+      id: 'cell_0',
+      chart: {
+        indicators: () => [volumeHandle],
+        renderer: {
+          applyConfig: () => {},
+        },
+      },
+      inner: {
+        setTheme: () => {},
+      },
+    };
+
+    const mockWs = {
+      cells: () => [mockCell],
+      cell: () => mockCell,
+      active: mockCell,
+      on: () => {},
+    };
+
+    controller.attach({
+      nodeType: 1,
+      tagName: 'DIV',
+      clientWidth: 1000,
+      clientHeight: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    } as any, {
+      workspaceFactory: () => mockWs,
+    } as any);
+
+    // Initial sync
+    controller.syncNativeVolumeColors();
+    assert.ok(volumeInputs.upColor, 'Harus memiliki upColor');
+    assert.ok(volumeInputs.downColor, 'Harus memiliki downColor');
+
+    // Ubah dengan custom candle color via setTheme
+    controller.setTheme('signature', 12, { bullColor: '#00ff00', bearColor: '#ff0000' });
+    assert.equal(volumeInputs.upColor, '#00ff00', 'upColor volume harus sinkron dengan custom bullColor');
+    assert.equal(volumeInputs.downColor, '#ff0000', 'downColor volume harus sinkron dengan custom bearColor');
+  });
 });
+
 
 

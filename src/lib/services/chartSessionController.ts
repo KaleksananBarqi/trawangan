@@ -596,17 +596,42 @@ export class ChartSessionController {
     if (!cell) return;
     this.interceptApplyConfig(cell);
     this.enforceCurrentPriceLine(cell);
+    this.syncNativeVolumeColors(cell);
 
     const chart = cell.chart || cell.inner;
     if (chart && typeof chart.on === 'function') {
       try {
         chart.on('market:changed', () => {
           this.enforceCurrentPriceLine(cell);
+          this.syncNativeVolumeColors(cell);
         });
         chart.on('indicator:removed', (ev: any) => {
           this.handleIndicatorRemoved(ev?.id);
         });
       } catch (_) {}
+    }
+  }
+
+  /**
+   * Menyelaraskan input warna (upColor dan downColor) pada indikator native volume ke warna tema aktif
+   */
+  public syncNativeVolumeColors(cell?: any): void {
+    const cfg = THEME_PRESETS[this.themePreset] || THEME_PRESETS.signature;
+    const effectiveUp = this.customCandleColors?.bullColor || cfg.chart.upColor;
+    const effectiveDown = this.customCandleColors?.bearColor || cfg.chart.downColor;
+    const cells = cell ? [cell] : this.getAllCells();
+
+    for (const c of cells) {
+      const chart = c?.chart || c?.inner;
+      if (chart && typeof chart.indicators === 'function') {
+        for (const ind of Array.from(chart.indicators() || []) as any[]) {
+          if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
+            if (typeof ind.setInputs === 'function') {
+              ind.setInputs({ upColor: effectiveUp, downColor: effectiveDown });
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1072,6 +1097,7 @@ export class ChartSessionController {
             r.applyConfig(candleConfig);
           }
         }
+        this.syncNativeVolumeColors();
       } catch (err) {
         console.warn('[ChartSessionController] applyConfig candleStyle error:', err);
       }
