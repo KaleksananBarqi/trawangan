@@ -5,6 +5,25 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.20.0] - 2026-10-21
+
+### 🚀 Ditambahkan (Added)
+- **Arsitektur Dual-Layer Snapping ("Sticky") (ADR 0010, #81, #82):**
+  - **Tick-Aligned Price Guard**: Mesin pembulatan harga adaptif bertingkat yang selalu mematuhi ukuran *tick* bursa atau presisi nominal harga aset (mencegah desimal liar tak berhingga seperti `$68421.391827419`).
+  - **OHLC Magnet Snapping**: Mengunci koordinat harga secara otomatis ke titik Open, High, Low, atau Close lilin candlestick terdekat dengan radius toleransi 15 piksel, memprioritaskan titik ekstrem sumbu lilin (High/Low) di atas Open/Close.
+  - **Shift Inversion Guard**: Menahan tombol `Shift` saat melakukan *drag* garis batas atau menggambar akan membalik status snapping secara sementara untuk fleksibilitas instan tanpa bolak-balik menyalakan kontrol toolbar.
+  - **Snap Halo Indicator**: Umpan balik visual berupa titik pendar (*halo dot*) beranimasi denyut (*pulse*) tepat pada koordinat X dan Y lilin yang sedang dikunci, disertai tag `MAGNET: HIGH/LOW` pada badge harga.
+- **Revamp Manajemen Alert Dua Arah (ADR 0010, #81, #83, #84):**
+  - **Unified Create & Edit Modal (`CreateAlertModal.svelte`)**: Merefaktor dialog alert untuk mendukung mode pembuatan maupun penyuntingan penuh dengan data lama terisi otomatis, tombol "Simpan Perubahan" yang memanggil `alertService.updateAlert`, serta tombol aksi cepat "Hapus Alert Ini".
+  - **Akses Sunting Langsung di Kanvas (`Chart.svelte`)**: Menambahkan tombol pensil (*Edit*) dan dukungan *double-click* langsung pada *badge* garis alert kanvas grafik untuk membuka modal sunting seketika.
+  - **Tombol Sunting di Panel Samping (`WatchlistPanel.svelte`)**: Menyematkan tombol aksi edit berikon pensil (`Pencil`) pada setiap item baris daftar alert.
+- **Integrasi Presisi pada Long/Short Position Tool (#85):**
+  - Ketiga jangkar pengukuran harga pada *Risk/Reward Position Tool* (Entry, Stop Loss, dan Take Profit) kini otomatis disanitasi menggunakan *Tick-Aligned Price Guard* dan mematuhi penambatan magnet lilin OHLC, memastikan rasio risiko/imbalan dihitung dari level harga yang bersih.
+
+### 🔄 Diubah (Changed)
+- **Sanitasi Otomatis pada `alertService`:**
+  - Metode `addAlert` dan `updateAlert` pada `alertService` kini secara otomatis melakukan kuantisasi harga target ke kelipatan *tick size* terdekat sebelum disimpan ke penyimpanan lokal dan disiarkan ke subscriber.
+
 ## [0.19.0] - 2026-10-19
 
 ### 🚀 Ditambahkan (Added)
