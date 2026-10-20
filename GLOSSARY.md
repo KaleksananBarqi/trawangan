@@ -60,6 +60,14 @@ _Avoid_: Local filter only, Disconnected search modal
 Garis visual horizontal penanda sinyal batas harga pada kanvas grafik yang dapat digeser (drag-and-drop) secara interaktif untuk memperbarui level target harga secara instan tanpa dialog modal.
 _Avoid_: Static alert line, Read-only alert badge
 
+**OHLC Magnet Snapping**:
+Mekanisme penambatan koordinat harga interaktif (pada garis alert dan alat gambar Long/Short) secara otomatis ke level Open, High, Low, atau Close lilin candlestick terdekat saat kursor berada dalam radius ambang toleransi.
+_Avoid_: Freeform floating price, Unsnapped drag, Raw pixel coordinate
+
+**Tick-Aligned Price Guard**:
+Mekanisme pembulatan dan sanitasi harga otomatis yang menjamin seluruh penempatan target alert dan titik pengukuran posisi Long/Short selalu selaras dengan kelipatan ukuran tick (*tick size*) instrumen bursa aktif, mengeliminasi angka desimal acak yang berlebihan.
+_Avoid_: Arbitrary float precision, Infinite decimal prices, Raw float coordinate
+
 **Persistent Price Line Guard**:
 Mekanisme pertahanan di subsistem grafik yang menjamin garis harga terkini (last price line) tetap aktif dan terhindar dari reset senyap saat mutasi konfigurasi kanvas, pergantian timeframe, atau perubahan tata letak sel.
 _Avoid_: Disappearing price line, Flaky last price

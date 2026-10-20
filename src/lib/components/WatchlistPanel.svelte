@@ -1366,7 +1366,7 @@
                 title="Sunting Alert Ini (Ubah Target & Kondisi)"
                 onclick={() => onRequestEditAlert?.(a)}
               >
-                <SlidersHorizontal size={12} />
+                <Pencil size={12} />
               </button>
 
               <button

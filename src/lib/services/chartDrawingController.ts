@@ -6,6 +6,7 @@ import {
   flushDrawings
 } from './persistence';
 import type { CommandDispatcher } from './commandDispatcher';
+import { roundToTickSize } from './priceSnapService';
 
 export interface DrawingState {
   activeTool: DrawingToolType | null;
@@ -53,6 +54,7 @@ export class ChartDrawingController {
   private canUndo = true;
   private canRedo = true;
   private isRestoring = false;
+  private persistedSnapMode: SnapMode | null = null;
 
   private workspace: any = null;
   private getSymbol: () => string = () => 'BTCUSDT';
@@ -324,6 +326,36 @@ export class ChartDrawingController {
       }
     }
     this.notify();
+  }
+
+  /**
+   * Atur mode snap sementara (misal saat tombol Shift ditahan)
+   */
+  setTemporarySnapMode(tempMode: SnapMode): void {
+    if (this.persistedSnapMode === null) {
+      this.persistedSnapMode = this.snapMode;
+    }
+    this.snapMode = tempMode;
+    const activeChart = this.getActiveChart();
+    if (activeChart?.drawings) {
+      try {
+        activeChart.drawings.setSnapMode(tempMode);
+      } catch (e) {
+        console.warn('ChartDrawingController setTemporarySnapMode error:', e);
+      }
+    }
+    this.notify();
+  }
+
+  /**
+   * Pulihkan mode snap awal setelah tombol modifier dilepas
+   */
+  restoreOriginalSnapMode(): void {
+    if (this.persistedSnapMode !== null) {
+      const original = this.persistedSnapMode;
+      this.persistedSnapMode = null;
+      this.setSnapMode(original);
+    }
   }
 
   /**
@@ -602,6 +634,18 @@ export class ChartDrawingController {
     if (activeChart?.drawings) {
       try {
         this.activeDrawings = [...(activeChart.drawings.all?.() || [])];
+
+        // Tick-Aligned Price Guard: Sanitasi anchors harga pada setiap gambar
+        for (const d of this.activeDrawings) {
+          if (Array.isArray(d.anchors)) {
+            for (const a of d.anchors) {
+              if (typeof a.price === 'number') {
+                a.price = roundToTickSize(a.price);
+              }
+            }
+          }
+        }
+
         const doc = activeChart.drawings.toJSON?.();
         if (doc) {
           const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';

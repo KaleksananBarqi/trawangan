@@ -131,6 +131,35 @@ export class PriceScaleOverlayController {
   }
 
   /**
+   * Hitung koordinat pixel X untuk timestamp tertentu
+   */
+  getTimeX(targetTime: number): number | null {
+    if (!this.workspace || !this.workspace.active) return null;
+    try {
+      const activeChart = this.workspace.active.chart as any;
+      if (!activeChart) return null;
+
+      const coords = this.getChartCoords(activeChart);
+      const renderer =
+        activeChart?.renderer?.renderer || activeChart?.renderer;
+      const pane =
+        renderer?.pricePane ||
+        (renderer?.panes && renderer.panes[0]) ||
+        (renderer?.paneNodeAtY ? renderer.paneNodeAtY(50) : null);
+
+      if (coords && typeof coords.timeToX === 'function') {
+        const scale = activeChart.timeScale || activeChart.scale;
+        const bounds = pane?.bounds || activeChart.bounds;
+        const x = coords.timeToX(targetTime, scale, bounds);
+        if (typeof x === 'number' && !isNaN(x)) {
+          return Math.round(x);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /**
    * Hitung harga tepat dari koordinat pixel Y mouse
    */
   getPriceFromClientY(clientY: number): number | null {

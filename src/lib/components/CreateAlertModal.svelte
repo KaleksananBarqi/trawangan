@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
-  import { Bell, X, ArrowUpRight, ArrowDownRight, MoveHorizontal, Check, Zap, Edit3, Percent } from '@lucide/svelte';
+  import { Bell, X, ArrowUpRight, ArrowDownRight, MoveHorizontal, Check, Zap, Edit3, Percent, Trash2 } from '@lucide/svelte';
   import type { AlertCondition, AlertFrequency, PriceAlert } from '../types/market';
   import { alertService } from '../services/alertService';
 
@@ -36,30 +36,38 @@
   // Auto set nilai awal saat modal terbuka
   $effect(() => {
     if (isOpen) {
-      symbol = initialSymbol || 'BTCUSDT';
-      const curP = currentMarketPrice || 0;
-
-      if (initialPrice !== undefined && initialPrice > 0) {
-        targetPrice = initialPrice.toString();
-        // Otomatis pilih kondisi cerdas berdasarkan harga pasar vs harga target
-        if (curP > 0) {
-          if (initialPrice > curP) {
-            condition = 'crossing_up';
-          } else if (initialPrice < curP) {
-            condition = 'crossing_down';
-          } else {
-            condition = 'crossing';
-          }
-        }
-      } else if (curP > 0) {
-        targetPrice = curP.toString();
-        condition = 'crossing_up';
+      if (editingAlert) {
+        symbol = editingAlert.symbol;
+        targetPrice = editingAlert.targetPrice.toString();
+        condition = editingAlert.condition || 'crossing';
+        frequency = editingAlert.frequency || 'once';
+        label = editingAlert.label || `Target ${symbol} @ ${targetPrice}`;
       } else {
-        targetPrice = '';
-        condition = 'crossing';
-      }
+        symbol = initialSymbol || 'BTCUSDT';
+        const curP = currentMarketPrice || 0;
 
-      label = `Target ${symbol} @ ${targetPrice}`;
+        if (initialPrice !== undefined && initialPrice > 0) {
+          targetPrice = initialPrice.toString();
+          // Otomatis pilih kondisi cerdas berdasarkan harga pasar vs harga target
+          if (curP > 0) {
+            if (initialPrice > curP) {
+              condition = 'crossing_up';
+            } else if (initialPrice < curP) {
+              condition = 'crossing_down';
+            } else {
+              condition = 'crossing';
+            }
+          }
+        } else if (curP > 0) {
+          targetPrice = curP.toString();
+          condition = 'crossing_up';
+        } else {
+          targetPrice = '';
+          condition = 'crossing';
+        }
+
+        label = `Target ${symbol} @ ${targetPrice}`;
+      }
 
       tick().then(() => {
         priceInputEl?.focus();
@@ -100,15 +108,32 @@
     const p = parseFloat(targetPrice);
     if (!p || isNaN(p) || p <= 0) return;
 
-    const newA = await alertService.addAlert({
-      symbol: symbol.toUpperCase(),
-      targetPrice: p,
-      condition,
-      frequency,
-      label: label.trim() || `Target ${symbol} @ ${p}`,
-    });
+    if (editingAlert) {
+      const updated = await alertService.updateAlert(editingAlert.id, {
+        targetPrice: p,
+        condition,
+        frequency,
+        label: label.trim() || `Target ${symbol} @ ${p}`,
+      });
+      if (updated) {
+        onUpdated?.(updated);
+      }
+    } else {
+      const newA = await alertService.addAlert({
+        symbol: symbol.toUpperCase(),
+        targetPrice: p,
+        condition,
+        frequency,
+        label: label.trim() || `Target ${symbol} @ ${p}`,
+      });
+      onCreated?.(newA);
+    }
+    onClose();
+  }
 
-    onCreated?.(newA);
+  async function handleDeleteThisAlert() {
+    if (!editingAlert) return;
+    await alertService.deleteAlert(editingAlert.id);
     onClose();
   }
 
@@ -303,18 +328,26 @@
 
         <!-- Modal Actions -->
         <div class="modal-footer">
-          <button type="button" class="btn-cancel" onclick={onClose}>
-            Batal
-          </button>
-          <button type="submit" class="btn-submit {editingAlert ? 'btn-update' : ''}">
-            {#if editingAlert}
-              <Edit3 size={13} />
-              <span>Simpan Perubahan Alert</span>
-            {:else}
-              <Zap size={13} />
-              <span>Pasang Price Alert</span>
-            {/if}
-          </button>
+          {#if editingAlert}
+            <button type="button" class="btn-delete-alert" onclick={handleDeleteThisAlert} title="Hapus alert ini">
+              <Trash2 size={12} />
+              <span>Hapus Alert Ini</span>
+            </button>
+          {/if}
+          <div class="footer-right">
+            <button type="button" class="btn-cancel" onclick={onClose}>
+              Batal
+            </button>
+            <button type="submit" class="btn-submit {editingAlert ? 'btn-update' : ''}">
+              {#if editingAlert}
+                <Edit3 size={13} />
+                <span>Simpan Perubahan</span>
+              {:else}
+                <Zap size={13} />
+                <span>Pasang Price Alert</span>
+              {/if}
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -603,11 +636,38 @@
   .modal-footer {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     gap: 8px;
     margin-top: 6px;
     padding-top: 10px;
     border-top: 1px solid var(--border-hairline);
+  }
+
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  .btn-delete-alert {
+    background-color: rgba(246, 70, 93, 0.12);
+    border: 1px solid rgba(246, 70, 93, 0.3);
+    color: var(--brand-down, #f6465d);
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .btn-delete-alert:hover {
+    background-color: rgba(246, 70, 93, 0.22);
+    border-color: rgba(246, 70, 93, 0.5);
   }
 
   .btn-cancel {

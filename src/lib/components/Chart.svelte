@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import './chart.css';
-  import { Scissors, Bell, X, WifiOff } from '@lucide/svelte';
+  import { Scissors, Bell, X, WifiOff, Edit3 } from '@lucide/svelte';
   import { ChartSessionController } from '../services/chartSessionController';
   import { chartDrawingController } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { alertService } from '../services/alertService';
   import { marketFeed } from '../services/market';
   import { replaySession } from '../services/replay';
+  import { findNearestOhlcPoint } from '../services/priceSnapService';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
@@ -43,7 +44,7 @@
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
-    onCutoffCancelled, onRequestCreateAlert,
+    onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -175,21 +176,82 @@
   }
   export function isReplaying(): boolean { return replaySession.getSnapshot().active; }
 
-  function handleAlertPointerDown(e: PointerEvent, alert: PriceAlert) {
-    e.stopPropagation(); draggingAlertId = alert.id; draggingAlertPrice = alert.targetPrice;
-    (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
+  let cachedCandles = $state<Candle[]>([]);
+  let snapInfo = $state<{
+    snapped: boolean;
+    type: 'high' | 'low' | 'open' | 'close' | null;
+    candleY?: number;
+    candleX?: number;
+    price: number;
+  } | null>(null);
+
+  async function refreshCachedCandles() {
+    try {
+      const bars = await marketFeed.getCandles(symbol, timeframe, 300);
+      if (Array.isArray(bars) && bars.length > 0) {
+        cachedCandles = bars;
+      }
+    } catch (_) {}
   }
+
+  $effect(() => {
+    const s = symbol, tf = timeframe;
+    if (isMounted) {
+      refreshCachedCandles();
+    }
+  });
+
+  function handleAlertPointerDown(e: PointerEvent, alert: PriceAlert) {
+    e.stopPropagation();
+    draggingAlertId = alert.id;
+    draggingAlertPrice = alert.targetPrice;
+    (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    refreshCachedCandles();
+  }
+
   function handleAlertPointerMove(e: PointerEvent, alert: PriceAlert) {
     if (draggingAlertId !== alert.id) return;
-    const p = priceScaleOverlayController.getPriceFromClientY(e.clientY);
-    if (p !== null && p > 0) { draggingAlertPrice = p; scheduleBadgePositionUpdate(); }
+    const rawPrice = priceScaleOverlayController.getPriceFromClientY(e.clientY);
+    if (rawPrice !== null && rawPrice > 0) {
+      const containerRect = chartContainer?.getBoundingClientRect();
+      const localY = containerRect ? e.clientY - containerRect.top : e.clientY;
+      const isMagnet = chartDrawingController.getSnapshot().snapMode !== 'off';
+
+      const snapRes = findNearestOhlcPoint({
+        targetPrice: rawPrice,
+        targetY: localY,
+        candles: cachedCandles,
+        getPriceY: (p) => priceScaleOverlayController.getPriceY(p),
+        tolerancePx: 15,
+        isMagnetActive: isMagnet,
+        shiftKey: false, // Inversi shift sudah ditangani oleh controller state (menghindari double-inversion)
+      });
+
+      draggingAlertPrice = snapRes.price;
+      if (snapRes.snapped) {
+        const timeX = snapRes.candleTime ? priceScaleOverlayController.getTimeX(snapRes.candleTime) : null;
+        snapInfo = {
+          snapped: true,
+          type: snapRes.snappedType,
+          candleY: snapRes.candleY,
+          candleX: timeX ?? undefined,
+          price: snapRes.price,
+        };
+      } else {
+        snapInfo = null;
+      }
+      scheduleBadgePositionUpdate();
+    }
   }
+
   function handleAlertPointerUp(e: PointerEvent, alert: PriceAlert) {
     if (draggingAlertId === alert.id) {
       if (draggingAlertPrice && Math.abs(draggingAlertPrice - alert.targetPrice) > 0.000001) {
         alertService.updateAlert(alert.id, { targetPrice: draggingAlertPrice });
       }
-      draggingAlertId = null; draggingAlertPrice = null;
+      draggingAlertId = null;
+      draggingAlertPrice = null;
+      snapInfo = null;
       try { (e.target as HTMLElement)?.releasePointerCapture?.(e.pointerId); } catch (_) {}
     }
   }
@@ -248,8 +310,24 @@
   export function hideAllDrawings(hide: boolean): void { chartDrawingController.setHide(hide); }
   export function setDrawingsLocked(lock: boolean): void { chartDrawingController.setLock(lock); }
   export function setDrawingsHidden(hide: boolean): void { chartDrawingController.setHide(hide); }
+  function handleWindowKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Shift') {
+      const snap = chartDrawingController.getSnapshot().snapMode;
+      const inverted = snap === 'off' ? 'strong' : 'off';
+      chartDrawingController.setTemporarySnapMode(inverted);
+    }
+  }
+
+  function handleWindowKeyUp(e: KeyboardEvent) {
+    if (e.key === 'Shift') {
+      chartDrawingController.restoreOriginalSnapMode();
+    }
+  }
+
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
 </script>
+
+<svelte:window onkeydown={handleWindowKeyDown} onkeyup={handleWindowKeyUp} />
 
 <div 
   class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''} {isHandpullActive ? 'handpull-mode' : ''}"
@@ -284,15 +362,61 @@
     {@const yPos = getPriceY(displayPrice)}
     {#if yPos !== null && yPos >= 0}
       <div class="chart-alert-line {a.triggered ? 'triggered' : ''} {a.active ? 'active' : 'paused'} {isDragging ? 'is-dragging' : ''}" style="top: {yPos}px;">
-        <div class="alert-line-badge mono-nums {isDragging ? 'dragging' : ''}" onpointerdown={(e) => handleAlertPointerDown(e, a)} onpointermove={(e) => handleAlertPointerMove(e, a)} onpointerup={(e) => handleAlertPointerUp(e, a)} onpointercancel={(e) => handleAlertPointerUp(e, a)} title="Tahan & geser untuk mengubah harga">
+        <div
+          class="alert-line-badge mono-nums {isDragging ? 'dragging' : ''}"
+          onpointerdown={(e) => handleAlertPointerDown(e, a)}
+          onpointermove={(e) => handleAlertPointerMove(e, a)}
+          onpointerup={(e) => handleAlertPointerUp(e, a)}
+          onpointercancel={(e) => handleAlertPointerUp(e, a)}
+          ondblclick={(e) => {
+            e.stopPropagation();
+            onRequestEditAlert?.(a);
+          }}
+          title="Tahan & geser untuk mengubah harga (Double-click untuk sunting)"
+        >
           <Bell size={10} class="badge-bell" />
           <span class="badge-price">${formatPrice(displayPrice)}</span>
+          {#if isDragging && snapInfo?.snapped}
+            <span class="badge-snap-tag mono-nums">MAGNET: {snapInfo.type?.toUpperCase()}</span>
+          {/if}
           {#if a.label}<span class="badge-lbl">{a.label}</span>{/if}
-          <button type="button" class="badge-del-btn" title="Hapus Alert" onclick={(e) => { e.stopPropagation(); alertService.deleteAlert(a.id); }}><X size={10} /></button>
+          <button
+            type="button"
+            class="badge-edit-btn"
+            title="Sunting Alert"
+            onclick={(e) => {
+              e.stopPropagation();
+              onRequestEditAlert?.(a);
+            }}
+          >
+            <Edit3 size={10} />
+          </button>
+          <button
+            type="button"
+            class="badge-del-btn"
+            title="Hapus Alert"
+            onclick={(e) => {
+              e.stopPropagation();
+              alertService.deleteAlert(a.id);
+            }}
+          >
+            <X size={10} />
+          </button>
         </div>
       </div>
     {/if}
   {/each}
+
+  {#if draggingAlertId && snapInfo?.snapped && snapInfo.candleY !== undefined}
+    <div
+      class="snap-halo-indicator"
+      style="top: {snapInfo.candleY}px; {snapInfo.candleX !== undefined ? `left: ${snapInfo.candleX}px; margin-left: -7px;` : 'right: 80px;'}"
+      title="Magnet terkunci ke {snapInfo.type?.toUpperCase()}: ${formatPrice(snapInfo.price)}"
+    >
+      <div class="snap-halo-dot"></div>
+      <div class="snap-halo-pulse"></div>
+    </div>
+  {/if}
 
   {#if showDrawingPriceLabels}
     {#each drawingPriceBadges as badge (badge.id)}

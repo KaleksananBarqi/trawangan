@@ -372,6 +372,72 @@
   background-color: rgba(255, 59, 105, 0.15);
 }
 
+.badge-edit-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 1px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  transition: color 0.1s ease;
+}
+
+.badge-edit-btn:hover {
+  color: var(--brand-cyan, #00f090);
+  background-color: rgba(0, 240, 144, 0.15);
+}
+
+.badge-snap-tag {
+  font-size: 7.5px;
+  font-weight: 700;
+  padding: 1px 3px;
+  border-radius: 2px;
+  background-color: rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  letter-spacing: 0.3px;
+}
+
+.snap-halo-indicator {
+  position: absolute;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  pointer-events: none;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.snap-halo-dot {
+  width: 6px;
+  height: 6px;
+  background-color: var(--brand-cyan, #00f090);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--brand-cyan, #00f090);
+}
+
+.snap-halo-pulse {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--brand-cyan, #00f090);
+  border-radius: 50%;
+  animation: haloPing 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes haloPing {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
 /* Styling Tombol 'Simpan sebagai default' pada Modal Chart Settings Vela */
 .trawangan-save-default-btn {
   display: inline-flex !important;

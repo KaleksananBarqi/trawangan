@@ -2,6 +2,7 @@ import type { PriceAlert, AlertCondition, AlertFrequency } from '../types/market
 import { loadAlerts, saveAlerts } from './persistence';
 import { playAlertChime, playSuccessPip } from './soundService';
 import { sendWindowsAlertNotification } from './systemNotificationService';
+import { roundToTickSize } from './priceSnapService';
 
 type TriggerListener = (alert: PriceAlert, actualPrice: number) => void;
 type AlertChangeListener = (alerts: PriceAlert[]) => void;
@@ -94,13 +95,14 @@ class AlertService {
     frequency?: AlertFrequency;
     label?: string;
   }): Promise<PriceAlert> {
+    const cleanTargetPrice = roundToTickSize(params.targetPrice);
     const newAlert: PriceAlert = {
       id: 'alt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       symbol: params.symbol.toUpperCase(),
-      targetPrice: params.targetPrice,
+      targetPrice: cleanTargetPrice,
       condition: params.condition || 'crossing',
       frequency: params.frequency || 'once',
-      label: params.label?.trim() || `Target ${params.symbol} @ ${params.targetPrice}`,
+      label: params.label?.trim() || `Target ${params.symbol} @ ${cleanTargetPrice}`,
       active: true,
       triggered: false,
       createdAt: Date.now(),
@@ -115,14 +117,23 @@ class AlertService {
   /**
    * Perbarui alert yang sudah ada
    */
-  public async updateAlert(id: string, updates: Partial<PriceAlert>): Promise<void> {
+  public async updateAlert(id: string, updates: Partial<PriceAlert>): Promise<PriceAlert | null> {
+    let updatedTarget: PriceAlert | null = null;
+    const cleanUpdates = { ...updates };
+    if (typeof cleanUpdates.targetPrice === 'number') {
+      cleanUpdates.targetPrice = roundToTickSize(cleanUpdates.targetPrice);
+    }
+
     this.alerts = this.alerts.map((a) => {
       if (a.id === id) {
-        return { ...a, ...updates };
+        updatedTarget = { ...a, ...cleanUpdates };
+        return updatedTarget;
       }
       return a;
     });
     await this.save();
+    playSuccessPip();
+    return updatedTarget;
   }
 
   /**

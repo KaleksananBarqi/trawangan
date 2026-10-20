@@ -1,4 +1,5 @@
 // Layanan Ekstraksi & Formatter Label Harga pada Skala Kanan (Indikator & Drawing Tools)
+import { roundToTickSize } from './priceSnapService';
 
 export interface PriceScaleBadge {
   id: string;
@@ -78,9 +79,11 @@ export function extractDrawingPriceBadges(
       // anchors[1] = Stop Loss (stopPx)
       // anchors[2] = Target Profit (targetPx)
       const prices = typeof d.prices === 'function' ? d.prices() : null;
-      const entryPrice = prices?.entry ?? anchors[0]?.price;
-      const stopPrice = prices?.stop ?? anchors[1]?.price;
-      const targetPrice = prices?.target ?? anchors[2]?.price;
+      const sanitize = (val: any) => (typeof val === 'number' && !isNaN(val) ? roundToTickSize(val) : undefined);
+
+      const entryPrice = sanitize(prices?.entry ?? anchors[0]?.price);
+      const stopPrice = sanitize(prices?.stop ?? anchors[1]?.price);
+      const targetPrice = sanitize(prices?.target ?? anchors[2]?.price);
 
       if (typeof entryPrice === 'number' && !isNaN(entryPrice)) {
         const col = d.style?.lineColor || '#3b82f6';
