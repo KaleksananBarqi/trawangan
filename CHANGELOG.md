@@ -5,6 +5,22 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.21.0] - 2026-10-21
+
+### 🚀 Ditambahkan (Added)
+- **Jam Bursa Dunia Default di StatusBar (Tokyo, London, New York):**
+  - Menampilkan jam 3 pusat keuangan utama dunia secara default: Tokyo (`TYO` / TSE - `Asia/Tokyo`), London (`LON` / LSE - `Europe/London`), dan New York (`NY` / NYSE - `America/New_York`) berformat `HH:mm` berdampingan dengan jam lokal sistem (`HH:mm:ss <TZ>`) di footer terminal.
+  - **Deteksi Sesi Pasar Real-Time (*Market Session Status*)**: Indikator visual dot (Hijau = **OPEN**, Abu-abu = **CLOSED**) yang mengevaluasi jam kerja bursa secara presisi (TSE: 09:00–15:30 JST, LSE: 08:00–16:30 GMT/BST, NYSE: 09:30–16:00 EST/EDT) dengan penanganan otomatis *Daylight Saving Time* (DST) dan libur akhir pekan.
+  - **1-Klik Sinkronisasi Timezone Grafik**: Mengklik salah satu pill jam bursa langsung mengubah zona waktu chart (`chartSessionController.setTimezone`) ke kota tersebut dengan aksen border pink aktif (`#ff69b4`). Mengklik jam lokal mereset timezone chart ke zona lokal pengguna.
+  - **Adaptasi Responsif Layar Sempit (< 1079px)**: Deretan jam dunia otomatis menciut menjadi tombol popover interaktif `World Clocks` saat ruang bilah status terbatas agar tidak mendesak tombol utilitas telemetri dan terminal logs.
+  - **Kustomisasi Seleksi Bursa di Modal Settings**: Menambahkan toggle global `showWorldClocks` serta pemilih bursa mandiri (*chip-toggle*) di **Settings > Preferensi Regional** untuk fleksibilitas pengaturan kota yang ingin ditampilkan.
+
+### 🔄 Diubah (Changed)
+- **Normalisasi Format Jam Lokal:**
+  - Format waktu lokal kini selalu menggunakan separator titik dua standar (`HH:mm:ss`) serta mendeteksi singkatan zona waktu sistem secara dinamis (`WIB`, `WITA`, `WIT`, `JST`, `BST`, dll.) menggunakan API `Intl.DateTimeFormat`.
+- **Standarisasi Terminologi Pengaturan:**
+  - Mengubah label status nonaktif toggle jam dunia dari *"Senyap"* menjadi *"Nonaktif"* agar selaras dengan toggle preferensi lainnya.
+
 ## [0.20.0] - 2026-10-21
 
 ### 🚀 Ditambahkan (Added)
