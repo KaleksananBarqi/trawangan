@@ -16,6 +16,8 @@ test('Settings Modal & Tab Submodules Seam Suite', async (t) => {
     assert.equal(typeof defaultSettings.timezone, 'string');
     assert.equal(typeof defaultSettings.soundEnabled, 'boolean');
     assert.equal(typeof defaultSettings.systemNotificationEnabled, 'boolean');
+    assert.equal(typeof defaultSettings.showWorldClocks, 'boolean');
+    assert.ok(Array.isArray(defaultSettings.worldClockCities));
 
     // Tab Appearance
     assert.ok(THEME_PRESETS[defaultSettings.themePreset ?? 'signature']);

@@ -38,6 +38,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   autoLoadLastWorkspace: true,
   clipboardWatcherEnabled: true,
   clipboardAutoOpen: false,
+  showWorldClocks: true,
+  worldClockCities: ['Asia/Tokyo', 'Europe/London', 'America/New_York'],
   syncConfig: { ...DEFAULT_SYNC_CONFIG },
 };
 
@@ -69,6 +71,12 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
     autoLoadLastWorkspace: saved.autoLoadLastWorkspace ?? DEFAULT_APP_SETTINGS.autoLoadLastWorkspace ?? true,
     clipboardWatcherEnabled: saved.clipboardWatcherEnabled ?? DEFAULT_APP_SETTINGS.clipboardWatcherEnabled ?? true,
     clipboardAutoOpen: saved.clipboardAutoOpen ?? DEFAULT_APP_SETTINGS.clipboardAutoOpen ?? false,
+    showWorldClocks: saved.showWorldClocks ?? DEFAULT_APP_SETTINGS.showWorldClocks ?? true,
+    worldClockCities: saved.worldClockCities ?? DEFAULT_APP_SETTINGS.worldClockCities ?? [
+      'Asia/Tokyo',
+      'Europe/London',
+      'America/New_York',
+    ],
     defaultTimeframe: saved.defaultTimeframe ?? DEFAULT_APP_SETTINGS.defaultTimeframe ?? '15m',
     syncConfig: mergedSyncConfig,
   };

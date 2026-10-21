@@ -1390,6 +1390,8 @@
   <!-- Bottom System Status Bar (Fixed 26px) -->
   <StatusBar
     isConsoleOpen={isConsoleDrawerOpen}
+    settings={appSettings}
+    onSelectTimezone={(tz) => handleUpdateSettings({ timezone: tz })}
     onToggleConsole={() => (isConsoleDrawerOpen = !isConsoleDrawerOpen)}
     onOpenAbout={() => {
       settingsInitialTab = 'about';

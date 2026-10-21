@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Volume2, VolumeX, Bell, BellOff, Palette, Clipboard, ClipboardCheck } from '@lucide/svelte';
+  import { Volume2, VolumeX, Bell, BellOff, Palette, Clipboard, ClipboardCheck, Clock } from '@lucide/svelte';
   import { THEME_PRESETS } from '../../constants/themes';
   import { sendTestNotification } from '../../services/systemNotificationService';
   import type { AppSettings } from '../../types/market';
@@ -53,6 +53,24 @@
       <option value="America/Chicago">UTC-5 (Chicago CDT)</option>
       <option value="America/Los_Angeles">UTC-7 (Los Angeles PDT)</option>
     </select>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Jam Bursa Dunia (StatusBar)</span>
+      <span class="setting-desc">Tampilkan jam bursa New York, London, dan Tokyo beserta status sesi pasar di bilah status</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.showWorldClocks !== false ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ showWorldClocks: settings.showWorldClocks === false ? true : false })}
+    >
+      {#if settings.showWorldClocks !== false}
+        <Clock size={14} /> Aktif
+      {:else}
+        <Clock size={14} /> Senyap
+      {/if}
+    </button>
   </div>
 
   <div class="setting-row">

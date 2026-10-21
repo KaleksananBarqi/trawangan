@@ -246,6 +246,8 @@ export interface AppSettings {
   autoLoadLastWorkspace?: boolean;
   clipboardWatcherEnabled?: boolean;
   clipboardAutoOpen?: boolean;
+  showWorldClocks?: boolean;
+  worldClockCities?: string[];
 }
 
 
