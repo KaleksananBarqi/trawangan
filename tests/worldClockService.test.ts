@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_WORLD_CLOCK_CITIES,
+  formatLocalClockTime,
+  formatMarketHours,
   formatWorldClockTime,
   getWorldClockSnapshot,
   isMarketSessionOpen,
@@ -120,6 +122,22 @@ test('World Clock Service & Settings Persistence Suite', async (t) => {
     const targetCity = SUPPORTED_WORLD_CITIES.find((c) => c.shortCode === 'NY')!;
     mockController.setTimezone(targetCity.timezone);
     assert.equal(mockController.getTimezone(), 'America/New_York');
+  });
+
+  await t.test('8. formatMarketHours menghasilkan string deskripsi jam bursa yang rapi', () => {
+    const hours = { openHour: 9, openMinute: 30, closeHour: 16, closeMinute: 0 };
+    assert.equal(formatMarketHours(hours), '09:30 - 16:00');
+
+    const singleDigitHours = { openHour: 8, openMinute: 5, closeHour: 9, closeMinute: 0 };
+    assert.equal(formatMarketHours(singleDigitHours), '08:05 - 09:00');
+  });
+
+  await t.test('9. formatLocalClockTime menghasilkan format titik dua HH:mm:ss dan label zona waktu sistem', () => {
+    const date = new Date('2026-10-21T01:30:45Z');
+    const local = formatLocalClockTime(date, 'Asia/Jakarta');
+
+    assert.equal(local.time, '08:30:45');
+    assert.ok(local.tzLabel.length > 0);
   });
 });
 

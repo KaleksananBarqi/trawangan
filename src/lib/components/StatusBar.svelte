@@ -23,6 +23,7 @@
   import type { AppSettings } from '../types/market';
   import {
     getWorldClockSnapshot,
+    formatLocalClockTime,
     DEFAULT_WORLD_CLOCK_CITIES,
     type WorldClockItem
   } from '../services/worldClockService';
@@ -43,7 +44,7 @@
     onSelectTimezone
   }: Props = $props();
 
-  let currentTime = $state('');
+  let localClock = $state(formatLocalClockTime(new Date()));
   let worldClocks = $state<WorldClockItem[]>([]);
   let isWorldClocksDropdownOpen = $state(false);
   let timeInterval: any = null;
@@ -56,7 +57,7 @@
 
   function updateClock() {
     const now = new Date();
-    currentTime = now.toLocaleTimeString('id-ID', { hour12: false });
+    localClock = formatLocalClockTime(now);
     const activeCities = settings?.worldClockCities ?? DEFAULT_WORLD_CLOCK_CITIES;
     worldClocks = getWorldClockSnapshot(now, activeCities);
   }
@@ -173,21 +174,21 @@
 
     <div class="divider"></div>
 
-    <!-- Clock Cluster: Local Clock + World Clocks -->
+    <!-- Kluster Jam: Jam Lokal + Jam Bursa Dunia -->
     <div class="clocks-cluster">
-      <!-- Local Clock (Always Present) -->
+      <!-- Jam Lokal Pengguna (Selalu Tampil) -->
       <button
         type="button"
         class="telemetry-pill world-clock-pill interactive mono-nums {(!settings?.timezone || settings?.timezone === 'Asia/Jakarta') ? 'active-timezone' : ''}"
-        title="Waktu Lokal Sistem (WIB/Lokal): {currentTime} • Klik untuk sinkronkan timezone chart ke lokal (WIB)"
+        title="Waktu Lokal Sistem: {localClock.time} {localClock.tzLabel} • Klik untuk sinkronkan timezone chart ke waktu lokal"
         onclick={() => handleSelectTimezone('Asia/Jakarta')}
       >
         <span class="icon-dim"><Clock size={11} /></span>
-        <span class="pill-text">{currentTime} WIB</span>
+        <span class="pill-text">{localClock.time} {localClock.tzLabel}</span>
       </button>
 
       {#if settings?.showWorldClocks !== false}
-        <!-- Desktop Mode (>= 1080px): Horizontal World Clock Pills -->
+        <!-- Mode Desktop (>= 1080px): Deretan Horizontal Pill Jam Dunia -->
         <div class="world-clocks-desktop">
           {#each worldClocks as clock (clock.id)}
             <button
@@ -203,7 +204,7 @@
           {/each}
         </div>
 
-        <!-- Mobile / Narrow Mode (< 1080px): Collapsed Popover Button -->
+        <!-- Mode Responsif / Layar Sempit (< 1080px): Tombol Popover Dropdown -->
         <div class="world-clocks-mobile">
           <button
             type="button"
@@ -482,7 +483,7 @@
     transform: rotate(-10deg) scale(1.1);
   }
 
-  /* World Clocks Cluster & Responsive Popover Styles */
+  /* Gaya Kluster Jam Dunia & Popover Responsif */
   .clocks-cluster {
     display: flex;
     align-items: center;
@@ -575,7 +576,7 @@
     border-color: rgba(255, 105, 180, 0.4);
   }
 
-  /* Popover Floating Panel */
+  /* Panel Popover Mengambang */
   .popover-backdrop {
     position: fixed;
     inset: 0;
@@ -700,8 +701,8 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  /* Responsive Media Query Breakpoint */
-  @media (max-width: 1080px) {
+  /* Breakpoint Media Query Responsif (< 1080px) */
+  @media (max-width: 1079px) {
     .world-clocks-desktop {
       display: none;
     }

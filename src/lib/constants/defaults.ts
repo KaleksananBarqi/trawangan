@@ -1,4 +1,5 @@
 import type { AppSettings, MultiChartSyncConfig } from '../types/market';
+import { DEFAULT_WORLD_CLOCK_CITIES } from '../services/worldClockService';
 
 /**
  * Konfigurasi bawaan sinkronisasi multi-chart Trawangan
@@ -39,7 +40,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   clipboardWatcherEnabled: true,
   clipboardAutoOpen: false,
   showWorldClocks: true,
-  worldClockCities: ['Asia/Tokyo', 'Europe/London', 'America/New_York'],
+  worldClockCities: [...DEFAULT_WORLD_CLOCK_CITIES],
   syncConfig: { ...DEFAULT_SYNC_CONFIG },
 };
 
@@ -73,9 +74,7 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
     clipboardAutoOpen: saved.clipboardAutoOpen ?? DEFAULT_APP_SETTINGS.clipboardAutoOpen ?? false,
     showWorldClocks: saved.showWorldClocks ?? DEFAULT_APP_SETTINGS.showWorldClocks ?? true,
     worldClockCities: saved.worldClockCities ?? DEFAULT_APP_SETTINGS.worldClockCities ?? [
-      'Asia/Tokyo',
-      'Europe/London',
-      'America/New_York',
+      ...DEFAULT_WORLD_CLOCK_CITIES,
     ],
     defaultTimeframe: saved.defaultTimeframe ?? DEFAULT_APP_SETTINGS.defaultTimeframe ?? '15m',
     syncConfig: mergedSyncConfig,

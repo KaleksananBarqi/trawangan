@@ -3,6 +3,10 @@
   import { THEME_PRESETS } from '../../constants/themes';
   import { sendTestNotification } from '../../services/systemNotificationService';
   import type { AppSettings } from '../../types/market';
+  import {
+    SUPPORTED_WORLD_CITIES,
+    DEFAULT_WORLD_CLOCK_CITIES
+  } from '../../services/worldClockService';
 
   interface Props {
     settings: AppSettings;
@@ -13,6 +17,18 @@
   let { settings, onUpdateSettings, onNavigateTab }: Props = $props();
 
   let testNotificationFeedback = $state<string | null>(null);
+
+  function handleToggleCity(tz: string) {
+    const current = settings.worldClockCities ?? DEFAULT_WORLD_CLOCK_CITIES;
+    let next: string[];
+    if (current.includes(tz)) {
+      if (current.length <= 1) return;
+      next = current.filter((c) => c !== tz);
+    } else {
+      next = [...current, tz];
+    }
+    onUpdateSettings({ worldClockCities: next });
+  }
 
   async function handleSendTestNotification() {
     testNotificationFeedback = 'Mengirim notifikasi ke Windows...';
@@ -68,10 +84,33 @@
       {#if settings.showWorldClocks !== false}
         <Clock size={14} /> Aktif
       {:else}
-        <Clock size={14} /> Senyap
+        <Clock size={14} /> Nonaktif
       {/if}
     </button>
   </div>
+
+  {#if settings.showWorldClocks !== false}
+    <div class="setting-sub-row">
+      <div class="setting-info">
+        <span class="setting-label-sub">Pilihan Bursa Aktif</span>
+        <span class="setting-desc">Pilih kota bursa dunia yang ingin ditampilkan di bilah status</span>
+      </div>
+      <div class="city-chips-group">
+        {#each SUPPORTED_WORLD_CITIES as city (city.id)}
+          {@const isEnabled = (settings.worldClockCities ?? DEFAULT_WORLD_CLOCK_CITIES).includes(city.timezone)}
+          <button
+            type="button"
+            class="chip-toggle {isEnabled ? 'active' : ''}"
+            onclick={() => handleToggleCity(city.timezone)}
+            title="{isEnabled ? 'Klik untuk sembunyikan' : 'Klik untuk tampilkan'} jam {city.label}"
+          >
+            <span class="chip-dot"></span>
+            <span>{city.label} ({city.shortCode})</span>
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   <div class="setting-row">
     <div class="setting-info">
@@ -298,5 +337,68 @@
     font-size: 10.5px;
     color: var(--brand-primary);
     margin-top: 3px;
+  }
+
+  /* Sub-Row Pilihan Bursa Jam Dunia */
+  .setting-sub-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px 8px 20px;
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--border-hairline);
+    border-radius: var(--radius-sm);
+    margin-top: -6px;
+  }
+
+  .setting-label-sub {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-main);
+  }
+
+  .city-chips-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .chip-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    padding: 3px 8px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .chip-toggle:hover {
+    color: var(--text-main);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .chip-toggle.active {
+    color: #ff69b4;
+    border-color: rgba(255, 105, 180, 0.5);
+    background-color: rgba(255, 105, 180, 0.1);
+  }
+
+  .chip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--text-dim);
+  }
+
+  .chip-toggle.active .chip-dot {
+    background-color: #ff69b4;
+    box-shadow: 0 0 5px rgba(255, 105, 180, 0.6);
   }
 </style>

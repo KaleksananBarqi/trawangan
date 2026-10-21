@@ -128,6 +128,49 @@ export function isMarketSessionOpen(
 }
 
 /**
+ * Format rentang jam operasional bursa (HH:mm - HH:mm)
+ */
+export function formatMarketHours(hours: MarketHours): string {
+  const openHPad = String(hours.openHour).padStart(2, '0');
+  const openMinPad = String(hours.openMinute).padStart(2, '0');
+  const closeHPad = String(hours.closeHour).padStart(2, '0');
+  const closeMinPad = String(hours.closeMinute).padStart(2, '0');
+  return `${openHPad}:${openMinPad} - ${closeHPad}:${closeMinPad}`;
+}
+
+/**
+ * Format waktu lokal perangkat pengguna secara konsisten dengan separator titik dua standar (HH:mm:ss)
+ * dan deteksi singkatan zona waktu dinamis sistem.
+ */
+export function formatLocalClockTime(
+  date: Date = new Date(),
+  timezone?: string
+): { time: string; tzLabel: string } {
+  try {
+    const timeOptions: Intl.DateTimeFormatOptions = {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    };
+    if (timezone) timeOptions.timeZone = timezone;
+
+    const time = new Intl.DateTimeFormat('en-GB', timeOptions).format(date);
+
+    const tzOptions: Intl.DateTimeFormatOptions = { timeZoneName: 'short' };
+    if (timezone) tzOptions.timeZone = timezone;
+
+    const parts = new Intl.DateTimeFormat('id-ID', tzOptions).formatToParts(date);
+    const tzLabel = parts.find((p) => p.type === 'timeZoneName')?.value || 'LOKAL';
+
+    return { time, tzLabel };
+  } catch {
+    const fallbackTime = date.toTimeString().split(' ')[0] || '--:--:--';
+    return { time: fallbackTime, tzLabel: 'LOKAL' };
+  }
+}
+
+/**
  * Format waktu dan tanggal untuk suatu zona waktu
  */
 export function formatWorldClockTime(
@@ -176,12 +219,7 @@ export function getWorldClockSnapshot(
 
     const { time, fullTime, dateStr } = formatWorldClockTime(date, tz);
     const isOpen = isMarketSessionOpen(date, tz, cityMeta.marketHours);
-
-    const openMinPad = String(cityMeta.marketHours.openMinute).padStart(2, '0');
-    const closeMinPad = String(cityMeta.marketHours.closeMinute).padStart(2, '0');
-    const openHPad = String(cityMeta.marketHours.openHour).padStart(2, '0');
-    const closeHPad = String(cityMeta.marketHours.closeHour).padStart(2, '0');
-    const marketHoursDesc = `${openHPad}:${openMinPad} - ${closeHPad}:${closeMinPad}`;
+    const marketHoursDesc = formatMarketHours(cityMeta.marketHours);
 
     result.push({
       id: cityMeta.id,
