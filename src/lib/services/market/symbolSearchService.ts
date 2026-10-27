@@ -37,6 +37,96 @@ export const EXTENDED_REGISTRY_ASSETS: Array<{ base: string; name: string }> = [
 ];
 
 /**
+ * Daftar pasangan Binance Spot berkuotasi BTC untuk fast lookup offline sub-10ms.
+ */
+export const POPULAR_BTC_PAIRS: Array<{ base: string; name: string }> = [
+  { base: 'ETH', name: 'Ethereum' },
+  { base: 'SOL', name: 'Solana' },
+  { base: 'BNB', name: 'Binance Coin' },
+  { base: 'XRP', name: 'Ripple' },
+  { base: 'DOGE', name: 'Dogecoin' },
+  { base: 'ADA', name: 'Cardano' },
+  { base: 'AVAX', name: 'Avalanche' },
+  { base: 'LINK', name: 'Chainlink' },
+  { base: 'LTC', name: 'Litecoin' },
+  { base: 'NEAR', name: 'NEAR Protocol' },
+  { base: 'DOT', name: 'Polkadot' },
+  { base: 'SUI', name: 'Sui Network' },
+  { base: 'PEPE', name: 'Pepe' },
+  { base: 'SHIB', name: 'Shiba Inu' },
+  { base: 'RENDER', name: 'Render Token' },
+  { base: 'FET', name: 'Artificial Superintelligence Alliance' },
+  { base: 'TAO', name: 'Bittensor' },
+  { base: 'INJ', name: 'Injective' },
+  { base: 'ARB', name: 'Arbitrum' },
+  { base: 'OP', name: 'Optimism' },
+];
+
+/**
+ * Representasi pasangan simbol hasil parsing adaptif.
+ */
+export interface ParsedSymbolPair {
+  baseAsset: string;
+  quoteAsset: string;
+  cleanSymbol: string;
+  isQuoteExplicit: boolean;
+  isPerp: boolean;
+}
+
+export const KNOWN_QUOTE_ASSETS = ['USDT', 'USDC', 'BTC', 'ETH', 'IDR', 'USD', 'EUR', 'BUSD', 'BNB', 'TRY'] as const;
+
+/**
+ * Adaptive Quote Parser: Memecah query menjadi base & quote asset secara cerdas.
+ * Mendeteksi delimiter (/, -, _, spasi) maupun sufiks kuotasi yang dikenal.
+ */
+export function parseAdaptiveSymbol(raw: string): ParsedSymbolPair {
+  if (!raw) {
+    return { baseAsset: '', quoteAsset: 'USDT', cleanSymbol: '', isQuoteExplicit: false, isPerp: false };
+  }
+
+  let s = raw.trim().toUpperCase();
+  const isPerp = s.endsWith('.P');
+  if (isPerp) s = s.slice(0, -2);
+
+  // 1. Delimiter match: ETH/BTC, ETH-BTC, ETH_BTC, ETH BTC
+  const delimMatch = s.match(/^([A-Z0-9]+)[\/\-_\s]([A-Z0-9]+)$/);
+  if (delimMatch) {
+    const base = delimMatch[1];
+    const quote = delimMatch[2];
+    return {
+      baseAsset: base,
+      quoteAsset: quote,
+      cleanSymbol: `${base}${quote}`,
+      isQuoteExplicit: true,
+      isPerp,
+    };
+  }
+
+  // 2. Cek sufiks kuotasi umum (panjang s harus lebih besar dari panjang quote agar tidak salah memecah query "BTC")
+  for (const q of KNOWN_QUOTE_ASSETS) {
+    if (s.endsWith(q) && s.length > q.length) {
+      const base = s.slice(0, -q.length);
+      return {
+        baseAsset: base,
+        quoteAsset: q,
+        cleanSymbol: `${base}${q}`,
+        isQuoteExplicit: true,
+        isPerp,
+      };
+    }
+  }
+
+  // 3. Simbol tunggal tanpa kuotasi eksplisit (misal: SOL, BTC, PEPE) -> default kuotasi USDT
+  return {
+    baseAsset: s,
+    quoteAsset: 'USDT',
+    cleanSymbol: `${s}USDT`,
+    isQuoteExplicit: false,
+    isPerp,
+  };
+}
+
+/**
  * Pasangan Indodax bawaan untuk fast IDR offline lookup.
  */
 export const POPULAR_INDODAX_PAIRS: Array<{ base: string; quote: string; name: string }> = [
@@ -81,7 +171,7 @@ export function calculateSearchScore(rawQuery: string, item: MarketSearchResult)
   if (base === q || sym === q) {
     return 120;
   }
-  if (sym === `${q}USDT` || sym === `${q}USDT.P` || sym === `${q}IDR`) {
+  if (sym === `${q}USDT` || sym === `${q}USDT.P` || sym === `${q}IDR` || sym === `${q}BTC`) {
     return 115;
   }
 
@@ -141,6 +231,11 @@ export function rankSearchResults(
     // 1. Urutkan berdasarkan skor tertinggi
     if (b.score !== a.score) {
       return b.score - a.score;
+    }
+    // Dahulukan USDT jika query tidak menspesifikasikan kuotasi khusus
+    if (a.item.quoteAsset !== b.item.quoteAsset) {
+      if (a.item.quoteAsset === 'USDT') return -1;
+      if (b.item.quoteAsset === 'USDT') return 1;
     }
     // 2. Jika skor sama, dahulukan simbol yang lebih pendek
     if (a.item.symbol.length !== b.item.symbol.length) {
@@ -208,6 +303,18 @@ export class SymbolSearchEngine {
         displayName: `${pair.name} Spot`,
         type: 'spot',
         provider: 'Indodax Spot',
+      });
+    }
+
+    // Pasangan Binance Spot berkuotasi BTC (Venue Capability Guard: spot only, tanpa perp .P)
+    for (const pair of POPULAR_BTC_PAIRS) {
+      list.push({
+        symbol: `${pair.base}BTC`,
+        baseAsset: pair.base,
+        quoteAsset: 'BTC',
+        displayName: `${pair.name} / Bitcoin`,
+        type: 'spot',
+        provider: 'Binance Spot',
       });
     }
 
@@ -286,17 +393,14 @@ export class SymbolSearchEngine {
       if (options.quoteAsset) quoteAsset = options.quoteAsset;
     }
 
-    // Normalisasi format query garis miring "BTC/IDR" -> "BTCIDR"
+    // Normalisasi dan parsing adaptif query
     const rawQ = query.trim();
-    const slashMatch = rawQ.match(/^([A-Za-z0-9]+)[\/\-_]([A-Za-z0-9]+)$/);
-    let effectiveQuery = rawQ;
-    if (slashMatch) {
-      effectiveQuery = slashMatch[1] + slashMatch[2];
-      if (quoteAsset === 'all') {
-        const detectedQuote = slashMatch[2].toUpperCase();
-        if (detectedQuote === 'IDR' || detectedQuote === 'USDT') {
-          quoteAsset = detectedQuote;
-        }
+    const parsedQuery = parseAdaptiveSymbol(rawQ);
+    let effectiveQuery = parsedQuery.isQuoteExplicit ? parsedQuery.cleanSymbol : rawQ;
+    if (parsedQuery.isQuoteExplicit && quoteAsset === 'all') {
+      const qUpper = parsedQuery.quoteAsset.toUpperCase();
+      if (['IDR', 'USDT', 'BTC', 'USDC'].includes(qUpper)) {
+        quoteAsset = qUpper as any;
       }
     }
 
@@ -354,48 +458,95 @@ export class SymbolSearchEngine {
     }
 
     // Dynamic Online Fallback jika query memiliki isi dan belum ada hasil yang cocok persis
-    if (cleanQ && !deduplicated.some((r) => r.baseAsset === cleanQ || r.symbol === cleanQ)) {
-      const cleanBase = cleanQ
-        .replace(/USDT$/i, '')
-        .replace(/IDR$/i, '')
-        .replace(/\.P$/i, '');
+    if (cleanQ && !deduplicated.some((r) => r.baseAsset === cleanQ || r.symbol === cleanQ || r.symbol === parsedQuery.cleanSymbol)) {
+      const isBinanceAllowed = exchange === 'all' || exchange === 'binance';
+      const isIndodaxAllowed = exchange === 'all' || exchange === 'indodax';
 
-      if (cleanBase.length >= 2) {
-        // Fallback USDT (Binance Spot & Futures) jika tidak sedang filter IDR saja
-        if (quoteAsset === 'all' || quoteAsset === 'USDT') {
+      if (parsedQuery.isQuoteExplicit) {
+        // Kuotasi eksplisit (misal ETHBTC, BTCIDR, SOLUSDT, dsb.)
+        if (parsedQuery.quoteAsset === 'BTC' && isBinanceAllowed) {
+          // Venue Capability Guard: Hanya Spot untuk kuotasi BTC (tidak ada futures .P)
+          if (filterType === 'all' || filterType === 'spot') {
+            deduplicated.unshift({
+              symbol: `${parsedQuery.baseAsset}BTC`,
+              baseAsset: parsedQuery.baseAsset,
+              quoteAsset: 'BTC',
+              displayName: `${parsedQuery.baseAsset} / Bitcoin Spot`,
+              type: 'spot',
+              provider: 'Binance Spot',
+            });
+          }
+        } else if (parsedQuery.quoteAsset === 'IDR' && isIndodaxAllowed) {
+          if (filterType === 'all' || filterType === 'spot') {
+            deduplicated.unshift({
+              symbol: `${parsedQuery.baseAsset}IDR`,
+              baseAsset: parsedQuery.baseAsset,
+              quoteAsset: 'IDR',
+              displayName: `${parsedQuery.baseAsset}/IDR Spot Pair`,
+              type: 'spot',
+              provider: 'Indodax Spot',
+            });
+          }
+        } else if (parsedQuery.quoteAsset === 'USDT' && isBinanceAllowed) {
           if (filterType === 'all' || filterType === 'perp') {
             deduplicated.unshift({
-              symbol: `${cleanBase}USDT.P`,
-              baseAsset: cleanBase,
+              symbol: `${parsedQuery.baseAsset}USDT.P`,
+              baseAsset: parsedQuery.baseAsset,
               quoteAsset: 'USDT',
-              displayName: `${cleanBase} Perpetual Contract`,
+              displayName: `${parsedQuery.baseAsset} Perpetual Contract`,
               type: 'perp',
               provider: 'Binance Futures',
             });
           }
           if (filterType === 'all' || filterType === 'spot') {
             deduplicated.unshift({
-              symbol: `${cleanBase}USDT`,
-              baseAsset: cleanBase,
+              symbol: `${parsedQuery.baseAsset}USDT`,
+              baseAsset: parsedQuery.baseAsset,
               quoteAsset: 'USDT',
-              displayName: `${cleanBase} Spot Pair`,
+              displayName: `${parsedQuery.baseAsset} Spot Pair`,
               type: 'spot',
               provider: 'Binance Spot',
             });
           }
         }
+      } else {
+        // Kuotasi implisit / koin tunggal (misal 'SOL') -> fallback USDT & IDR
+        const cleanBase = parsedQuery.baseAsset;
+        if (cleanBase.length >= 2) {
+          if (isBinanceAllowed && (quoteAsset === 'all' || quoteAsset === 'USDT')) {
+            if (filterType === 'all' || filterType === 'perp') {
+              deduplicated.unshift({
+                symbol: `${cleanBase}USDT.P`,
+                baseAsset: cleanBase,
+                quoteAsset: 'USDT',
+                displayName: `${cleanBase} Perpetual Contract`,
+                type: 'perp',
+                provider: 'Binance Futures',
+              });
+            }
+            if (filterType === 'all' || filterType === 'spot') {
+              deduplicated.unshift({
+                symbol: `${cleanBase}USDT`,
+                baseAsset: cleanBase,
+                quoteAsset: 'USDT',
+                displayName: `${cleanBase} Spot Pair`,
+                type: 'spot',
+                provider: 'Binance Spot',
+              });
+            }
+          }
 
-        // Fallback IDR (Indodax) jika filter all atau IDR
-        if (quoteAsset === 'all' || quoteAsset === 'IDR') {
-          if (filterType === 'all' || filterType === 'spot') {
-            deduplicated.push({
-              symbol: `${cleanBase}IDR`,
-              baseAsset: cleanBase,
-              quoteAsset: 'IDR',
-              displayName: `${cleanBase}/IDR Spot Pair`,
-              type: 'spot',
-              provider: 'Indodax Spot',
-            });
+          if (isIndodaxAllowed && (quoteAsset === 'all' || quoteAsset === 'IDR')) {
+            if (filterType === 'all' || filterType === 'spot') {
+              deduplicated.push({
+                symbol: `${cleanBase}IDR`,
+                baseAsset: cleanBase,
+                quoteAsset: 'IDR',
+                displayName: `${cleanBase}/IDR Spot Pair`,
+                type: 'spot',
+                provider: 'Indodax Spot',
+              });
+            }
           }
         }
       }

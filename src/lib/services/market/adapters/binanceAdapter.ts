@@ -3,6 +3,7 @@ import type { MarketProviderAdapter } from '../types';
 import type { Candle, TickerInfo, MarketSearchResult } from '../../../types/market';
 import { normalizeTicker, VERIFIED_CRYPTO_ASSETS } from '../constants';
 import { toExchangeInterval } from '../../../utils/timeframeAdapter';
+import { parseAdaptiveSymbol } from '../symbolSearchService';
 
 export class BinanceAdapter implements MarketProviderAdapter {
   id = 'binance';
@@ -217,26 +218,41 @@ export class BinanceAdapter implements MarketProviderAdapter {
     }
 
     if (q && !results.some((r) => r.symbol.startsWith(q))) {
-      const cleanBase = q.replace(/USDT$/i, '').replace(/\.P$/i, '');
-      if (filterType === 'all' || filterType === 'perp') {
-        results.unshift({
-          symbol: `${cleanBase}USDT.P`,
-          baseAsset: cleanBase,
-          quoteAsset: 'USDT',
-          displayName: `${cleanBase} Perpetual Contract`,
-          type: 'perp',
-          provider: 'Binance Futures',
-        });
-      }
-      if (filterType === 'all' || filterType === 'spot') {
-        results.unshift({
-          symbol: `${cleanBase}USDT`,
-          baseAsset: cleanBase,
-          quoteAsset: 'USDT',
-          displayName: `${cleanBase} Spot Pair`,
-          type: 'spot',
-          provider: 'Crypto Spot',
-        });
+      const parsed = parseAdaptiveSymbol(q);
+      if (parsed.isQuoteExplicit && parsed.quoteAsset === 'BTC') {
+        // Venue Capability Guard: Hanya Spot untuk pasangan kripto-ke-kripto (BTC quote)
+        if (filterType === 'all' || filterType === 'spot') {
+          results.unshift({
+            symbol: `${parsed.baseAsset}BTC`,
+            baseAsset: parsed.baseAsset,
+            quoteAsset: 'BTC',
+            displayName: `${parsed.baseAsset} / Bitcoin Spot Pair`,
+            type: 'spot',
+            provider: 'Binance Spot',
+          });
+        }
+      } else {
+        const cleanBase = parsed.baseAsset || q.replace(/USDT$/i, '').replace(/\.P$/i, '');
+        if (filterType === 'all' || filterType === 'perp') {
+          results.unshift({
+            symbol: `${cleanBase}USDT.P`,
+            baseAsset: cleanBase,
+            quoteAsset: 'USDT',
+            displayName: `${cleanBase} Perpetual Contract`,
+            type: 'perp',
+            provider: 'Binance Futures',
+          });
+        }
+        if (filterType === 'all' || filterType === 'spot') {
+          results.unshift({
+            symbol: `${cleanBase}USDT`,
+            baseAsset: cleanBase,
+            quoteAsset: 'USDT',
+            displayName: `${cleanBase} Spot Pair`,
+            type: 'spot',
+            provider: 'Crypto Spot',
+          });
+        }
       }
     }
 
