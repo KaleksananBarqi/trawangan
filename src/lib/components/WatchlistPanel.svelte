@@ -729,6 +729,9 @@
       if (p >= 1) return `Rp ${Math.round(p).toLocaleString('id-ID')}`;
       return `Rp ${p.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
     }
+    if (sym && (sym.endsWith('BTC') || sym.includes('/BTC')) && sym !== 'BTC' && !sym.startsWith('BTC')) {
+      return `${p.toFixed(8)} ₿`;
+    }
     if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (p >= 1) return p.toFixed(4);
     return p.toFixed(6);
