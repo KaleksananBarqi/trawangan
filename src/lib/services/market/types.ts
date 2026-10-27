@@ -40,7 +40,7 @@ export interface MarketProviderAdapter {
 export interface SearchSymbolsOptions {
   filterType?: 'all' | 'spot' | 'perp';
   exchange?: 'all' | 'binance' | 'indodax' | 'bitunix';
-  quoteAsset?: 'all' | 'IDR' | 'USDT';
+  quoteAsset?: 'all' | 'IDR' | 'USDT' | 'BTC';
 }
 
 /**

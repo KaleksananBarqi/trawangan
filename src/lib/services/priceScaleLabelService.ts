@@ -19,7 +19,12 @@ export interface PriceScaleBadge {
 export function formatPriceLabel(price: number, quoteCurrency?: string): string {
   if (typeof price !== 'number' || isNaN(price)) return '0.00';
 
-  const isIdr = quoteCurrency?.toUpperCase() === 'IDR';
+  const upperQuote = quoteCurrency?.toUpperCase();
+  if (upperQuote === 'BTC') {
+    return `${price.toFixed(8)} ₿`;
+  }
+
+  const isIdr = upperQuote === 'IDR';
 
   if (isIdr) {
     if (price >= 100) {
