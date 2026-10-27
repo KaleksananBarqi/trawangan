@@ -5,6 +5,28 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.22.0] - 2026-10-27
+
+### 🚀 Ditambahkan (Added)
+- **Hybrid Asset Logo Engine (ADR 0011, #86, #89, #90):**
+  - **Offline-First Local SVG Bundle**: Menyertakan 43 aset logo vektor koin lokal di `static/icons/coins/` untuk koin-koin top (BTC, ETH, SOL, BNB, XRP, DOGE, dll.) dan mata uang kuotasi utama (USDT, USDC, IDR), menjamin render seketika tanpa jeda jaringan (<1ms).
+  - **3-Tier Cascade Resolution**: Strategi resolusi bertingkat yang andal (Tier 1: SVG Lokal bawaan ➔ Tier 2: CDN Kripto Publik jsDelivr/SpotHQ ➔ Tier 3: Monogram Avatar deterministik dengan palet gradien berbasis hash ticker string).
+  - **Dual-Asset Badging**: Komponen visual `<SymbolLogo />` yang menampilkan logo aset dasar (*base asset*) berdampingan dengan badge mini aset kuotasi (*quote asset*) di sudut kanan-bawah secara otomatis untuk pasangan rasio non-USDT (seperti `ETH/BTC` dan `BTC/IDR`).
+  - **Integrasi Visual Luas**: Menyematkan logo koin di seluruh titik antarmuka pengguna: Header bilah atas, Bilah Koin Cepat (*Quick Symbols*), Modal Pencarian Simbol, dan Panel Daftar Pantau (*Watchlist*).
+- **Adaptive Quote Parser & Arbitrary Pair Search (ADR 0011, #86, #87):**
+  - **Pencarian Pasangan Fleksibel**: Mendukung pencarian pasangan koin antar-kripto dalam berbagai format query (`ETHBTC`, `ETH/BTC`, `ETH-BTC`, `ETH_BTC`) tanpa memaksakan penambahan sufiks `USDT`.
+  - **Venue Capability Guard**: Mencegah pembuatan kontrak derivatif perpetual `.P` fiktif (`ETHBTCUSDT.P`) untuk pasangan kripto-ke-kripto, memastikan perutean bursa diarahkan secara tepat ke pasar Binance Spot.
+  - **In-Memory Registry Spot Pair Expansion**: Memperluas registri pasangan offline dengan pasangan spot BTC terpopuler (`POPULAR_BTC_PAIRS`) untuk penelusuran kilat sub-10ms.
+- **Crypto-Denominated Precision & BTC Filter Chips (ADR 0011, #86, #88):**
+  - **Chip Filter Kuotasi BTC (₿)**: Menambahkan filter kuotasi `BTC (₿)` di samping USDT dan IDR pada dialog pencarian instrumen pasar.
+  - **Presisi Satoshi 8 Desimal**: Memperbarui mesin format skala harga dan kartu watchlist agar menampilkan kuotasi Bitcoin dengan format satoshi hingga 8 desimal (`0.03451234 ₿`) tanpa simbol mata uang dolar (`$`).
+
+### 🔄 Diubah (Changed)
+- **Ekstraksi Ticker Bersih**:
+  - Mengganti pemotongan string kaku pada resolusi logo koin dengan memanfaatkan fungsi kanonikal `parseAdaptiveSymbol`.
+- **Pengaturan Gradien Monogram Avatar**:
+  - Memperbarui latar belakang avatar teks koin dari warna solid menjadi gradien 135 derajat berbasis rona warna hash deterministik agar konsisten dengan estetika tema gelap Obsidian Vela.
+
 ## [0.21.0] - 2026-10-21
 
 ### 🚀 Ditambahkan (Added)
