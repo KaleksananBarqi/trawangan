@@ -57,6 +57,8 @@
   } from '../services/watchlistUtils';
   import SymbolSearchModal from './SymbolSearchModal.svelte';
   import WatchlistSwitcher from './WatchlistSwitcher.svelte';
+  import SymbolLogo from './common/SymbolLogo.svelte';
+  import { parseAdaptiveSymbol } from '../services/market/symbolSearchService';
   import { watchlistRegistry } from '../services/watchlistRegistryService';
   import { getSearchResultKey } from '../services/market/symbolSearchService';
   import type { PriceAlert, ObjectTreeItem, MarketSearchResult, WatchlistRecord } from '../types/market';
@@ -894,6 +896,7 @@
             </div>
             {#each filteredSymbols as sym, idx (sym)}
               {@const entry = parseWatchlistEntry(sym)}
+              {@const p = parseAdaptiveSymbol(entry.symbol)}
               {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
               {@const isBull = (ticker?.change24h ?? 0) >= 0}
               {@const isHighlighted = selectedOmniIndex === idx}
@@ -906,12 +909,15 @@
                 >
                   <div class="row-symbol">
                     <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                    <span class="symbol-name">{entry.symbol.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
+                    <SymbolLogo baseAsset={p.baseAsset} quoteAsset={p.quoteAsset} size="sm" />
+                    <span class="symbol-name">{p.baseAsset}</span>
                     <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
                     {#if entry.symbol.endsWith('.P')}
                       <span class="type-tag perp mono-nums">.P</span>
                     {:else if entry.symbol.endsWith('IDR')}
                       <span class="type-tag idr mono-nums">IDR</span>
+                    {:else if p.quoteAsset && p.quoteAsset !== 'USDT'}
+                      <span class="type-tag spot mono-nums">{p.quoteAsset}</span>
                     {:else}
                       <span class="type-tag spot mono-nums">SPOT</span>
                     {/if}
@@ -974,12 +980,15 @@
                 >
                   <div class="row-symbol">
                     <span class="status-pip {item.type === 'perp' ? 'pip-perp' : 'pip-spot'}"></span>
+                    <SymbolLogo baseAsset={item.baseAsset} quoteAsset={item.quoteAsset} size="sm" />
                     <span class="symbol-name">{item.baseAsset}</span>
                     <span class="symbol-quote mono-nums">/{item.quoteAsset}</span>
                     {#if item.type === 'perp'}
                       <span class="type-tag perp mono-nums">.P</span>
                     {:else if item.quoteAsset === 'IDR'}
                       <span class="type-tag idr mono-nums">IDR</span>
+                    {:else if item.quoteAsset && item.quoteAsset !== 'USDT'}
+                      <span class="type-tag spot mono-nums">{item.quoteAsset}</span>
                     {:else}
                       <span class="type-tag spot mono-nums">SPOT</span>
                     {/if}
@@ -1101,6 +1110,7 @@
               {#each group.items as sym (sym)}
                 {@const symGlobalIndex = symbols.indexOf(sym)}
                 {@const entry = parseWatchlistEntry(sym)}
+                {@const p = parseAdaptiveSymbol(entry.symbol)}
                 {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
                 {@const isBull = (ticker?.change24h ?? 0) >= 0}
                 {@const isCurrentActive = activeSymbol === entry.symbol && activeProviderId === entry.providerId}
@@ -1127,12 +1137,15 @@
                         <GripVertical size={10} />
                       </span>
                       <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                      <span class="symbol-name">{entry.symbol.replace('USDT.P', '').replace('USDT', '').replace('IDR', '').replace('.P', '')}</span>
+                      <SymbolLogo baseAsset={p.baseAsset} quoteAsset={p.quoteAsset} size="sm" />
+                      <span class="symbol-name">{p.baseAsset}</span>
                       <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
                       {#if entry.symbol.endsWith('.P')}
                         <span class="type-tag perp mono-nums">.P</span>
                       {:else if entry.symbol.endsWith('IDR')}
                         <span class="type-tag idr mono-nums">IDR</span>
+                      {:else if p.quoteAsset && p.quoteAsset !== 'USDT'}
+                        <span class="type-tag spot mono-nums">{p.quoteAsset}</span>
                       {:else}
                         <span class="type-tag spot mono-nums">SPOT</span>
                       {/if}

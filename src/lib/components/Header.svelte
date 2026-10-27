@@ -27,6 +27,8 @@
   import WorkspaceLayoutMenu from './header/WorkspaceLayoutMenu.svelte';
   import ActionsMenu from './header/ActionsMenu.svelte';
   import TimeframeSelector from './header/TimeframeSelector.svelte';
+  import SymbolLogo from './common/SymbolLogo.svelte';
+  import { parseAdaptiveSymbol } from '../services/market/symbolSearchService';
 
   interface Props {
     activeSymbol: string;
@@ -117,6 +119,8 @@
   let isProviderDropdownOpen = $state(false);
   let availableProviders = $state<ProviderConfig[]>([]);
 
+  const activeParsedSymbol = $derived(parseAdaptiveSymbol(activeSymbol));
+
   onMount(() => {
     unsubUpdate = updateService.subscribe((s) => {
       updateState = s;
@@ -177,7 +181,7 @@
       title="Klik atau tekan Ctrl+K untuk mencari simbol koin & pair"
       onclick={() => onOpenSymbolSearch?.()}
     >
-      <Search size={12} class="search-icon" />
+      <SymbolLogo baseAsset={activeParsedSymbol.baseAsset} quoteAsset={activeParsedSymbol.quoteAsset} size="sm" />
       <span class="active-sym-title mono-nums">{activeSymbol}</span>
       <span class="kbd-hint mono-nums">Ctrl+K</span>
     </button>

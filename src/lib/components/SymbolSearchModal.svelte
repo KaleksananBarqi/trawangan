@@ -2,7 +2,8 @@
   import { onMount, tick } from 'svelte';
   import { Search, X, Check, Plus, ArrowRight, CornerDownLeft, Sparkles, TrendingUp, Layers } from '@lucide/svelte';
   import { marketFeed } from '../services/market';
-  import { getSearchResultKey } from '../services/market/symbolSearchService';
+  import { getSearchResultKey, parseAdaptiveSymbol } from '../services/market/symbolSearchService';
+  import SymbolLogo from './common/SymbolLogo.svelte';
   import { formatWatchlistEntry, parseWatchlistEntry, normalizeProviderId } from '../services/watchlistUtils';
   import type { MarketSearchResult } from '../types/market';
 
@@ -379,11 +380,13 @@
             </div>
             <div class="recent-chips">
               {#each recentSearches as rSym}
+                {@const p = parseAdaptiveSymbol(rSym)}
                 <button
                   type="button"
                   class="recent-chip mono-nums"
                   onclick={() => handlePickSymbol(rSym)}
                 >
+                  <SymbolLogo baseAsset={p.baseAsset} quoteAsset={p.quoteAsset} size="xs" />
                   <span>{rSym}</span>
                   <ArrowRight size={10} class="recent-arrow" />
                 </button>
@@ -412,21 +415,24 @@
                 role="button"
                 tabindex="0"
               >
-                <!-- Left: Symbol + Type Tag + Name -->
+                <!-- Left: Logo + Symbol + Type Tag + Name -->
                 <div class="item-left">
-                  <div class="symbol-title-row">
-                    <span class="symbol-name mono-nums">{item.baseAsset}</span>
-                    <span class="quote-currency mono-nums">/{item.quoteAsset}</span>
-                    {#if item.type === 'perp'}
-                      <span class="type-badge perp mono-nums">.P PERP</span>
-                    {:else}
-                      <span class="type-badge spot mono-nums">SPOT</span>
-                    {/if}
-                  </div>
-                  <div class="item-desc">
-                    <span>{item.displayName}</span>
-                    <span class="separator">·</span>
-                    <span class="venue-tag">{item.provider}</span>
+                  <SymbolLogo baseAsset={item.baseAsset} quoteAsset={item.quoteAsset} size="md" />
+                  <div class="item-text-info">
+                    <div class="symbol-title-row">
+                      <span class="symbol-name mono-nums">{item.baseAsset}</span>
+                      <span class="quote-currency mono-nums">/{item.quoteAsset}</span>
+                      {#if item.type === 'perp'}
+                        <span class="type-badge perp mono-nums">.P PERP</span>
+                      {:else}
+                        <span class="type-badge spot mono-nums">SPOT</span>
+                      {/if}
+                    </div>
+                    <div class="item-desc">
+                      <span>{item.displayName}</span>
+                      <span class="separator">·</span>
+                      <span class="venue-tag">{item.provider}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -873,6 +879,13 @@
   }
 
   .item-left {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .item-text-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
