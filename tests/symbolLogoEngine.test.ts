@@ -52,7 +52,10 @@ describe('Ticket 3 (#89): Hybrid Asset Logo Engine & Local SVG Bundling', () => 
       const color1 = getMonogramColor('BTC');
       const color2 = getMonogramColor('BTC');
       assert.equal(color1, color2);
-      assert.ok(color1.startsWith('hsl') || color1.startsWith('#'));
+      assert.ok(
+        color1.startsWith('hsl') || color1.startsWith('#') || color1.startsWith('linear-gradient'),
+        'Warna monogram harus berupa nilai warna CSS yang valid atau linear-gradient'
+      );
 
       const colorEth = getMonogramColor('ETH');
       assert.notEqual(color1, colorEth, 'Koin berbeda sebaiknya menghasilkan warna berbeda');

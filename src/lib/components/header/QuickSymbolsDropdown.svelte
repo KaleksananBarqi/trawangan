@@ -124,14 +124,14 @@
 <div class="quick-symbols-wrapper">
   <div class="quick-symbols" title="Bilah Koin Cepat">
     {#each activeQuickSymbols as sym}
-      {@const p = parseAdaptiveSymbol(sym)}
+      {@const parsedPair = parseAdaptiveSymbol(sym)}
       <button
         class="symbol-chip {activeSymbol === sym ? 'active' : ''}"
         title="{sym} • Klik untuk tampilkan chart"
         onclick={() => onSymbolChange(sym)}
       >
-        <SymbolLogo baseAsset={p.baseAsset} quoteAsset={p.quoteAsset} size="xs" />
-        <span>{p.baseAsset}</span>
+        <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} size="xs" />
+        <span>{parsedPair.baseAsset}</span>
       </button>
     {/each}
 
@@ -204,7 +204,7 @@
             <span class="sub-label">Koin Watchlist ({watchlistSymbols.length}):</span>
             <div class="chips-flow mono-nums">
               {#each watchlistSymbols as sym}
-                {@const p = parseAdaptiveSymbol(sym)}
+                {@const parsedPair = parseAdaptiveSymbol(sym)}
                 <button
                   class="preview-chip {activeSymbol === sym ? 'active' : ''}"
                   title="Buka chart {sym}"
@@ -213,8 +213,8 @@
                     showQuickSymbolsMenu = false;
                   }}
                 >
-                  <SymbolLogo baseAsset={p.baseAsset} quoteAsset={p.quoteAsset} size="xs" />
-                  <span>{p.baseAsset}</span>
+                  <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} size="xs" />
+                  <span>{parsedPair.baseAsset}</span>
                 </button>
               {/each}
             </div>
@@ -262,7 +262,7 @@
                 <div class="empty-hint">Belum ada koin disematkan. Pilih koin di bawah atau ketik manual.</div>
               {:else}
                 {#each (quickSymbolsConfig?.customSymbols || []) as sym}
-                  {@const p = parseAdaptiveSymbol(sym)}
+                  {@const parsedPair = parseAdaptiveSymbol(sym)}
                   <div class="pinned-chip {activeSymbol === sym ? 'active' : ''}">
                     <button
                       class="chip-sym-btn"
@@ -272,8 +272,8 @@
                         showQuickSymbolsMenu = false;
                       }}
                     >
-                      <SymbolLogo baseAsset={p.baseAsset} quoteAsset={p.quoteAsset} size="xs" />
-                      <span>{p.baseAsset}</span>
+                      <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} size="xs" />
+                      <span>{parsedPair.baseAsset}</span>
                     </button>
                     <button
                       class="chip-remove-btn"

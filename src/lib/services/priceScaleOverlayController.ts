@@ -5,6 +5,7 @@ import {
   formatPriceLabel,
   type PriceScaleBadge
 } from './priceScaleLabelService';
+import { parseAdaptiveSymbol } from './market/symbolSearchService';
 
 export interface OverlayPositionsSnapshot {
   alertYPositions: Record<string, number | null>;
@@ -70,8 +71,8 @@ export class PriceScaleOverlayController {
    */
   private getQuoteCurrency(): string {
     const s = (this.activeSymbol || '').toUpperCase();
-    if (s.endsWith('IDR') || s.includes('/IDR')) return 'IDR';
-    return 'USDT';
+    const parsed = parseAdaptiveSymbol(s);
+    return parsed.quoteAsset || 'USDT';
   }
 
   /**

@@ -1,4 +1,5 @@
 // Layanan Resolusi Visual Identitas Aset Koin (Hybrid Asset Logo Engine)
+import { parseAdaptiveSymbol } from './market/symbolSearchService';
 
 /**
  * Daftar koin yang dibundle secara lokal di `static/icons/coins/` untuk kapabilitas offline-first sub-1ms.
@@ -19,19 +20,12 @@ export interface LogoResolution {
 }
 
 /**
- * Membersihkan ticker simbol ke base asset kanonikal.
- * Contoh: "ETHBTC" -> "ETH" jika dipanggil untuk logo koin utama, atau "SOLUSDT.P" -> "SOL".
+ * Membersihkan ticker simbol ke base asset kanonikal menggunakan Adaptive Quote Parser.
  */
 export function extractCleanBaseAsset(raw: string): string {
   if (!raw) return '';
-  const clean = raw.trim().toUpperCase().replace(/[\/\-_]/g, '');
-  if (clean.endsWith('.P')) return clean.slice(0, -2).replace(/(USDT|USDC|IDR|BTC)$/, '');
-  for (const q of ['USDT', 'USDC', 'IDR', 'BTC']) {
-    if (clean.endsWith(q) && clean.length > q.length) {
-      return clean.slice(0, -q.length);
-    }
-  }
-  return clean;
+  const parsed = parseAdaptiveSymbol(raw);
+  return parsed.baseAsset || raw.trim().toUpperCase();
 }
 
 /**
@@ -73,15 +67,16 @@ export function getMonogramInitials(base: string): string {
 }
 
 /**
- * Menghasilkan warna latar belakang HSL deterministik berbasis hash ticker string.
- * Menjamin koin yang sama selalu menghasilkan rona warna yang persis sama.
+ * Menghasilkan warna latar belakang gradien deterministik berbasis hash ticker string.
+ * Menjamin koin yang sama selalu menghasilkan palet warna visual yang konsisten.
  */
 export function getMonogramColor(base: string): string {
-  if (!base) return 'hsl(210, 40%, 35%)';
+  if (!base) return 'linear-gradient(135deg, hsl(210, 45%, 40%), hsl(220, 55%, 25%))';
   let hash = 0;
   for (let i = 0; i < base.length; i++) {
     hash = base.charCodeAt(i) + ((hash << 5) - hash);
   }
   const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 60%, 40%)`;
+  const nextHue = (hue + 40) % 360;
+  return `linear-gradient(135deg, hsl(${hue}, 65%, 45%), hsl(${nextHue}, 75%, 28%))`;
 }

@@ -21,6 +21,8 @@
     class: customClass = '',
   }: Props = $props();
 
+  let currentBaseSrc = $state<string | null>(null);
+  let currentQuoteSrc = $state<string | null>(null);
   let hasBaseError = $state(false);
   let hasQuoteError = $state(false);
 
@@ -50,21 +52,36 @@
     return q !== 'USDT';
   });
 
-  // Reset status error saat baseAsset atau quoteAsset berganti
+  // Sinkronisasi sumber gambar saat baseAsset atau quoteAsset berganti
   $effect(() => {
-    if (baseAsset) hasBaseError = false;
+    if (baseAsset) {
+      currentBaseSrc = baseResolution.primary;
+      hasBaseError = false;
+    }
   });
 
   $effect(() => {
-    if (quoteAsset) hasQuoteError = false;
+    if (quoteAsset && quoteResolution) {
+      currentQuoteSrc = quoteResolution.primary;
+      hasQuoteError = false;
+    }
   });
 
+  // Penanganan error cascade 3-tier: Tier 1 (Lokal) -> Tier 2 (CDN Publik) -> Tier 3 (Monogram Avatar)
   function handleBaseError() {
-    hasBaseError = true;
+    if (currentBaseSrc !== baseResolution.cdnFallback && baseResolution.cdnFallback) {
+      currentBaseSrc = baseResolution.cdnFallback;
+    } else {
+      hasBaseError = true;
+    }
   }
 
   function handleQuoteError() {
-    hasQuoteError = true;
+    if (quoteResolution && currentQuoteSrc !== quoteResolution.cdnFallback && quoteResolution.cdnFallback) {
+      currentQuoteSrc = quoteResolution.cdnFallback;
+    } else {
+      hasQuoteError = true;
+    }
   }
 </script>
 
@@ -73,14 +90,14 @@
   style="width: {pixelSize}px; height: {pixelSize}px;"
   title="{baseAsset}{quoteAsset ? '/' + quoteAsset : ''}"
 >
-  <!-- Base Coin Logo / Monogram -->
+  <!-- Logo Koin Utama / Monogram Avatar -->
   <div
     class="logo-base-wrapper"
     style="width: {pixelSize}px; height: {pixelSize}px;"
   >
-    {#if !hasBaseError && baseResolution.primary}
+    {#if !hasBaseError && currentBaseSrc}
       <img
-        src={baseResolution.primary}
+        src={currentBaseSrc}
         alt="{baseAsset} logo"
         class="coin-img"
         onerror={handleBaseError}
@@ -103,9 +120,9 @@
       style="width: {quotePixelSize}px; height: {quotePixelSize}px; right: -{Math.round(quotePixelSize * 0.15)}px; bottom: -{Math.round(quotePixelSize * 0.15)}px;"
       title="Kuotasi: {quoteAsset}"
     >
-      {#if !hasQuoteError && quoteResolution.primary}
+      {#if !hasQuoteError && currentQuoteSrc}
         <img
-          src={quoteResolution.primary}
+          src={currentQuoteSrc}
           alt="{quoteAsset} logo"
           class="quote-img"
           onerror={handleQuoteError}

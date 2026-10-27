@@ -219,14 +219,15 @@ export class BinanceAdapter implements MarketProviderAdapter {
 
     if (q && !results.some((r) => r.symbol.startsWith(q))) {
       const parsed = parseAdaptiveSymbol(q);
-      if (parsed.isQuoteExplicit && parsed.quoteAsset === 'BTC') {
-        // Venue Capability Guard: Hanya Spot untuk pasangan kripto-ke-kripto (BTC quote)
+      const isCryptoQuote = parsed.isQuoteExplicit && parsed.quoteAsset !== 'USDT' && parsed.quoteAsset !== 'USDC';
+      if (isCryptoQuote) {
+        // Venue Capability Guard: Pasangan kripto-ke-kripto (misal BTC, ETH quote) hanya tersedia di Spot, supresi sintesis Futures .P
         if (filterType === 'all' || filterType === 'spot') {
           results.unshift({
-            symbol: `${parsed.baseAsset}BTC`,
+            symbol: `${parsed.baseAsset}${parsed.quoteAsset}`,
             baseAsset: parsed.baseAsset,
-            quoteAsset: 'BTC',
-            displayName: `${parsed.baseAsset} / Bitcoin Spot Pair`,
+            quoteAsset: parsed.quoteAsset,
+            displayName: `${parsed.baseAsset} / ${parsed.quoteAsset} Spot Pair`,
             type: 'spot',
             provider: 'Binance Spot',
           });

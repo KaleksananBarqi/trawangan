@@ -380,13 +380,13 @@
             </div>
             <div class="recent-chips">
               {#each recentSearches as rSym}
-                {@const p = parseAdaptiveSymbol(rSym)}
+                {@const parsedPair = parseAdaptiveSymbol(rSym)}
                 <button
                   type="button"
                   class="recent-chip mono-nums"
                   onclick={() => handlePickSymbol(rSym)}
                 >
-                  <SymbolLogo baseAsset={p.baseAsset} quoteAsset={p.quoteAsset} size="xs" />
+                  <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} size="xs" />
                   <span>{rSym}</span>
                   <ArrowRight size={10} class="recent-arrow" />
                 </button>

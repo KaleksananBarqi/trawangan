@@ -29,7 +29,10 @@ describe('Ticket 4 (#90): End-to-End Symbol Logo UI Integration Suite', () => {
     assert.equal(resolvLogo.isLocal, false);
     assert.ok(resolvLogo.primary.includes('jsdelivr.net'));
     assert.equal(getMonogramInitials('RESOLV'), 'RESO');
-    assert.ok(getMonogramColor('RESOLV').startsWith('hsl'));
+    assert.ok(
+      getMonogramColor('RESOLV').startsWith('hsl') ||
+      getMonogramColor('RESOLV').startsWith('linear-gradient')
+    );
   });
 
   test('Seluruh file UI utama telah mengimpor SymbolLogo dan parseAdaptiveSymbol', () => {

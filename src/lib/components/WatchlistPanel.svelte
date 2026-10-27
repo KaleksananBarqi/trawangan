@@ -59,6 +59,7 @@
   import WatchlistSwitcher from './WatchlistSwitcher.svelte';
   import SymbolLogo from './common/SymbolLogo.svelte';
   import { parseAdaptiveSymbol } from '../services/market/symbolSearchService';
+  import { formatPriceLabel } from '../services/priceScaleLabelService';
   import { watchlistRegistry } from '../services/watchlistRegistryService';
   import { getSearchResultKey } from '../services/market/symbolSearchService';
   import type { PriceAlert, ObjectTreeItem, MarketSearchResult, WatchlistRecord } from '../types/market';
@@ -725,18 +726,12 @@
   }
 
   function formatPrice(p?: number, sym?: string): string {
-
     if (!p) return '--';
-    if (sym && (sym.endsWith('IDR') || sym.includes('/IDR'))) {
-      if (p >= 1) return `Rp ${Math.round(p).toLocaleString('id-ID')}`;
-      return `Rp ${p.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+    const quote = sym ? parseAdaptiveSymbol(sym).quoteAsset : undefined;
+    if (quote === 'IDR') {
+      return `Rp ${formatPriceLabel(p, 'IDR')}`;
     }
-    if (sym && (sym.endsWith('BTC') || sym.includes('/BTC')) && sym !== 'BTC' && !sym.startsWith('BTC')) {
-      return `${p.toFixed(8)} ₿`;
-    }
-    if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (p >= 1) return p.toFixed(4);
-    return p.toFixed(6);
+    return formatPriceLabel(p, quote);
   }
 </script>
 
@@ -896,7 +891,7 @@
             </div>
             {#each filteredSymbols as sym, idx (sym)}
               {@const entry = parseWatchlistEntry(sym)}
-              {@const p = parseAdaptiveSymbol(entry.symbol)}
+              {@const parsedPair = parseAdaptiveSymbol(entry.symbol)}
               {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
               {@const isBull = (ticker?.change24h ?? 0) >= 0}
               {@const isHighlighted = selectedOmniIndex === idx}
@@ -909,15 +904,15 @@
                 >
                   <div class="row-symbol">
                     <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                    <SymbolLogo baseAsset={p.baseAsset} quoteAsset={p.quoteAsset} size="sm" />
-                    <span class="symbol-name">{p.baseAsset}</span>
+                    <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} size="sm" />
+                    <span class="symbol-name">{parsedPair.baseAsset}</span>
                     <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
                     {#if entry.symbol.endsWith('.P')}
                       <span class="type-tag perp mono-nums">.P</span>
                     {:else if entry.symbol.endsWith('IDR')}
                       <span class="type-tag idr mono-nums">IDR</span>
-                    {:else if p.quoteAsset && p.quoteAsset !== 'USDT'}
-                      <span class="type-tag spot mono-nums">{p.quoteAsset}</span>
+                    {:else if parsedPair.quoteAsset && parsedPair.quoteAsset !== 'USDT'}
+                      <span class="type-tag spot mono-nums">{parsedPair.quoteAsset}</span>
                     {:else}
                       <span class="type-tag spot mono-nums">SPOT</span>
                     {/if}
@@ -1110,7 +1105,7 @@
               {#each group.items as sym (sym)}
                 {@const symGlobalIndex = symbols.indexOf(sym)}
                 {@const entry = parseWatchlistEntry(sym)}
-                {@const p = parseAdaptiveSymbol(entry.symbol)}
+                {@const parsedPair = parseAdaptiveSymbol(entry.symbol)}
                 {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
                 {@const isBull = (ticker?.change24h ?? 0) >= 0}
                 {@const isCurrentActive = activeSymbol === entry.symbol && activeProviderId === entry.providerId}
@@ -1137,15 +1132,15 @@
                         <GripVertical size={10} />
                       </span>
                       <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                      <SymbolLogo baseAsset={p.baseAsset} quoteAsset={p.quoteAsset} size="sm" />
-                      <span class="symbol-name">{p.baseAsset}</span>
+                      <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} size="sm" />
+                      <span class="symbol-name">{parsedPair.baseAsset}</span>
                       <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
                       {#if entry.symbol.endsWith('.P')}
                         <span class="type-tag perp mono-nums">.P</span>
                       {:else if entry.symbol.endsWith('IDR')}
                         <span class="type-tag idr mono-nums">IDR</span>
-                      {:else if p.quoteAsset && p.quoteAsset !== 'USDT'}
-                        <span class="type-tag spot mono-nums">{p.quoteAsset}</span>
+                      {:else if parsedPair.quoteAsset && parsedPair.quoteAsset !== 'USDT'}
+                        <span class="type-tag spot mono-nums">{parsedPair.quoteAsset}</span>
                       {:else}
                         <span class="type-tag spot mono-nums">SPOT</span>
                       {/if}
