@@ -135,3 +135,24 @@ _Avoid_: Scripted volume panel, Detached volume sub-pane, Heavy volume worker
 **Session VWAP**:
 Indikator analisis teknikal berbasis Pine Script yang menghitung rata-rata harga terbobot volume kumulatif dengan mekanisme *reset* otomatis pada awal sesi hari perdagangan bursa (exchange timezone), dilengkapi pita deviasi standar untuk membaca batas nilai wajar institusional.
 _Avoid_: Rolling VWAP, Fixed-window moving average, Raw average price
+
+**Hybrid Asset Logo Engine**:
+Mesin resolusi visual identitas koin dengan strategi multi-tier (CDN cache publik, bundle lokal koin utama, dan monogram avatar bergradien warna) untuk memastikan setiap simbol selalu memiliki representasi visual tanpa risiko gambar rusak.
+_Avoid_: Static icon pack, Broken image fallback, Missing coin icon
+
+**Dual-Asset Badging**:
+Pola visualisasi instrumen perdagangan di mana logo aset dasar (base asset) ditampilkan dominan dengan penanda mini logo aset kuotasi (quote asset) di sudut bawah, khususnya untuk pasangan kripto-ke-kripto atau non-USDT.
+_Avoid_: Single coin badge, Merged text icon, Unbadged pair
+
+**Adaptive Quote Parser**:
+Mekanisme pemecahan simbol cerdas yang mengekstraksi base asset dan quote asset dari delimiter eksplisit maupun sufiks kuotasi yang dikenal (seperti USDT, IDR, BTC, USDC) tanpa memaksakan kuotasi default.
+_Avoid_: Forced USDT affix, Rigid pair string, Hardcoded quote assumption
+
+**Venue Capability Guard**:
+Aturan validasi pasar yang membatasi pembuatan atau perutean jenis instrumen (seperti Spot vs Perpetual) sesuai dengan kontrak riil yang disediakan bursa asal.
+_Avoid_: Blind perpetual routing, Synthetic contract 404, Fake perp symbol
+
+**Crypto-Denominated Precision**:
+Skema pemformatan harga dan label sumbu nilai dengan satuan mata uang kripto (seperti Satoshi / ₿) dan presisi dinamis hingga 8 desimal untuk pasangan perdagangan antar-kripto.
+_Avoid_: Dollar-formatted crypto, Truncated satoshi, Fiat-only price scale
+
