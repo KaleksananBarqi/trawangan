@@ -382,6 +382,20 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       },
     },
     {
+      id: 'transient-gesture-hold',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['~'],
+      desc: 'Tahan tombol ~ sambil menggores mouse untuk menggambar gestur secara instan (Transient Hold)',
+      match: {
+        customMatch: (e) =>
+          !isEditableElement(e.target) &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey &&
+          (e.key === '`' || e.code === 'Backquote' || e.key === '~'),
+      },
+    },
+    {
       id: 'toggle-left-toolbar',
       category: 'Alat Gambar (Drawing Tools)',
       keys: ['Alt', 'T'],

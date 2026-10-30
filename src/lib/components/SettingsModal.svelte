@@ -33,6 +33,7 @@
     onProviderChange?: (providerId: string) => void;
     onOpenChartSettings?: (section?: string) => void;
     onResetChartFactory?: () => void;
+    onOpenGestureGuide?: () => void;
   }
 
   let {
@@ -44,7 +45,8 @@
     onUpdateSettings,
     onProviderChange,
     onOpenChartSettings,
-    onResetChartFactory
+    onResetChartFactory,
+    onOpenGestureGuide
   }: Props = $props();
 
   let activeTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
@@ -180,7 +182,7 @@
           {:else if activeTab === 'about'}
             <AboutTab />
           {:else if activeTab === 'help'}
-            <HelpTab />
+            <HelpTab onOpenGestureGuide={() => { onClose(); onOpenGestureGuide?.(); }} />
           {/if}
         </div>
       </div>

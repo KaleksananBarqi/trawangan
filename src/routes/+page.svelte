@@ -18,6 +18,7 @@
   import SnapshotPreviewModal from '../lib/components/SnapshotPreviewModal.svelte';
   import RightDockRail from '../lib/components/RightDockRail.svelte';
   import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
+  import DrawByHoldingModal from '../lib/components/DrawByHoldingModal.svelte';
   import {
     compositeSnapshot,
     copySnapshotToClipboard,
@@ -134,6 +135,7 @@
   let isTimeframeQuickBarOpen = $state(false);
   let timeframeQuickBarInitialInput = $state('');
   let isShortcutCheatsheetOpen = $state(false);
+  let isDrawByHoldingModalOpen = $state(false);
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
 
@@ -1400,6 +1402,7 @@
           onUndo={handleUndo}
           onRedo={handleRedo}
           onClear={handleClear}
+          onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
         />
       {/if}
 
@@ -1600,6 +1603,7 @@
     onProviderChange={handleProviderChange}
     onOpenChartSettings={(sec?: string) => chartComponent?.openChartSettings(sec)}
     onResetChartFactory={() => chartComponent?.resetChartSettingsToFactory()}
+    onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
   />
 
   <!-- Symbol Search Modal (Global via Header / Ctrl+K / Watchlist) -->
@@ -1756,6 +1760,13 @@
   <ShortcutCheatsheetModal
     isOpen={isShortcutCheatsheetOpen}
     onClose={() => (isShortcutCheatsheetOpen = false)}
+    onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
+  />
+
+  <!-- Modal Panduan Visual Draw by Holding (Tiket #107) -->
+  <DrawByHoldingModal
+    isOpen={isDrawByHoldingModalOpen}
+    onClose={() => (isDrawByHoldingModalOpen = false)}
   />
 </div>
 
