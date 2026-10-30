@@ -156,3 +156,20 @@ _Avoid_: Blind perpetual routing, Synthetic contract 404, Fake perp symbol
 Skema pemformatan harga dan label sumbu nilai dengan satuan mata uang kripto (seperti Satoshi / ₿) dan presisi dinamis hingga 8 desimal untuk pasangan perdagangan antar-kripto.
 _Avoid_: Dollar-formatted crypto, Truncated satoshi, Fiat-only price scale
 
+**Branded Snapshot Frame**:
+Format tangkapan visual grafik yang membungkus kanvas dengan padding latar gelap minimalis dan bilah atribusi metadata di bagian bawah (logo monogram `tr`, teks `trawangan`, simbol, timeframe, bursa, harga, dan timestamp), menghasilkan kartu gambar siap bagikan tanpa menutupi area lilin candlestick.
+_Avoid_: Watermark diagonal, Stempel grafik, Cap chart, Obtrusive watermark
+
+**Clean Chart Export**:
+Mode ekspor tangkapan layar murni yang hanya mengambil piksel kanvas grafik lilin dan panel indikator tanpa pembungkus bingkai, padding luar, atau bilah metadata tambahan.
+_Avoid_: Raw screen dump, Untagged chart
+
+**Attribution Bar**:
+Bilah metadata terpadu di sisi bawah Branded Snapshot Frame yang merangkum identitas brand `trawangan`, instrumen aktif, interval waktu, harga pasar terkini, dan stempel waktu lokal pengguna secara rapi dan presisi.
+_Avoid_: Footer watermark, Copyright banner
+
+**Quick Snapshot Action**:
+Aksi satu klik atau pintasan keyboard (`Ctrl+Shift+S`) untuk menyalin grafik ke clipboard sistem atau menyimpannya langsung sebagai file PNG dengan umpan balik visual notifikasi toast.
+_Avoid_: Snipping tool, Print screen, Screen grabber
+
+

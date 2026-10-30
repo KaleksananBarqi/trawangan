@@ -27,6 +27,7 @@
   import WorkspaceLayoutMenu from './header/WorkspaceLayoutMenu.svelte';
   import ActionsMenu from './header/ActionsMenu.svelte';
   import TimeframeSelector from './header/TimeframeSelector.svelte';
+  import SnapshotMenu from './header/SnapshotMenu.svelte';
   import SymbolLogo from './common/SymbolLogo.svelte';
   import { parseAdaptiveSymbol } from '../services/market/symbolSearchService';
 
@@ -68,6 +69,9 @@
     onOpenSettingsModal?: (tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help') => void;
     onRequestCreateAlert?: () => void;
     onOpenSymbolSearch?: () => void;
+    onRequestQuickCopySnapshot?: () => void;
+    onRequestQuickDownloadSnapshot?: () => void;
+    onOpenSnapshotPreview?: () => void;
     // Props opsional lama agar backward-compatible
     ticker?: any;
     watchlistSymbols?: string[];
@@ -111,7 +115,10 @@
     onOpenIndicatorModal,
     onOpenSettingsModal,
     onRequestCreateAlert,
-    onOpenSymbolSearch
+    onOpenSymbolSearch,
+    onRequestQuickCopySnapshot,
+    onRequestQuickDownloadSnapshot,
+    onOpenSnapshotPreview
   }: Props = $props();
 
   let updateState = $state<UpdateState>(updateService.getSnapshot());
@@ -317,6 +324,13 @@
         <span class="count-badge mono-nums">{activeIndicators.length}</span>
       {/if}
     </button>
+
+    <!-- Snapshot Camera Action & Popover Menu -->
+    <SnapshotMenu
+      {onRequestQuickCopySnapshot}
+      {onRequestQuickDownloadSnapshot}
+      {onOpenSnapshotPreview}
+    />
 
 
     <!-- Update Notification Pill (Muncul saat rilis baru tersedia) -->

@@ -278,6 +278,9 @@
   export function enforceCurrentPriceLineOnCell(cell: any): void { controller.enforceCurrentPriceLine(cell); }
   export function applyWorkspaceTimezone(tz: string): void { controller.setTimezone(tz); }
   export function getActiveIndicators(): ActiveIndicatorInfo[] { return controller.getActiveIndicators(); }
+  export function getChartScreenshotCanvas(scope: 'active' | 'all' = 'active'): HTMLCanvasElement | null {
+    return controller.getScreenshotCanvas(scope);
+  }
   export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
     return controller.addPineIndicator(src, t, i, p);
   }

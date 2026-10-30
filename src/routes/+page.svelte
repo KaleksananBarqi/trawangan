@@ -13,8 +13,17 @@
   import SymbolSearchModal from '../lib/components/SymbolSearchModal.svelte';
   import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
   import AlertNotificationToast from '../lib/components/AlertNotificationToast.svelte';
+  import SnapshotToast, { type SnapshotToastData } from '../lib/components/SnapshotToast.svelte';
+  import SnapshotPreviewModal from '../lib/components/SnapshotPreviewModal.svelte';
   import RightDockRail from '../lib/components/RightDockRail.svelte';
   import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
+  import {
+    compositeSnapshot,
+    copySnapshotToClipboard,
+    downloadSnapshot,
+    generateSnapshotFilename,
+    type SnapshotMetadata
+  } from '../lib/services/chartSnapshotService';
   import { alertService } from '../lib/services/alertService';
   import { rightDockService, type RightDockState } from '../lib/services/rightDockService';
   import { leftToolbarService, type LeftToolbarState } from '../lib/services/leftToolbarService';
@@ -138,6 +147,10 @@
   let createAlertTargetPrice = $state<number | undefined>(undefined);
   let editingAlert = $state<PriceAlert | null>(null);
   let triggeredAlertsToasts = $state<PriceAlert[]>([]);
+
+  // Snapshot State (#94)
+  let snapshotToast = $state<SnapshotToastData | null>(null);
+  let isSnapshotPreviewOpen = $state(false);
 
   function handleRequestCreateAlert(sym?: string, price?: number, alertToEdit?: PriceAlert | null) {
     editingAlert = alertToEdit || null;
@@ -486,6 +499,10 @@
       }),
       commandDispatcher.bindHandler('draw-redo', () => {
         handleRedo();
+      }),
+      commandDispatcher.bindHandler('quick-snapshot-copy', (e) => {
+        e.preventDefault();
+        handleQuickCopySnapshot();
       }),
     ];
 
@@ -1125,6 +1142,153 @@
     const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
     systemLogs = [...systemLogs.slice(-60), { time, msg, level }];
   }
+
+  // ─── Layanan Tangkapan Layar Grafik (Offline Branded Snapshot) (#94) ───
+  function getActiveSnapshotMetadata(scope: 'active' | 'all' = 'active'): SnapshotMetadata {
+    if (scope === 'all') {
+      const layoutLabel = currentLayout === '2v' ? '2-SPLIT VERTICAL'
+        : currentLayout === '2h' ? '2-SPLIT HORIZONTAL'
+        : currentLayout === '4' ? '4-GRID'
+        : `LAYOUT ${currentLayout.toUpperCase()}`;
+
+      return {
+        symbol: 'MULTI-CHART GRID',
+        timeframe: layoutLabel,
+        providerId: activeProviderId || 'binance',
+        lastPrice: null,
+        timezone: appSettings.timezone || 'Asia/Jakarta',
+        timestamp: Date.now(),
+        layout: currentLayout,
+        scope: 'all',
+      };
+    }
+
+    return {
+      symbol: activeSymbol,
+      timeframe: activeTimeframe,
+      providerId: activeProviderId || 'binance',
+      lastPrice: ticker?.price ?? null,
+      timezone: appSettings.timezone || 'Asia/Jakarta',
+      timestamp: Date.now(),
+      layout: currentLayout,
+      scope: 'active',
+    };
+  }
+
+  async function handleQuickCopySnapshot() {
+    try {
+      const scope = appSettings.snapshotScope ?? 'active';
+      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
+      if (!canvas) {
+        snapshotToast = {
+          visible: true,
+          type: 'error',
+          message: 'Kanvas grafik belum siap atau tidak ditemukan.',
+          timestamp: Date.now(),
+        };
+        return;
+      }
+
+      const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
+      const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
+      const metadata = getActiveSnapshotMetadata(scope);
+      const composite = compositeSnapshot(canvas, {
+        mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
+        scale: 2,
+        backgroundColor,
+        includePrice: appSettings.snapshotIncludePrice ?? true,
+        includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
+        metadata,
+      });
+
+      const copyResult = await copySnapshotToClipboard(composite);
+      const thumbUrl = typeof composite.toDataURL === 'function' ? composite.toDataURL('image/png') : undefined;
+
+      if (copyResult.success) {
+        snapshotToast = {
+          visible: true,
+          type: 'copied',
+          message: 'Snapshot disalin ke clipboard! (PNG, 2x HiDPI)',
+          thumbnailUrl: thumbUrl,
+          timestamp: Date.now(),
+        };
+        addSystemLog(`Snapshot ${activeSymbol} disalin ke clipboard (PNG 2x HiDPI)`, 'success');
+      } else {
+        // Fallback jika Clipboard API diblokir oleh browser/OS: picu unduh otomatis
+        const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
+        const dataUrl = downloadSnapshot(composite, filename);
+        snapshotToast = {
+          visible: true,
+          type: 'saved',
+          message: 'Clipboard tidak diizinkan. Gambar otomatis disimpan ke file PNG!',
+          thumbnailUrl: dataUrl || thumbUrl,
+          timestamp: Date.now(),
+        };
+        addSystemLog(`Clipboard diblokir. Snapshot diunduh otomatis sebagai ${filename}`, 'info');
+      }
+    } catch (err: any) {
+      console.error('[Snapshot] Gagal menyalin snapshot:', err);
+      snapshotToast = {
+        visible: true,
+        type: 'error',
+        message: err?.message || 'Gagal memproses snapshot grafik.',
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  function handleQuickDownloadSnapshot() {
+    try {
+      const scope = appSettings.snapshotScope ?? 'active';
+      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
+      if (!canvas) {
+        snapshotToast = {
+          visible: true,
+          type: 'error',
+          message: 'Kanvas grafik belum siap atau tidak ditemukan.',
+          timestamp: Date.now(),
+        };
+        return;
+      }
+
+      const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
+      const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
+      const metadata = getActiveSnapshotMetadata(scope);
+      const composite = compositeSnapshot(canvas, {
+        mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
+        scale: 2,
+        backgroundColor,
+        includePrice: appSettings.snapshotIncludePrice ?? true,
+        includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
+        metadata,
+      });
+
+      const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
+      const dataUrl = downloadSnapshot(composite, filename);
+
+      snapshotToast = {
+        visible: true,
+        type: 'saved',
+        message: `Snapshot tersimpan sebagai ${filename}`,
+        thumbnailUrl: dataUrl,
+        timestamp: Date.now(),
+      };
+      addSystemLog(`Snapshot ${filename} berhasil diunduh.`, 'success');
+    } catch (err: any) {
+      console.error('[Snapshot] Gagal mengunduh snapshot:', err);
+      snapshotToast = {
+        visible: true,
+        type: 'error',
+        message: err?.message || 'Gagal mengunduh snapshot grafik.',
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  function handleOpenSnapshotPreview() {
+    isSnapshotPreviewOpen = true;
+    addSystemLog('Membuka dialog pratinjau snapshot...', 'info');
+  }
 </script>
 
 <div class="app-layout">
@@ -1175,6 +1339,9 @@
     onFavoriteTimeframesChange={(tfs) => handleUpdateSettings({ favoriteTimeframes: tfs })}
     onCustomTimeframesChange={(customs) => handleUpdateSettings({ customTimeframes: customs })}
     onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol, chartComponent?.getLastHoveredPrice?.() || ticker?.price)}
+    onRequestQuickCopySnapshot={handleQuickCopySnapshot}
+    onRequestQuickDownloadSnapshot={handleQuickDownloadSnapshot}
+    onOpenSnapshotPreview={handleOpenSnapshotPreview}
   />
 
   <!-- Main Viewport Area -->
@@ -1469,6 +1636,29 @@
     alerts={triggeredAlertsToasts}
     onSelectSymbol={handleSymbolChange}
     onDismiss={handleDismissAlertToast}
+  />
+
+  <!-- Snapshot Quick Toast Feedback (#94) -->
+  <SnapshotToast
+    toast={snapshotToast}
+    onDismiss={() => { snapshotToast = null; }}
+    onQuickDownload={handleQuickDownloadSnapshot}
+    onOpenPreview={handleOpenSnapshotPreview}
+  />
+
+  <!-- Interactive Snapshot Preview Modal (#95) -->
+  <SnapshotPreviewModal
+    isOpen={isSnapshotPreviewOpen}
+    {activeSymbol}
+    {activeTimeframe}
+    {activeProviderId}
+    currentPrice={ticker?.price || null}
+    {currentLayout}
+    {appSettings}
+    getScreenshotCanvas={(scope) => chartComponent?.getChartScreenshotCanvas?.(scope) || null}
+    onUpdateSettings={handleUpdateSettings}
+    onClose={() => { isSnapshotPreviewOpen = false; }}
+    onLog={(msg, type) => addSystemLog(msg, type || 'info')}
   />
 
   <!-- Smart Clipboard Sentry / Deep Link Toast -->
