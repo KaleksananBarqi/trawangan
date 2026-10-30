@@ -13,8 +13,16 @@
   import SymbolSearchModal from '../lib/components/SymbolSearchModal.svelte';
   import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
   import AlertNotificationToast from '../lib/components/AlertNotificationToast.svelte';
+  import SnapshotToast, { type SnapshotToastData } from '../lib/components/SnapshotToast.svelte';
   import RightDockRail from '../lib/components/RightDockRail.svelte';
   import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
+  import {
+    compositeSnapshot,
+    copySnapshotToClipboard,
+    downloadSnapshot,
+    generateSnapshotFilename,
+    type SnapshotMetadata
+  } from '../lib/services/chartSnapshotService';
   import { alertService } from '../lib/services/alertService';
   import { rightDockService, type RightDockState } from '../lib/services/rightDockService';
   import { leftToolbarService, type LeftToolbarState } from '../lib/services/leftToolbarService';
@@ -138,6 +146,10 @@
   let createAlertTargetPrice = $state<number | undefined>(undefined);
   let editingAlert = $state<PriceAlert | null>(null);
   let triggeredAlertsToasts = $state<PriceAlert[]>([]);
+
+  // Snapshot State (#94)
+  let snapshotToast = $state<SnapshotToastData | null>(null);
+  let isSnapshotPreviewOpen = $state(false);
 
   function handleRequestCreateAlert(sym?: string, price?: number, alertToEdit?: PriceAlert | null) {
     editingAlert = alertToEdit || null;
@@ -486,6 +498,10 @@
       }),
       commandDispatcher.bindHandler('draw-redo', () => {
         handleRedo();
+      }),
+      commandDispatcher.bindHandler('quick-snapshot-copy', (e) => {
+        e.preventDefault();
+        handleQuickCopySnapshot();
       }),
     ];
 
@@ -1125,6 +1141,121 @@
     const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
     systemLogs = [...systemLogs.slice(-60), { time, msg, level }];
   }
+
+  // ─── Layanan Tangkapan Layar Grafik (Offline Branded Snapshot) (#94) ───
+  function getActiveSnapshotMetadata(): SnapshotMetadata {
+    return {
+      symbol: activeSymbol,
+      timeframe: activeTimeframe,
+      providerId: activeProviderId || 'binance',
+      lastPrice: ticker?.price ?? null,
+      timezone: appSettings.timezone || 'Asia/Jakarta',
+      timestamp: Date.now(),
+    };
+  }
+
+  async function handleQuickCopySnapshot() {
+    try {
+      const canvas = chartComponent?.getChartScreenshotCanvas?.();
+      if (!canvas) {
+        snapshotToast = {
+          visible: true,
+          type: 'error',
+          message: 'Kanvas grafik belum siap atau tidak ditemukan.',
+          timestamp: Date.now(),
+        };
+        return;
+      }
+
+      const metadata = getActiveSnapshotMetadata();
+      const composite = compositeSnapshot(canvas, {
+        mode: 'branded',
+        scale: 2,
+        metadata,
+      });
+
+      const copyResult = await copySnapshotToClipboard(composite);
+      const thumbUrl = typeof composite.toDataURL === 'function' ? composite.toDataURL('image/png') : undefined;
+
+      if (copyResult.success) {
+        snapshotToast = {
+          visible: true,
+          type: 'copied',
+          message: 'Snapshot disalin ke clipboard! (PNG, 2x HiDPI)',
+          thumbnailUrl: thumbUrl,
+          timestamp: Date.now(),
+        };
+        addSystemLog(`Snapshot ${activeSymbol} disalin ke clipboard (PNG 2x HiDPI)`, 'success');
+      } else {
+        // Fallback jika Clipboard API diblokir oleh browser/OS: picu unduh otomatis
+        const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
+        const dataUrl = downloadSnapshot(composite, filename);
+        snapshotToast = {
+          visible: true,
+          type: 'saved',
+          message: 'Clipboard tidak diizinkan. Gambar otomatis disimpan ke file PNG!',
+          thumbnailUrl: dataUrl || thumbUrl,
+          timestamp: Date.now(),
+        };
+        addSystemLog(`Clipboard diblokir. Snapshot diunduh otomatis sebagai ${filename}`, 'info');
+      }
+    } catch (err: any) {
+      console.error('[Snapshot] Gagal menyalin snapshot:', err);
+      snapshotToast = {
+        visible: true,
+        type: 'error',
+        message: err?.message || 'Gagal memproses snapshot grafik.',
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  function handleQuickDownloadSnapshot() {
+    try {
+      const canvas = chartComponent?.getChartScreenshotCanvas?.();
+      if (!canvas) {
+        snapshotToast = {
+          visible: true,
+          type: 'error',
+          message: 'Kanvas grafik belum siap atau tidak ditemukan.',
+          timestamp: Date.now(),
+        };
+        return;
+      }
+
+      const metadata = getActiveSnapshotMetadata();
+      const composite = compositeSnapshot(canvas, {
+        mode: 'branded',
+        scale: 2,
+        metadata,
+      });
+
+      const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
+      const dataUrl = downloadSnapshot(composite, filename);
+
+      snapshotToast = {
+        visible: true,
+        type: 'saved',
+        message: `Snapshot tersimpan sebagai ${filename}`,
+        thumbnailUrl: dataUrl,
+        timestamp: Date.now(),
+      };
+      addSystemLog(`Snapshot ${filename} berhasil diunduh.`, 'success');
+    } catch (err: any) {
+      console.error('[Snapshot] Gagal mengunduh snapshot:', err);
+      snapshotToast = {
+        visible: true,
+        type: 'error',
+        message: err?.message || 'Gagal mengunduh snapshot grafik.',
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  function handleOpenSnapshotPreview() {
+    isSnapshotPreviewOpen = true;
+    addSystemLog('Membuka dialog pratinjau snapshot...', 'info');
+  }
 </script>
 
 <div class="app-layout">
@@ -1175,6 +1306,9 @@
     onFavoriteTimeframesChange={(tfs) => handleUpdateSettings({ favoriteTimeframes: tfs })}
     onCustomTimeframesChange={(customs) => handleUpdateSettings({ customTimeframes: customs })}
     onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol, chartComponent?.getLastHoveredPrice?.() || ticker?.price)}
+    onRequestQuickCopySnapshot={handleQuickCopySnapshot}
+    onRequestQuickDownloadSnapshot={handleQuickDownloadSnapshot}
+    onOpenSnapshotPreview={handleOpenSnapshotPreview}
   />
 
   <!-- Main Viewport Area -->
@@ -1469,6 +1603,13 @@
     alerts={triggeredAlertsToasts}
     onSelectSymbol={handleSymbolChange}
     onDismiss={handleDismissAlertToast}
+  />
+
+  <!-- Snapshot Quick Toast Feedback (#94) -->
+  <SnapshotToast
+    toast={snapshotToast}
+    onDismiss={() => { snapshotToast = null; }}
+    onOpenPreview={handleOpenSnapshotPreview}
   />
 
   <!-- Smart Clipboard Sentry / Deep Link Toast -->

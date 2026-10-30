@@ -600,6 +600,19 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
           (!isEditableElement(e.target) && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key?.toLowerCase() === 'f'),
       },
     },
+    {
+      id: 'quick-snapshot-copy',
+      category: 'Sistem & Bantuan',
+      keys: ['Ctrl', 'Shift', 'S'],
+      desc: 'Salin snapshot grafik bermerek ke clipboard',
+      allowInInput: false,
+      match: {
+        ctrlOrMeta: true,
+        shift: true,
+        key: 's',
+        code: 'KeyS',
+      },
+    },
   ];
 
 export function createDefaultCommandDispatcher(): CommandDispatcher {

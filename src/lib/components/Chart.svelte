@@ -278,6 +278,39 @@
   export function enforceCurrentPriceLineOnCell(cell: any): void { controller.enforceCurrentPriceLine(cell); }
   export function applyWorkspaceTimezone(tz: string): void { controller.setTimezone(tz); }
   export function getActiveIndicators(): ActiveIndicatorInfo[] { return controller.getActiveIndicators(); }
+  export function getChartScreenshotCanvas(): HTMLCanvasElement | null {
+    const ws = controller.getWorkspace();
+    if (ws && typeof ws.screenshotCanvas === 'function') {
+      return ws.screenshotCanvas();
+    }
+    const activeCell = ws?.active || ws?.cells?.[0];
+    if (activeCell && typeof activeCell.screenshotCanvas === 'function') {
+      return activeCell.screenshotCanvas();
+    }
+    if (activeCell?.chart?.renderer && typeof activeCell.chart.renderer.screenshotCanvas === 'function') {
+      return activeCell.chart.renderer.screenshotCanvas();
+    }
+    if (chartContainer) {
+      const c = chartContainer.querySelector('canvas');
+      if (c) return c as HTMLCanvasElement;
+    }
+    return null;
+  }
+  export function getChartScreenshot(): string | null {
+    const ws = controller.getWorkspace();
+    if (ws && typeof ws.screenshot === 'function') {
+      return ws.screenshot();
+    }
+    const activeCell = ws?.active || ws?.cells?.[0];
+    if (activeCell && typeof activeCell.screenshot === 'function') {
+      return activeCell.screenshot();
+    }
+    const canvas = getChartScreenshotCanvas();
+    if (canvas && typeof canvas.toDataURL === 'function') {
+      return canvas.toDataURL('image/png');
+    }
+    return null;
+  }
   export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
     return controller.addPineIndicator(src, t, i, p);
   }
