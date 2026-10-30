@@ -11,6 +11,8 @@ import {
   compositeSnapshot,
   generateSnapshotFilename,
   formatSnapshotPrice,
+  saveSnapshotToFile,
+  getDefaultSnapshotDirectory,
   type SnapshotOptions,
   type SnapshotMetadata
 } from '../src/lib/services/chartSnapshotService';
@@ -84,6 +86,11 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
       'active',
       'snapshotScope harus default ke "active"'
     );
+    assert.strictEqual(
+      DEFAULT_APP_SETTINGS.snapshotDirectory,
+      '',
+      'snapshotDirectory harus default ke string kosong (default OS Downloads)'
+    );
   });
 
   await t.test('2. resolveAppSettings: Normalisasi dan fallback preferensi snapshot', () => {
@@ -93,16 +100,19 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
     assert.strictEqual(resolvedEmpty.snapshotIncludePrice, true);
     assert.strictEqual(resolvedEmpty.snapshotIncludeTimestamp, true);
     assert.strictEqual(resolvedEmpty.snapshotScope, 'active');
+    assert.strictEqual(resolvedEmpty.snapshotDirectory, '');
 
     // B. Input parsial mempertahankan nilai kustom dan memberi fallback ke nilai default yang aman
     const resolvedPartial = resolveAppSettings({
       snapshotIncludeFrame: false,
       snapshotScope: 'all',
+      snapshotDirectory: '~/Pictures/Screenshots',
     } as any);
     assert.strictEqual(resolvedPartial.snapshotIncludeFrame, false);
     assert.strictEqual(resolvedPartial.snapshotIncludePrice, true);
     assert.strictEqual(resolvedPartial.snapshotIncludeTimestamp, true);
     assert.strictEqual(resolvedPartial.snapshotScope, 'all');
+    assert.strictEqual(resolvedPartial.snapshotDirectory, '~/Pictures/Screenshots');
 
     // C. Input dengan nilai snapshotScope invalid harus dinormalkan ke 'active'
     const resolvedInvalidScope = resolveAppSettings({
@@ -452,5 +462,38 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
     assert.strictEqual(formatSnapshotPrice(null), '-');
     assert.strictEqual(formatSnapshotPrice(undefined), '-');
     assert.strictEqual(formatSnapshotPrice(NaN), '-');
+  });
+
+  await t.test('14. Snapshot Save Directory: Verifikasi konfigurasi direktori kustom dan saveSnapshotToFile helper', async () => {
+    // 1. getDefaultSnapshotDirectory mengembalikan 'Downloads' saat di lingkungan pengujian non-tauri
+    const defaultDir = await getDefaultSnapshotDirectory();
+    assert.strictEqual(defaultDir, 'Downloads', 'Di lingkungan node harus fallback ke Downloads');
+
+    // 2. saveSnapshotToFile dengan direktori kustom menghasilkan path yang sesuai
+    const mockCanvas = createMockCanvas(400, 300);
+    const saveResultCustom = await saveSnapshotToFile(mockCanvas, 'test-chart.png', '~/Pictures/Screenshots');
+    assert.strictEqual(saveResultCustom.success, true);
+    assert.strictEqual(saveResultCustom.filePath, '~/Pictures/Screenshots/test-chart.png');
+
+    // 3. saveSnapshotToFile tanpa direktori kustom menggunakan fallback folder Downloads
+    const saveResultDefault = await saveSnapshotToFile(mockCanvas, 'test-default.png');
+    assert.strictEqual(saveResultDefault.success, true);
+    assert.strictEqual(saveResultDefault.filePath, 'Downloads/test-default.png');
+
+    // 4. Persistensi: Menyimpan snapshotDirectory ke adapter persistensi
+    const mockStorage = new InMemoryLocalStorageAdapter();
+    const persistence = new PersistenceService(mockStorage as any);
+
+    await persistence.saveSettings({
+      snapshotDirectory: '/media/storage/chart_snaps',
+    });
+
+    const loadedSettings = await persistence.loadSettings();
+    assert.ok(loadedSettings);
+    assert.strictEqual(
+      loadedSettings.snapshotDirectory,
+      '/media/storage/chart_snaps',
+      'Direktori snapshot kustom harus tersimpan dan dapat dimuat kembali secara utuh'
+    );
   });
 });

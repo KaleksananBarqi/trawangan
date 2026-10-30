@@ -1,5 +1,18 @@
 <script lang="ts">
-  import { Volume2, VolumeX, Bell, BellOff, Palette, Clipboard, ClipboardCheck, Clock } from '@lucide/svelte';
+  import {
+    Volume2,
+    VolumeX,
+    Bell,
+    BellOff,
+    Palette,
+    Clipboard,
+    ClipboardCheck,
+    Clock,
+    Camera,
+    Folder,
+    ExternalLink,
+    Sparkles
+  } from '@lucide/svelte';
   import { THEME_PRESETS } from '../../constants/themes';
   import { sendTestNotification } from '../../services/systemNotificationService';
   import type { AppSettings } from '../../types/market';
@@ -7,6 +20,7 @@
     SUPPORTED_WORLD_CITIES,
     DEFAULT_WORLD_CLOCK_CITIES
   } from '../../services/worldClockService';
+  import { openSnapshotFolder } from '../../services/chartSnapshotService';
 
   interface Props {
     settings: AppSettings;
@@ -41,6 +55,10 @@
     setTimeout(() => {
       testNotificationFeedback = null;
     }, 4500);
+  }
+
+  async function handleOpenSnapshotFolder(dir?: string) {
+    await openSnapshotFolder(dir);
   }
 </script>
 
@@ -221,6 +239,114 @@
       </span>
     </div>
   </div>
+
+  <!-- Pengaturan Tangkapan Layar & Snapshot (#95 & Save Directory Setting) -->
+  <div class="section-divider"></div>
+  <h4 class="section-title">Tangkapan Layar & Snapshot Grafik</h4>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Folder Penyimpanan Snapshot</span>
+      <span class="setting-desc">Lokasi direktori penyimpanan berkas gambar PNG saat snapshot diunduh</span>
+    </div>
+    <div class="directory-setting-group">
+      <input
+        type="text"
+        class="directory-input mono-nums"
+        placeholder="Bawaan: Folder Downloads OS"
+        value={settings.snapshotDirectory || ''}
+        onchange={(e) => onUpdateSettings({ snapshotDirectory: e.currentTarget.value.trim() })}
+      />
+      <button
+        type="button"
+        class="btn-open-folder"
+        title="Buka folder penyimpanan di File Manager"
+        onclick={() => handleOpenSnapshotFolder(settings.snapshotDirectory)}
+      >
+        <Folder size={13} />
+        <span>Buka Folder</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="setting-sub-row">
+    <div class="setting-info">
+      <span class="setting-label-sub">Pilihan Cepat Direktori</span>
+      <span class="setting-desc">Pilih jalur direktori standar atau ketik path folder kustom di atas</span>
+    </div>
+    <div class="dir-chips-group">
+      <button
+        type="button"
+        class="chip-toggle {(!settings.snapshotDirectory || settings.snapshotDirectory === '') ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ snapshotDirectory: '' })}
+      >
+        <span class="chip-dot"></span>
+        <span>Downloads (Bawaan)</span>
+      </button>
+      <button
+        type="button"
+        class="chip-toggle {settings.snapshotDirectory === '~/Pictures/Screenshots' ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ snapshotDirectory: '~/Pictures/Screenshots' })}
+      >
+        <span class="chip-dot"></span>
+        <span>Pictures/Screenshots</span>
+      </button>
+      <button
+        type="button"
+        class="chip-toggle {settings.snapshotDirectory === '~/Desktop' ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ snapshotDirectory: '~/Desktop' })}
+      >
+        <span class="chip-dot"></span>
+        <span>Desktop</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Gaya Ekspor Snapshot Bawaan</span>
+      <span class="setting-desc">Format kartu showcase dengan Attribution Bar atau kanvas murni</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.snapshotIncludeFrame !== false ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ snapshotIncludeFrame: settings.snapshotIncludeFrame === false })}
+    >
+      {#if settings.snapshotIncludeFrame !== false}
+        <Sparkles size={13} /> Branded Frame
+      {:else}
+        Clean Export
+      {/if}
+    </button>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Sertakan Harga Terakhir (Attribution Bar)</span>
+      <span class="setting-desc">Tampilkan badge harga pasar aktif di bilah footer snapshot</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.snapshotIncludePrice !== false ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ snapshotIncludePrice: settings.snapshotIncludePrice === false })}
+    >
+      {settings.snapshotIncludePrice !== false ? 'Sertakan' : 'Sembunyikan'}
+    </button>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Sertakan Waktu Analisis</span>
+      <span class="setting-desc">Tampilkan stempel tanggal dan jam lokal saat grafik ditangkap</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.snapshotIncludeTimestamp !== false ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ snapshotIncludeTimestamp: settings.snapshotIncludeTimestamp === false })}
+    >
+      {settings.snapshotIncludeTimestamp !== false ? 'Sertakan' : 'Sembunyikan'}
+    </button>
+  </div>
 </div>
 
 <style>
@@ -400,5 +526,67 @@
   .chip-toggle.active .chip-dot {
     background-color: #ff69b4;
     box-shadow: 0 0 5px rgba(255, 105, 180, 0.6);
+  }
+
+  .section-divider {
+    height: 1px;
+    background-color: var(--border-hairline);
+    margin: 8px 0;
+  }
+
+  .directory-setting-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 55%;
+    max-width: 320px;
+  }
+
+  .directory-input {
+    flex: 1;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: var(--radius-xs);
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .directory-input:focus {
+    border-color: var(--brand-primary);
+  }
+
+  .directory-input::placeholder {
+    color: var(--text-dim);
+  }
+
+  .btn-open-folder {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .btn-open-folder:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+    border-color: var(--brand-primary);
+  }
+
+  .dir-chips-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
   }
 </style>

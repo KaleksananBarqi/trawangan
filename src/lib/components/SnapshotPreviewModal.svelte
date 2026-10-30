@@ -13,7 +13,8 @@
     Sparkles,
     Image as ImageIcon,
     Plus,
-    Minus
+    Minus,
+    Folder
   } from '@lucide/svelte';
   import type { AppSettings } from '../types/market';
   import { THEME_PRESETS } from '../constants/themes';
@@ -22,6 +23,8 @@
     generateSnapshotFilename,
     copySnapshotToClipboard,
     downloadSnapshot,
+    saveSnapshotToFile,
+    openSnapshotFolder,
     calculateCompositeDimensions,
     type SnapshotOptions,
     type SnapshotMetadata
@@ -316,23 +319,23 @@
         }, 2200);
         onLog?.('Snapshot grafik disalin ke clipboard! (PNG 2x HiDPI)', 'success');
       } else {
-        // Fallback jika Clipboard API diblokir oleh browser / OS
+        // Fallback jika Clipboard API diblokir oleh browser / OS: simpan ke berkas
         const isMulti = snapshotScope === 'all';
         const filename = generateSnapshotFilename(
           isMulti ? 'MULTI-CHART-GRID' : activeSymbol,
           isMulti ? `layout-${currentLayout}` : activeTimeframe,
           capturedAt
         );
-        downloadSnapshot(composite, filename);
-        onLog?.(`Akses clipboard ditolak. Gambar otomatis disimpan sebagai ${filename}`, 'info');
+        const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
+        onLog?.(`Akses clipboard ditolak. Gambar otomatis disimpan di: ${saveRes.filePath || filename}`, 'info');
       }
     } catch (err: any) {
       onLog?.(err?.message || 'Gagal menyalin gambar ke clipboard.', 'warn');
     }
   }
 
-  // Eksekusi Unduh Berkas PNG
-  function handleDownloadImage() {
+  // Eksekusi Simpan / Unduh Berkas PNG ke Direktori
+  async function handleDownloadImage() {
     try {
       const composite = generateCurrentComposite();
       if (!composite) {
@@ -346,8 +349,12 @@
         isMulti ? `layout-${currentLayout}` : activeTimeframe,
         capturedAt
       );
-      downloadSnapshot(composite, filename);
-      onLog?.(`Snapshot berhasil disimpan sebagai ${filename}`, 'success');
+      const res = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
+      if (res.success) {
+        onLog?.(`Snapshot berhasil disimpan di: ${res.filePath || filename}`, 'success');
+      } else {
+        onLog?.(res.error || 'Gagal menyimpan gambar snapshot.', 'warn');
+      }
     } catch (err: any) {
       onLog?.(err?.message || 'Gagal mengunduh gambar snapshot.', 'warn');
     }
@@ -553,6 +560,29 @@
               </div>
             </div>
           {/if}
+
+          <!-- Lokasi Folder Penyimpanan Aktif -->
+          <div class="sidebar-section">
+            <div class="section-title-row">
+              <span class="section-title">LOKASI PENYIMPANAN</span>
+              <button
+                type="button"
+                class="btn-folder-link"
+                title="Buka folder penyimpanan di File Manager"
+                onclick={() => openSnapshotFolder(appSettings.snapshotDirectory)}
+              >
+                <Folder size={11} />
+                <span>Buka</span>
+              </button>
+            </div>
+            <div class="storage-info-box">
+              <span class="storage-path mono-nums" title={appSettings.snapshotDirectory || 'Folder Downloads bawaan sistem'}>
+                {appSettings.snapshotDirectory && appSettings.snapshotDirectory.length > 0
+                  ? appSettings.snapshotDirectory
+                  : 'Downloads (Bawaan OS)'}
+              </span>
+            </div>
+          </div>
 
           <!-- Ringkasan Informasi Privasi -->
           <div class="sidebar-footer-note">
@@ -877,6 +907,48 @@
     font-weight: 700;
     letter-spacing: 0.06em;
     color: var(--text-muted, #7c828d);
+  }
+
+  .section-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .btn-folder-link {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: #ff69b4;
+    font-size: 10.5px;
+    cursor: pointer;
+    padding: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .btn-folder-link:hover {
+    opacity: 0.8;
+    text-decoration: underline;
+  }
+
+  .storage-info-box {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--border-hairline, rgba(255, 255, 255, 0.06));
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .storage-path {
+    font-size: 10.5px;
+    color: var(--text-muted, #7c828d);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Mode Toggle */

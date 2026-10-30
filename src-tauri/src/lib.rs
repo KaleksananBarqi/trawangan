@@ -60,7 +60,10 @@ pub fn run() {
             commands::get_user_watchlist,
             commands::save_user_watchlist,
             commands::get_process_memory,
-            commands::http_get
+            commands::http_get,
+            commands::get_default_snapshot_directory,
+            commands::save_snapshot_file,
+            commands::open_snapshot_folder
         ])
         .run(tauri::generate_context!())
         .expect("Terjadi error saat menjalankan aplikasi desktop Trawangan");

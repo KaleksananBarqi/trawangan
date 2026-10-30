@@ -553,3 +553,76 @@ export function downloadSnapshot(canvasOrDataUrl: any, filename: string): string
 
   return dataUrl;
 }
+
+/**
+ * Menyimpan berkas gambar snapshot ke filesystem lokal (Tauri desktop)
+ * dengan direktori kustom atau bawaan, serta fallback ke pengunduhan browser standar.
+ */
+export async function saveSnapshotToFile(
+  canvasOrDataUrl: any,
+  filename: string,
+  customDirectory?: string
+): Promise<{ success: boolean; filePath?: string; error?: string }> {
+  let dataUrl = '';
+  if (typeof canvasOrDataUrl === 'string') {
+    dataUrl = canvasOrDataUrl;
+  } else if (canvasOrDataUrl && typeof canvasOrDataUrl.toDataURL === 'function') {
+    dataUrl = canvasOrDataUrl.toDataURL('image/png');
+  }
+
+  // Jika berjalan di lingkungan desktop Tauri, gunakan Tauri IPC native untuk menyimpan ke folder tujuan
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const savedPath = await invoke<string>('save_snapshot_file', {
+        directory: customDirectory && customDirectory.trim().length > 0 ? customDirectory.trim() : null,
+        filename,
+        base64Data: dataUrl,
+      });
+      return { success: true, filePath: savedPath };
+    } catch (err: any) {
+      console.warn('[Snapshot] Gagal menyimpan via Tauri command, beralih ke download browser:', err);
+    }
+  }
+
+  // Fallback ke unduhan browser standar
+  downloadSnapshot(dataUrl, filename);
+  return {
+    success: true,
+    filePath: customDirectory && customDirectory.trim().length > 0
+      ? `${customDirectory.trim()}/${filename}`
+      : `Downloads/${filename}`,
+  };
+}
+
+/**
+ * Membuka direktori penyimpanan snapshot di File Manager bawaan sistem operasi
+ */
+export async function openSnapshotFolder(customDirectory?: string): Promise<void> {
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_snapshot_folder', {
+        directory: customDirectory && customDirectory.trim().length > 0 ? customDirectory.trim() : null,
+      });
+    } catch (err) {
+      console.warn('[Snapshot] Gagal membuka folder penyimpanan:', err);
+    }
+  }
+}
+
+/**
+ * Mengambil path folder unduhan bawaan sistem
+ */
+export async function getDefaultSnapshotDirectory(): Promise<string> {
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const dir = await invoke<string>('get_default_snapshot_directory');
+      if (dir) return dir;
+    } catch (err) {
+      console.warn('[Snapshot] Gagal mengambil folder default:', err);
+    }
+  }
+  return 'Downloads';
+}

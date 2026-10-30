@@ -21,6 +21,7 @@
     compositeSnapshot,
     copySnapshotToClipboard,
     downloadSnapshot,
+    saveSnapshotToFile,
     generateSnapshotFilename,
     type SnapshotMetadata
   } from '../lib/services/chartSnapshotService';
@@ -1214,17 +1215,17 @@
         };
         addSystemLog(`Snapshot ${activeSymbol} disalin ke clipboard (PNG 2x HiDPI)`, 'success');
       } else {
-        // Fallback jika Clipboard API diblokir oleh browser/OS: picu unduh otomatis
+        // Fallback jika Clipboard API diblokir oleh browser/OS: simpan ke berkas
         const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
-        const dataUrl = downloadSnapshot(composite, filename);
+        const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
         snapshotToast = {
           visible: true,
           type: 'saved',
-          message: 'Clipboard tidak diizinkan. Gambar otomatis disimpan ke file PNG!',
-          thumbnailUrl: dataUrl || thumbUrl,
+          message: 'Clipboard tidak diizinkan. Gambar otomatis disimpan ke berkas!',
+          thumbnailUrl: thumbUrl,
           timestamp: Date.now(),
         };
-        addSystemLog(`Clipboard diblokir. Snapshot diunduh otomatis sebagai ${filename}`, 'info');
+        addSystemLog(`Clipboard diblokir. Snapshot disimpan di ${saveRes.filePath || filename}`, 'info');
       }
     } catch (err: any) {
       console.error('[Snapshot] Gagal menyalin snapshot:', err);
@@ -1237,7 +1238,7 @@
     }
   }
 
-  function handleQuickDownloadSnapshot() {
+  async function handleQuickDownloadSnapshot() {
     try {
       const scope = appSettings.snapshotScope ?? 'active';
       const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
@@ -1264,16 +1265,17 @@
       });
 
       const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
-      const dataUrl = downloadSnapshot(composite, filename);
+      const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
+      const thumbUrl = typeof composite.toDataURL === 'function' ? composite.toDataURL('image/png') : undefined;
 
       snapshotToast = {
         visible: true,
         type: 'saved',
-        message: `Snapshot tersimpan sebagai ${filename}`,
-        thumbnailUrl: dataUrl,
+        message: `Snapshot tersimpan di ${saveRes.filePath || filename}`,
+        thumbnailUrl: thumbUrl,
         timestamp: Date.now(),
       };
-      addSystemLog(`Snapshot ${filename} berhasil diunduh.`, 'success');
+      addSystemLog(`Snapshot grafik berhasil disimpan di: ${saveRes.filePath || filename}`, 'success');
     } catch (err: any) {
       console.error('[Snapshot] Gagal mengunduh snapshot:', err);
       snapshotToast = {

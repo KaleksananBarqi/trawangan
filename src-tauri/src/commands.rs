@@ -261,6 +261,139 @@ pub async fn http_get(
     market.get(&url, timeout_secs).await
 }
 
+// =========================================================================
+// Snapshot & Screenshot Storage Management Commands
+// =========================================================================
+
+#[tauri::command]
+pub fn get_default_snapshot_directory() -> Result<String, String> {
+    let dir = dirs::download_dir()
+        .or_else(|| dirs::picture_dir())
+        .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    Ok(dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn save_snapshot_file(
+    directory: Option<String>,
+    filename: String,
+    base64_data: String,
+) -> Result<String, String> {
+    use base64::prelude::*;
+    use std::path::PathBuf;
+
+    // 1. Tentukan direktori target
+    let target_dir: PathBuf = match directory {
+        Some(d) if !d.trim().is_empty() && d.trim() != "default" => {
+            let trimmed = d.trim();
+            if trimmed.starts_with('~') {
+                if let Some(home) = dirs::home_dir() {
+                    home.join(trimmed.trim_start_matches('~').trim_start_matches('/'))
+                } else {
+                    PathBuf::from(trimmed)
+                }
+            } else {
+                PathBuf::from(trimmed)
+            }
+        }
+        _ => dirs::download_dir()
+            .or_else(|| dirs::picture_dir())
+            .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default()),
+    };
+
+    // Pastikan direktori tujuan tersedia
+    if !target_dir.exists() {
+        std::fs::create_dir_all(&target_dir)
+            .map_err(|e| format!("Gagal membuat direktori {}: {}", target_dir.display(), e))?;
+    }
+
+    // 2. Bersihkan header data URL base64 jika ada
+    let clean_base64 = if let Some(idx) = base64_data.find(";base64,") {
+        &base64_data[idx + 8..]
+    } else if let Some(idx) = base64_data.find(',') {
+        &base64_data[idx + 1..]
+    } else {
+        &base64_data
+    };
+
+    // 3. Dekode binary bytes
+    let bytes = BASE64_STANDARD
+        .decode(clean_base64.trim())
+        .map_err(|e| format!("Gagal mendekode data base64 gambar: {}", e))?;
+
+    // 4. Susun nama berkas dan path lengkap
+    let safe_filename = if filename.trim().is_empty() {
+        "trawangan-snapshot.png".to_string()
+    } else {
+        filename
+    };
+    let target_file = target_dir.join(safe_filename);
+
+    // 5. Tulis berkas ke filesystem
+    std::fs::write(&target_file, &bytes)
+        .map_err(|e| format!("Gagal menulis berkas {}: {}", target_file.display(), e))?;
+
+    Ok(target_file.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn open_snapshot_folder(directory: Option<String>) -> Result<(), String> {
+    use std::path::PathBuf;
+
+    let target_dir: PathBuf = match directory {
+        Some(d) if !d.trim().is_empty() && d.trim() != "default" => {
+            let trimmed = d.trim();
+            if trimmed.starts_with('~') {
+                if let Some(home) = dirs::home_dir() {
+                    home.join(trimmed.trim_start_matches('~').trim_start_matches('/'))
+                } else {
+                    PathBuf::from(trimmed)
+                }
+            } else {
+                PathBuf::from(trimmed)
+            }
+        }
+        _ => dirs::download_dir()
+            .or_else(|| dirs::picture_dir())
+            .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default()),
+    };
+
+    if !target_dir.exists() {
+        let _ = std::fs::create_dir_all(&target_dir);
+    }
+
+    let dir_str = target_dir.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&dir_str)
+            .spawn()
+            .map_err(|e| format!("Gagal membuka explorer: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&dir_str)
+            .spawn()
+            .map_err(|e| format!("Gagal membuka finder: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&dir_str)
+            .spawn()
+            .map_err(|e| format!("Gagal membuka file manager: {}", e))?;
+    }
+
+    Ok(())
+}
+
 
 
 
