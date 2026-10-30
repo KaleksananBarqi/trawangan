@@ -1859,6 +1859,91 @@ export class ChartSessionController {
   }
 
   /**
+   * Mengambil elemen HTMLCanvasElement dari sel aktif atau seluruh sel grid
+   * Menangani penjahitan (stitching) komposit multi-chart layout jika scope === 'all'
+   */
+  public getScreenshotCanvas(scope: 'active' | 'all' = 'active'): HTMLCanvasElement | null {
+    const ws = this.workspace;
+    const cells = this.getAllCells();
+
+    if (scope === 'all' && this.layout !== '1') {
+      // 1. Coba ambil tangkapan seluruh workspace langsung dari Vela workspace jika didukung
+      if (ws && typeof ws.screenshotCanvas === 'function') {
+        const fullCanvas = ws.screenshotCanvas();
+        if (fullCanvas) return fullCanvas;
+      }
+
+      // 2. Jika ada beberapa sel dan masing-masing sel memiliki canvas/screenshotCanvas
+      if (cells.length > 1 && typeof document !== 'undefined') {
+        const cellCanvases: { canvas: HTMLCanvasElement; rect?: DOMRect }[] = [];
+        for (const cell of cells) {
+          let c: HTMLCanvasElement | null = null;
+          if (typeof cell.screenshotCanvas === 'function') {
+            c = cell.screenshotCanvas();
+          } else if (cell.chart?.renderer && typeof cell.chart.renderer.screenshotCanvas === 'function') {
+            c = cell.chart.renderer.screenshotCanvas();
+          } else if (cell.element) {
+            c = cell.element.querySelector('canvas');
+          }
+          if (c) {
+            const rect = cell.element?.getBoundingClientRect?.();
+            cellCanvases.push({ canvas: c, rect });
+          }
+        }
+
+        // Jika berhasil mendapatkan canvas dari tiap sel dengan koordinat DOM
+        if (cellCanvases.length === cells.length && cellCanvases.every((item) => item.rect)) {
+          const minLeft = Math.min(...cellCanvases.map((item) => item.rect!.left));
+          const minTop = Math.min(...cellCanvases.map((item) => item.rect!.top));
+          const maxRight = Math.max(...cellCanvases.map((item) => item.rect!.right));
+          const maxBottom = Math.max(...cellCanvases.map((item) => item.rect!.bottom));
+
+          const totalWidth = Math.round(maxRight - minLeft);
+          const totalHeight = Math.round(maxBottom - minTop);
+
+          if (totalWidth > 0 && totalHeight > 0) {
+            const compositeCanvas = document.createElement('canvas');
+            const scaleRatio = cellCanvases[0].canvas.width / (cellCanvases[0].rect!.width || 1);
+            compositeCanvas.width = Math.round(totalWidth * scaleRatio);
+            compositeCanvas.height = Math.round(totalHeight * scaleRatio);
+            const ctx = compositeCanvas.getContext('2d');
+            if (ctx) {
+              for (const item of cellCanvases) {
+                const dx = Math.round((item.rect!.left - minLeft) * scaleRatio);
+                const dy = Math.round((item.rect!.top - minTop) * scaleRatio);
+                const dw = Math.round(item.rect!.width * scaleRatio);
+                const dh = Math.round(item.rect!.height * scaleRatio);
+                ctx.drawImage(item.canvas, dx, dy, dw, dh);
+              }
+              return compositeCanvas;
+            }
+          }
+        }
+      }
+    }
+
+    // Default atau scope === 'active': Ambil canvas dari active cell atau cell pertama
+    const activeCell = ws?.active || cells[0] || ws?.cells?.[0];
+    if (activeCell && typeof activeCell.screenshotCanvas === 'function') {
+      const c = activeCell.screenshotCanvas();
+      if (c) return c;
+    }
+    if (activeCell?.chart?.renderer && typeof activeCell.chart.renderer.screenshotCanvas === 'function') {
+      const c = activeCell.chart.renderer.screenshotCanvas();
+      if (c) return c;
+    }
+    if (activeCell?.element) {
+      const c = activeCell.element.querySelector('canvas');
+      if (c) return c as HTMLCanvasElement;
+    }
+    if (this.container) {
+      const c = this.container.querySelector('canvas');
+      if (c) return c as HTMLCanvasElement;
+    }
+    return null;
+  }
+
+  /**
    * Menghancurkan sesi, melepaskan observer, dan membebaskan alokasi WebGL Context
    */
   public destroy(): void {

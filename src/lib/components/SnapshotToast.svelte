@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Camera, Check, X, ExternalLink, SlidersHorizontal, AlertCircle } from '@lucide/svelte';
+  import { Camera, Check, X, ExternalLink, SlidersHorizontal, AlertCircle, Download } from '@lucide/svelte';
 
   export interface SnapshotToastData {
     visible: boolean;
@@ -14,12 +14,14 @@
     toast: SnapshotToastData | null;
     onDismiss: () => void;
     onOpenPreview?: () => void;
+    onQuickDownload?: () => void;
   }
 
   let {
     toast = null,
     onDismiss,
     onOpenPreview,
+    onQuickDownload,
   }: Props = $props();
 
   let dismissTimer: any = null;
@@ -85,19 +87,34 @@
           <p>{toast.message}</p>
         </div>
 
-        {#if onOpenPreview && toast.type !== 'error'}
+        {#if (onOpenPreview || onQuickDownload) && toast.type !== 'error'}
           <div class="toast-actions">
-            <button
-              type="button"
-              class="preview-action-btn"
-              onclick={() => {
-                onOpenPreview?.();
-                onDismiss();
-              }}
-            >
-              <SlidersHorizontal size={11} />
-              <span>Buka Pratinjau</span>
-            </button>
+            {#if onQuickDownload}
+              <button
+                type="button"
+                class="download-action-btn"
+                title="Unduh berkas PNG langsung"
+                onclick={() => {
+                  onQuickDownload?.();
+                }}
+              >
+                <Download size={11} />
+                <span>Unduh File</span>
+              </button>
+            {/if}
+            {#if onOpenPreview}
+              <button
+                type="button"
+                class="preview-action-btn"
+                onclick={() => {
+                  onOpenPreview?.();
+                  onDismiss();
+                }}
+              >
+                <SlidersHorizontal size={11} />
+                <span>Buka Pratinjau</span>
+              </button>
+            {/if}
           </div>
         {/if}
       </div>
@@ -253,11 +270,13 @@
   }
 
   .toast-actions {
-    margin-top: 4px;
+    margin-top: 6px;
     display: flex;
     align-items: center;
+    gap: 6px;
   }
 
+  .download-action-btn,
   .preview-action-btn {
     display: inline-flex;
     align-items: center;
@@ -273,6 +292,7 @@
     transition: all 0.15s ease;
   }
 
+  .download-action-btn:hover,
   .preview-action-btn:hover {
     background: var(--bg-hover, rgba(255, 255, 255, 0.1));
     color: var(--brand-primary, #ff69b4);
