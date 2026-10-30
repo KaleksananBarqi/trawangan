@@ -569,4 +569,58 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     assert.ok(describeTimeframe('1h').includes('1 Jam'));
     assert.ok(describeTimeframe('1D').includes('1 Hari'));
   });
+
+  await t.test('16. Tiket #104: Shortcut Shift+D mengeksekusi toggle-gesture-mode dan tidak memicu Symbol Search', () => {
+    const dispatcher = new CommandDispatcher();
+    let gestureToggled = false;
+    let symbolSearched = false;
+
+    dispatcher.register({
+      id: 'toggle-gesture-mode',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Shift', 'D'],
+      desc: 'Gesture Draw Mode',
+      match: {
+        shift: true,
+        ctrlOrMeta: false,
+        alt: false,
+        key: ['d', 'D'],
+        code: 'KeyD',
+      },
+      handler: () => {
+        gestureToggled = true;
+      },
+    });
+
+    dispatcher.onTypeToSearch(() => {
+      symbolSearched = true;
+    });
+
+    let listenerHandler: ((e: any) => void) | null = null;
+    const mockWindow = {
+      addEventListener: (type: string, handler: any) => {
+        if (type === 'keydown') listenerHandler = handler;
+      },
+      removeEventListener: () => {},
+    } as unknown as Window;
+
+    dispatcher.attachGlobalListener(mockWindow);
+
+    if (listenerHandler) {
+      (listenerHandler as (e: any) => void)({
+        key: 'D',
+        code: 'KeyD',
+        shiftKey: true,
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false,
+        target: { tagName: 'DIV' },
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+    }
+
+    assert.equal(gestureToggled, true, 'Shift+D harus memicu toggle-gesture-mode');
+    assert.equal(symbolSearched, false, 'Shift+D tidak boleh membuka modal Symbol Search');
+  });
 });

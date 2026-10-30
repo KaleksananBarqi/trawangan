@@ -369,6 +369,19 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
 
     // --- Alat Gambar (Drawing Tools) ---
     {
+      id: 'toggle-gesture-mode',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Shift', 'D'],
+      desc: 'Beralih antara Mode Gambar Gestur (Gesture Draw Mode) dan Kursor',
+      match: {
+        shift: true,
+        ctrlOrMeta: false,
+        alt: false,
+        key: ['d', 'D'],
+        code: 'KeyD',
+      },
+    },
+    {
       id: 'toggle-left-toolbar',
       category: 'Alat Gambar (Drawing Tools)',
       keys: ['Alt', 'T'],

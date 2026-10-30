@@ -294,6 +294,108 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     assert.equal(controller.isEraserMode(), false);
     assert.equal(modeCalls[modeCalls.length - 1], null);
   });
+
+  await t.test('9. Toggle Shortcut Shift+D dan Mode Gesture (#104)', () => {
+    const controller = new ChartDrawingController();
+    const dispatcher = new CommandDispatcher();
+
+    dispatcher.register({
+      id: 'toggle-gesture-mode',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Shift', 'D'],
+      desc: 'Gesture Draw Mode',
+      match: {
+        shift: true,
+        ctrlOrMeta: false,
+        alt: false,
+        key: ['d', 'D'],
+        code: 'KeyD'
+      }
+    });
+
+    const unbind = controller.bindToDispatcher(dispatcher);
+
+    assert.equal(controller.isGestureMode(), false);
+    assert.equal(controller.getSnapshot().activeTool, null);
+
+    // Tekan Shift+D pertama kali -> gesture mode aktif
+    const shiftDEv = {
+      key: 'D',
+      code: 'KeyD',
+      shiftKey: true,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false
+    } as any;
+
+    dispatcher.dispatch(shiftDEv);
+    assert.equal(controller.isGestureMode(), true);
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+
+    // Tekan Shift+D kedua kali -> toggle kembali ke cursor
+    dispatcher.dispatch(shiftDEv);
+    assert.equal(controller.isGestureMode(), false);
+    assert.equal(controller.getSnapshot().activeTool, 'cursor');
+
+    unbind();
+  });
+
+  await t.test('10. Transient Hold tombol pemicu gestur (~ / Backquote) (#104)', () => {
+    const controller = new ChartDrawingController();
+
+    // User sedang memilih alat trendline
+    controller.setTool('trendline');
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+    assert.equal(controller.isGestureMode(), false);
+
+    // User menekan dan menahan tombol pemicu (~ / Backquote)
+    controller.setTransientGestureHold(true);
+    assert.equal(controller.isGestureMode(), true);
+    assert.equal(controller.isHoldingGesture(), true);
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+
+    // User melepas tombol pemicu gestur -> tool dipulihkan ke trendline
+    controller.setTransientGestureHold(false);
+    assert.equal(controller.isGestureMode(), false);
+    assert.equal(controller.isHoldingGesture(), false);
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+  });
+
+  await t.test('11. Siklus Live Stroke Buffer & Pembuatan Drawing Otomatis saat Gesture Selesai (#104)', () => {
+    const controller = new ChartDrawingController();
+
+    const createdDrawings: any[] = [];
+    const mockDrawings = {
+      create: (spec: any) => createdDrawings.push(spec),
+      all: () => createdDrawings,
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    controller.setTool('gesture');
+
+    // Rekam deretan koordinat horizontal stroke
+    controller.startGestureStroke(100, 200);
+    controller.addGesturePoint(200, 201);
+    controller.addGesturePoint(300, 200);
+    controller.addGesturePoint(400, 202);
+
+    assert.equal(controller.getLiveGestureStroke().length, 4);
+
+    // Selesaikan stroke
+    const result = controller.finishGestureStroke();
+    assert.ok(result);
+    assert.equal(result.tool, 'hline');
+    assert.equal(createdDrawings.length, 1);
+    assert.equal(createdDrawings[0].type, 'hline');
+    assert.equal(controller.getLiveGestureStroke().length, 0);
+  });
 });
 
 

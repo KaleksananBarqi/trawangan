@@ -3,6 +3,7 @@
     MousePointer,
     Hand,
     Eraser,
+    PencilLine,
     TrendingUp,
     Minus,
     ArrowUpRight,
@@ -173,6 +174,7 @@
   // Pemetaan Ikon Dinamis per Tool
   function getIconComponent(toolId: DrawingToolType | null) {
     if (!toolId || toolId === 'cursor') return MousePointer;
+    if (toolId === 'gesture') return PencilLine;
     if (toolId === 'handpull') return Hand;
     if (toolId === 'eraser') return Eraser;
 
@@ -329,16 +331,17 @@
 
   const POINTER_TOOLS: Array<{ id: DrawingToolType; label: string; shortcut?: string }> = [
     { id: 'cursor', label: 'Kursor (Seleksi & Pindah)', shortcut: 'Esc' },
+    { id: 'gesture', label: 'Gesture Draw', shortcut: 'Shift+D' },
     { id: 'handpull', label: 'Hand-Pull (Geser Kanvas)', shortcut: 'H' },
     { id: 'eraser', label: 'Penghapus Interaktif' }
   ];
 
   function isPointerActive(): boolean {
-    return activeTool === 'cursor' || activeTool === 'handpull' || activeTool === 'eraser' || activeTool === null;
+    return activeTool === 'cursor' || activeTool === 'gesture' || activeTool === 'handpull' || activeTool === 'eraser' || activeTool === null;
   }
 
   function getCurrentPointerTool(): DrawingToolType {
-    if (activeTool === 'handpull' || activeTool === 'eraser' || activeTool === 'cursor') {
+    if (activeTool === 'handpull' || activeTool === 'gesture' || activeTool === 'eraser' || activeTool === 'cursor') {
       return activeTool;
     }
     return lastUsedPointerTool;
@@ -438,7 +441,7 @@
       >
         <div class="flyout-header-row">
           <span class="flyout-header-title">Pointer & Navigasi</span>
-          <span class="flyout-count-badge mono-nums">3</span>
+          <span class="flyout-count-badge mono-nums">{POINTER_TOOLS.length}</span>
         </div>
 
         <div class="flyout-tools-list">

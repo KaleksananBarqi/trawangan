@@ -428,6 +428,10 @@
         leftToolbarService.toggleCollapse();
         addSystemLog(`Shortcut: Bilah gambar ${leftToolbarState.isCollapsed ? 'disembunyikan' : 'ditampilkan'} (Alt+T)`, 'info');
       }),
+      commandDispatcher.bindHandler('toggle-gesture-mode', () => {
+        chartDrawingController.toggleGestureMode();
+        addSystemLog(`Shortcut: Gesture Draw Mode ${chartDrawingController.isGestureMode() ? 'diaktifkan' : 'dinonaktifkan'} (Shift+D)`, 'info');
+      }),
       commandDispatcher.bindHandler('draw-hline', () => {
         handleSelectTool('hline');
         addSystemLog('Shortcut: Tool Horizontal Line dipilih (Alt+H)', 'info');

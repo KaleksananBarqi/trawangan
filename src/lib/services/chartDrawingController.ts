@@ -7,6 +7,12 @@ import {
 } from './persistence';
 import type { CommandDispatcher } from './commandDispatcher';
 import { roundToTickSize } from './priceSnapService';
+import {
+  recognizeGesture,
+  type GesturePoint,
+  type GestureRecognitionResult,
+  type GestureRecognizerOptions
+} from './gestureDrawingRecognizer';
 
 export interface DrawingState {
   activeTool: DrawingToolType | null;
@@ -169,6 +175,122 @@ export class ChartDrawingController {
     return this.activeTool === 'eraser';
   }
 
+  private previousToolBeforeGesture: DrawingToolType | null = null;
+  private isHoldingGestureKey = false;
+  private liveGestureStroke: GesturePoint[] = [];
+
+  /**
+   * Beralih antara Gesture Draw Mode dan Kursor (Shortcut Shift+D)
+   */
+  toggleGestureMode(): void {
+    if (this.activeTool === 'gesture') {
+      this.setTool('cursor');
+    } else {
+      this.setTool('gesture');
+    }
+  }
+
+  /**
+   * Mengaktifkan mode Gesture sementara saat tombol pemicu (~ / Backquote atau Shift+D) ditahan,
+   * dan mengembalikan ke tool sebelumnya saat tombol dilepas.
+   */
+  setTransientGestureHold(active: boolean): void {
+    if (active) {
+      if (!this.isHoldingGestureKey) {
+        this.isHoldingGestureKey = true;
+        if (this.activeTool !== 'gesture' && this.previousToolBeforeGesture === null) {
+          this.previousToolBeforeGesture = this.activeTool ?? 'cursor';
+          this.setTool('gesture');
+        }
+      }
+    } else {
+      if (this.isHoldingGestureKey) {
+        this.isHoldingGestureKey = false;
+        if (this.previousToolBeforeGesture !== null) {
+          const restoreTool = this.previousToolBeforeGesture;
+          this.previousToolBeforeGesture = null;
+          this.setTool(restoreTool);
+        }
+      }
+    }
+  }
+
+  /**
+   * Memeriksa apakah mode Gambar Gestur sedang aktif (baik via toggle maupun transient hold)
+   */
+  isGestureMode(): boolean {
+    return this.activeTool === 'gesture' || this.isHoldingGestureKey;
+  }
+
+  /**
+   * Memeriksa apakah tombol pemicu gestur sedang ditahan
+   */
+  isHoldingGesture(): boolean {
+    return this.isHoldingGestureKey;
+  }
+
+  /**
+   * Memulai sapuan gestur baru pada koordinat awal (x, y)
+   */
+  startGestureStroke(x: number, y: number): void {
+    this.liveGestureStroke = [{ x, y, time: Date.now() }];
+  }
+
+  /**
+   * Menambahkan koordinat titik ke buffer sapuan gestur aktif
+   */
+  addGesturePoint(x: number, y: number): void {
+    if (this.liveGestureStroke.length === 0) {
+      this.startGestureStroke(x, y);
+      return;
+    }
+    this.liveGestureStroke.push({ x, y, time: Date.now() });
+  }
+
+  /**
+   * Mendapatkan deretan titik sapuan gestur yang sedang berlangsung
+   */
+  getLiveGestureStroke(): GesturePoint[] {
+    return [...this.liveGestureStroke];
+  }
+
+  /**
+   * Menyelesaikan sapuan gestur, menjalankan recognizer deterministik,
+   * dan membuat objek gambar definitif pada drawing layer grafik.
+   */
+  finishGestureStroke(options?: GestureRecognizerOptions): GestureRecognitionResult | null {
+    if (this.liveGestureStroke.length < 2) {
+      this.liveGestureStroke = [];
+      return null;
+    }
+
+    const stroke = [...this.liveGestureStroke];
+    this.liveGestureStroke = [];
+
+    const result = recognizeGesture(stroke, options);
+
+    if (result.tool) {
+      this.createDrawing({
+        type: result.tool,
+        points: result.points
+      });
+
+      // Jika stayMode false dan bukan transient hold, kembalikan ke kursor
+      if (!this.stayMode && !this.isHoldingGestureKey) {
+        this.setTool('cursor');
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Membatalkan sapuan gestur aktif tanpa membuat objek gambar
+   */
+  cancelGestureStroke(): void {
+    this.liveGestureStroke = [];
+  }
+
   /**
    * Pasang listener event mutasi drawing dari engine Vela
    */
@@ -253,22 +375,25 @@ export class ChartDrawingController {
     const prevTool = this.activeTool;
     this.activeTool = tool;
 
-    const isEnteringHandpull = tool === 'handpull';
-    const isExitingHandpull = prevTool === 'handpull' && tool !== 'handpull';
+    const isEnteringSuppression = tool === 'handpull' || tool === 'gesture';
+    const isExitingSuppression =
+      (prevTool === 'handpull' || prevTool === 'gesture') &&
+      tool !== 'handpull' &&
+      tool !== 'gesture';
 
-    // Kelola isolasi input drawing pada seluruh sel saat mode handpull aktif
-    if (isEnteringHandpull || isExitingHandpull) {
+    // Kelola isolasi input drawing pada seluruh sel saat mode handpull atau gesture aktif
+    if (isEnteringSuppression || isExitingSuppression) {
       for (const cell of this.getAllCells()) {
         try {
           const renderer = cell?.chart?.renderer;
           const native = renderer?.renderer || renderer;
           if (native?.input) {
-            if (isEnteringHandpull) {
+            if (isEnteringSuppression) {
               if (native.__origDrawingsInteractive === undefined) {
                 native.__origDrawingsInteractive = native.input.drawings ?? true;
               }
               native.input.drawings = false; // Matikan claim seleksi objek gambar
-            } else if (isExitingHandpull) {
+            } else if (isExitingSuppression) {
               native.input.drawings = native.__origDrawingsInteractive ?? true;
               delete native.__origDrawingsInteractive;
             }
@@ -281,15 +406,15 @@ export class ChartDrawingController {
     if (activeChart?.drawings) {
       try {
         if (tool === 'measure') {
-          activeChart.drawings.setMode('measure');
+          activeChart.drawings.setMode?.('measure');
         } else if (tool === 'eraser') {
-          activeChart.drawings.setMode('eraser');
-        } else if (tool === 'handpull' || tool === 'cursor' || tool === null) {
-          activeChart.drawings.setMode(null);
-          activeChart.drawings.setTool(null);
+          activeChart.drawings.setMode?.('eraser');
+        } else if (tool === 'handpull' || tool === 'cursor' || tool === 'gesture' || tool === null) {
+          activeChart.drawings.setMode?.(null);
+          activeChart.drawings.setTool?.(null);
         } else {
-          activeChart.drawings.setMode(null);
-          activeChart.drawings.setTool(tool);
+          activeChart.drawings.setMode?.(null);
+          activeChart.drawings.setTool?.(tool);
         }
       } catch (e) {
         console.warn('ChartDrawingController setTool error:', e);
@@ -770,6 +895,13 @@ export class ChartDrawingController {
     unbinders.push(
       dispatcher.bindHandler('draw-trendline', () => {
         this.setTool(this.activeTool === 'trendline' ? null : 'trendline');
+      })
+    );
+
+    // Gesture Draw Mode (Shift+D)
+    unbinders.push(
+      dispatcher.bindHandler('toggle-gesture-mode', () => {
+        this.toggleGestureMode();
       })
     );
 
