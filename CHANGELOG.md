@@ -5,6 +5,32 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.24.0] - 2026-10-30
+
+### 🚀 Ditambahkan (Added)
+- **Pengaturan Lokasi Penyimpanan Snapshot Kustom (#97, #98, #99, #100, #101):**
+  - **Pemilih Folder Native OS**: Tombol "Pilih Folder..." di menu Pengaturan (tab Umum) yang membuka dialog pemilih direktori native sistem operasi secara asinkron (`rfd`) di Windows, macOS, dan Linux.
+  - **Konfigurasi `snapshotDirectory` di `appSettings`**: Pengguna dapat menentukan folder kustom (misal `~/Pictures/Screenshots`, `/media/storage/snaps`, atau drive sekunder) dengan persistensi SQLite lokal dan fallback otomatis ke folder `Downloads` bawaan OS.
+  - **Quick Folder Chips**: Tombol cepat untuk beralih instan antara `Downloads (Bawaan)`, `Pictures/Screenshots`, dan `Desktop`.
+  - **Tombol "Buka Folder" Terpadu**: Membuka langsung folder penyimpanan di File Manager native (Nautilus, Dolphin, Explorer, Finder) dari menu Pengaturan dan modal pratinjau snapshot.
+- **Pipa Ekspor Biner Berkinerja Tinggi & Pengamanan Filesystem (#97, #98, #100):**
+  - **Transmisi Biner Raw IPC**: Mendukung pengiriman data biner mentah (`Uint8Array` / `Vec<u8>`) dari `canvas.toBlob()` langsung ke backend Tauri, menghilangkan lonjakan serialisasi string Base64 belasan megabyte di saluran IPC.
+  - **Sanitasi Path Traversal Guard**: Penegakan sanitasi ketat pada nama berkas di sisi Rust (`Path::file_name()`), memangkas dan menolak karakter traversal (`../`, `..\`, absolute root, dan titik dua `:`) demi keamanan integritas filesystem.
+
+### 🔄 Diubah (Changed)
+- **Penyelarasan Kosakata Kanonik Domain**:
+  - Menyelaraskan seluruh label antarmuka dengan `GLOSSARY.md`, menggunakan istilah kanonik `Clean Chart Export` dan `Branded Snapshot Frame` pada seluruh toggle opsi ekspor.
+- **Pengerasan Layanan & Integritas Umpan Balik Fallback**:
+  - Menghapus tipe `any` pada `saveSnapshotToFile` menuju pengetikan TypeScript yang ketat.
+  - Memastikan umpan balik unduhan fallback melaporkan folder `Downloads/[filename]` secara jujur saat terminal dijalankan di luar lingkungan desktop.
+  - Mengeliminasi overhead proxy `$state` Svelte 5 pada elemen kanvas DOM di modal pratinjau.
+
+### 🐛 Diperbaiki (Fixed)
+- **Pencegahan UI Freeze & Deadlock IPC pada Linux Fedora / WebKitGTK (#97):**
+  - Memperbaiki siklus reaktivitas Svelte 5 pada `$effect` modal pratinjau dengan menerapkan transisi tepi (`wasOpen`) dan pembungkus `untrack()`.
+  - Mengisolasi pembaruan harga ticker WebSocket real-time (`capturedPrice`) sehingga fluktuasi harga tidak lagi memicu render komposit berulang tanpa henti.
+  - Mengganti konversi sinkron berat `toDataURL` skala penuh 2x HiDPI dengan pembuatan thumbnail ringan (`createSnapshotThumbnail`) dan `URL.createObjectURL(blob)`, mengeliminasi saturasi antrean IPC dan deadlock GPU buffer di WebKitGTK.
+
 ## [0.23.0] - 2026-10-30
 
 ### 🚀 Ditambahkan (Added)

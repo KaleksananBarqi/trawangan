@@ -7,7 +7,7 @@ describe('Update Service & Semver Logic Unit Tests', () => {
   test('APP_VERSION terdefinisi dan cocok dengan format semantic versioning', () => {
     assert.ok(APP_VERSION);
     assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/);
-    assert.equal(APP_VERSION, '0.23.0');
+    assert.equal(APP_VERSION, '0.24.0');
   });
 
   test('compareSemver membandingkan versi dengan benar', () => {
