@@ -11,9 +11,12 @@
     Clock,
     DollarSign,
     Sparkles,
-    Image as ImageIcon
+    Image as ImageIcon,
+    Plus,
+    Minus
   } from '@lucide/svelte';
   import type { AppSettings } from '../types/market';
+  import { THEME_PRESETS } from '../constants/themes';
   import {
     compositeSnapshot,
     generateSnapshotFilename,
@@ -58,6 +61,10 @@
   let includeTimestamp = $state(true);
   let snapshotScope = $state<'active' | 'all'>('active');
 
+  // State Zoom Interaktif (User Story 12)
+  let zoomLevel = $state(1);
+  let capturedAt = $state<number>(Date.now());
+
   // State Pratinjau
   let previewUrl = $state<string>('');
   let previewDimensions = $state<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -71,6 +78,8 @@
   // Inisialisasi opsi dari appSettings saat modal dibuka
   $effect(() => {
     if (isOpen) {
+      capturedAt = Date.now();
+      zoomLevel = 1;
       includeFrame = appSettings.snapshotIncludeFrame ?? true;
       includePrice = appSettings.snapshotIncludePrice ?? true;
       includeTimestamp = appSettings.snapshotIncludeTimestamp ?? true;
@@ -88,6 +97,19 @@
   onDestroy(() => {
     if (copyTimer) clearTimeout(copyTimer);
   });
+
+  // Handler Kontrol Zoom (+ / - / Reset 100%)
+  function handleZoomIn() {
+    zoomLevel = Math.min(3, Math.round((zoomLevel + 0.25) * 100) / 100);
+  }
+
+  function handleZoomOut() {
+    zoomLevel = Math.max(0.25, Math.round((zoomLevel - 0.25) * 100) / 100);
+  }
+
+  function handleResetZoom() {
+    zoomLevel = 1;
+  }
 
   // Keyboard shortcut listener (Escape untuk tutup)
   function handleKeyDown(e: KeyboardEvent) {
@@ -122,18 +144,39 @@
     const sourceCanvas = getScreenshotCanvas(snapshotScope);
     if (!sourceCanvas) return null;
 
-    const metadata: SnapshotMetadata = {
+    const isMulti = snapshotScope === 'all';
+    const layoutLabel = currentLayout === '2v' ? '2-SPLIT VERTICAL'
+      : currentLayout === '2h' ? '2-SPLIT HORIZONTAL'
+      : currentLayout === '4' ? '4-GRID'
+      : `LAYOUT ${currentLayout.toUpperCase()}`;
+
+    const metadata: SnapshotMetadata = isMulti ? {
+      symbol: 'MULTI-CHART GRID',
+      timeframe: layoutLabel,
+      providerId: activeProviderId,
+      lastPrice: null,
+      timezone: appSettings.timezone || 'Asia/Jakarta',
+      timestamp: capturedAt,
+      layout: currentLayout,
+      scope: 'all',
+    } : {
       symbol: activeSymbol,
       timeframe: activeTimeframe,
       providerId: activeProviderId,
       lastPrice: currentPrice,
       timezone: appSettings.timezone || 'Asia/Jakarta',
-      timestamp: Date.now(),
+      timestamp: capturedAt,
+      layout: currentLayout,
+      scope: 'active',
     };
+
+    const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
+    const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
 
     const options: SnapshotOptions = {
       mode: includeFrame ? 'branded' : 'clean',
       scale: 2,
+      backgroundColor,
       includePrice,
       includeTimestamp,
       metadata,
@@ -223,7 +266,12 @@
         onLog?.('Snapshot grafik disalin ke clipboard! (PNG 2x HiDPI)', 'success');
       } else {
         // Fallback jika Clipboard API diblokir oleh browser / OS
-        const filename = generateSnapshotFilename(activeSymbol, activeTimeframe);
+        const isMulti = snapshotScope === 'all';
+        const filename = generateSnapshotFilename(
+          isMulti ? 'MULTI-CHART-GRID' : activeSymbol,
+          isMulti ? `layout-${currentLayout}` : activeTimeframe,
+          capturedAt
+        );
         downloadSnapshot(composite, filename);
         onLog?.(`Akses clipboard ditolak. Gambar otomatis disimpan sebagai ${filename}`, 'info');
       }
@@ -241,7 +289,12 @@
         return;
       }
 
-      const filename = generateSnapshotFilename(activeSymbol, activeTimeframe);
+      const isMulti = snapshotScope === 'all';
+      const filename = generateSnapshotFilename(
+        isMulti ? 'MULTI-CHART-GRID' : activeSymbol,
+        isMulti ? `layout-${currentLayout}` : activeTimeframe,
+        capturedAt
+      );
       downloadSnapshot(composite, filename);
       onLog?.(`Snapshot berhasil disimpan sebagai ${filename}`, 'success');
     } catch (err: any) {
@@ -270,7 +323,11 @@
           <div class="header-titles">
             <h3 id="snapshot-modal-title">Pratinjau Snapshot Grafik</h3>
             <span class="header-subtitle mono-nums">
-              {activeSymbol} · {activeTimeframe} · {activeProviderId.toUpperCase()}
+              {#if snapshotScope === 'all'}
+                MULTI-CHART GRID · LAYOUT {currentLayout.toUpperCase()} · {activeProviderId.toUpperCase()}
+              {:else}
+                {activeSymbol} · {activeTimeframe} · {activeProviderId.toUpperCase()}
+              {/if}
             </span>
           </div>
         </div>
@@ -289,6 +346,39 @@
       <div class="modal-body">
         <!-- Area Pratinjau Visual (Kiri / Tengah) -->
         <div class="preview-stage">
+          <!-- Interactive Zoom Controls Toolbar (User Story 12) -->
+          <div class="preview-zoom-toolbar">
+            <button
+              type="button"
+              class="zoom-btn"
+              title="Perkecil Zoom (-)"
+              aria-label="Perkecil Zoom (-)"
+              disabled={zoomLevel <= 0.25}
+              onclick={handleZoomOut}
+            >
+              <Minus size={13} />
+            </button>
+            <button
+              type="button"
+              class="zoom-btn zoom-reset-btn"
+              title="Reset Zoom (100%)"
+              aria-label="Reset Zoom (100%)"
+              onclick={handleResetZoom}
+            >
+              <span>{Math.round(zoomLevel * 100)}%</span>
+            </button>
+            <button
+              type="button"
+              class="zoom-btn"
+              title="Perbesar Zoom (+)"
+              aria-label="Perbesar Zoom (+)"
+              disabled={zoomLevel >= 3}
+              onclick={handleZoomIn}
+            >
+              <Plus size={13} />
+            </button>
+          </div>
+
           {#if isRendering}
             <div class="preview-loading">
               <span class="loading-spinner"></span>
@@ -300,12 +390,17 @@
               <p class="error-text">{renderError}</p>
             </div>
           {:else if previewUrl}
-            <div class="preview-image-box">
-              <img
-                src={previewUrl}
-                alt="Pratinjau Snapshot Grafik"
-                class="preview-img"
-              />
+            <div class="preview-viewport">
+              <div
+                class="preview-image-box"
+                style="transform: scale({zoomLevel}); transform-origin: center center;"
+              >
+                <img
+                  src={previewUrl}
+                  alt="Pratinjau Snapshot Grafik"
+                  class="preview-img"
+                />
+              </div>
             </div>
           {/if}
 
@@ -614,13 +709,69 @@
     color: #e06c75;
   }
 
+  /* Zoom Toolbar (#95 User Story 12) */
+  .preview-zoom-toolbar {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    background: rgba(20, 20, 20, 0.75);
+    border: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.12));
+    border-radius: var(--radius-xs, 4px);
+    backdrop-filter: blur(8px);
+    padding: 2px 4px;
+    gap: 2px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .zoom-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #7c828d);
+    padding: 4px 6px;
+    cursor: pointer;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono, monospace);
+    transition: all 0.12s ease;
+  }
+
+  .zoom-btn:hover:not(:disabled) {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .zoom-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .zoom-reset-btn {
+    min-width: 44px;
+  }
+
+  .preview-viewport {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    overflow: auto;
+    margin-bottom: 12px;
+  }
+
   .preview-image-box {
     display: flex;
     align-items: center;
     justify-content: center;
-    max-width: 100%;
-    max-height: 100%;
-    margin-bottom: 12px;
+    transition: transform 0.15s ease-out;
   }
 
   .preview-img {

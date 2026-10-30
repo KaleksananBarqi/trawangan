@@ -1144,7 +1144,25 @@
   }
 
   // ─── Layanan Tangkapan Layar Grafik (Offline Branded Snapshot) (#94) ───
-  function getActiveSnapshotMetadata(): SnapshotMetadata {
+  function getActiveSnapshotMetadata(scope: 'active' | 'all' = 'active'): SnapshotMetadata {
+    if (scope === 'all') {
+      const layoutLabel = currentLayout === '2v' ? '2-SPLIT VERTICAL'
+        : currentLayout === '2h' ? '2-SPLIT HORIZONTAL'
+        : currentLayout === '4' ? '4-GRID'
+        : `LAYOUT ${currentLayout.toUpperCase()}`;
+
+      return {
+        symbol: 'MULTI-CHART GRID',
+        timeframe: layoutLabel,
+        providerId: activeProviderId || 'binance',
+        lastPrice: null,
+        timezone: appSettings.timezone || 'Asia/Jakarta',
+        timestamp: Date.now(),
+        layout: currentLayout,
+        scope: 'all',
+      };
+    }
+
     return {
       symbol: activeSymbol,
       timeframe: activeTimeframe,
@@ -1152,6 +1170,8 @@
       lastPrice: ticker?.price ?? null,
       timezone: appSettings.timezone || 'Asia/Jakarta',
       timestamp: Date.now(),
+      layout: currentLayout,
+      scope: 'active',
     };
   }
 
@@ -1169,10 +1189,13 @@
         return;
       }
 
-      const metadata = getActiveSnapshotMetadata();
+      const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
+      const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
+      const metadata = getActiveSnapshotMetadata(scope);
       const composite = compositeSnapshot(canvas, {
         mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
         scale: 2,
+        backgroundColor,
         includePrice: appSettings.snapshotIncludePrice ?? true,
         includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
         metadata,
@@ -1228,10 +1251,13 @@
         return;
       }
 
-      const metadata = getActiveSnapshotMetadata();
+      const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
+      const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
+      const metadata = getActiveSnapshotMetadata(scope);
       const composite = compositeSnapshot(canvas, {
         mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
         scale: 2,
+        backgroundColor,
         includePrice: appSettings.snapshotIncludePrice ?? true,
         includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
         metadata,
@@ -1616,6 +1642,7 @@
   <SnapshotToast
     toast={snapshotToast}
     onDismiss={() => { snapshotToast = null; }}
+    onQuickDownload={handleQuickDownloadSnapshot}
     onOpenPreview={handleOpenSnapshotPreview}
   />
 

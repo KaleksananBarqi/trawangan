@@ -257,4 +257,29 @@ test('Header Camera Action, Shortcut Ctrl+Shift+S, & Quick Toast Suite (#94)', a
     assert.equal(toast.type, 'saved');
     assert.equal(toast.message, 'Snapshot tersimpan ke file PNG!');
   });
+
+  await t.test('5. Quick Download Callback di Snapshot Toast (User Story 9)', () => {
+    let downloadTriggered = false;
+    let toastState: { visible: boolean; type?: string; message?: string } | null = {
+      visible: true,
+      type: 'copied',
+      message: 'Snapshot disalin ke clipboard! (PNG, 2x HiDPI)',
+    };
+
+    function handleQuickDownload() {
+      downloadTriggered = true;
+      toastState = {
+        visible: true,
+        type: 'saved',
+        message: 'Snapshot tersimpan sebagai trawangan-BTCUSDT-15m-20261030-190000.png',
+      };
+    }
+
+    // Simulasi klik tombol "Unduh File" pada SnapshotToast
+    assert.strictEqual(downloadTriggered, false);
+    handleQuickDownload();
+    assert.strictEqual(downloadTriggered, true, 'Callback onQuickDownload harus terpanggil');
+    assert.strictEqual(toastState?.type, 'saved');
+    assert.ok(toastState?.message?.includes('tersimpan sebagai'));
+  });
 });

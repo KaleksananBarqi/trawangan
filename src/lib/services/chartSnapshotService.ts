@@ -3,6 +3,8 @@
  * Membangun komposit kanvas 2D lokal murni dengan Branded Frame dan Attribution Bar.
  */
 
+import { formatPriceLabel } from './priceScaleLabelService';
+
 export type SnapshotScope = 'active' | 'all';
 export type SnapshotMode = 'branded' | 'clean';
 
@@ -13,6 +15,8 @@ export interface SnapshotMetadata {
   lastPrice?: number | null;
   timezone?: string;
   timestamp?: number | Date;
+  layout?: string;
+  scope?: SnapshotScope;
 }
 
 export interface SnapshotOptions {
@@ -167,55 +171,13 @@ export function formatSnapshotTimestamp(
 
 /**
  * Memformat harga pasar terkini dengan pemisah ribuan dan penyesuaian desimal
+ * Mendelegasikan logika format harga ke priceScaleLabelService
  */
 export function formatSnapshotPrice(price: number | null | undefined, quote?: string): string {
   if (price == null || typeof price !== 'number' || isNaN(price)) {
     return '-';
   }
-
-  const upperQuote = quote?.toUpperCase();
-  if (upperQuote === 'BTC') {
-    return `${price.toFixed(8)} ₿`;
-  }
-
-  const isIdr = upperQuote === 'IDR';
-  if (isIdr) {
-    if (price >= 100) {
-      if (Number.isInteger(price) || Math.abs(price - Math.round(price)) < 1e-4) {
-        return Math.round(price).toLocaleString('id-ID');
-      }
-      return price.toLocaleString('id-ID', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      });
-    }
-    if (price >= 1) {
-      return price.toLocaleString('id-ID', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 4,
-      });
-    }
-    return price.toLocaleString('id-ID', {
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 6,
-    });
-  }
-
-  // Standar format internasional (USD/USDT/Universal)
-  if (price >= 1000) {
-    return price.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-  if (price >= 1) {
-    return price.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
-    });
-  }
-  // Aset bernilai mikro (e.g. altcoins / meme coins)
-  return price.toFixed(6);
+  return formatPriceLabel(price, quote);
 }
 
 /**
@@ -388,9 +350,17 @@ export function compositeSnapshot(
   ctx.fillText('·', currentX, centerY);
   currentX += Math.round(12 * scale);
 
-  // 3d. Badge Instrumen ([SYMBOL] · [TF] · [PROVIDER])
+  // 3d. Badge Instrumen ([SYMBOL] · [TF] · [PROVIDER] atau MULTI-CHART GRID · [LAYOUT] · [PROVIDER])
   const meta = options.metadata;
-  const instrumentText = `${meta.symbol.toUpperCase()} · ${meta.timeframe} · ${meta.providerId.toUpperCase()}`;
+  let instrumentText: string;
+  if (meta.scope === 'all' || meta.symbol.toUpperCase() === 'MULTI-CHART GRID') {
+    const layoutLabel = meta.layout
+      ? (meta.layout === '2v' ? '2-SPLIT VERTICAL' : meta.layout === '2h' ? '2-SPLIT HORIZONTAL' : meta.layout === '4' ? '4-GRID' : `LAYOUT ${meta.layout.toUpperCase()}`)
+      : (meta.timeframe || 'GRID');
+    instrumentText = `MULTI-CHART GRID · ${layoutLabel} · ${meta.providerId.toUpperCase()}`;
+  } else {
+    instrumentText = `${meta.symbol.toUpperCase()} · ${meta.timeframe} · ${meta.providerId.toUpperCase()}`;
+  }
   ctx.font = `500 ${Math.round(12 * scale)}px "JetBrains Mono", monospace, sans-serif`;
   ctx.fillStyle = '#B0B0B0';
   ctx.fillText(instrumentText, currentX, centerY);
@@ -427,7 +397,9 @@ export function compositeSnapshot(
   }
 
   // 3g. Harga Terakhir (Last Market Price)
-  if (options.includePrice !== false && meta.lastPrice != null) {
+  // Jangan tampilkan harga pada multi-chart scope karena harga single chart ambigu untuk layout multi-grid
+  const isMultiScope = meta.scope === 'all' || meta.symbol.toUpperCase() === 'MULTI-CHART GRID';
+  if (options.includePrice !== false && meta.lastPrice != null && !isMultiScope) {
     const formattedPrice = formatSnapshotPrice(meta.lastPrice);
     ctx.font = `bold ${Math.round(14 * scale)}px "JetBrains Mono", monospace, sans-serif`;
     ctx.fillStyle = '#FFFFFF';
