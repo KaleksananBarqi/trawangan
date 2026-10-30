@@ -27,7 +27,7 @@ function createMockCanvas(width = 800, height = 600) {
     textBaseline: 'alphabetic',
   };
 
-  const context = {
+  const context: any = {
     ...state,
     save: () => operations.push({ method: 'save', args: [] }),
     restore: () => operations.push({ method: 'restore', args: [] }),
