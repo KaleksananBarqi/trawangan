@@ -5,6 +5,31 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.23.0] - 2026-10-30
+
+### 🚀 Ditambahkan (Added)
+- **Offline Branded Snapshot Engine & Attribution Bar (ADR 0012, #92, #93):**
+  - **Zero-Obtrusive Branded Frame**: Menggantikan watermark diagonal tradisional dengan bingkai kartu gelap minimalis berlatar belakang adaptif mengikuti tema aktif (`#0F0F0F` pada Signature Dark), sudut membulat 12px, border redup `1px rgba(255, 255, 255, 0.08)`, dan padding 24px di sekeliling grafik tanpa mengaburkan candlestick atau wick.
+  - **Attribution Bar Terpadu**: Bilah metadata di bagian bawah kartu memuat logo monogram resmi `tr` hot pink (`#FF69B4`), nama brand `trawangan`, badge instrumen (`[SYMBOL] · [TF] · [BURSA]` atau `MULTI-CHART GRID · [LAYOUT] · [BURSA]`), harga penutupan terakhir terformat, stempel waktu lokal pengguna (WIB/UTC), dan tautan publik `kaleksananbarqi.github.io/trawangan`.
+  - **Clean Chart Export Mode**: Opsi ekspor murni kanvas grafik WebGL2 tanpa bingkai luar atau footer untuk keperluan penyusunan laporan teknis dan embedding bersih.
+  - **2x HiDPI Ultra-Sharp Rendering**: Komposit kanvas 2D dirender pada skala resolusi tajam 2x HiDPI sehingga teks dan detail garis lilin tetap jernih di layar resolusi tinggi.
+  - **100% Offline & Zero Paywall**: Seluruh komposit rendering berjalan di sisi klien secara lokal tanpa lalu lintas jaringan, tanpa server cloud eksternal, dan tanpa pelacakan telemetri.
+- **Header Camera Action & Pintasan Global (ADR 0012, #92, #94):**
+  - **Tombol Kamera & Snapshot Menu (`SnapshotMenu.svelte`)**: Menyematkan tombol aksi `Camera` di Header kanan terminal dengan menu popover berisi 3 opsi aksi cepat: *Salin Gambar ke Clipboard*, *Simpan Gambar (PNG)*, dan *Pratinjau & Kustomisasi...*.
+  - **Pintasan Keyboard Global `Ctrl+Shift+S`**: Mendaftarkan shortcut keyboard global pada `commandDispatcher` untuk menyalin tangkapan grafik ke clipboard sistem dalam waktu < 2 detik (*Clipboard-First*).
+  - **Floating Snapshot Toast (`SnapshotToast.svelte`)**: Menampilkan notifikasi visual toast di sudut layar saat snapshot berhasil disalin, lengkap dengan thumbnail pratinjau, pesan resolusi 2x HiDPI, tombol aksi *"Buka Pratinjau"*, dan tombol *"Unduh File"*.
+- **Modal Pratinjau Interaktif & Persistensi Pengaturan (ADR 0012, #92, #95):**
+  - **Interactive Snapshot Preview Modal (`SnapshotPreviewModal.svelte`)**: Dialog modal pratinjau dengan kontrol zoom responsif (25% hingga 300%), sakelar mode *Branded Frame* vs *Clean Chart*, toggle tampilan harga dan waktu, serta tombol aksi cepat *Salin ke Clipboard* dan *Unduh PNG*.
+  - **Dukungan Multi-Chart Grid Scope**: Kemampuan memilih cakupan tangkapan antara *Chart Aktif Saja* atau *Seluruh Grid Workspace* (1, 2, 2H, 4 sel) saat tata letak multi-chart aktif.
+  - **Persistensi SQLite Lokal (`appSettings`)**: Preferensi snapshot pengguna (`snapshotIncludeFrame`, `snapshotIncludePrice`, `snapshotIncludeTimestamp`, `snapshotScope`) tersimpan persisten ke basis data SQLite lokal.
+  - **Penamaan Berkas Terstruktur**: Format unduhan file otomatis mengikuti standar rapi `trawangan-[symbol]-[timeframe]-[timestamp].png`.
+
+### 🔄 Diubah (Changed)
+- **Ekstraksi Kanvas Terpusat**:
+  - Mendelegasikan penanganan ekstraksi kanvas sel WebGL dan stitching layout multi-chart ke `ChartSessionController.getScreenshotCanvas(scope)`, menjadikan antarmuka `Chart.svelte` facade tipis yang bersih.
+- **Deduplikasi Pemformatan Harga**:
+  - Menyelaraskan logika format harga snapshot dengan `priceScaleLabelService.formatPriceLabel` untuk konsistensi representasi desimal bursa dan kripto.
+
 ## [0.22.0] - 2026-10-27
 
 ### 🚀 Ditambahkan (Added)
