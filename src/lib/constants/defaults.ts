@@ -41,6 +41,11 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   clipboardAutoOpen: false,
   showWorldClocks: true,
   worldClockCities: [...DEFAULT_WORLD_CLOCK_CITIES],
+  // Snapshot Preferences (#95)
+  snapshotIncludeFrame: true,
+  snapshotIncludePrice: true,
+  snapshotIncludeTimestamp: true,
+  snapshotScope: 'active',
   syncConfig: { ...DEFAULT_SYNC_CONFIG },
 };
 
@@ -77,6 +82,13 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
       ...DEFAULT_WORLD_CLOCK_CITIES,
     ],
     defaultTimeframe: saved.defaultTimeframe ?? DEFAULT_APP_SETTINGS.defaultTimeframe ?? '15m',
+    snapshotIncludeFrame: saved.snapshotIncludeFrame ?? DEFAULT_APP_SETTINGS.snapshotIncludeFrame ?? true,
+    snapshotIncludePrice: saved.snapshotIncludePrice ?? DEFAULT_APP_SETTINGS.snapshotIncludePrice ?? true,
+    snapshotIncludeTimestamp: saved.snapshotIncludeTimestamp ?? DEFAULT_APP_SETTINGS.snapshotIncludeTimestamp ?? true,
+    snapshotScope:
+      saved.snapshotScope === 'all' || saved.snapshotScope === 'active'
+        ? saved.snapshotScope
+        : (DEFAULT_APP_SETTINGS.snapshotScope ?? 'active'),
     syncConfig: mergedSyncConfig,
   };
 }

@@ -381,6 +381,7 @@ export const deleteScript = (id: string) => storage.deleteScript(id);
 
 export const loadSettings = () => storage.loadSettings();
 export const saveSettings = (cfg: Partial<AppSettings>) => storage.saveSettings(cfg);
+export { resolveAppSettings } from '../../constants/defaults';
 
 export const loadChartDefaultConfig = () => storage.loadChartDefaultConfig();
 export const saveChartDefaultConfig = (cfg: any) => storage.saveChartDefaultConfig(cfg);
