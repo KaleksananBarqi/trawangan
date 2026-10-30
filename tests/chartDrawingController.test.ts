@@ -636,7 +636,7 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     assert.equal(controller.getLastGestureCreation(), null);
   });
 
-  await t.test('15. Mode Gesture Sticky Toggle vs Transient Hold pada finishGestureStroke (#104, #106)', () => {
+  await t.test('15. finishGestureStroke memilih alat gambar yang dikenali dan mengubah kursor (#104, #106)', () => {
     const controller = new ChartDrawingController();
     const createdDrawings: any[] = [];
     const mockDrawings = {
@@ -656,31 +656,35 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     };
     controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
 
-    // Skenario A: Toggle Sticky Mode (Shift+D / Toolbar)
+    // Skenario A: Mode Gesture diaktifkan (via Shift+D atau Toolbar)
     controller.setTool('gesture');
     assert.equal(controller.isGestureModeActive, true);
     assert.equal(controller.isHoldingGesture(), false);
 
-    // Goresan pertama
+    // Goresan pertama (horizontal line)
     controller.startGestureStroke(100, 100);
     controller.addGesturePoint(300, 102);
     const stroke1 = controller.finishGestureStroke();
     assert.ok(stroke1);
-    // Tool HARUS tetap 'gesture' (tidak boleh ter-reset ke 'cursor') agar user dapat menggambar setup beruntun
-    assert.equal(controller.getSnapshot().activeTool, 'gesture');
-    assert.equal(controller.isGestureModeActive, true);
+    // Tool HARUS berubah ke alat hasil pengenalan gestur ('hline'), bukan tertahan di 'gesture'
+    assert.equal(controller.getSnapshot().activeTool, 'hline');
+    assert.equal(createdDrawings.length, 1);
 
-    // Goresan kedua berturut-turut tanpa perlu toggle ulang
-    controller.startGestureStroke(100, 200);
-    controller.addGesturePoint(300, 202);
-    const stroke2 = controller.finishGestureStroke();
-    assert.ok(stroke2);
-    assert.equal(controller.getSnapshot().activeTool, 'gesture');
-    assert.equal(createdDrawings.length, 2);
+    // Saat Tab ditekan untuk siklus kandidat, tool harus ikut diperbarui
+    const lastCreation = controller.getLastGestureCreation();
+    if (lastCreation && lastCreation.candidates.length > 1) {
+      const nextCandidate = lastCreation.candidates[1];
+      controller.cycleGestureCandidate();
+      assert.equal(controller.getSnapshot().activeTool, nextCandidate.tool);
+    }
 
-    // Skenario B: Transient Hold Mode (Tahan tombol ~ atau hold)
-    controller.setTool('trendline');
-    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+    // Saat Esc ditekan untuk membatalkan pembuatan objek gestur, tool kembali ke 'cursor'
+    controller.cancelGestureCreation();
+    assert.equal(controller.getSnapshot().activeTool, 'cursor');
+
+    // Skenario B: Transient Hold Mode (Tahan tombol shortcut)
+    controller.setTool('cursor');
+    assert.equal(controller.getSnapshot().activeTool, 'cursor');
 
     controller.setTransientGestureHold(true);
     assert.equal(controller.isHoldingGesture(), true);
@@ -693,8 +697,8 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     const strokeHold = controller.finishGestureStroke();
     assert.ok(strokeHold);
 
-    // Pada transient hold, kursor otomatis dikembalikan ke tool sebelumnya ('trendline')
-    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+    // Setelah goresan selesai, alat yang dikenali langsung terpilih ('hline')
+    assert.equal(controller.getSnapshot().activeTool, 'hline');
     assert.equal(controller.isHoldingGesture(), false);
   });
 

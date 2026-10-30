@@ -413,15 +413,11 @@ export class ChartDrawingController {
         });
       }
 
-      // Hanya jika transient hold aktif, kembalikan kursor ke tool sebelumnya.
-      // Jika mode gesture diaktifkan via toggle sticky (this.isGestureModeActive),
-      // pertahankan mode 'gesture' agar pengguna dapat menggambar beberapa objek setup berturut-turut.
-      if (this.isHoldingGestureKey) {
-        const restoreTool = this.previousToolBeforeGesture ?? 'cursor';
-        this.previousToolBeforeGesture = null;
-        this.isHoldingGestureKey = false;
-        this.setTool(restoreTool);
-      }
+      // Aktifkan alat gambar yang dihasilkan dari pengenalan gestur
+      // sehingga kursor mouse berubah ke alat tersebut dan bilah alat (toolbar) menyorot alat yang bersangkutan
+      this.isHoldingGestureKey = false;
+      this.previousToolBeforeGesture = null;
+      this.setTool(result.tool as DrawingToolType);
     }
 
     return result;
@@ -569,6 +565,9 @@ export class ChartDrawingController {
       expiresAt: Date.now() + 2500
     });
 
+    // Perbarui alat aktif sesuai kandidat baru
+    this.setTool(nextCandidate.tool as DrawingToolType);
+
     return true;
   }
 
@@ -585,6 +584,7 @@ export class ChartDrawingController {
     }
 
     this.dismissGestureHUD();
+    this.setTool('cursor');
     return true;
   }
 
@@ -1083,10 +1083,29 @@ export class ChartDrawingController {
     if (activeChart?.drawings) {
       try {
         let created: any = null;
+        const drawingInit: any = { ...spec };
+
+        // Resolusi anchors data-space ({ time, price }) dari koordinat piksel points jika belum tersedia
+        if (spec.points && Array.isArray(spec.points) && !drawingInit.anchors) {
+          const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+          const proj = typeof renderer?.drawingProjector === 'function'
+            ? renderer.drawingProjector()
+            : typeof activeChart?.getProjector === 'function'
+              ? activeChart.getProjector()
+              : null;
+
+          if (proj && typeof proj.pxToPoint === 'function') {
+            const paneId = drawingInit.paneId || 'price';
+            drawingInit.anchors = spec.points.map((pt: any) => proj.pxToPoint(pt.x, pt.y, paneId));
+          }
+        } else if (spec.price !== undefined && !drawingInit.anchors) {
+          drawingInit.anchors = [{ time: Date.now(), price: spec.price }];
+        }
+
         if (typeof activeChart.drawings.create === 'function') {
-          created = activeChart.drawings.create(spec);
+          created = activeChart.drawings.create(drawingInit);
         } else if (typeof activeChart.drawings.add === 'function') {
-          created = activeChart.drawings.add(spec.type, spec);
+          created = activeChart.drawings.add(drawingInit.type, drawingInit);
         }
         this.handleDrawingMutated();
         const id = created?.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
