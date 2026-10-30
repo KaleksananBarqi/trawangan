@@ -1,7 +1,12 @@
 // Unit Tests untuk Deep ChartDrawingController
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ChartDrawingController } from '../src/lib/services/chartDrawingController';
+import {
+  ChartDrawingController,
+  isAABBOverlap,
+  extractDrawingBounds,
+  checkDrawingIntersectsBounds
+} from '../src/lib/services/chartDrawingController';
 import { CommandDispatcher } from '../src/lib/services/commandDispatcher';
 
 test('ChartDrawingController Deep Module Suite', async (t) => {
@@ -293,6 +298,432 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     controller.setTool('hline');
     assert.equal(controller.isEraserMode(), false);
     assert.equal(modeCalls[modeCalls.length - 1], null);
+  });
+
+  await t.test('9. Toggle Shortcut Shift+D dan Mode Gesture (#104)', () => {
+    const controller = new ChartDrawingController();
+    const dispatcher = new CommandDispatcher();
+
+    dispatcher.register({
+      id: 'toggle-gesture-mode',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Shift', 'D'],
+      desc: 'Gesture Draw Mode',
+      match: {
+        shift: true,
+        ctrlOrMeta: false,
+        alt: false,
+        key: ['d', 'D'],
+        code: 'KeyD'
+      }
+    });
+
+    const unbind = controller.bindToDispatcher(dispatcher);
+
+    assert.equal(controller.isGestureMode(), false);
+    assert.equal(controller.getSnapshot().activeTool, null);
+
+    // Tekan Shift+D pertama kali -> gesture mode aktif
+    const shiftDEv = {
+      key: 'D',
+      code: 'KeyD',
+      shiftKey: true,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false
+    } as any;
+
+    dispatcher.dispatch(shiftDEv);
+    assert.equal(controller.isGestureMode(), true);
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+
+    // Tekan Shift+D kedua kali -> toggle kembali ke cursor
+    dispatcher.dispatch(shiftDEv);
+    assert.equal(controller.isGestureMode(), false);
+    assert.equal(controller.getSnapshot().activeTool, 'cursor');
+
+    unbind();
+  });
+
+  await t.test('10. Transient Hold tombol pemicu gestur (~ / Backquote) (#104)', () => {
+    const controller = new ChartDrawingController();
+
+    // User sedang memilih alat trendline
+    controller.setTool('trendline');
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+    assert.equal(controller.isGestureMode(), false);
+
+    // User menekan dan menahan tombol pemicu (~ / Backquote)
+    controller.setTransientGestureHold(true);
+    assert.equal(controller.isGestureMode(), true);
+    assert.equal(controller.isHoldingGesture(), true);
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+
+    // User melepas tombol pemicu gestur -> tool dipulihkan ke trendline
+    controller.setTransientGestureHold(false);
+    assert.equal(controller.isGestureMode(), false);
+    assert.equal(controller.isHoldingGesture(), false);
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+  });
+
+  await t.test('11. Siklus Live Stroke Buffer & Pembuatan Drawing Otomatis saat Gesture Selesai (#104)', () => {
+    const controller = new ChartDrawingController();
+
+    const createdDrawings: any[] = [];
+    const mockDrawings = {
+      create: (spec: any) => createdDrawings.push(spec),
+      all: () => createdDrawings,
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    controller.setTool('gesture');
+
+    // Rekam deretan koordinat horizontal stroke
+    controller.startGestureStroke(100, 200);
+    controller.addGesturePoint(200, 201);
+    controller.addGesturePoint(300, 200);
+    controller.addGesturePoint(400, 202);
+
+    assert.equal(controller.getLiveGestureStroke().length, 4);
+
+    // Selesaikan stroke
+    const result = controller.finishGestureStroke();
+    assert.ok(result);
+    assert.equal(result.tool, 'hline');
+    assert.equal(createdDrawings.length, 1);
+    assert.equal(createdDrawings[0].type, 'hline');
+    assert.equal(controller.getLiveGestureStroke().length, 0);
+  });
+
+  await t.test('12. Integrasi Pembuatan Objek Gambar Geometris Kompleks (box, ellipse, arrow, fibretracement, path) dari Gesture (#105)', () => {
+    const controller = new ChartDrawingController();
+
+    const createdDrawings: any[] = [];
+    const mockDrawings = {
+      create: (spec: any) => createdDrawings.push(spec),
+      all: () => createdDrawings,
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    controller.setTool('gesture');
+
+    // 1. Box Gesture Stroke
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(300, 100);
+    controller.addGesturePoint(300, 250);
+    controller.addGesturePoint(100, 250);
+    controller.addGesturePoint(100, 100);
+    const boxRes = controller.finishGestureStroke();
+    assert.ok(boxRes);
+    assert.equal(boxRes.tool, 'box');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'box');
+
+    // 2. Ellipse Gesture Stroke
+    controller.setTool('gesture');
+    controller.startGestureStroke(280, 150);
+    for (let i = 1; i <= 36; i++) {
+      const angleRad = (i / 36) * 2 * Math.PI;
+      controller.addGesturePoint(
+        Math.round(200 + 80 * Math.cos(angleRad)),
+        Math.round(150 + 50 * Math.sin(angleRad))
+      );
+    }
+    const ellipseRes = controller.finishGestureStroke();
+    assert.ok(ellipseRes);
+    assert.equal(ellipseRes.tool, 'ellipse');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'ellipse');
+
+    // 3. Arrow Gesture Stroke
+    controller.setTool('gesture');
+    controller.startGestureStroke(100, 200);
+    controller.addGesturePoint(250, 200);
+    controller.addGesturePoint(400, 200);
+    controller.addGesturePoint(370, 170); // terminal hook
+    const arrowRes = controller.finishGestureStroke();
+    assert.ok(arrowRes);
+    assert.equal(arrowRes.tool, 'arrow');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'arrow');
+
+    // 4. Fib Retracement Gesture Stroke (Z-Shape)
+    controller.setTool('gesture');
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(200, 100);
+    controller.addGesturePoint(300, 100);
+    controller.addGesturePoint(220, 200);
+    controller.addGesturePoint(150, 300);
+    controller.addGesturePoint(250, 300);
+    controller.addGesturePoint(350, 300);
+    const fibRes = controller.finishGestureStroke({
+      wicks: [{ highY: 95, lowY: 150 }, { highY: 260, lowY: 305 }],
+      wickSnapRadius: 20
+    });
+    assert.ok(fibRes);
+    assert.equal(fibRes.tool, 'fibretracement');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'fibretracement');
+    assert.equal(createdDrawings[createdDrawings.length - 1].points[0].y, 95);
+    assert.equal(createdDrawings[createdDrawings.length - 1].points[1].y, 305);
+
+    // 5. Path Gesture Stroke (Polyline > 2 belokan)
+    controller.setTool('gesture');
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(200, 220);
+    controller.addGesturePoint(260, 140);
+    controller.addGesturePoint(360, 320);
+    controller.addGesturePoint(460, 200);
+    const pathRes = controller.finishGestureStroke();
+    assert.ok(pathRes);
+    assert.equal(pathRes.tool, 'path');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'path');
+    assert.ok(createdDrawings[createdDrawings.length - 1].points.length >= 4);
+  });
+
+  await t.test('13. Eksekusi Penghapusan Objek Gambar via Scribble Gesture dan Pemulihan Undo Stack (#106)', () => {
+    const controller = new ChartDrawingController();
+
+    let existingDrawings: any[] = [
+      { id: 'd-target', type: 'trendline', points: [{ x: 100, y: 100 }, { x: 200, y: 120 }] },
+      { id: 'd-other', type: 'trendline', points: [{ x: 500, y: 500 }, { x: 600, y: 600 }] }
+    ];
+
+    const calls: string[] = [];
+    const mockDrawings = {
+      all: () => existingDrawings,
+      removeMany: (ids: string[]) => {
+        calls.push(`removeMany:${ids.join(',')}`);
+        existingDrawings = existingDrawings.filter((d) => !ids.includes(d.id));
+      },
+      remove: (id: string) => {
+        calls.push(`remove:${id}`);
+        existingDrawings = existingDrawings.filter((d) => d.id !== id);
+      },
+      create: (spec: any) => {
+        existingDrawings.push(spec);
+        return spec;
+      },
+      undo: () => {
+        calls.push('undo');
+      },
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    controller.setTool('gesture');
+
+    // Buat goresan zigzag scribble di atas d-target (x: 100..200, y: 100..125)
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(200, 105);
+    controller.addGesturePoint(105, 110);
+    controller.addGesturePoint(195, 115);
+    controller.addGesturePoint(110, 120);
+    controller.addGesturePoint(200, 125);
+
+    const res = controller.finishGestureStroke();
+    assert.ok(res);
+    assert.equal(res.tool, 'scribble');
+
+    // d-target harus dihapus karena beririsan dengan scribbleBounds
+    assert.ok(calls.some((c) => c.includes('remove') && c.includes('d-target')));
+    assert.equal(existingDrawings.some((d) => d.id === 'd-target'), false);
+    // d-other tidak tersentuh
+    assert.equal(existingDrawings.some((d) => d.id === 'd-other'), true);
+
+    // Tekan Undo (Ctrl+Z) -> d-target harus dipulihkan
+    controller.undo();
+    assert.ok(calls.includes('undo'));
+    assert.equal(existingDrawings.some((d) => d.id === 'd-target'), true, 'd-target harus dipulihkan setelah undo');
+  });
+
+  await t.test('14. Floating HUD & Tab Candidate Cycling serta Esc Cancel (#106)', () => {
+    const controller = new ChartDrawingController();
+
+    let createdDrawings: any[] = [];
+    const deletedIds: string[] = [];
+
+    const mockDrawings = {
+      all: () => createdDrawings,
+      create: (spec: any) => {
+        const id = spec.id || `gen-${Date.now()}-${Math.random()}`;
+        const item = { id, ...spec };
+        createdDrawings.push(item);
+        return item;
+      },
+      remove: (id: string) => {
+        deletedIds.push(id);
+        createdDrawings = createdDrawings.filter((d) => d.id !== id);
+      },
+      removeMany: (ids: string[]) => {
+        deletedIds.push(...ids);
+        createdDrawings = createdDrawings.filter((d) => !ids.includes(d.id));
+      },
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    controller.setTool('gesture');
+
+    // Buat goresan ray/trendline yang memiliki kandidat alternatif
+    controller.startGestureStroke(200, 300);
+    controller.addGesturePoint(500, 250);
+    controller.addGesturePoint(750, 200);
+    controller.addGesturePoint(970, 180);
+
+    const res = controller.finishGestureStroke({
+      canvasWidth: 1000,
+      rightMarginThreshold: 50
+    });
+
+    assert.ok(res);
+    assert.equal(res.tool, 'ray');
+    assert.ok(res.candidates.length > 1);
+
+    // HUD harus aktif
+    assert.equal(controller.isGestureHUDActive(), true);
+    const creationState = controller.getLastGestureCreation();
+    assert.ok(creationState);
+    assert.equal(creationState.candidateIndex, 0);
+    assert.equal(creationState.candidates[0].tool, 'ray');
+
+    const firstDrawingId = creationState.drawingId;
+    assert.ok(firstDrawingId);
+
+    // 1. Tekan Tab untuk cycle ke kandidat berikutnya (misal trendline)
+    const cycled = controller.cycleGestureCandidate();
+    assert.equal(cycled, true);
+
+    const secondCreation = controller.getLastGestureCreation();
+    assert.ok(secondCreation);
+    assert.equal(secondCreation.candidateIndex, 1);
+    assert.notEqual(secondCreation.drawingId, firstDrawingId);
+    assert.ok(deletedIds.includes(firstDrawingId!));
+    assert.equal(createdDrawings.length, 1);
+    assert.equal(createdDrawings[0].type, secondCreation.candidates[1].tool);
+
+    // 2. Tekan Esc untuk membatalkan gambar yang baru dibuat
+    const secondDrawingId = secondCreation.drawingId;
+    const cancelled = controller.cancelGestureCreation();
+    assert.equal(cancelled, true);
+
+    // Drawing baru harus dihapus dan HUD tertutup
+    assert.ok(deletedIds.includes(secondDrawingId!));
+    assert.equal(createdDrawings.length, 0);
+    assert.equal(controller.isGestureHUDActive(), false);
+    assert.equal(controller.getLastGestureCreation(), null);
+  });
+
+  await t.test('15. Mode Gesture Sticky Toggle vs Transient Hold pada finishGestureStroke (#104, #106)', () => {
+    const controller = new ChartDrawingController();
+    const createdDrawings: any[] = [];
+    const mockDrawings = {
+      create: (spec: any) => {
+        const id = `item-${createdDrawings.length + 1}`;
+        const item = { id, ...spec };
+        createdDrawings.push(item);
+        return item;
+      },
+      all: () => createdDrawings,
+      on: () => {},
+      off: () => {}
+    };
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+
+    // Skenario A: Toggle Sticky Mode (Shift+D / Toolbar)
+    controller.setTool('gesture');
+    assert.equal(controller.isGestureModeActive, true);
+    assert.equal(controller.isHoldingGesture(), false);
+
+    // Goresan pertama
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(300, 102);
+    const stroke1 = controller.finishGestureStroke();
+    assert.ok(stroke1);
+    // Tool HARUS tetap 'gesture' (tidak boleh ter-reset ke 'cursor') agar user dapat menggambar setup beruntun
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+    assert.equal(controller.isGestureModeActive, true);
+
+    // Goresan kedua berturut-turut tanpa perlu toggle ulang
+    controller.startGestureStroke(100, 200);
+    controller.addGesturePoint(300, 202);
+    const stroke2 = controller.finishGestureStroke();
+    assert.ok(stroke2);
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+    assert.equal(createdDrawings.length, 2);
+
+    // Skenario B: Transient Hold Mode (Tahan tombol ~ atau hold)
+    controller.setTool('trendline');
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+
+    controller.setTransientGestureHold(true);
+    assert.equal(controller.isHoldingGesture(), true);
+    assert.equal(controller.isGestureModeActive, false);
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+
+    // Tarik goresan saat menahan tombol
+    controller.startGestureStroke(50, 50);
+    controller.addGesturePoint(250, 50);
+    const strokeHold = controller.finishGestureStroke();
+    assert.ok(strokeHold);
+
+    // Pada transient hold, kursor otomatis dikembalikan ke tool sebelumnya ('trendline')
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+    assert.equal(controller.isHoldingGesture(), false);
+  });
+
+  await t.test('16. Helper isAABBOverlap dan extractDrawingBounds mengeliminasi duplikasi kode', () => {
+    // 1. extractDrawingBounds dari berbagai struktur
+    const bBounds = extractDrawingBounds({ bounds: { minX: 10, maxX: 50, minY: 20, maxY: 60 } });
+    assert.deepEqual(bBounds, { minX: 10, maxX: 50, minY: 20, maxY: 60 });
+
+    const bPoints = extractDrawingBounds({ points: [{ x: 5, y: 15 }, { x: 25, y: 35 }] });
+    assert.deepEqual(bPoints, { minX: 5, maxX: 25, minY: 15, maxY: 35 });
+
+    const bAnchors = extractDrawingBounds({ anchors: [{ x: 100, y: 200 }, { x: 150, y: 250 }] });
+    assert.deepEqual(bAnchors, { minX: 100, maxX: 150, minY: 200, maxY: 250 });
+
+    const bCoords = extractDrawingBounds({ x1: 10, y1: 20, x2: 30, y2: 40 });
+    assert.deepEqual(bCoords, { minX: 10, maxX: 30, minY: 20, maxY: 40 });
+
+    const bBox = extractDrawingBounds({ x: 50, y: 60, width: 40, height: 30 });
+    assert.deepEqual(bBox, { minX: 50, maxX: 90, minY: 60, maxY: 90 });
+
+    assert.equal(extractDrawingBounds(null), null);
+
+    // 2. isAABBOverlap deteksi overlap vs disjoint
+    const boxA = { minX: 10, maxX: 50, minY: 10, maxY: 50 };
+    const boxOverlap = { minX: 40, maxX: 80, minY: 40, maxY: 80 };
+    const boxDisjoint = { minX: 100, maxX: 120, minY: 100, maxY: 120 };
+
+    assert.equal(isAABBOverlap(boxA, boxOverlap), true);
+    assert.equal(isAABBOverlap(boxA, boxDisjoint), false);
   });
 });
 

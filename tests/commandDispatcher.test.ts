@@ -343,4 +343,284 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     assert.equal(prev1, true);
     assert.equal(prev2, true);
   });
+
+  await t.test('11. Tiket #103: Timeframe Quick Input Guard: Pengetikan angka memicu onTypeTimeframe dan TIDAK memicu onTypeToSearch', () => {
+    const dispatcher = new CommandDispatcher();
+    let typedTimeframe = '';
+    let typedSearch = '';
+
+    dispatcher.onTypeTimeframe((digit) => {
+      typedTimeframe += digit;
+    });
+    dispatcher.onTypeToSearch((char) => {
+      typedSearch += char;
+    });
+
+    let listenerHandler: ((e: any) => void) | null = null;
+    const mockWindow = {
+      addEventListener: (type: string, fn: any) => {
+        if (type === 'keydown') listenerHandler = fn;
+      },
+      removeEventListener: () => {
+        listenerHandler = null;
+      },
+    } as unknown as Window;
+
+    const unbindGlobal = dispatcher.attachGlobalListener(mockWindow);
+
+    let prevented = false;
+    let stopped = false;
+    // Ketik angka '5' di kanvas
+    if (listenerHandler) {
+      (listenerHandler as (e: any) => void)({
+        key: '5',
+        code: 'Digit5',
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        target: { tagName: 'CANVAS' },
+        preventDefault: () => { prevented = true; },
+        stopPropagation: () => { stopped = true; },
+      });
+    }
+
+    assert.equal(typedTimeframe, '5', 'Digit angka harus memicu onTypeTimeframe');
+    assert.equal(typedSearch, '', 'Digit angka TIDAK boleh memicu onTypeToSearch');
+    assert.equal(prevented, true, 'Harus memanggil preventDefault');
+    assert.equal(stopped, true, 'Harus memanggil stopPropagation');
+
+    unbindGlobal();
+  });
+
+  await t.test('12. Tiket #103: Symbol Search Guard: Pengetikan huruf alfabet memicu onTypeToSearch', () => {
+    const dispatcher = new CommandDispatcher();
+    let typedTimeframe = '';
+    let typedSearch = '';
+
+    dispatcher.onTypeTimeframe((digit) => {
+      typedTimeframe += digit;
+    });
+    dispatcher.onTypeToSearch((char) => {
+      typedSearch += char;
+    });
+
+    let listenerHandler: ((e: any) => void) | null = null;
+    const mockWindow = {
+      addEventListener: (type: string, fn: any) => {
+        if (type === 'keydown') listenerHandler = fn;
+      },
+      removeEventListener: () => {
+        listenerHandler = null;
+      },
+    } as unknown as Window;
+
+    const unbindGlobal = dispatcher.attachGlobalListener(mockWindow);
+
+    // Ketik huruf 'e' di kanvas
+    if (listenerHandler) {
+      (listenerHandler as (e: any) => void)({
+        key: 'e',
+        code: 'KeyE',
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        target: { tagName: 'CANVAS' },
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+    }
+
+    assert.equal(typedSearch, 'E', 'Huruf alfabet harus memicu onTypeToSearch');
+    assert.equal(typedTimeframe, '', 'Huruf alfabet TIDAK boleh memicu onTypeTimeframe');
+
+    unbindGlobal();
+  });
+
+  await t.test('13. Tiket #103: Shortcut H memicu draw-handpull tanpa bentrokan dengan 1H atau Symbol Search', () => {
+    const dispatcher = new CommandDispatcher();
+    let handpullTriggered = false;
+    let searchTriggered = false;
+    let timeframeTriggered = false;
+
+    // Daftarkan draw-handpull sesuai DEFAULT_COMMANDS
+    dispatcher.register({
+      id: 'draw-handpull',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['H'],
+      desc: 'Beralih antara Mode Hand-Pull (Tangan Geser Grafik) dan Kursor',
+      match: {
+        customMatch: (e) =>
+          !isEditableElement(e.target) &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey &&
+          !e.shiftKey &&
+          (e.key === 'h' || e.key === 'H' || e.code === 'KeyH'),
+      },
+      handler: () => {
+        handpullTriggered = true;
+      },
+    });
+
+    dispatcher.onTypeToSearch(() => {
+      searchTriggered = true;
+    });
+    dispatcher.onTypeTimeframe(() => {
+      timeframeTriggered = true;
+    });
+
+    let listenerHandler: ((e: any) => void) | null = null;
+    const mockWindow = {
+      addEventListener: (type: string, fn: any) => {
+        if (type === 'keydown') listenerHandler = fn;
+      },
+      removeEventListener: () => {
+        listenerHandler = null;
+      },
+    } as unknown as Window;
+
+    const unbindGlobal = dispatcher.attachGlobalListener(mockWindow);
+
+    // Tekan tombol 'h' di kanvas
+    if (listenerHandler) {
+      (listenerHandler as (e: any) => void)({
+        key: 'h',
+        code: 'KeyH',
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+        target: { tagName: 'CANVAS' },
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+    }
+
+    assert.equal(handpullTriggered, true, 'Shortcut H harus memicu draw-handpull');
+    assert.equal(searchTriggered, false, 'Shortcut H TIDAK boleh memicu onTypeToSearch');
+    assert.equal(timeframeTriggered, false, 'Shortcut H TIDAK boleh memicu onTypeTimeframe');
+
+    unbindGlobal();
+  });
+
+  await t.test('14. Tiket #103: Input Element Guard: Angka di dalam elemen input tidak memicu onTypeTimeframe', () => {
+    const dispatcher = new CommandDispatcher();
+    let timeframeTriggered = false;
+
+    dispatcher.onTypeTimeframe(() => {
+      timeframeTriggered = true;
+    });
+
+    let listenerHandler: ((e: any) => void) | null = null;
+    const mockWindow = {
+      addEventListener: (type: string, fn: any) => {
+        if (type === 'keydown') listenerHandler = fn;
+      },
+      removeEventListener: () => {},
+    } as unknown as Window;
+
+    dispatcher.attachGlobalListener(mockWindow);
+
+    // Ketik angka '1' di dalam input
+    if (listenerHandler) {
+      (listenerHandler as (e: any) => void)({
+        key: '1',
+        code: 'Digit1',
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        target: { tagName: 'INPUT' },
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+    }
+
+    assert.equal(timeframeTriggered, false, 'Pengetikan angka di input teks tidak boleh memicu onTypeTimeframe');
+  });
+
+  await t.test('15. Tiket #103: Timeframe Parser: Normalisasi input cepat interval lilin', async () => {
+    const { parseQuickTimeframeInput, describeTimeframe } = await import('../src/lib/utils/timeframeAdapter');
+
+    // Angka murni
+    assert.equal(parseQuickTimeframeInput('1'), '1m');
+    assert.equal(parseQuickTimeframeInput('3'), '3m');
+    assert.equal(parseQuickTimeframeInput('5'), '5m');
+    assert.equal(parseQuickTimeframeInput('15'), '15m');
+    assert.equal(parseQuickTimeframeInput('30'), '30m');
+    assert.equal(parseQuickTimeframeInput('60'), '1h');
+    assert.equal(parseQuickTimeframeInput('120'), '2h');
+    assert.equal(parseQuickTimeframeInput('240'), '4h');
+    assert.equal(parseQuickTimeframeInput('1440'), '1D');
+
+    // Angka + unit
+    assert.equal(parseQuickTimeframeInput('4h'), '4h');
+    assert.equal(parseQuickTimeframeInput('1D'), '1D');
+    assert.equal(parseQuickTimeframeInput('1w'), '1W');
+    assert.equal(parseQuickTimeframeInput('1M'), '1M');
+
+    // Huruf tunggal
+    assert.equal(parseQuickTimeframeInput('d'), '1D');
+    assert.equal(parseQuickTimeframeInput('w'), '1W');
+    assert.equal(parseQuickTimeframeInput('m'), '1m');
+    assert.equal(parseQuickTimeframeInput('M'), '1M');
+
+    // Deskripsi
+    assert.ok(describeTimeframe('15m').includes('15 Menit'));
+    assert.ok(describeTimeframe('1h').includes('1 Jam'));
+    assert.ok(describeTimeframe('1D').includes('1 Hari'));
+  });
+
+  await t.test('16. Tiket #104: Shortcut Shift+D mengeksekusi toggle-gesture-mode dan tidak memicu Symbol Search', () => {
+    const dispatcher = new CommandDispatcher();
+    let gestureToggled = false;
+    let symbolSearched = false;
+
+    dispatcher.register({
+      id: 'toggle-gesture-mode',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Shift', 'D'],
+      desc: 'Gesture Draw Mode',
+      match: {
+        shift: true,
+        ctrlOrMeta: false,
+        alt: false,
+        key: ['d', 'D'],
+        code: 'KeyD',
+      },
+      handler: () => {
+        gestureToggled = true;
+      },
+    });
+
+    dispatcher.onTypeToSearch(() => {
+      symbolSearched = true;
+    });
+
+    let listenerHandler: ((e: any) => void) | null = null;
+    const mockWindow = {
+      addEventListener: (type: string, handler: any) => {
+        if (type === 'keydown') listenerHandler = handler;
+      },
+      removeEventListener: () => {},
+    } as unknown as Window;
+
+    dispatcher.attachGlobalListener(mockWindow);
+
+    if (listenerHandler) {
+      (listenerHandler as (e: any) => void)({
+        key: 'D',
+        code: 'KeyD',
+        shiftKey: true,
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false,
+        target: { tagName: 'DIV' },
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+    }
+
+    assert.equal(gestureToggled, true, 'Shift+D harus memicu toggle-gesture-mode');
+    assert.equal(symbolSearched, false, 'Shift+D tidak boleh membuka modal Symbol Search');
+  });
 });

@@ -11,12 +11,14 @@
   import SettingsModal from '../lib/components/SettingsModal.svelte';
   import IndicatorModal from '../lib/components/IndicatorModal.svelte';
   import SymbolSearchModal from '../lib/components/SymbolSearchModal.svelte';
+  import TimeframeQuickBar from '../lib/components/TimeframeQuickBar.svelte';
   import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
   import AlertNotificationToast from '../lib/components/AlertNotificationToast.svelte';
   import SnapshotToast, { type SnapshotToastData } from '../lib/components/SnapshotToast.svelte';
   import SnapshotPreviewModal from '../lib/components/SnapshotPreviewModal.svelte';
   import RightDockRail from '../lib/components/RightDockRail.svelte';
   import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
+  import DrawByHoldingModal from '../lib/components/DrawByHoldingModal.svelte';
   import {
     compositeSnapshot,
     copySnapshotToClipboard,
@@ -130,7 +132,10 @@
   let isIndicatorModalOpen = $state(false);
   let isSymbolSearchOpen = $state(false);
   let symbolSearchInitialQuery = $state('');
+  let isTimeframeQuickBarOpen = $state(false);
+  let timeframeQuickBarInitialInput = $state('');
   let isShortcutCheatsheetOpen = $state(false);
+  let isDrawByHoldingModalOpen = $state(false);
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
 
@@ -425,6 +430,10 @@
         leftToolbarService.toggleCollapse();
         addSystemLog(`Shortcut: Bilah gambar ${leftToolbarState.isCollapsed ? 'disembunyikan' : 'ditampilkan'} (Alt+T)`, 'info');
       }),
+      commandDispatcher.bindHandler('toggle-gesture-mode', () => {
+        chartDrawingController.toggleGestureMode();
+        addSystemLog(`Shortcut: Gesture Draw Mode ${chartDrawingController.isGestureMode() ? 'diaktifkan' : 'dinonaktifkan'} (Shift+D)`, 'info');
+      }),
       commandDispatcher.bindHandler('draw-hline', () => {
         handleSelectTool('hline');
         addSystemLog('Shortcut: Tool Horizontal Line dipilih (Alt+H)', 'info');
@@ -477,14 +486,6 @@
           replaySession.stepBack();
         }
       }),
-      commandDispatcher.bindHandler('tf-1m', () => handleTimeframeChange('1m')),
-      commandDispatcher.bindHandler('tf-3m', () => handleTimeframeChange('3m')),
-      commandDispatcher.bindHandler('tf-5m', () => handleTimeframeChange('5m')),
-      commandDispatcher.bindHandler('tf-15m', () => handleTimeframeChange('15m')),
-      commandDispatcher.bindHandler('tf-1h', () => handleTimeframeChange('1h')),
-      commandDispatcher.bindHandler('tf-4h', () => handleTimeframeChange('4h')),
-      commandDispatcher.bindHandler('tf-1d', () => handleTimeframeChange('1D')),
-      commandDispatcher.bindHandler('tf-1w', () => handleTimeframeChange('1W')),
       commandDispatcher.bindHandler('cancel-action', () => {
         if (replaySnapshot.isSelectingBar) {
           replaySession.cancelBarSelection();
@@ -558,10 +559,15 @@
       symbolSearchInitialQuery = char;
       isSymbolSearchOpen = true;
     });
+    const unsubTypeTimeframe = commandDispatcher.onTypeTimeframe((digit) => {
+      timeframeQuickBarInitialInput = digit;
+      isTimeframeQuickBarOpen = true;
+    });
 
     return () => {
       unbindGlobalListener();
       unsubTypeToSearch();
+      unsubTypeTimeframe();
       unsubDrawingState();
       detachClipboardFocus();
       if (unlistenDeepLink) unlistenDeepLink();
@@ -1396,6 +1402,7 @@
           onUndo={handleUndo}
           onRedo={handleRedo}
           onClear={handleClear}
+          onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
         />
       {/if}
 
@@ -1596,6 +1603,7 @@
     onProviderChange={handleProviderChange}
     onOpenChartSettings={(sec?: string) => chartComponent?.openChartSettings(sec)}
     onResetChartFactory={() => chartComponent?.resetChartSettingsToFactory()}
+    onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
   />
 
   <!-- Symbol Search Modal (Global via Header / Ctrl+K / Watchlist) -->
@@ -1610,6 +1618,23 @@
     onClose={() => {
       isSymbolSearchOpen = false;
       symbolSearchInitialQuery = '';
+    }}
+  />
+
+  <!-- Timeframe Quick Input Bar (Pill Melayang saat mengetik angka di kanvas) -->
+  <TimeframeQuickBar
+    isOpen={isTimeframeQuickBarOpen}
+    initialInput={timeframeQuickBarInitialInput}
+    currentTimeframe={activeTimeframe}
+    onApply={(newTf) => {
+      handleTimeframeChange(newTf as Timeframe);
+      if (chartComponent && typeof chartComponent.setTimeframe === 'function') {
+        chartComponent.setTimeframe(newTf as Timeframe);
+      }
+    }}
+    onClose={() => {
+      isTimeframeQuickBarOpen = false;
+      timeframeQuickBarInitialInput = '';
     }}
   />
 
@@ -1735,6 +1760,13 @@
   <ShortcutCheatsheetModal
     isOpen={isShortcutCheatsheetOpen}
     onClose={() => (isShortcutCheatsheetOpen = false)}
+    onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
+  />
+
+  <!-- Modal Panduan Visual Draw by Holding (Tiket #107) -->
+  <DrawByHoldingModal
+    isOpen={isDrawByHoldingModalOpen}
+    onClose={() => (isDrawByHoldingModalOpen = false)}
   />
 </div>
 

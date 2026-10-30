@@ -3,12 +3,13 @@
   import './chart.css';
   import { Scissors, Bell, X, WifiOff, Edit3 } from '@lucide/svelte';
   import { ChartSessionController } from '../services/chartSessionController';
-  import { chartDrawingController } from '../services/chartDrawingController';
+  import { chartDrawingController, type GestureCreationState } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { alertService } from '../services/alertService';
   import { marketFeed } from '../services/market';
   import { replaySession } from '../services/replay';
   import { findNearestOhlcPoint } from '../services/priceSnapService';
+  import { isEditableElement } from '../services/commandDispatcher';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
@@ -64,6 +65,10 @@
   let cutlineY = $state<number | null>(null);
   let hoveredBarDateText = $state('');
   let isHandpullActive = $state(false);
+  let isGestureActive = $state(false);
+  let gestureCreationState = $state<GestureCreationState | null>(null);
+  let gestureInkCanvas: HTMLCanvasElement | null = $state(null);
+  let isDrawingGestureStroke = $state(false);
   let isContextMenuOpen = $state(false);
   let contextMenuX = $state(0), contextMenuY = $state(0);
   let contextMenuPrice = $state<number | null>(null), contextMenuTime = $state<number | null>(null);
@@ -133,6 +138,8 @@
     unsubAlerts = alertService.subscribe((alerts) => { allAlerts = alerts; scheduleBadgePositionUpdate(); });
     unsubDrawingState = chartDrawingController.subscribe((st) => {
       isHandpullActive = st.activeTool === 'handpull';
+      isGestureActive = chartDrawingController.isGestureMode();
+      gestureCreationState = st.lastGestureCreation;
       scheduleBadgePositionUpdate();
     });
     unsubOverlay = priceScaleOverlayController.subscribe((coords) => {
@@ -268,6 +275,7 @@
   export function applyPriceScaleState(state: any): boolean { return controller.applyPriceScaleState(state); }
   export function getPriceStyle(): string { return controller.getPriceStyle(); }
   export function setPriceStyle(style: string): void { controller.setPriceStyle(style); }
+  export function setTimeframe(tf: Timeframe): void { controller.setTimeframe(tf); }
   export function getBarSpacing(): number { return controller.getBarSpacing(); }
   export function setBarSpacing(spacing: number): void { controller.setBarSpacing(spacing); }
   export function saveWorkspaceState(name?: string) { return controller.saveWorkspaceState(name); }
@@ -313,17 +321,172 @@
   export function hideAllDrawings(hide: boolean): void { chartDrawingController.setHide(hide); }
   export function setDrawingsLocked(lock: boolean): void { chartDrawingController.setLock(lock); }
   export function setDrawingsHidden(hide: boolean): void { chartDrawingController.setHide(hide); }
+
+  function syncInkCanvasSize() {
+    if (gestureInkCanvas && chartContainer) {
+      const rect = chartContainer.getBoundingClientRect();
+      if (gestureInkCanvas.width !== rect.width || gestureInkCanvas.height !== rect.height) {
+        gestureInkCanvas.width = rect.width;
+        gestureInkCanvas.height = rect.height;
+      }
+    }
+  }
+
+  function renderLiveInk() {
+    if (!gestureInkCanvas) return;
+    const ctx = gestureInkCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const points = chartDrawingController.getLiveGestureStroke();
+    if (points.length < 2) return;
+
+    ctx.clearRect(0, 0, gestureInkCanvas.width, gestureInkCanvas.height);
+
+    ctx.save();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.fillStyle = '#38bdf8';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(56, 189, 248, 0.6)';
+    ctx.shadowBlur = 8;
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+
+    for (let i = 1; i < points.length; i++) {
+      const xc = (points[i - 1].x + points[i].x) / 2;
+      const yc = (points[i - 1].y + points[i].y) / 2;
+      ctx.quadraticCurveTo(points[i - 1].x, points[i - 1].y, xc, yc);
+    }
+    ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+    ctx.stroke();
+
+    const last = points[points.length - 1];
+    ctx.beginPath();
+    ctx.arc(last.x, last.y, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function clearLiveInk() {
+    if (!gestureInkCanvas) return;
+    const ctx = gestureInkCanvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, gestureInkCanvas.width, gestureInkCanvas.height);
+    }
+  }
+
+  function handleContainerPointerDown(e: PointerEvent) {
+    scheduleBadgePositionUpdate();
+    chartDrawingController.dismissGestureHUD();
+    if (isGestureActive && e.button === 0 && chartContainer) {
+      syncInkCanvasSize();
+      isDrawingGestureStroke = true;
+      const rect = chartContainer.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      chartDrawingController.startGestureStroke(x, y);
+      renderLiveInk();
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      e.stopPropagation();
+    }
+  }
+
+  function handleContainerPointerMove(e: PointerEvent) {
+    scheduleBadgePositionUpdate();
+    if (isDrawingGestureStroke && chartContainer) {
+      const rect = chartContainer.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      chartDrawingController.addGesturePoint(x, y);
+      renderLiveInk();
+      e.stopPropagation();
+    }
+  }
+
+  function handleContainerPointerUp(e: PointerEvent) {
+    if (isDrawingGestureStroke && chartContainer) {
+      isDrawingGestureStroke = false;
+      const rect = chartContainer.getBoundingClientRect();
+
+      const wicks: Array<{ highY: number; lowY: number }> = [];
+      for (const c of cachedCandles.slice(-60)) {
+        const hy = getPriceY(c.high);
+        const ly = getPriceY(c.low);
+        if (hy !== null && ly !== null) {
+          wicks.push({ highY: hy, lowY: ly });
+        }
+      }
+
+      chartDrawingController.finishGestureStroke({
+        canvasWidth: rect.width,
+        canvasHeight: rect.height,
+        wicks,
+        wickSnapRadius: 20
+      });
+
+      clearLiveInk();
+      isGestureActive = chartDrawingController.isGestureMode();
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+      } catch (_) {}
+      e.stopPropagation();
+    }
+  }
+
+  function handleContainerPointerCancel(e: PointerEvent) {
+    if (isDrawingGestureStroke) {
+      isDrawingGestureStroke = false;
+      chartDrawingController.cancelGestureStroke();
+      clearLiveInk();
+      isGestureActive = chartDrawingController.isGestureMode();
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+      } catch (_) {}
+    }
+  }
+
   function handleWindowKeyDown(e: KeyboardEvent) {
+    // Tab candidate cycling saat Gesture HUD aktif
+    if (e.key === 'Tab' && chartDrawingController.isGestureHUDActive()) {
+      e.preventDefault();
+      e.stopPropagation();
+      chartDrawingController.cycleGestureCandidate();
+      return;
+    }
+
+    // Esc cancel saat Gesture HUD aktif
+    if (e.key === 'Escape' && chartDrawingController.isGestureHUDActive()) {
+      e.preventDefault();
+      e.stopPropagation();
+      chartDrawingController.cancelGestureCreation();
+      return;
+    }
+
     if (e.key === 'Shift') {
       const snap = chartDrawingController.getSnapshot().snapMode;
       const inverted = snap === 'off' ? 'strong' : 'off';
       chartDrawingController.setTemporarySnapMode(inverted);
+    }
+    // Transient hold tombol `~` (Backquote / Tilde)
+    if (!isEditableElement(e.target) && (e.key === '`' || e.code === 'Backquote' || e.key === '~')) {
+      chartDrawingController.setTransientGestureHold(true);
+      isGestureActive = true;
     }
   }
 
   function handleWindowKeyUp(e: KeyboardEvent) {
     if (e.key === 'Shift') {
       chartDrawingController.restoreOriginalSnapMode();
+    }
+    // Release transient hold saat tombol `~` atau `Shift+D` dilepas (jika sedang gaya hold)
+    const isTilde = e.key === '`' || e.code === 'Backquote' || e.key === '~';
+    const isShiftOrD = e.key === 'Shift' || e.key === 'd' || e.key === 'D' || e.code === 'KeyD';
+    if (isTilde || (isShiftOrD && chartDrawingController.isHoldingGesture())) {
+      chartDrawingController.setTransientGestureHold(false);
+      isGestureActive = chartDrawingController.isGestureMode();
     }
   }
 
@@ -333,15 +496,43 @@
 <svelte:window onkeydown={handleWindowKeyDown} onkeyup={handleWindowKeyUp} />
 
 <div 
-  class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''} {isHandpullActive ? 'handpull-mode' : ''}"
+  class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''} {isHandpullActive ? 'handpull-mode' : ''} {isGestureActive ? 'gesture-mode' : ''}"
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}
-  onpointerdown={scheduleBadgePositionUpdate}
-  onpointermove={scheduleBadgePositionUpdate}
+  onpointerdown={handleContainerPointerDown}
+  onpointermove={handleContainerPointerMove}
+  onpointerup={handleContainerPointerUp}
+  onpointercancel={handleContainerPointerCancel}
   role="region"
   aria-label="Area Grafik Utama"
 >
   <div bind:this={chartContainer} class="vela-container"></div>
+  <canvas bind:this={gestureInkCanvas} class="gesture-ink-canvas"></canvas>
+
+  {#if isGestureActive}
+    <div class="gesture-mode-hud mono-nums">
+      <span class="gesture-hud-dot"></span>
+      <span>GESTURE DRAW</span>
+      <span class="gesture-hud-sub">Tahan goresan di kanvas</span>
+    </div>
+  {/if}
+
+  {#if gestureCreationState}
+    {@const active = gestureCreationState.candidates[gestureCreationState.candidateIndex]}
+    {@const next = gestureCreationState.candidates.length > 1
+      ? gestureCreationState.candidates[(gestureCreationState.candidateIndex + 1) % gestureCreationState.candidates.length]
+      : null}
+    <div class="gesture-candidate-hud mono-nums" role="status" aria-live="polite">
+      <span class="gesture-candidate-tool">{active?.label || active?.tool}</span>
+      <span class="gesture-candidate-actions">
+        {#if next}
+          (Tab: {next.label || next.tool} • Esc: Batalkan)
+        {:else}
+          (Esc: Batalkan)
+        {/if}
+      </span>
+    </div>
+  {/if}
 
   {#if (feedConnectionStatus.state === 'blocked' || feedConnectionStatus.state === 'stalled') && !isDismissedConnectionWarning}
     <div class="feed-connection-warning-banner obsidian-card" role="alert">

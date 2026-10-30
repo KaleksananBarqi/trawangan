@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X, Search, Keyboard, Sparkles, Command } from '@lucide/svelte';
+  import { X, Search, Keyboard, Sparkles, Command, Pencil } from '@lucide/svelte';
   import {
     SHORTCUT_GLOSSARY,
     filterShortcuts,
@@ -10,9 +10,10 @@
   interface Props {
     isOpen: boolean;
     onClose: () => void;
+    onOpenGestureGuide?: () => void;
   }
 
-  let { isOpen, onClose }: Props = $props();
+  let { isOpen, onClose, onOpenGestureGuide }: Props = $props();
 
   let searchQuery = $state('');
   let selectedCategory = $state<string>('Semua');
@@ -115,6 +116,27 @@
             <span>{cat}</span>
           </button>
         {/each}
+      </div>
+
+      <!-- Banner Pintas Panduan Goresan Draw by Holding -->
+      <div class="gesture-guide-banner">
+        <div class="gesture-banner-left">
+          <Pencil size={14} class="banner-pencil-icon text-cyan" />
+          <span class="banner-guide-text">
+            Tahan <kbd class="inline-kbd">~</kbd> atau tekan <kbd class="inline-kbd">Shift+D</kbd> di kanvas grafik untuk menggambar bebas.
+          </span>
+        </div>
+        <button
+          type="button"
+          class="btn-open-gesture-guide"
+          onclick={() => {
+            onClose();
+            onOpenGestureGuide?.();
+          }}
+        >
+          <Sparkles size={12} />
+          <span>Buka Panduan Goresan (Draw by Holding)...</span>
+        </button>
       </div>
 
       <!-- Konten Daftar Shortcut -->
@@ -363,6 +385,60 @@
     background-color: rgba(96, 165, 250, 0.1);
     border-color: rgba(96, 165, 250, 0.3);
     font-weight: 600;
+  }
+
+  .gesture-guide-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 8px 20px 0 20px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background-color: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.22);
+  }
+
+  .gesture-banner-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-muted, #9ca3af);
+  }
+
+  .banner-pencil-icon {
+    flex-shrink: 0;
+  }
+
+  .banner-guide-text {
+    line-height: 1.35;
+  }
+
+  .btn-open-gesture-guide {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--brand-cyan, #38bdf8);
+    background-color: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.12s ease;
+  }
+
+  .btn-open-gesture-guide:hover {
+    background-color: var(--brand-cyan, #38bdf8);
+    color: #0b0d12;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+  }
+
+  .text-cyan {
+    color: var(--brand-cyan, #38bdf8);
   }
 
   .shortcuts-scroll-area {

@@ -5,10 +5,18 @@
     HelpCircle,
     Grid,
     Code,
-    Radio
+    Radio,
+    Pencil,
+    Sparkles
   } from '@lucide/svelte';
   import { SHORTCUT_GLOSSARY, filterShortcuts } from '../../services/shortcutService';
   import BrowserBridgeGuide from './BrowserBridgeGuide.svelte';
+
+  interface Props {
+    onOpenGestureGuide?: () => void;
+  }
+
+  let { onOpenGestureGuide }: Props = $props();
 
   let helpSearchQuery = $state('');
 
@@ -136,6 +144,26 @@
           Ganti penyedia feed live antara <strong>Binance Futures</strong> dan <strong>Bitunix Futures</strong>
           di tab <strong>Data Feed</strong>. Trawangan Terminal mendukung format koin perpetual standar dan simbol <span class="mono-nums">.P</span> secara mulus.
         </p>
+      </div>
+
+      <div class="feature-guide-card">
+        <div class="guide-card-header">
+          <Pencil size={14} class="text-cyan" />
+          <span class="guide-card-title">Draw by Holding (Gesture Engine)</span>
+        </div>
+        <p class="guide-card-body">
+          Tahan tombol <kbd class="kbd-key mono-nums">~</kbd> atau aktifkan mode <kbd class="kbd-key mono-nums">Shift+D</kbd> di kanvas grafik untuk menggambar bebas. Goresan otomatis dikenali menjadi Trend Line, Ray, Horizontal Line, Box, Ellipse, Fib, Polyline, Arrow, atau Scribble to Erase.
+        </p>
+        {#if onOpenGestureGuide}
+          <button
+            type="button"
+            class="guide-action-btn"
+            onclick={() => onOpenGestureGuide?.()}
+          >
+            <Sparkles size={11} />
+            <span>Buka Panduan Visual...</span>
+          </button>
+        {/if}
       </div>
     </div>
   </div>
@@ -349,6 +377,28 @@
     color: var(--text-dim, #8b949e);
     line-height: 1.4;
     margin: 0;
+  }
+
+  .guide-action-btn {
+    margin-top: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(56, 189, 248, 0.1);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 4px;
+    color: var(--brand-cyan, #38bdf8);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 4px 8px;
+    cursor: pointer;
+    align-self: flex-start;
+    transition: all 0.12s ease;
+  }
+
+  .guide-action-btn:hover {
+    background: var(--brand-cyan, #38bdf8);
+    color: #0b0d12;
   }
 
   .text-cyan { color: #38bdf8; }

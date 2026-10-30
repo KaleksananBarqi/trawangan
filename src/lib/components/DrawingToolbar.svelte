@@ -3,6 +3,7 @@
     MousePointer,
     Hand,
     Eraser,
+    PencilLine,
     TrendingUp,
     Minus,
     ArrowUpRight,
@@ -46,6 +47,7 @@
     GitFork,
     GripVertical,
     ChevronLeft,
+    CircleHelp,
   } from '@lucide/svelte';
   import type { DrawingToolType, SnapMode } from '../types/market.js';
   import {
@@ -84,6 +86,7 @@
     onClear: () => void;
     isCollapsed?: boolean;
     onToggleCollapse?: () => void;
+    onOpenGestureGuide?: () => void;
   }
 
   let {
@@ -104,6 +107,7 @@
     onClear,
     isCollapsed = false,
     onToggleCollapse,
+    onOpenGestureGuide,
   }: Props = $props();
 
   // State flyout menu
@@ -173,6 +177,7 @@
   // Pemetaan Ikon Dinamis per Tool
   function getIconComponent(toolId: DrawingToolType | null) {
     if (!toolId || toolId === 'cursor') return MousePointer;
+    if (toolId === 'gesture') return PencilLine;
     if (toolId === 'handpull') return Hand;
     if (toolId === 'eraser') return Eraser;
 
@@ -329,16 +334,17 @@
 
   const POINTER_TOOLS: Array<{ id: DrawingToolType; label: string; shortcut?: string }> = [
     { id: 'cursor', label: 'Kursor (Seleksi & Pindah)', shortcut: 'Esc' },
+    { id: 'gesture', label: 'Gesture Draw', shortcut: 'Shift+D' },
     { id: 'handpull', label: 'Hand-Pull (Geser Kanvas)', shortcut: 'H' },
     { id: 'eraser', label: 'Penghapus Interaktif' }
   ];
 
   function isPointerActive(): boolean {
-    return activeTool === 'cursor' || activeTool === 'handpull' || activeTool === 'eraser' || activeTool === null;
+    return activeTool === 'cursor' || activeTool === 'gesture' || activeTool === 'handpull' || activeTool === 'eraser' || activeTool === null;
   }
 
   function getCurrentPointerTool(): DrawingToolType {
-    if (activeTool === 'handpull' || activeTool === 'eraser' || activeTool === 'cursor') {
+    if (activeTool === 'handpull' || activeTool === 'gesture' || activeTool === 'eraser' || activeTool === 'cursor') {
       return activeTool;
     }
     return lastUsedPointerTool;
@@ -411,11 +417,25 @@
       <button
         type="button"
         class="tool-btn"
-        title="{currentPtrTool === 'handpull' ? 'Hand-Pull (Geser Kanvas - H)' : currentPtrTool === 'eraser' ? 'Penghapus Interaktif' : 'Kursor (Seleksi Objek)'} (Klik untuk aktifkan, klik kanan atau panah untuk pilihan)"
+        title="{currentPtrTool === 'handpull' ? 'Hand-Pull (Geser Kanvas - H)' : currentPtrTool === 'eraser' ? 'Penghapus Interaktif' : currentPtrTool === 'gesture' ? 'Gesture Draw (Shift+D, Tahan ~)' : 'Kursor (Seleksi Objek)'} (Klik untuk aktifkan, klik kanan atau panah untuk pilihan)"
         onclick={handleDirectPointerClick}
       >
         <CurrentPtrIcon size={15} />
       </button>
+      {#if currentPtrTool === 'gesture'}
+        <button
+          type="button"
+          class="toolbar-gesture-help-cue"
+          title="Buka Panduan Goresan Draw by Holding"
+          aria-label="Buka Panduan Goresan Draw by Holding"
+          onclick={(e) => {
+            e.stopPropagation();
+            onOpenGestureGuide?.();
+          }}
+        >
+          ?
+        </button>
+      {/if}
       <button
         type="button"
         class="sub-arrow-btn"
@@ -438,7 +458,7 @@
       >
         <div class="flyout-header-row">
           <span class="flyout-header-title">Pointer & Navigasi</span>
-          <span class="flyout-count-badge mono-nums">3</span>
+          <span class="flyout-count-badge mono-nums">{POINTER_TOOLS.length}</span>
         </div>
 
         <div class="flyout-tools-list">
@@ -446,19 +466,36 @@
             {@const PtrIcon = getIconComponent(pTool.id)}
             {@const isThisActive = (activeTool === pTool.id) || (pTool.id === 'cursor' && activeTool === null)}
 
-            <button
-              type="button"
-              class="flyout-tool-row {isThisActive ? 'active-row' : ''}"
-              onclick={() => handleSelectPointerTool(pTool.id)}
-            >
-              <div class="tool-label-group">
-                <PtrIcon size={14} class="tool-icon" />
-                <span class="tool-name">{pTool.label}</span>
-              </div>
-              {#if pTool.shortcut}
-                <span class="tool-shortcut-badge mono-nums">{pTool.shortcut}</span>
+            <div class="flyout-tool-row-container">
+              <button
+                type="button"
+                class="flyout-tool-row {isThisActive ? 'active-row' : ''}"
+                onclick={() => handleSelectPointerTool(pTool.id)}
+              >
+                <div class="tool-label-group">
+                  <PtrIcon size={14} class="tool-icon" />
+                  <span class="tool-name">{pTool.label}</span>
+                </div>
+                {#if pTool.shortcut}
+                  <span class="tool-shortcut-badge mono-nums">{pTool.shortcut}</span>
+                {/if}
+              </button>
+              {#if pTool.id === 'gesture'}
+                <button
+                  type="button"
+                  class="gesture-help-btn"
+                  title="Buka Panduan Goresan Draw by Holding"
+                  aria-label="Buka Panduan Goresan Draw by Holding"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    openFlyout = null;
+                    onOpenGestureGuide?.();
+                  }}
+                >
+                  <CircleHelp size={13} />
+                </button>
               {/if}
-            </button>
+            </div>
           {/each}
         </div>
       </div>
@@ -1026,6 +1063,110 @@
     background: rgba(255, 255, 255, 0.05);
     padding: 1px 5px;
     border-radius: 4px;
+  }
+
+  .flyout-tools-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .flyout-tool-row-container {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .flyout-tool-row {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 6px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #b0b0b0;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    text-align: left;
+  }
+
+  .flyout-tool-row:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+  }
+
+  .flyout-tool-row.active-row {
+    background: rgba(0, 240, 255, 0.14);
+    color: #00f0ff;
+    font-weight: 600;
+  }
+
+  .tool-label-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tool-name {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .tool-shortcut-badge {
+    font-size: 9px;
+    color: #888888;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .gesture-help-btn {
+    background: transparent;
+    border: none;
+    color: var(--brand-cyan, #38bdf8);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.12s ease;
+  }
+
+  .gesture-help-btn:hover {
+    background: rgba(56, 189, 248, 0.15);
+    color: #ffffff;
+    transform: scale(1.1);
+  }
+
+  .toolbar-gesture-help-cue {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background-color: var(--brand-cyan, #38bdf8);
+    color: #0b0d12;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #0f0f0f;
+    cursor: pointer;
+    z-index: 5;
+    transition: transform 0.12s ease;
+  }
+
+  .toolbar-gesture-help-cue:hover {
+    transform: scale(1.2);
+    background-color: #7dd3fc;
   }
 
   .stamp-quick-palette {

@@ -24,6 +24,105 @@
   cursor: grabbing !important;
 }
 
+.chart-wrapper.gesture-mode,
+.chart-wrapper.gesture-mode .vela-container,
+.chart-wrapper.gesture-mode canvas {
+  cursor: crosshair !important;
+}
+
+.gesture-ink-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 28;
+}
+
+.gesture-mode-hud {
+  position: absolute;
+  bottom: 24px;
+  right: 80px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 6px;
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 30;
+}
+
+.gesture-candidate-hud {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  border-radius: 8px;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 12px rgba(56, 189, 248, 0.25);
+  pointer-events: none;
+  z-index: 35;
+  user-select: none;
+  animation: fadeInDown 0.15s ease-out;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.gesture-candidate-tool {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.gesture-candidate-actions {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.gesture-hud-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  animation: pulse 1.5s infinite;
+}
+
+.gesture-hud-sub {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 400;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  padding-left: 8px;
+}
+
 .vela-container {
   width: 100%;
   height: 100%;

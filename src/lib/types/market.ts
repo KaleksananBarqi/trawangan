@@ -74,6 +74,7 @@ export type DrawingToolType =
   // Kontrol kursor, navigasi & ukur
   | 'cursor'
   | 'handpull'
+  | 'gesture'
   | 'eraser'
   | 'measure'
   // Garis (Lines)
