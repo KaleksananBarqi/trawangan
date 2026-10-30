@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import {
     Camera,
     Copy,
@@ -61,12 +61,17 @@
   let includeTimestamp = $state(true);
   let snapshotScope = $state<'active' | 'all'>('active');
 
-  // State Zoom Interaktif (User Story 12)
+  // State Zoom & Snapshot Frozen Data (Mencegah re-render dari WebSocket ticker)
   let zoomLevel = $state(1);
   let capturedAt = $state<number>(Date.now());
+  let capturedPrice = $state<number | null>(null);
+
+  // Cache kanvas sumber grafik saat modal dibuka untuk mencegah re-evaluasi WebGL sinkron
+  let cachedSourceCanvas = $state<HTMLCanvasElement | null>(null);
 
   // State Pratinjau
   let previewUrl = $state<string>('');
+  let previewBlobUrl: string | null = null;
   let previewDimensions = $state<{ width: number; height: number }>({ width: 0, height: 0 });
   let isRendering = $state(false);
   let renderError = $state<string | null>(null);
@@ -75,27 +80,55 @@
   let copied = $state(false);
   let copyTimer: any = null;
 
-  // Inisialisasi opsi dari appSettings saat modal dibuka
+  // Guard untuk mendeteksi transisi tepi (edge-triggered) buka/tutup modal
+  let wasOpen = false;
+
+  /**
+   * Membersihkan Object URL blob dari memori untuk mencegah memory leak
+   */
+  function revokePreviewUrl() {
+    if (previewBlobUrl) {
+      URL.revokeObjectURL(previewBlobUrl);
+      previewBlobUrl = null;
+    }
+  }
+
+  // Inisialisasi snapshot saat modal dibuka dengan guard dan untrack
+  // Mencegah cyclic reactive dependency dan WebSocket price flood
   $effect(() => {
-    if (isOpen) {
-      capturedAt = Date.now();
-      zoomLevel = 1;
-      includeFrame = appSettings.snapshotIncludeFrame ?? true;
-      includePrice = appSettings.snapshotIncludePrice ?? true;
-      includeTimestamp = appSettings.snapshotIncludeTimestamp ?? true;
-      snapshotScope = appSettings.snapshotScope ?? 'active';
-      renderPreview();
-    } else {
-      if (copyTimer) {
-        clearTimeout(copyTimer);
-        copyTimer = null;
-      }
-      copied = false;
+    if (isOpen && !wasOpen) {
+      wasOpen = true;
+      untrack(() => {
+        capturedAt = Date.now();
+        capturedPrice = currentPrice;
+        zoomLevel = 1;
+        includeFrame = appSettings.snapshotIncludeFrame ?? true;
+        includePrice = appSettings.snapshotIncludePrice ?? true;
+        includeTimestamp = appSettings.snapshotIncludeTimestamp ?? true;
+        snapshotScope = appSettings.snapshotScope ?? 'active';
+
+        // Tangkap kanvas sumber sekali saja saat modal dibuka
+        cachedSourceCanvas = getScreenshotCanvas(snapshotScope);
+        renderPreview();
+      });
+    } else if (!isOpen && wasOpen) {
+      wasOpen = false;
+      untrack(() => {
+        if (copyTimer) {
+          clearTimeout(copyTimer);
+          copyTimer = null;
+        }
+        copied = false;
+        cachedSourceCanvas = null;
+        revokePreviewUrl();
+        previewUrl = '';
+      });
     }
   });
 
   onDestroy(() => {
     if (copyTimer) clearTimeout(copyTimer);
+    revokePreviewUrl();
   });
 
   // Handler Kontrol Zoom (+ / - / Reset 100%)
@@ -141,7 +174,10 @@
    * Menghasilkan kanvas komposit snapshot berdasarkan konfigurasi aktif
    */
   function generateCurrentComposite(): HTMLCanvasElement | null {
-    const sourceCanvas = getScreenshotCanvas(snapshotScope);
+    if (!cachedSourceCanvas) {
+      cachedSourceCanvas = getScreenshotCanvas(snapshotScope);
+    }
+    const sourceCanvas = cachedSourceCanvas;
     if (!sourceCanvas) return null;
 
     const isMulti = snapshotScope === 'all';
@@ -163,7 +199,7 @@
       symbol: activeSymbol,
       timeframe: activeTimeframe,
       providerId: activeProviderId,
-      lastPrice: currentPrice,
+      lastPrice: capturedPrice,
       timezone: appSettings.timezone || 'Asia/Jakarta',
       timestamp: capturedAt,
       layout: currentLayout,
@@ -196,6 +232,7 @@
       const composite = generateCurrentComposite();
       if (!composite) {
         renderError = 'Kanvas grafik belum siap atau tidak ditemukan.';
+        revokePreviewUrl();
         previewUrl = '';
         return;
       }
@@ -205,7 +242,19 @@
         height: composite.height,
       };
 
-      if (typeof composite.toDataURL === 'function') {
+      if (typeof composite.toBlob === 'function') {
+        composite.toBlob((blob) => {
+          if (!blob) {
+            renderError = 'Gagal membuat berkas gambar pratinjau.';
+            return;
+          }
+          revokePreviewUrl();
+          previewBlobUrl = URL.createObjectURL(blob);
+          previewUrl = previewBlobUrl;
+        }, 'image/png');
+      } else if (typeof composite.toDataURL === 'function') {
+        // Fallback untuk lingkungan tanpa Blob ObjectURL (cth. pengujian headless sederhana)
+        revokePreviewUrl();
         previewUrl = composite.toDataURL('image/png');
       } else {
         renderError = 'Format kanvas tidak didukung di lingkungan ini.';
@@ -243,6 +292,8 @@
   function handleScopeChange(scope: 'active' | 'all') {
     if (snapshotScope === scope) return;
     snapshotScope = scope;
+    // Ambil tangkapan kanvas baru khusus untuk scope yang berbeda
+    cachedSourceCanvas = getScreenshotCanvas(scope);
     persistChanges();
     renderPreview();
   }
