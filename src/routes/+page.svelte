@@ -21,7 +21,9 @@
     compositeSnapshot,
     copySnapshotToClipboard,
     downloadSnapshot,
+    saveSnapshotToFile,
     generateSnapshotFilename,
+    createSnapshotThumbnail,
     type SnapshotMetadata
   } from '../lib/services/chartSnapshotService';
   import { alertService } from '../lib/services/alertService';
@@ -1202,7 +1204,7 @@
       });
 
       const copyResult = await copySnapshotToClipboard(composite);
-      const thumbUrl = typeof composite.toDataURL === 'function' ? composite.toDataURL('image/png') : undefined;
+      const thumbUrl = createSnapshotThumbnail(composite);
 
       if (copyResult.success) {
         snapshotToast = {
@@ -1214,17 +1216,10 @@
         };
         addSystemLog(`Snapshot ${activeSymbol} disalin ke clipboard (PNG 2x HiDPI)`, 'success');
       } else {
-        // Fallback jika Clipboard API diblokir oleh browser/OS: picu unduh otomatis
+        // Fallback jika Clipboard API diblokir oleh browser/OS: simpan ke berkas
         const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
-        const dataUrl = downloadSnapshot(composite, filename);
-        snapshotToast = {
-          visible: true,
-          type: 'saved',
-          message: 'Clipboard tidak diizinkan. Gambar otomatis disimpan ke file PNG!',
-          thumbnailUrl: dataUrl || thumbUrl,
-          timestamp: Date.now(),
-        };
-        addSystemLog(`Clipboard diblokir. Snapshot diunduh otomatis sebagai ${filename}`, 'info');
+        const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
+        notifySnapshotSaved(saveRes, filename, thumbUrl, true);
       }
     } catch (err: any) {
       console.error('[Snapshot] Gagal menyalin snapshot:', err);
@@ -1237,7 +1232,38 @@
     }
   }
 
-  function handleQuickDownloadSnapshot() {
+  function notifySnapshotSaved(
+    saveRes: { isFallback?: boolean; filePath?: string },
+    filename: string,
+    thumbUrl?: string,
+    isClipboardFallback = false
+  ) {
+    const isFallback = !!saveRes.isFallback;
+    const target = saveRes.filePath || (isFallback ? `Downloads/${filename}` : filename);
+    const toastMessage = isClipboardFallback
+      ? 'Clipboard tidak diizinkan. Gambar otomatis disimpan ke berkas!'
+      : (isFallback ? `Snapshot diunduh ke ${target}` : `Snapshot tersimpan di ${target}`);
+
+    snapshotToast = {
+      visible: true,
+      type: 'saved',
+      message: toastMessage,
+      thumbnailUrl: thumbUrl,
+      timestamp: Date.now(),
+    };
+
+    const logMessage = isClipboardFallback
+      ? (isFallback
+          ? `Clipboard diblokir. Snapshot dialihkan ke unduhan browser: ${target}`
+          : `Clipboard diblokir. Snapshot disimpan di ${target}`)
+      : (isFallback
+          ? `Snapshot grafik dialihkan ke unduhan browser: ${target}`
+          : `Snapshot grafik berhasil disimpan di: ${target}`);
+
+    addSystemLog(logMessage, isClipboardFallback ? 'info' : 'success');
+  }
+
+  async function handleQuickDownloadSnapshot() {
     try {
       const scope = appSettings.snapshotScope ?? 'active';
       const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
@@ -1264,16 +1290,9 @@
       });
 
       const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
-      const dataUrl = downloadSnapshot(composite, filename);
-
-      snapshotToast = {
-        visible: true,
-        type: 'saved',
-        message: `Snapshot tersimpan sebagai ${filename}`,
-        thumbnailUrl: dataUrl,
-        timestamp: Date.now(),
-      };
-      addSystemLog(`Snapshot ${filename} berhasil diunduh.`, 'success');
+      const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
+      const thumbUrl = createSnapshotThumbnail(composite);
+      notifySnapshotSaved(saveRes, filename, thumbUrl, false);
     } catch (err: any) {
       console.error('[Snapshot] Gagal mengunduh snapshot:', err);
       snapshotToast = {

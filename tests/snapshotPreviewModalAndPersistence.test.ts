@@ -1,6 +1,8 @@
 // Unit Tests untuk Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & AppSettings Persistence
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   DEFAULT_APP_SETTINGS,
   resolveAppSettings
@@ -11,8 +13,14 @@ import {
   compositeSnapshot,
   generateSnapshotFilename,
   formatSnapshotPrice,
+  saveSnapshotToFile,
+  getDefaultSnapshotDirectory,
+  pickSnapshotDirectory,
+  createSnapshotThumbnail,
+  isTauriEnvironment,
   type SnapshotOptions,
-  type SnapshotMetadata
+  type SnapshotMetadata,
+  type SaveSnapshotResult
 } from '../src/lib/services/chartSnapshotService';
 import { formatPriceLabel } from '../src/lib/services/priceScaleLabelService';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
@@ -84,6 +92,11 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
       'active',
       'snapshotScope harus default ke "active"'
     );
+    assert.strictEqual(
+      DEFAULT_APP_SETTINGS.snapshotDirectory,
+      '',
+      'snapshotDirectory harus default ke string kosong (default OS Downloads)'
+    );
   });
 
   await t.test('2. resolveAppSettings: Normalisasi dan fallback preferensi snapshot', () => {
@@ -93,16 +106,19 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
     assert.strictEqual(resolvedEmpty.snapshotIncludePrice, true);
     assert.strictEqual(resolvedEmpty.snapshotIncludeTimestamp, true);
     assert.strictEqual(resolvedEmpty.snapshotScope, 'active');
+    assert.strictEqual(resolvedEmpty.snapshotDirectory, '');
 
     // B. Input parsial mempertahankan nilai kustom dan memberi fallback ke nilai default yang aman
     const resolvedPartial = resolveAppSettings({
       snapshotIncludeFrame: false,
       snapshotScope: 'all',
+      snapshotDirectory: '~/Pictures/Screenshots',
     } as any);
     assert.strictEqual(resolvedPartial.snapshotIncludeFrame, false);
     assert.strictEqual(resolvedPartial.snapshotIncludePrice, true);
     assert.strictEqual(resolvedPartial.snapshotIncludeTimestamp, true);
     assert.strictEqual(resolvedPartial.snapshotScope, 'all');
+    assert.strictEqual(resolvedPartial.snapshotDirectory, '~/Pictures/Screenshots');
 
     // C. Input dengan nilai snapshotScope invalid harus dinormalkan ke 'active'
     const resolvedInvalidScope = resolveAppSettings({
@@ -452,5 +468,301 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
     assert.strictEqual(formatSnapshotPrice(null), '-');
     assert.strictEqual(formatSnapshotPrice(undefined), '-');
     assert.strictEqual(formatSnapshotPrice(NaN), '-');
+  });
+
+  await t.test('14. Snapshot Save Directory: Verifikasi konfigurasi direktori kustom dan saveSnapshotToFile helper', async () => {
+    // 1. getDefaultSnapshotDirectory mengembalikan 'Downloads' saat di lingkungan pengujian non-tauri
+    const defaultDir = await getDefaultSnapshotDirectory();
+    assert.strictEqual(defaultDir, 'Downloads', 'Di lingkungan node harus fallback ke Downloads');
+
+    // 2. saveSnapshotToFile dengan direktori kustom di luar Tauri harus fallback secara jujur ke Downloads/
+    const mockCanvas = createMockCanvas(400, 300);
+    const saveResultCustom = await saveSnapshotToFile(mockCanvas, 'test-chart.png', '~/Pictures/Screenshots');
+    assert.strictEqual(saveResultCustom.success, true);
+    assert.strictEqual(
+      saveResultCustom.filePath,
+      'Downloads/test-chart.png',
+      'Fallback ke browser unduhan harus jujur mengembalikan Downloads/ dan bukan custom directory'
+    );
+    assert.strictEqual(saveResultCustom.isFallback, true, 'isFallback harus true saat di luar Tauri');
+
+    // 3. saveSnapshotToFile tanpa direktori kustom menggunakan fallback folder Downloads
+    const saveResultDefault = await saveSnapshotToFile(mockCanvas, 'test-default.png');
+    assert.strictEqual(saveResultDefault.success, true);
+    assert.strictEqual(saveResultDefault.filePath, 'Downloads/test-default.png');
+    assert.strictEqual(saveResultDefault.isFallback, true, 'isFallback harus true saat di luar Tauri');
+
+    // 4. Persistensi: Menyimpan snapshotDirectory ke adapter persistensi
+    const mockStorage = new InMemoryLocalStorageAdapter();
+    const persistence = new PersistenceService(mockStorage as any);
+
+    await persistence.saveSettings({
+      snapshotDirectory: '/media/storage/chart_snaps',
+    });
+
+    const loadedSettings = await persistence.loadSettings();
+    assert.ok(loadedSettings);
+    assert.strictEqual(
+      loadedSettings.snapshotDirectory,
+      '/media/storage/chart_snaps',
+      'Direktori snapshot kustom harus tersimpan dan dapat dimuat kembali secara utuh'
+    );
+  });
+
+  await t.test('15. Path Traversal Guard Contract: Sanitasi nama berkas dan pencegahan traversal direktori (#98)', () => {
+    // A. generateSnapshotFilename membersihkan pemisah direktori (/ dan \)
+    const date = new Date(2026, 9, 30, 18, 20, 30);
+    const traversalSymbol = '../../../etc/shadow';
+    const filename = generateSnapshotFilename(traversalSymbol, '15m', date);
+    assert.strictEqual(
+      filename.includes('/'),
+      false,
+      'Nama berkas tidak boleh memuat karakter slash (/)'
+    );
+    assert.strictEqual(
+      filename.includes('\\'),
+      false,
+      'Nama berkas tidak boleh memuat karakter backslash (\\)'
+    );
+
+    // B. Verifikasi bahwa nama berkas yang dihasilkan aman untuk digabungkan dengan direktori target
+    assert.match(
+      filename,
+      /^trawangan-.*-15m-20261030-182030\.png$/,
+      'Format nama berkas tetap konsisten dan aman'
+    );
+
+    // C. generateSnapshotFilename membersihkan karakter colon (:) dan Windows drive letter
+    const colonSymbol = 'C:BINANCE:BTCUSDT';
+    const colonFilename = generateSnapshotFilename(colonSymbol, '15m', date);
+    assert.strictEqual(
+      colonFilename.includes(':'),
+      false,
+      'Nama berkas tidak boleh memuat karakter colon (:)'
+    );
+    assert.match(
+      colonFilename,
+      /^trawangan-C-BINANCE-BTCUSDT-15m-20261030-182030\.png$/,
+      'Karakter colon (:) harus diganti dengan dash (-)'
+    );
+  });
+
+  await t.test('16. Ticket 2 (#99): Native Directory Picker, Type Safety, Honest Fallback & Lightweight Thumbnail', async () => {
+    // A. Non-Tauri Environment: pickSnapshotDirectory mengembalikan null
+    const nonTauriDir = await pickSnapshotDirectory();
+    assert.strictEqual(nonTauriDir, null, 'pickSnapshotDirectory di luar Tauri harus mengembalikan null');
+
+    // B. Non-Tauri Environment: saveSnapshotToFile dengan string data URL mengembalikan honest fallback
+    const mockDataUrl = 'data:image/png;base64,mockValidPngDataUrl';
+    const fallbackRes = await saveSnapshotToFile(mockDataUrl, 'manual-export.png', '/custom/my-folder');
+    assert.strictEqual(fallbackRes.success, true);
+    assert.strictEqual(fallbackRes.filePath, 'Downloads/manual-export.png', 'Jalur fallback harus honest Downloads/');
+    assert.strictEqual(fallbackRes.isFallback, true, 'isFallback harus true saat fallback aktif');
+
+    // C. Simulated Tauri Environment: pickSnapshotDirectory & saveSnapshotToFile
+    const originalWindow = (globalThis as any).window;
+    try {
+      let invokedCommand = '';
+      let invokedArgs: any = null;
+
+      (globalThis as any).window = {
+        __TAURI_INTERNALS__: {
+          invoke: async (cmd: string, args: any) => {
+            invokedCommand = cmd;
+            invokedArgs = args;
+            if (cmd === 'pick_snapshot_directory') {
+              return '/home/trader/TradingSnaps';
+            }
+            if (cmd === 'save_snapshot_file') {
+              return `/home/trader/TradingSnaps/${args.filename}`;
+            }
+            return null;
+          },
+        },
+      };
+
+      assert.strictEqual(isTauriEnvironment(), true, 'isTauriEnvironment harus true saat __TAURI_INTERNALS__ ada');
+
+      // 1. pickSnapshotDirectory berhasil memilih folder
+      const pickedDir = await pickSnapshotDirectory();
+      assert.strictEqual(invokedCommand, 'pick_snapshot_directory');
+      assert.strictEqual(pickedDir, '/home/trader/TradingSnaps');
+
+      // 2. pickSnapshotDirectory saat dialog dibatalkan (null)
+      (globalThis as any).window.__TAURI_INTERNALS__.invoke = async () => null;
+      const cancelledDir = await pickSnapshotDirectory();
+      assert.strictEqual(cancelledDir, null, 'Saat dialog dibatalkan oleh pengguna, kembalikan null');
+
+      // 3. saveSnapshotToFile di Tauri berhasil menyimpan ke direktori kustom
+      (globalThis as any).window.__TAURI_INTERNALS__.invoke = async (cmd: string, args: any) => {
+        invokedCommand = cmd;
+        invokedArgs = args;
+        return `/home/trader/CustomSnapshots/${args.filename}`;
+      };
+
+      const mockCanvas = createMockCanvas(800, 600);
+      const tauriSaveRes: SaveSnapshotResult = await saveSnapshotToFile(
+        mockCanvas,
+        'btc-breakout.png',
+        '/home/trader/CustomSnapshots'
+      );
+      assert.strictEqual(tauriSaveRes.success, true);
+      assert.strictEqual(tauriSaveRes.filePath, '/home/trader/CustomSnapshots/btc-breakout.png');
+      assert.strictEqual(tauriSaveRes.isFallback, false, 'isFallback harus false saat Tauri IPC berhasil');
+      assert.strictEqual(invokedCommand, 'save_snapshot_file');
+      assert.strictEqual(invokedArgs.directory, '/home/trader/CustomSnapshots');
+      assert.strictEqual(invokedArgs.filename, 'btc-breakout.png');
+      assert.ok(
+        invokedArgs.bytes instanceof Uint8Array,
+        'invokedArgs.bytes harus berupa Uint8Array binary payload'
+      );
+      assert.strictEqual(
+        invokedArgs.base64Data,
+        null,
+        'invokedArgs.base64Data harus null saat bytes biner tersedia'
+      );
+
+      // 3b. saveSnapshotToFile dengan string data URL di Tauri mengirimkan base64Data fallback
+      const dataUrlTauriRes = await saveSnapshotToFile(
+        'data:image/png;base64,mockStringPayload',
+        'raw-string.png',
+        '/home/trader/CustomSnapshots'
+      );
+      assert.strictEqual(dataUrlTauriRes.success, true);
+      assert.strictEqual(invokedArgs.bytes, null, 'invokedArgs.bytes harus null saat input berupa data URL');
+      assert.strictEqual(invokedArgs.base64Data, 'data:image/png;base64,mockStringPayload');
+
+      // 3c. saveSnapshotToFile dengan canvas tanpa toBlob fallback ke base64Data
+      const canvasWithoutBlob = {
+        toDataURL: () => 'data:image/png;base64,mockCanvasDataUrl',
+      } as any;
+      await saveSnapshotToFile(canvasWithoutBlob, 'no-blob.png', '/home/trader/CustomSnapshots');
+      assert.strictEqual(invokedArgs.bytes, null);
+      assert.strictEqual(invokedArgs.base64Data, 'data:image/png;base64,mockCanvasDataUrl');
+
+      // 4. saveSnapshotToFile saat Tauri invoke melempar error -> fallback jujur ke Downloads/
+      (globalThis as any).window.__TAURI_INTERNALS__.invoke = async () => {
+        throw new Error('OS disk write permission denied');
+      };
+      const tauriErrFallback = await saveSnapshotToFile(mockCanvas, 'btc-err.png', '/restricted/root');
+      assert.strictEqual(tauriErrFallback.success, true);
+      assert.strictEqual(tauriErrFallback.filePath, 'Downloads/btc-err.png');
+      assert.strictEqual(tauriErrFallback.isFallback, true, 'isFallback harus true saat Tauri invoke melempar error');
+    } finally {
+      (globalThis as any).window = originalWindow;
+    }
+
+    // D. Lightweight Thumbnail Helper: createSnapshotThumbnail
+    const highResCanvas = createMockCanvas(3840, 2160);
+    const thumbUrl = createSnapshotThumbnail(highResCanvas, 200);
+    assert.ok(thumbUrl, 'Thumbnail URL harus berhasil dihasilkan');
+    assert.ok(thumbUrl.startsWith('data:image/png'), 'Thumbnail URL harus berupa data URL valid');
+
+    // E. Defensive check: input invalid tidak boleh crash
+    assert.strictEqual(createSnapshotThumbnail(null as any), undefined);
+    assert.strictEqual(createSnapshotThumbnail(undefined as any), undefined);
+    assert.strictEqual(createSnapshotThumbnail({} as any), undefined);
+    assert.strictEqual(createSnapshotThumbnail(createMockCanvas(0, 0)), undefined);
+  });
+
+  await t.test('17. Ticket 3 (#100): Settings UI Native Folder Picker, Clean Chart Export Vocabulary & Preview Integration', () => {
+    // 1. GeneralTab.svelte Static Verification
+    const generalTabPath = path.resolve('src/lib/components/settings/GeneralTab.svelte');
+    const generalTabSource = fs.readFileSync(generalTabPath, 'utf8');
+
+    // Import pickSnapshotDirectory
+    assert.match(
+      generalTabSource,
+      /import\s*\{[^}]*pickSnapshotDirectory[^}]*\}\s*from\s*['"]\.\.\/\.\.\/services\/chartSnapshotService['"]/,
+      'GeneralTab.svelte harus mengimpor pickSnapshotDirectory dari chartSnapshotService'
+    );
+
+    // Tombol "Pilih Folder..." di dalam .directory-setting-group
+    assert.match(
+      generalTabSource,
+      /class="btn-pick-folder"[^>]*>[\s\S]*?Pilih Folder\.\.\.[\s\S]*?<\/button>/,
+      'GeneralTab.svelte harus menyertakan tombol "Pilih Folder..." dengan class btn-pick-folder'
+    );
+
+    // Handler pick snapshot directory yang memanggil onUpdateSettings saat path dipilih
+    assert.match(
+      generalTabSource,
+      /async function handlePickSnapshotDirectory[\s\S]*?pickSnapshotDirectory\(\)[\s\S]*?onUpdateSettings\(\{\s*snapshotDirectory:\s*\w+\s*\}\)/,
+      'handlePickSnapshotDirectory harus memanggil pickSnapshotDirectory() dan mengupdate settings jika path dipilih'
+    );
+
+    // Buka folder langsung memanggil openSnapshotFolder tanpa wrapper berlebihan
+    assert.match(
+      generalTabSource,
+      /onclick=\{\(\)\s*=>\s*openSnapshotFolder\(settings\.snapshotDirectory\)\}/,
+      'Tombol Buka Folder harus memanggil openSnapshotFolder langsung tanpa middleman wrapper'
+    );
+    assert.doesNotMatch(
+      generalTabSource,
+      /function handleOpenSnapshotFolder/,
+      'GeneralTab.svelte tidak boleh mempertahankan fungsi middleman handleOpenSnapshotFolder yang berlebihan'
+    );
+
+    // Penegakan Kosakata Domain: Clean Chart Export (bukan Clean Export)
+    assert.match(
+      generalTabSource,
+      /Clean Chart Export/,
+      'GeneralTab.svelte harus menggunakan istilah domain kanonik Clean Chart Export'
+    );
+    assert.doesNotMatch(
+      generalTabSource,
+      />\s*Clean Export\s*</,
+      'GeneralTab.svelte tidak boleh menggunakan istilah non-kanonik Clean Export'
+    );
+
+    // Penegakan Kosakata Domain: Branded Snapshot Frame (sesuai GLOSSARY.md)
+    assert.match(
+      generalTabSource,
+      /Branded Snapshot Frame/,
+      'GeneralTab.svelte harus menggunakan istilah domain kanonik Branded Snapshot Frame'
+    );
+    assert.doesNotMatch(
+      generalTabSource,
+      />\s*Branded Frame\s*</,
+      'GeneralTab.svelte tidak boleh menggunakan istilah non-kanonik Branded Frame'
+    );
+
+    // 2. SnapshotPreviewModal.svelte Static Verification
+    const previewModalPath = path.resolve('src/lib/components/SnapshotPreviewModal.svelte');
+    const previewModalSource = fs.readFileSync(previewModalPath, 'utf8');
+
+    // Svelte 5 Judgement Call: cachedSourceCanvas non-reactive
+    assert.match(
+      previewModalSource,
+      /let\s+cachedSourceCanvas\s*:\s*HTMLCanvasElement\s*\|\s*null\s*=\s*null;/,
+      'cachedSourceCanvas harus dideklarasikan sebagai variabel non-reaktif murni tanpa $state'
+    );
+    assert.doesNotMatch(
+      previewModalSource,
+      /let\s+cachedSourceCanvas\s*=\s*\$state/,
+      'cachedSourceCanvas tidak boleh menggunakan $state wrapper'
+    );
+
+    // Penegakan Kosakata Domain: Clean Chart Export & Branded Snapshot Frame pada tombol mode pratinjau
+    assert.match(
+      previewModalSource,
+      /<span class="btn-title">\s*Clean Chart Export\s*<\/span>/,
+      'SnapshotPreviewModal.svelte harus menampilkan teks Clean Chart Export pada mode toggle'
+    );
+    assert.doesNotMatch(
+      previewModalSource,
+      /<span class="btn-title">\s*Clean Export\s*<\/span>/,
+      'SnapshotPreviewModal.svelte tidak boleh menggunakan istilah non-kanonik Clean Export'
+    );
+    assert.match(
+      previewModalSource,
+      /<span class="btn-title">\s*Branded Snapshot Frame\s*<\/span>/,
+      'SnapshotPreviewModal.svelte harus menampilkan teks Branded Snapshot Frame pada mode toggle'
+    );
+    assert.doesNotMatch(
+      previewModalSource,
+      /<span class="btn-title">\s*Branded Frame\s*<\/span>/,
+      'SnapshotPreviewModal.svelte tidak boleh menggunakan istilah non-kanonik Branded Frame'
+    );
   });
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import {
     Camera,
     Copy,
@@ -13,7 +13,8 @@
     Sparkles,
     Image as ImageIcon,
     Plus,
-    Minus
+    Minus,
+    Folder
   } from '@lucide/svelte';
   import type { AppSettings } from '../types/market';
   import { THEME_PRESETS } from '../constants/themes';
@@ -22,6 +23,8 @@
     generateSnapshotFilename,
     copySnapshotToClipboard,
     downloadSnapshot,
+    saveSnapshotToFile,
+    openSnapshotFolder,
     calculateCompositeDimensions,
     type SnapshotOptions,
     type SnapshotMetadata
@@ -61,12 +64,17 @@
   let includeTimestamp = $state(true);
   let snapshotScope = $state<'active' | 'all'>('active');
 
-  // State Zoom Interaktif (User Story 12)
+  // State Zoom & Snapshot Frozen Data (Mencegah re-render dari WebSocket ticker)
   let zoomLevel = $state(1);
   let capturedAt = $state<number>(Date.now());
+  let capturedPrice = $state<number | null>(null);
+
+  // Cache kanvas sumber grafik saat modal dibuka untuk mencegah re-evaluasi WebGL sinkron (non-reaktif untuk efisiensi Svelte 5)
+  let cachedSourceCanvas: HTMLCanvasElement | null = null;
 
   // State Pratinjau
   let previewUrl = $state<string>('');
+  let previewBlobUrl: string | null = null;
   let previewDimensions = $state<{ width: number; height: number }>({ width: 0, height: 0 });
   let isRendering = $state(false);
   let renderError = $state<string | null>(null);
@@ -75,27 +83,55 @@
   let copied = $state(false);
   let copyTimer: any = null;
 
-  // Inisialisasi opsi dari appSettings saat modal dibuka
+  // Guard untuk mendeteksi transisi tepi (edge-triggered) buka/tutup modal
+  let wasOpen = false;
+
+  /**
+   * Membersihkan Object URL blob dari memori untuk mencegah memory leak
+   */
+  function revokePreviewUrl() {
+    if (previewBlobUrl) {
+      URL.revokeObjectURL(previewBlobUrl);
+      previewBlobUrl = null;
+    }
+  }
+
+  // Inisialisasi snapshot saat modal dibuka dengan guard dan untrack
+  // Mencegah cyclic reactive dependency dan WebSocket price flood
   $effect(() => {
-    if (isOpen) {
-      capturedAt = Date.now();
-      zoomLevel = 1;
-      includeFrame = appSettings.snapshotIncludeFrame ?? true;
-      includePrice = appSettings.snapshotIncludePrice ?? true;
-      includeTimestamp = appSettings.snapshotIncludeTimestamp ?? true;
-      snapshotScope = appSettings.snapshotScope ?? 'active';
-      renderPreview();
-    } else {
-      if (copyTimer) {
-        clearTimeout(copyTimer);
-        copyTimer = null;
-      }
-      copied = false;
+    if (isOpen && !wasOpen) {
+      wasOpen = true;
+      untrack(() => {
+        capturedAt = Date.now();
+        capturedPrice = currentPrice;
+        zoomLevel = 1;
+        includeFrame = appSettings.snapshotIncludeFrame ?? true;
+        includePrice = appSettings.snapshotIncludePrice ?? true;
+        includeTimestamp = appSettings.snapshotIncludeTimestamp ?? true;
+        snapshotScope = appSettings.snapshotScope ?? 'active';
+
+        // Tangkap kanvas sumber sekali saja saat modal dibuka
+        cachedSourceCanvas = getScreenshotCanvas(snapshotScope);
+        renderPreview();
+      });
+    } else if (!isOpen && wasOpen) {
+      wasOpen = false;
+      untrack(() => {
+        if (copyTimer) {
+          clearTimeout(copyTimer);
+          copyTimer = null;
+        }
+        copied = false;
+        cachedSourceCanvas = null;
+        revokePreviewUrl();
+        previewUrl = '';
+      });
     }
   });
 
   onDestroy(() => {
     if (copyTimer) clearTimeout(copyTimer);
+    revokePreviewUrl();
   });
 
   // Handler Kontrol Zoom (+ / - / Reset 100%)
@@ -141,7 +177,10 @@
    * Menghasilkan kanvas komposit snapshot berdasarkan konfigurasi aktif
    */
   function generateCurrentComposite(): HTMLCanvasElement | null {
-    const sourceCanvas = getScreenshotCanvas(snapshotScope);
+    if (!cachedSourceCanvas) {
+      cachedSourceCanvas = getScreenshotCanvas(snapshotScope);
+    }
+    const sourceCanvas = cachedSourceCanvas;
     if (!sourceCanvas) return null;
 
     const isMulti = snapshotScope === 'all';
@@ -163,7 +202,7 @@
       symbol: activeSymbol,
       timeframe: activeTimeframe,
       providerId: activeProviderId,
-      lastPrice: currentPrice,
+      lastPrice: capturedPrice,
       timezone: appSettings.timezone || 'Asia/Jakarta',
       timestamp: capturedAt,
       layout: currentLayout,
@@ -196,6 +235,7 @@
       const composite = generateCurrentComposite();
       if (!composite) {
         renderError = 'Kanvas grafik belum siap atau tidak ditemukan.';
+        revokePreviewUrl();
         previewUrl = '';
         return;
       }
@@ -205,7 +245,19 @@
         height: composite.height,
       };
 
-      if (typeof composite.toDataURL === 'function') {
+      if (typeof composite.toBlob === 'function') {
+        composite.toBlob((blob) => {
+          if (!blob) {
+            renderError = 'Gagal membuat berkas gambar pratinjau.';
+            return;
+          }
+          revokePreviewUrl();
+          previewBlobUrl = URL.createObjectURL(blob);
+          previewUrl = previewBlobUrl;
+        }, 'image/png');
+      } else if (typeof composite.toDataURL === 'function') {
+        // Fallback untuk lingkungan tanpa Blob ObjectURL (cth. pengujian headless sederhana)
+        revokePreviewUrl();
         previewUrl = composite.toDataURL('image/png');
       } else {
         renderError = 'Format kanvas tidak didukung di lingkungan ini.';
@@ -243,6 +295,8 @@
   function handleScopeChange(scope: 'active' | 'all') {
     if (snapshotScope === scope) return;
     snapshotScope = scope;
+    // Ambil tangkapan kanvas baru khusus untuk scope yang berbeda
+    cachedSourceCanvas = getScreenshotCanvas(scope);
     persistChanges();
     renderPreview();
   }
@@ -265,23 +319,23 @@
         }, 2200);
         onLog?.('Snapshot grafik disalin ke clipboard! (PNG 2x HiDPI)', 'success');
       } else {
-        // Fallback jika Clipboard API diblokir oleh browser / OS
+        // Fallback jika Clipboard API diblokir oleh browser / OS: simpan ke berkas
         const isMulti = snapshotScope === 'all';
         const filename = generateSnapshotFilename(
           isMulti ? 'MULTI-CHART-GRID' : activeSymbol,
           isMulti ? `layout-${currentLayout}` : activeTimeframe,
           capturedAt
         );
-        downloadSnapshot(composite, filename);
-        onLog?.(`Akses clipboard ditolak. Gambar otomatis disimpan sebagai ${filename}`, 'info');
+        const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
+        onLog?.(`Akses clipboard ditolak. Gambar otomatis disimpan di: ${saveRes.filePath || filename}`, 'info');
       }
     } catch (err: any) {
       onLog?.(err?.message || 'Gagal menyalin gambar ke clipboard.', 'warn');
     }
   }
 
-  // Eksekusi Unduh Berkas PNG
-  function handleDownloadImage() {
+  // Eksekusi Simpan / Unduh Berkas PNG ke Direktori
+  async function handleDownloadImage() {
     try {
       const composite = generateCurrentComposite();
       if (!composite) {
@@ -295,8 +349,12 @@
         isMulti ? `layout-${currentLayout}` : activeTimeframe,
         capturedAt
       );
-      downloadSnapshot(composite, filename);
-      onLog?.(`Snapshot berhasil disimpan sebagai ${filename}`, 'success');
+      const res = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
+      if (res.success) {
+        onLog?.(`Snapshot berhasil disimpan di: ${res.filePath || filename}`, 'success');
+      } else {
+        onLog?.(res.error || 'Gagal menyimpan gambar snapshot.', 'warn');
+      }
     } catch (err: any) {
       onLog?.(err?.message || 'Gagal mengunduh gambar snapshot.', 'warn');
     }
@@ -425,7 +483,7 @@
               >
                 <div class="mode-btn-content">
                   <Sparkles size={13} class="icon-sparkle" />
-                  <span class="btn-title">Branded Frame</span>
+                  <span class="btn-title">Branded Snapshot Frame</span>
                 </div>
                 <span class="btn-desc">Kartu showcase + Attribution Bar</span>
               </button>
@@ -437,7 +495,7 @@
               >
                 <div class="mode-btn-content">
                   <ImageIcon size={13} />
-                  <span class="btn-title">Clean Chart</span>
+                  <span class="btn-title">Clean Chart Export</span>
                 </div>
                 <span class="btn-desc">Piksel murni tanpa kartu bingkai</span>
               </button>
@@ -502,6 +560,29 @@
               </div>
             </div>
           {/if}
+
+          <!-- Lokasi Folder Penyimpanan Aktif -->
+          <div class="sidebar-section">
+            <div class="section-title-row">
+              <span class="section-title">LOKASI PENYIMPANAN</span>
+              <button
+                type="button"
+                class="btn-folder-link"
+                title="Buka folder penyimpanan di File Manager"
+                onclick={() => openSnapshotFolder(appSettings.snapshotDirectory)}
+              >
+                <Folder size={11} />
+                <span>Buka</span>
+              </button>
+            </div>
+            <div class="storage-info-box">
+              <span class="storage-path mono-nums" title={appSettings.snapshotDirectory || 'Folder Downloads bawaan sistem'}>
+                {appSettings.snapshotDirectory && appSettings.snapshotDirectory.length > 0
+                  ? appSettings.snapshotDirectory
+                  : 'Downloads (Bawaan OS)'}
+              </span>
+            </div>
+          </div>
 
           <!-- Ringkasan Informasi Privasi -->
           <div class="sidebar-footer-note">
@@ -826,6 +907,48 @@
     font-weight: 700;
     letter-spacing: 0.06em;
     color: var(--text-muted, #7c828d);
+  }
+
+  .section-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .btn-folder-link {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: #ff69b4;
+    font-size: 10.5px;
+    cursor: pointer;
+    padding: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .btn-folder-link:hover {
+    opacity: 0.8;
+    text-decoration: underline;
+  }
+
+  .storage-info-box {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--border-hairline, rgba(255, 255, 255, 0.06));
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .storage-path {
+    font-size: 10.5px;
+    color: var(--text-muted, #7c828d);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Mode Toggle */

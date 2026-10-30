@@ -1,6 +1,6 @@
 /**
  * Layanan Kompositor Tangkapan Layar Offline (Offline Branded Snapshot Engine)
- * Membangun komposit kanvas 2D lokal murni dengan Branded Frame dan Attribution Bar.
+ * Membangun komposit kanvas 2D lokal murni dengan Branded Snapshot Frame dan Attribution Bar.
  */
 
 import { formatPriceLabel } from './priceScaleLabelService';
@@ -209,10 +209,18 @@ function drawRoundedRect(
   ctx.closePath();
 }
 
+export interface FallbackCanvas {
+  width: number;
+  height: number;
+  getContext: (contextId: string) => CanvasRenderingContext2D;
+  toDataURL: (type?: string) => string;
+  toBlob: (cb: (blob: Blob | null) => void, type?: string) => void;
+}
+
 /**
  * Helper internal untuk membuat fallback canvas sederhana di lingkungan non-browser
  */
-function createFallbackCanvas(width: number, height: number): any {
+function createFallbackCanvas(width: number, height: number): FallbackCanvas {
   return {
     width,
     height,
@@ -236,7 +244,7 @@ function createFallbackCanvas(width: number, height: number): any {
       fillText: () => {},
       drawImage: () => {},
       measureText: (text: string) => ({ width: text.length * 8 }),
-    }),
+    } as unknown as CanvasRenderingContext2D),
     toDataURL: (type = 'image/png') => `data:${type};base64,mockFallbackData`,
     toBlob: (cb: (blob: Blob | null) => void, type = 'image/png') => {
       try {
@@ -531,10 +539,92 @@ export async function copySnapshotToClipboard(
   }
 }
 
+export interface SaveSnapshotResult {
+  success: boolean;
+  filePath?: string;
+  error?: string;
+  isFallback?: boolean;
+}
+
+/**
+ * Memeriksa apakah aplikasi berjalan di dalam runtime desktop Tauri
+ */
+export function isTauriEnvironment(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+/**
+ * Membuka dialog pemilih folder native sistem operasi melalui Tauri IPC.
+ * Mengembalikan path direktori yang dipilih pengguna, atau null jika dibatalkan atau bukan di lingkungan desktop Tauri.
+ */
+export async function pickSnapshotDirectory(): Promise<string | null> {
+  if (isTauriEnvironment()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const selectedDir = await invoke<string | null>('pick_snapshot_directory');
+      return selectedDir ?? null;
+    } catch (err) {
+      console.warn('[Snapshot] Gagal membuka dialog pemilih direktori native:', err);
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Menghasilkan data URL gambar mini (thumbnail) beresolusi rendah (maksimal lebar/tinggi 200px)
+ * dari kanvas sumber untuk pratinjau toast, guna menghindari pemblokiran thread utama UI
+ * akibat encoding sinkron toDataURL pada kanvas komposit beresolusi penuh (2x HiDPI).
+ */
+export function createSnapshotThumbnail(
+  sourceCanvas: HTMLCanvasElement,
+  maxDimension = 200
+): string | undefined {
+  if (!sourceCanvas || typeof sourceCanvas.width !== 'number' || typeof sourceCanvas.height !== 'number') {
+    return undefined;
+  }
+
+  const { width, height } = sourceCanvas;
+  if (width <= 0 || height <= 0) return undefined;
+
+  let thumbWidth = width;
+  let thumbHeight = height;
+
+  if (width > height) {
+    if (width > maxDimension) {
+      thumbWidth = maxDimension;
+      thumbHeight = Math.max(1, Math.round((height / width) * maxDimension));
+    }
+  } else {
+    if (height > maxDimension) {
+      thumbHeight = maxDimension;
+      thumbWidth = Math.max(1, Math.round((width / height) * maxDimension));
+    }
+  }
+
+  let canvas: HTMLCanvasElement | FallbackCanvas;
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    canvas = document.createElement('canvas');
+  } else {
+    canvas = createFallbackCanvas(thumbWidth, thumbHeight);
+  }
+
+  canvas.width = thumbWidth;
+  canvas.height = thumbHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return undefined;
+
+  ctx.drawImage(sourceCanvas as CanvasImageSource, 0, 0, thumbWidth, thumbHeight);
+  return canvas.toDataURL('image/png');
+}
+
 /**
  * Memicu pengunduhan berkas gambar snapshot pada browser / WebView
  */
-export function downloadSnapshot(canvasOrDataUrl: any, filename: string): string {
+export function downloadSnapshot(
+  canvasOrDataUrl: HTMLCanvasElement | string | { toDataURL: (type?: string) => string },
+  filename: string
+): string {
   let dataUrl = '';
   if (typeof canvasOrDataUrl === 'string') {
     dataUrl = canvasOrDataUrl;
@@ -552,4 +642,94 @@ export function downloadSnapshot(canvasOrDataUrl: any, filename: string): string
   }
 
   return dataUrl;
+}
+
+/**
+ * Menyimpan berkas gambar snapshot ke filesystem lokal (Tauri desktop)
+ * dengan direktori kustom atau bawaan, serta fallback ke pengunduhan browser standar.
+ */
+export async function saveSnapshotToFile(
+  canvasOrDataUrl: HTMLCanvasElement | string,
+  filename: string,
+  customDirectory?: string
+): Promise<SaveSnapshotResult> {
+  // Jika berjalan di lingkungan desktop Tauri, gunakan Tauri IPC native untuk menyimpan ke folder tujuan
+  if (isTauriEnvironment()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      let bytes: Uint8Array | null = null;
+      let base64Data: string | null = null;
+
+      // Konversi kanvas secara asinkron via toBlob() -> arrayBuffer() -> Uint8Array
+      // Menghilangkan blocking toDataURL pada UI thread dan mengirim payload biner mentah ke Tauri
+      if (typeof canvasOrDataUrl !== 'string' && typeof canvasOrDataUrl.toBlob === 'function') {
+        const blob = await new Promise<Blob | null>((resolve) => {
+          canvasOrDataUrl.toBlob(resolve, 'image/png');
+        });
+        if (blob) {
+          const buffer = await blob.arrayBuffer();
+          bytes = new Uint8Array(buffer);
+        }
+      }
+
+      // Fallback base64 jika toBlob tidak tersedia atau input awal adalah data URL string
+      if (!bytes) {
+        if (typeof canvasOrDataUrl === 'string') {
+          base64Data = canvasOrDataUrl;
+        } else if (canvasOrDataUrl && typeof canvasOrDataUrl.toDataURL === 'function') {
+          base64Data = canvasOrDataUrl.toDataURL('image/png');
+        }
+      }
+
+      const savedPath = await invoke<string>('save_snapshot_file', {
+        directory: customDirectory && customDirectory.trim().length > 0 ? customDirectory.trim() : null,
+        filename,
+        bytes,
+        base64Data,
+      });
+      return { success: true, filePath: savedPath, isFallback: false };
+    } catch (err) {
+      console.warn('[Snapshot] Gagal menyimpan via Tauri command, beralih ke download browser:', err);
+    }
+  }
+
+  // Fallback ke unduhan browser standar (laporkan lokasi Downloads/ secara jujur dengan isFallback: true)
+  downloadSnapshot(canvasOrDataUrl, filename);
+  return {
+    success: true,
+    filePath: `Downloads/${filename}`,
+    isFallback: true,
+  };
+}
+
+/**
+ * Membuka direktori penyimpanan snapshot di File Manager bawaan sistem operasi
+ */
+export async function openSnapshotFolder(customDirectory?: string): Promise<void> {
+  if (isTauriEnvironment()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_snapshot_folder', {
+        directory: customDirectory && customDirectory.trim().length > 0 ? customDirectory.trim() : null,
+      });
+    } catch (err) {
+      console.warn('[Snapshot] Gagal membuka folder penyimpanan:', err);
+    }
+  }
+}
+
+/**
+ * Mengambil path folder unduhan bawaan sistem
+ */
+export async function getDefaultSnapshotDirectory(): Promise<string> {
+  if (isTauriEnvironment()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const dir = await invoke<string>('get_default_snapshot_directory');
+      if (dir) return dir;
+    } catch (err) {
+      console.warn('[Snapshot] Gagal mengambil folder default:', err);
+    }
+  }
+  return 'Downloads';
 }
