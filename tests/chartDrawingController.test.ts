@@ -636,9 +636,10 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     assert.equal(controller.getLastGestureCreation(), null);
   });
 
-  await t.test('15. finishGestureStroke memilih alat gambar yang dikenali dan mengubah kursor (#104, #106)', () => {
+  await t.test('15. finishGestureStroke kembali ke kursor mouse biasa dan menyeleksi objek gambar yang baru dibuat (#104, #106)', () => {
     const controller = new ChartDrawingController();
     const createdDrawings: any[] = [];
+    let selectedId: string | null = null;
     const mockDrawings = {
       create: (spec: any) => {
         const id = `item-${createdDrawings.length + 1}`;
@@ -647,6 +648,12 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
         return item;
       },
       all: () => createdDrawings,
+      select: (id: any) => { selectedId = id; },
+      deselect: () => { selectedId = null; },
+      remove: (id: any) => {
+        const idx = createdDrawings.findIndex(d => d.id === id);
+        if (idx !== -1) createdDrawings.splice(idx, 1);
+      },
       on: () => {},
       off: () => {}
     };
@@ -666,21 +673,27 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     controller.addGesturePoint(300, 102);
     const stroke1 = controller.finishGestureStroke();
     assert.ok(stroke1);
-    // Tool HARUS berubah ke alat hasil pengenalan gestur ('hline'), bukan tertahan di 'gesture'
-    assert.equal(controller.getSnapshot().activeTool, 'hline');
     assert.equal(createdDrawings.length, 1);
 
-    // Saat Tab ditekan untuk siklus kandidat, tool harus ikut diperbarui
+    // Tool HARUS kembali ke 'cursor' (mouse biasa) agar user dapat langsung mengatur gambar tersebut (drag, resize, handles)
+    assert.equal(controller.getSnapshot().activeTool, 'cursor');
+    // Objek yang baru dibuat HARUS terseleksi
+    assert.equal(controller.getSelectedDrawingId(), createdDrawings[0].id);
+    assert.equal(selectedId, createdDrawings[0].id);
+
+    // Saat Tab ditekan untuk siklus kandidat, tool tetap 'cursor' dan objek baru tetap terseleksi
     const lastCreation = controller.getLastGestureCreation();
     if (lastCreation && lastCreation.candidates.length > 1) {
-      const nextCandidate = lastCreation.candidates[1];
       controller.cycleGestureCandidate();
-      assert.equal(controller.getSnapshot().activeTool, nextCandidate.tool);
+      assert.equal(controller.getSnapshot().activeTool, 'cursor');
+      const updatedCreation = controller.getLastGestureCreation();
+      assert.equal(controller.getSelectedDrawingId(), updatedCreation?.drawingId);
     }
 
-    // Saat Esc ditekan untuk membatalkan pembuatan objek gestur, tool kembali ke 'cursor'
+    // Saat Esc ditekan untuk membatalkan pembuatan objek gestur, tool tetap 'cursor' dan seleksi dibatalkan
     controller.cancelGestureCreation();
     assert.equal(controller.getSnapshot().activeTool, 'cursor');
+    assert.equal(controller.getSelectedDrawingId(), null);
 
     // Skenario B: Transient Hold Mode (Tahan tombol shortcut)
     controller.setTool('cursor');
@@ -697,9 +710,10 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     const strokeHold = controller.finishGestureStroke();
     assert.ok(strokeHold);
 
-    // Setelah goresan selesai, alat yang dikenali langsung terpilih ('hline')
-    assert.equal(controller.getSnapshot().activeTool, 'hline');
+    // Setelah goresan selesai, kursor kembali ke mouse biasa ('cursor') dan objek terseleksi
+    assert.equal(controller.getSnapshot().activeTool, 'cursor');
     assert.equal(controller.isHoldingGesture(), false);
+    assert.ok(controller.getSelectedDrawingId());
   });
 
   await t.test('16. Helper isAABBOverlap dan extractDrawingBounds mengeliminasi duplikasi kode', () => {

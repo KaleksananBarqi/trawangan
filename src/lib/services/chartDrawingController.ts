@@ -413,11 +413,16 @@ export class ChartDrawingController {
         });
       }
 
-      // Aktifkan alat gambar yang dihasilkan dari pengenalan gestur
-      // sehingga kursor mouse berubah ke alat tersebut dan bilah alat (toolbar) menyorot alat yang bersangkutan
+      // Kembali ke mode mouse biasa ('cursor') agar pengguna langsung dapat mengatur gambar tersebut
+      // (drag, resize titik handle/ujung garis, dsb) layaknya alur OpenMarket
       this.isHoldingGestureKey = false;
       this.previousToolBeforeGesture = null;
-      this.setTool(result.tool as DrawingToolType);
+      this.setTool('cursor');
+
+      // Seleksi objek gambar yang baru saja dibuat agar handle pengatur (titik ujung) langsung aktif
+      if (drawingId) {
+        this.selectDrawing(drawingId);
+      }
     }
 
     return result;
@@ -565,8 +570,13 @@ export class ChartDrawingController {
       expiresAt: Date.now() + 2500
     });
 
-    // Perbarui alat aktif sesuai kandidat baru
-    this.setTool(nextCandidate.tool as DrawingToolType);
+    // Pastikan kursor tetap pada mode mouse seleksi biasa ('cursor')
+    this.setTool('cursor');
+
+    // Seleksi drawing baru yang digantikan agar handle pengatur langsung aktif
+    if (newDrawingId) {
+      this.selectDrawing(newDrawingId);
+    }
 
     return true;
   }
@@ -584,6 +594,7 @@ export class ChartDrawingController {
     }
 
     this.dismissGestureHUD();
+    this.selectDrawing(null);
     this.setTool('cursor');
     return true;
   }
