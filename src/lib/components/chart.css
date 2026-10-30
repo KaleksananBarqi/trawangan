@@ -40,6 +40,12 @@
   z-index: 28;
 }
 
+.gesture-ink-canvas.active,
+.chart-wrapper.gesture-mode .gesture-ink-canvas {
+  pointer-events: auto !important;
+  cursor: crosshair !important;
+}
+
 .gesture-mode-hud {
   position: absolute;
   bottom: 24px;

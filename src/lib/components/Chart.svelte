@@ -138,7 +138,11 @@
     unsubAlerts = alertService.subscribe((alerts) => { allAlerts = alerts; scheduleBadgePositionUpdate(); });
     unsubDrawingState = chartDrawingController.subscribe((st) => {
       isHandpullActive = st.activeTool === 'handpull';
+      const prevGesture = isGestureActive;
       isGestureActive = chartDrawingController.isGestureMode();
+      if (isGestureActive && !prevGesture) {
+        syncInkCanvasSize();
+      }
       gestureCreationState = st.lastGestureCreation;
       scheduleBadgePositionUpdate();
     });
@@ -378,7 +382,18 @@
     }
   }
 
-  function handleContainerPointerDown(e: PointerEvent) {
+  function resetVelaDragState() {
+    if (!chartContainer) return;
+    try {
+      const canvases = chartContainer.querySelectorAll('canvas');
+      for (const c of canvases) {
+        c.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, cancelable: true }));
+        c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+      }
+    } catch (_) {}
+  }
+
+  function handleGesturePointerDown(e: PointerEvent) {
     scheduleBadgePositionUpdate();
     chartDrawingController.dismissGestureHUD();
     if (isGestureActive && e.button === 0 && chartContainer) {
@@ -391,10 +406,11 @@
       renderLiveInk();
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
       e.stopPropagation();
+      e.preventDefault();
     }
   }
 
-  function handleContainerPointerMove(e: PointerEvent) {
+  function handleGesturePointerMove(e: PointerEvent) {
     scheduleBadgePositionUpdate();
     if (isDrawingGestureStroke && chartContainer) {
       const rect = chartContainer.getBoundingClientRect();
@@ -403,10 +419,11 @@
       chartDrawingController.addGesturePoint(x, y);
       renderLiveInk();
       e.stopPropagation();
+      e.preventDefault();
     }
   }
 
-  function handleContainerPointerUp(e: PointerEvent) {
+  function handleGesturePointerUp(e: PointerEvent) {
     if (isDrawingGestureStroke && chartContainer) {
       isDrawingGestureStroke = false;
       const rect = chartContainer.getBoundingClientRect();
@@ -432,11 +449,13 @@
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
       } catch (_) {}
+      resetVelaDragState();
       e.stopPropagation();
+      e.preventDefault();
     }
   }
 
-  function handleContainerPointerCancel(e: PointerEvent) {
+  function handleGesturePointerCancel(e: PointerEvent) {
     if (isDrawingGestureStroke) {
       isDrawingGestureStroke = false;
       chartDrawingController.cancelGestureStroke();
@@ -445,6 +464,9 @@
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
       } catch (_) {}
+      resetVelaDragState();
+      e.stopPropagation();
+      e.preventDefault();
     }
   }
 
@@ -474,6 +496,7 @@
     if (!isEditableElement(e.target) && (e.key === '`' || e.code === 'Backquote' || e.key === '~')) {
       chartDrawingController.setTransientGestureHold(true);
       isGestureActive = true;
+      syncInkCanvasSize();
     }
   }
 
@@ -487,6 +510,7 @@
     if (isTilde || (isShiftOrD && chartDrawingController.isHoldingGesture())) {
       chartDrawingController.setTransientGestureHold(false);
       isGestureActive = chartDrawingController.isGestureMode();
+      resetVelaDragState();
     }
   }
 
@@ -499,15 +523,19 @@
   class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''} {isHandpullActive ? 'handpull-mode' : ''} {isGestureActive ? 'gesture-mode' : ''}"
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}
-  onpointerdown={handleContainerPointerDown}
-  onpointermove={handleContainerPointerMove}
-  onpointerup={handleContainerPointerUp}
-  onpointercancel={handleContainerPointerCancel}
+  onpointerdown={scheduleBadgePositionUpdate}
   role="region"
   aria-label="Area Grafik Utama"
 >
   <div bind:this={chartContainer} class="vela-container"></div>
-  <canvas bind:this={gestureInkCanvas} class="gesture-ink-canvas"></canvas>
+  <canvas
+    bind:this={gestureInkCanvas}
+    class="gesture-ink-canvas {isGestureActive ? 'active' : ''}"
+    onpointerdown={handleGesturePointerDown}
+    onpointermove={handleGesturePointerMove}
+    onpointerup={handleGesturePointerUp}
+    onpointercancel={handleGesturePointerCancel}
+  ></canvas>
 
   {#if isGestureActive}
     <div class="gesture-mode-hud mono-nums">
