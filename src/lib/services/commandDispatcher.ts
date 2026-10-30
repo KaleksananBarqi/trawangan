@@ -222,15 +222,28 @@ export class CommandDispatcher {
   }
 
   private typeToSearchHandler: ((char: string) => void) | null = null;
+  private typeTimeframeHandler: ((digit: string) => void) | null = null;
 
   /**
-   * Daftarkan handler Type-to-Search saat pengguna mengetik huruf/angka langsung di kanvas grafik
+   * Daftarkan handler Type-to-Search saat pengguna mengetik huruf langsung di kanvas grafik
    */
   onTypeToSearch(handler: (char: string) => void): () => void {
     this.typeToSearchHandler = handler;
     return () => {
       if (this.typeToSearchHandler === handler) {
         this.typeToSearchHandler = null;
+      }
+    };
+  }
+
+  /**
+   * Daftarkan handler Type-Timeframe saat pengguna mengetik digit angka langsung di kanvas grafik
+   */
+  onTypeTimeframe(handler: (digit: string) => void): () => void {
+    this.typeTimeframeHandler = handler;
+    return () => {
+      if (this.typeTimeframeHandler === handler) {
+        this.typeTimeframeHandler = null;
       }
     };
   }
@@ -246,20 +259,53 @@ export class CommandDispatcher {
     const handler = (e: KeyboardEvent) => {
       const isInput = isEditableElement(e.target);
 
-      // 1. Type-to-Search Canvas Guard
-      // Saat fokus berada di kanvas grafik (bukan elemen teks) dan tanpa modifier keys (Ctrl/Meta/Alt),
-      // pengetikan alfanumerik (A-Z, 0-9) langsung membuka modal pencarian dengan karakter awal terisi.
-      if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key && e.key.length === 1 && /^[a-zA-Z0-9]$/.test(e.key)) {
+      // Jika fokus berada pada input teks atau editor yang dapat diedit,
+      // jangan mengintersepsi ketikan kanvas; teruskan langsung ke dispatch
+      if (isInput) {
+        this.dispatch(e);
+        return;
+      }
+
+      // Saat fokus berada di kanvas grafik (bukan elemen teks) dan tanpa modifier Ctrl/Meta/Alt:
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const key = e.key;
+
+        // 1. Timeframe Quick Input Guard:
+        // Pengetikan digit angka (0-9) di kanvas membuka bilah TimeframeQuickBar,
+        // dan TIDAK PERNAH memicu Type-to-Search (pencarian simbol).
+        if (key && key.length === 1 && /^[0-9]$/.test(key)) {
+          try {
+            if (typeof e.preventDefault === 'function') e.preventDefault();
+            if (typeof e.stopPropagation === 'function') e.stopPropagation();
+          } catch (_) {}
+
+          if (this.typeTimeframeHandler) {
+            this.typeTimeframeHandler(key);
+          }
+          return;
+        }
+
+        // 2. Evaluasi perintah shortcut aktif di kanvas terlebih dahulu
+        // (misalnya: tombol 'H' untuk Hand-Pull, 'F' untuk Fit-Chart, dsb.)
+        if (this.dispatch(e)) {
+          return;
+        }
+
+        // 3. Type-to-Search Canvas Guard:
+        // Pengetikan huruf alfabet (a-zA-Z) tunggal yang tidak dipetakan sebagai aksi kanvas aktif
+        // langsung membuka modal pencarian simbol instrumen.
+        if (key && key.length === 1 && /^[a-zA-Z]$/.test(key)) {
           if (this.typeToSearchHandler) {
             try {
               if (typeof e.preventDefault === 'function') e.preventDefault();
               if (typeof e.stopPropagation === 'function') e.stopPropagation();
             } catch (_) {}
-            this.typeToSearchHandler(e.key.toUpperCase());
+            this.typeToSearchHandler(key.toUpperCase());
             return;
           }
         }
+
+        return;
       }
 
       this.dispatch(e);
@@ -496,60 +542,10 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
 
     // --- Timeframe Cepat ---
     {
-      id: 'tf-1m',
+      id: 'tf-quick',
       category: 'Timeframe Cepat',
-      keys: ['1'],
-      desc: 'Ganti rentang waktu lilin ke 1 Menit',
-      match: { ctrlOrMeta: false, alt: false, shift: false, key: '1', code: ['Digit1', 'Numpad1'] },
-    },
-    {
-      id: 'tf-3m',
-      category: 'Timeframe Cepat',
-      keys: ['3'],
-      desc: 'Ganti rentang waktu lilin ke 3 Menit',
-      match: { ctrlOrMeta: false, alt: false, shift: false, key: '3', code: ['Digit3', 'Numpad3'] },
-    },
-    {
-      id: 'tf-5m',
-      category: 'Timeframe Cepat',
-      keys: ['5'],
-      desc: 'Ganti rentang waktu lilin ke 5 Menit',
-      match: { ctrlOrMeta: false, alt: false, shift: false, key: '5', code: ['Digit5', 'Numpad5'] },
-    },
-    {
-      id: 'tf-15m',
-      category: 'Timeframe Cepat',
-      keys: ['0'],
-      desc: 'Ganti rentang waktu lilin ke 15 Menit',
-      match: { ctrlOrMeta: false, alt: false, shift: false, key: '0', code: ['Digit0', 'Numpad0'] },
-    },
-    {
-      id: 'tf-1h',
-      category: 'Timeframe Cepat',
-      keys: ['H'],
-      desc: 'Ganti rentang waktu lilin ke 1 Jam (Hourly)',
-      match: { ctrlOrMeta: false, alt: false, shift: false, key: 'h', code: 'KeyH' },
-    },
-    {
-      id: 'tf-4h',
-      category: 'Timeframe Cepat',
-      keys: ['4'],
-      desc: 'Ganti rentang waktu lilin ke 4 Jam',
-      match: { ctrlOrMeta: false, alt: false, shift: false, key: '4', code: ['Digit4', 'Numpad4'] },
-    },
-    {
-      id: 'tf-1d',
-      category: 'Timeframe Cepat',
-      keys: ['D'],
-      desc: 'Ganti rentang waktu lilin ke 1 Hari (Daily)',
-      match: { ctrlOrMeta: false, alt: false, shift: false, key: 'd', code: 'KeyD' },
-    },
-    {
-      id: 'tf-1w',
-      category: 'Timeframe Cepat',
-      keys: ['W'],
-      desc: 'Ganti rentang waktu lilin ke 1 Minggu (Weekly)',
-      match: { ctrlOrMeta: false, alt: false, shift: false, key: 'w', code: 'KeyW' },
+      keys: ['0-9'],
+      desc: 'Buka bilah Timeframe Cepat dengan mengetik angka di kanvas (contoh: 15, 60, 1D)',
     },
 
     // --- Sistem & Bantuan ---

@@ -268,6 +268,7 @@
   export function applyPriceScaleState(state: any): boolean { return controller.applyPriceScaleState(state); }
   export function getPriceStyle(): string { return controller.getPriceStyle(); }
   export function setPriceStyle(style: string): void { controller.setPriceStyle(style); }
+  export function setTimeframe(tf: Timeframe): void { controller.setTimeframe(tf); }
   export function getBarSpacing(): number { return controller.getBarSpacing(); }
   export function setBarSpacing(spacing: number): void { controller.setBarSpacing(spacing); }
   export function saveWorkspaceState(name?: string) { return controller.saveWorkspaceState(name); }
