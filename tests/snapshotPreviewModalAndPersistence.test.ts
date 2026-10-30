@@ -13,8 +13,12 @@ import {
   formatSnapshotPrice,
   saveSnapshotToFile,
   getDefaultSnapshotDirectory,
+  pickSnapshotDirectory,
+  createSnapshotThumbnail,
+  isTauriEnvironment,
   type SnapshotOptions,
-  type SnapshotMetadata
+  type SnapshotMetadata,
+  type SaveSnapshotResult
 } from '../src/lib/services/chartSnapshotService';
 import { formatPriceLabel } from '../src/lib/services/priceScaleLabelService';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
@@ -469,16 +473,22 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
     const defaultDir = await getDefaultSnapshotDirectory();
     assert.strictEqual(defaultDir, 'Downloads', 'Di lingkungan node harus fallback ke Downloads');
 
-    // 2. saveSnapshotToFile dengan direktori kustom menghasilkan path yang sesuai
+    // 2. saveSnapshotToFile dengan direktori kustom di luar Tauri harus fallback secara jujur ke Downloads/
     const mockCanvas = createMockCanvas(400, 300);
     const saveResultCustom = await saveSnapshotToFile(mockCanvas, 'test-chart.png', '~/Pictures/Screenshots');
     assert.strictEqual(saveResultCustom.success, true);
-    assert.strictEqual(saveResultCustom.filePath, '~/Pictures/Screenshots/test-chart.png');
+    assert.strictEqual(
+      saveResultCustom.filePath,
+      'Downloads/test-chart.png',
+      'Fallback ke browser unduhan harus jujur mengembalikan Downloads/ dan bukan custom directory'
+    );
+    assert.strictEqual(saveResultCustom.isFallback, true, 'isFallback harus true saat di luar Tauri');
 
     // 3. saveSnapshotToFile tanpa direktori kustom menggunakan fallback folder Downloads
     const saveResultDefault = await saveSnapshotToFile(mockCanvas, 'test-default.png');
     assert.strictEqual(saveResultDefault.success, true);
     assert.strictEqual(saveResultDefault.filePath, 'Downloads/test-default.png');
+    assert.strictEqual(saveResultDefault.isFallback, true, 'isFallback harus true saat di luar Tauri');
 
     // 4. Persistensi: Menyimpan snapshotDirectory ke adapter persistensi
     const mockStorage = new InMemoryLocalStorageAdapter();
@@ -519,5 +529,96 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
       /^trawangan-.*-15m-20261030-182030\.png$/,
       'Format nama berkas tetap konsisten dan aman'
     );
+  });
+
+  await t.test('16. Ticket 2 (#99): Native Directory Picker, Type Safety, Honest Fallback & Lightweight Thumbnail', async () => {
+    // A. Non-Tauri Environment: pickSnapshotDirectory mengembalikan null
+    const nonTauriDir = await pickSnapshotDirectory();
+    assert.strictEqual(nonTauriDir, null, 'pickSnapshotDirectory di luar Tauri harus mengembalikan null');
+
+    // B. Non-Tauri Environment: saveSnapshotToFile dengan string data URL mengembalikan honest fallback
+    const mockDataUrl = 'data:image/png;base64,mockValidPngDataUrl';
+    const fallbackRes = await saveSnapshotToFile(mockDataUrl, 'manual-export.png', '/custom/my-folder');
+    assert.strictEqual(fallbackRes.success, true);
+    assert.strictEqual(fallbackRes.filePath, 'Downloads/manual-export.png', 'Jalur fallback harus honest Downloads/');
+    assert.strictEqual(fallbackRes.isFallback, true, 'isFallback harus true saat fallback aktif');
+
+    // C. Simulated Tauri Environment: pickSnapshotDirectory & saveSnapshotToFile
+    const originalWindow = (globalThis as any).window;
+    try {
+      let invokedCommand = '';
+      let invokedArgs: any = null;
+
+      (globalThis as any).window = {
+        __TAURI_INTERNALS__: {
+          invoke: async (cmd: string, args: any) => {
+            invokedCommand = cmd;
+            invokedArgs = args;
+            if (cmd === 'pick_snapshot_directory') {
+              return '/home/trader/TradingSnaps';
+            }
+            if (cmd === 'save_snapshot_file') {
+              return `/home/trader/TradingSnaps/${args.filename}`;
+            }
+            return null;
+          },
+        },
+      };
+
+      assert.strictEqual(isTauriEnvironment(), true, 'isTauriEnvironment harus true saat __TAURI_INTERNALS__ ada');
+
+      // 1. pickSnapshotDirectory berhasil memilih folder
+      const pickedDir = await pickSnapshotDirectory();
+      assert.strictEqual(invokedCommand, 'pick_snapshot_directory');
+      assert.strictEqual(pickedDir, '/home/trader/TradingSnaps');
+
+      // 2. pickSnapshotDirectory saat dialog dibatalkan (null)
+      (globalThis as any).window.__TAURI_INTERNALS__.invoke = async () => null;
+      const cancelledDir = await pickSnapshotDirectory();
+      assert.strictEqual(cancelledDir, null, 'Saat dialog dibatalkan oleh pengguna, kembalikan null');
+
+      // 3. saveSnapshotToFile di Tauri berhasil menyimpan ke direktori kustom
+      (globalThis as any).window.__TAURI_INTERNALS__.invoke = async (cmd: string, args: any) => {
+        invokedCommand = cmd;
+        invokedArgs = args;
+        return `/home/trader/CustomSnapshots/${args.filename}`;
+      };
+
+      const mockCanvas = createMockCanvas(800, 600);
+      const tauriSaveRes: SaveSnapshotResult = await saveSnapshotToFile(
+        mockCanvas,
+        'btc-breakout.png',
+        '/home/trader/CustomSnapshots'
+      );
+      assert.strictEqual(tauriSaveRes.success, true);
+      assert.strictEqual(tauriSaveRes.filePath, '/home/trader/CustomSnapshots/btc-breakout.png');
+      assert.strictEqual(tauriSaveRes.isFallback, false, 'isFallback harus false saat Tauri IPC berhasil');
+      assert.strictEqual(invokedCommand, 'save_snapshot_file');
+      assert.strictEqual(invokedArgs.directory, '/home/trader/CustomSnapshots');
+      assert.strictEqual(invokedArgs.filename, 'btc-breakout.png');
+
+      // 4. saveSnapshotToFile saat Tauri invoke melempar error -> fallback jujur ke Downloads/
+      (globalThis as any).window.__TAURI_INTERNALS__.invoke = async () => {
+        throw new Error('OS disk write permission denied');
+      };
+      const tauriErrFallback = await saveSnapshotToFile(mockCanvas, 'btc-err.png', '/restricted/root');
+      assert.strictEqual(tauriErrFallback.success, true);
+      assert.strictEqual(tauriErrFallback.filePath, 'Downloads/btc-err.png');
+      assert.strictEqual(tauriErrFallback.isFallback, true, 'isFallback harus true saat Tauri invoke melempar error');
+    } finally {
+      (globalThis as any).window = originalWindow;
+    }
+
+    // D. Lightweight Thumbnail Helper: createSnapshotThumbnail
+    const highResCanvas = createMockCanvas(3840, 2160);
+    const thumbUrl = createSnapshotThumbnail(highResCanvas, 200);
+    assert.ok(thumbUrl, 'Thumbnail URL harus berhasil dihasilkan');
+    assert.ok(thumbUrl.startsWith('data:image/png'), 'Thumbnail URL harus berupa data URL valid');
+
+    // E. Defensive check: input invalid tidak boleh crash
+    assert.strictEqual(createSnapshotThumbnail(null as any), undefined);
+    assert.strictEqual(createSnapshotThumbnail(undefined as any), undefined);
+    assert.strictEqual(createSnapshotThumbnail({} as any), undefined);
+    assert.strictEqual(createSnapshotThumbnail(createMockCanvas(0, 0)), undefined);
   });
 });

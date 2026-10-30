@@ -23,6 +23,7 @@
     downloadSnapshot,
     saveSnapshotToFile,
     generateSnapshotFilename,
+    createSnapshotThumbnail,
     type SnapshotMetadata
   } from '../lib/services/chartSnapshotService';
   import { alertService } from '../lib/services/alertService';
@@ -1203,7 +1204,7 @@
       });
 
       const copyResult = await copySnapshotToClipboard(composite);
-      const thumbUrl = typeof composite.toDataURL === 'function' ? composite.toDataURL('image/png') : undefined;
+      const thumbUrl = createSnapshotThumbnail(composite);
 
       if (copyResult.success) {
         snapshotToast = {
@@ -1225,7 +1226,12 @@
           thumbnailUrl: thumbUrl,
           timestamp: Date.now(),
         };
-        addSystemLog(`Clipboard diblokir. Snapshot disimpan di ${saveRes.filePath || filename}`, 'info');
+        addSystemLog(
+          saveRes.isFallback
+            ? `Clipboard diblokir. Snapshot dialihkan ke unduhan browser: ${saveRes.filePath || 'Downloads/' + filename}`
+            : `Clipboard diblokir. Snapshot disimpan di ${saveRes.filePath || filename}`,
+          'info'
+        );
       }
     } catch (err: any) {
       console.error('[Snapshot] Gagal menyalin snapshot:', err);
@@ -1266,16 +1272,25 @@
 
       const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
       const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
-      const thumbUrl = typeof composite.toDataURL === 'function' ? composite.toDataURL('image/png') : undefined;
+      const thumbUrl = createSnapshotThumbnail(composite);
+
+      const locationMessage = saveRes.isFallback
+        ? `Snapshot diunduh ke ${saveRes.filePath || 'Downloads/' + filename}`
+        : `Snapshot tersimpan di ${saveRes.filePath || filename}`;
 
       snapshotToast = {
         visible: true,
         type: 'saved',
-        message: `Snapshot tersimpan di ${saveRes.filePath || filename}`,
+        message: locationMessage,
         thumbnailUrl: thumbUrl,
         timestamp: Date.now(),
       };
-      addSystemLog(`Snapshot grafik berhasil disimpan di: ${saveRes.filePath || filename}`, 'success');
+      addSystemLog(
+        saveRes.isFallback
+          ? `Snapshot grafik dialihkan ke unduhan browser: ${saveRes.filePath || 'Downloads/' + filename}`
+          : `Snapshot grafik berhasil disimpan di: ${saveRes.filePath || filename}`,
+        'success'
+      );
     } catch (err: any) {
       console.error('[Snapshot] Gagal mengunduh snapshot:', err);
       snapshotToast = {
