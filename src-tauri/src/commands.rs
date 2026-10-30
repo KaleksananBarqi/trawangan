@@ -274,22 +274,35 @@ pub fn get_default_snapshot_directory() -> Result<String, String> {
     Ok(dir.to_string_lossy().to_string())
 }
 
-#[tauri::command]
-pub fn save_snapshot_file(
-    directory: Option<String>,
-    filename: String,
-    base64_data: String,
-) -> Result<String, String> {
-    use base64::prelude::*;
+/// Sanitasi nama berkas snapshot untuk mencegah path traversal.
+/// Mengambil hanya komponen file_name murni dan menyediakan fallback aman jika kosong/berbahaya.
+pub fn sanitize_snapshot_filename(filename: &str) -> String {
+    let normalized = filename.replace('\\', "/");
+    std::path::Path::new(&normalized)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .map(|s| s.trim())
+        .filter(|&s| !s.is_empty() && s != "." && s != "..")
+        .unwrap_or("trawangan-snapshot.png")
+        .to_string()
+}
+
+/// Helper terpadu untuk resolusi direktori snapshot, ekspansi tilde (~),
+/// fallback ke direktori bawaan, dan pembuatan direktori otomatis jika belum ada.
+pub fn resolve_snapshot_dir(directory: Option<String>) -> Result<std::path::PathBuf, String> {
     use std::path::PathBuf;
 
-    // 1. Tentukan direktori target
     let target_dir: PathBuf = match directory {
         Some(d) if !d.trim().is_empty() && d.trim() != "default" => {
             let trimmed = d.trim();
             if trimmed.starts_with('~') {
                 if let Some(home) = dirs::home_dir() {
-                    home.join(trimmed.trim_start_matches('~').trim_start_matches('/'))
+                    home.join(
+                        trimmed
+                            .trim_start_matches('~')
+                            .trim_start_matches('/')
+                            .trim_start_matches('\\'),
+                    )
                 } else {
                     PathBuf::from(trimmed)
                 }
@@ -309,6 +322,30 @@ pub fn save_snapshot_file(
             .map_err(|e| format!("Gagal membuat direktori {}: {}", target_dir.display(), e))?;
     }
 
+    Ok(target_dir)
+}
+
+#[tauri::command]
+pub async fn pick_snapshot_directory() -> Result<Option<String>, String> {
+    let folder = rfd::AsyncFileDialog::new()
+        .set_title("Pilih Folder Penyimpanan Snapshot")
+        .pick_folder()
+        .await;
+
+    Ok(folder.map(|handle| handle.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub fn save_snapshot_file(
+    directory: Option<String>,
+    filename: String,
+    base64_data: String,
+) -> Result<String, String> {
+    use base64::prelude::*;
+
+    // 1. Tentukan direktori target menggunakan helper terpadu
+    let target_dir = resolve_snapshot_dir(directory)?;
+
     // 2. Bersihkan header data URL base64 jika ada
     let clean_base64 = if let Some(idx) = base64_data.find(";base64,") {
         &base64_data[idx + 8..]
@@ -323,12 +360,9 @@ pub fn save_snapshot_file(
         .decode(clean_base64.trim())
         .map_err(|e| format!("Gagal mendekode data base64 gambar: {}", e))?;
 
-    // 4. Susun nama berkas dan path lengkap
-    let safe_filename = if filename.trim().is_empty() {
-        "trawangan-snapshot.png".to_string()
-    } else {
-        filename
-    };
+    // 4. Sanitasi nama berkas untuk mencegah celah keamanan path traversal:
+    // Hanya komponen nama berkas murni yang digabungkan dengan target_dir.
+    let safe_filename = sanitize_snapshot_filename(&filename);
     let target_file = target_dir.join(safe_filename);
 
     // 5. Tulis berkas ke filesystem
@@ -340,31 +374,7 @@ pub fn save_snapshot_file(
 
 #[tauri::command]
 pub fn open_snapshot_folder(directory: Option<String>) -> Result<(), String> {
-    use std::path::PathBuf;
-
-    let target_dir: PathBuf = match directory {
-        Some(d) if !d.trim().is_empty() && d.trim() != "default" => {
-            let trimmed = d.trim();
-            if trimmed.starts_with('~') {
-                if let Some(home) = dirs::home_dir() {
-                    home.join(trimmed.trim_start_matches('~').trim_start_matches('/'))
-                } else {
-                    PathBuf::from(trimmed)
-                }
-            } else {
-                PathBuf::from(trimmed)
-            }
-        }
-        _ => dirs::download_dir()
-            .or_else(|| dirs::picture_dir())
-            .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default()),
-    };
-
-    if !target_dir.exists() {
-        let _ = std::fs::create_dir_all(&target_dir);
-    }
-
+    let target_dir = resolve_snapshot_dir(directory)?;
     let dir_str = target_dir.to_string_lossy().to_string();
 
     #[cfg(target_os = "windows")]
@@ -392,6 +402,94 @@ pub fn open_snapshot_folder(directory: Option<String>) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_snapshot_filename_normal() {
+        let name = sanitize_snapshot_filename("trawangan-BTCUSDT-15m.png");
+        assert_eq!(name, "trawangan-BTCUSDT-15m.png");
+    }
+
+    #[test]
+    fn test_sanitize_snapshot_filename_path_traversal() {
+        // Relatif path traversal Unix
+        assert_eq!(
+            sanitize_snapshot_filename("../../../../etc/shadow"),
+            "shadow"
+        );
+        // Relatif path traversal Windows
+        assert_eq!(
+            sanitize_snapshot_filename("..\\..\\Windows\\System32\\calc.exe"),
+            "calc.exe"
+        );
+        // Absolute path Unix
+        assert_eq!(
+            sanitize_snapshot_filename("/var/log/secret.png"),
+            "secret.png"
+        );
+        // Kombinasi traversal dots dan slash
+        assert_eq!(
+            sanitize_snapshot_filename("../../../snapshot.png"),
+            "snapshot.png"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_snapshot_filename_empty_and_special() {
+        // String kosong
+        assert_eq!(sanitize_snapshot_filename(""), "trawangan-snapshot.png");
+        // Hanya whitespace
+        assert_eq!(sanitize_snapshot_filename("   "), "trawangan-snapshot.png");
+        // Hanya titik traversal
+        assert_eq!(sanitize_snapshot_filename(".."), "trawangan-snapshot.png");
+        assert_eq!(sanitize_snapshot_filename("."), "trawangan-snapshot.png");
+        assert_eq!(sanitize_snapshot_filename("../../"), "trawangan-snapshot.png");
+    }
+
+    #[test]
+    fn test_resolve_snapshot_dir_tilde_and_default() {
+        // Fallback default
+        let default_dir = resolve_snapshot_dir(None).expect("Harus berhasil menyelesaikan default");
+        assert!(default_dir.exists());
+
+        // Resolusi tilde (~)
+        if let Some(home) = dirs::home_dir() {
+            let resolved_tilde = resolve_snapshot_dir(Some("~/Pictures".to_string()))
+                .expect("Harus berhasil expand tilde");
+            assert_eq!(resolved_tilde, home.join("Pictures"));
+        }
+    }
+
+    #[test]
+    fn test_save_snapshot_file_sanitization_defense() {
+        // Buat folder temporary untuk pengujian simpan
+        let temp_dir = std::env::temp_dir().join("trawangan_test_snapshots");
+        let temp_dir_str = temp_dir.to_string_lossy().to_string();
+
+        let mock_png_base64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+        // Coba injeksi path traversal "../evil.png"
+        let saved_path_str = save_snapshot_file(
+            Some(temp_dir_str.clone()),
+            "../../evil.png".to_string(),
+            mock_png_base64.to_string(),
+        )
+        .expect("Penyimpanan harus sukses");
+
+        let saved_path = std::path::PathBuf::from(&saved_path_str);
+        // Pastikan berkas tersimpan di dalam temp_dir, BUKAN di parent direktori di luar
+        assert_eq!(saved_path.parent().unwrap(), temp_dir.as_path());
+        assert_eq!(saved_path.file_name().unwrap(), "evil.png");
+        assert!(saved_path.exists());
+
+        // Bersihkan berkas uji
+        let _ = std::fs::remove_file(saved_path);
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
 }
 
 

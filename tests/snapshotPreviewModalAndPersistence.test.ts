@@ -496,4 +496,28 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
       'Direktori snapshot kustom harus tersimpan dan dapat dimuat kembali secara utuh'
     );
   });
+
+  await t.test('15. Path Traversal Guard Contract: Sanitasi nama berkas dan pencegahan traversal direktori (#98)', () => {
+    // A. generateSnapshotFilename membersihkan pemisah direktori (/ dan \)
+    const date = new Date(2026, 9, 30, 18, 20, 30);
+    const traversalSymbol = '../../../etc/shadow';
+    const filename = generateSnapshotFilename(traversalSymbol, '15m', date);
+    assert.strictEqual(
+      filename.includes('/'),
+      false,
+      'Nama berkas tidak boleh memuat karakter slash (/)'
+    );
+    assert.strictEqual(
+      filename.includes('\\'),
+      false,
+      'Nama berkas tidak boleh memuat karakter backslash (\\)'
+    );
+
+    // B. Verifikasi bahwa nama berkas yang dihasilkan aman untuk digabungkan dengan direktori target
+    assert.match(
+      filename,
+      /^trawangan-.*-15m-20261030-182030\.png$/,
+      'Format nama berkas tetap konsisten dan aman'
+    );
+  });
 });

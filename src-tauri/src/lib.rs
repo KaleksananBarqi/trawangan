@@ -63,7 +63,8 @@ pub fn run() {
             commands::http_get,
             commands::get_default_snapshot_directory,
             commands::save_snapshot_file,
-            commands::open_snapshot_folder
+            commands::open_snapshot_folder,
+            commands::pick_snapshot_directory
         ])
         .run(tauri::generate_context!())
         .expect("Terjadi error saat menjalankan aplikasi desktop Trawangan");
