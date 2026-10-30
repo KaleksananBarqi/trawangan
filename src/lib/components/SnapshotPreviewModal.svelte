@@ -69,8 +69,8 @@
   let capturedAt = $state<number>(Date.now());
   let capturedPrice = $state<number | null>(null);
 
-  // Cache kanvas sumber grafik saat modal dibuka untuk mencegah re-evaluasi WebGL sinkron
-  let cachedSourceCanvas = $state<HTMLCanvasElement | null>(null);
+  // Cache kanvas sumber grafik saat modal dibuka untuk mencegah re-evaluasi WebGL sinkron (non-reaktif untuk efisiensi Svelte 5)
+  let cachedSourceCanvas: HTMLCanvasElement | null = null;
 
   // State Pratinjau
   let previewUrl = $state<string>('');
@@ -495,7 +495,7 @@
               >
                 <div class="mode-btn-content">
                   <ImageIcon size={13} />
-                  <span class="btn-title">Clean Chart</span>
+                  <span class="btn-title">Clean Chart Export</span>
                 </div>
                 <span class="btn-desc">Piksel murni tanpa kartu bingkai</span>
               </button>

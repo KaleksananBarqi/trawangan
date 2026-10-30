@@ -37,13 +37,20 @@ test('SnapshotPreviewModal: Pencegahan Reactivity Loop & UI Thread Saturation', 
     );
   });
 
-  await t.test('3. Source Canvas Caching: Opsi toggle (Frame/Price/Time) tidak boleh memanggil getScreenshotCanvas ulang', () => {
+  await t.test('3. Source Canvas Caching & Svelte 5 Judgement Call: Non-reactive canvas reference without proxy overhead', () => {
     // getScreenshotCanvas memicu render WebGL sinkron di Vela (this.paintData()).
     // Kanvas sumber harus dicache saat modal dibuka atau saat scope berganti, bukan di setiap render preview.
     assert.match(
       sourceCode,
       /cachedSourceCanvas|cachedCanvas/,
       'SnapshotPreviewModal wajib menyimpan cache canvas sumber saat modal dibuka untuk mencegah re-evaluasi WebGL berulang'
+    );
+    // Svelte 5 Judgement Call: cachedSourceCanvas bukan reactive state ($state) karena DOM canvas element
+    // tidak pernah dimutasi secara reaktif dan tidak memerlukan Svelte 5 state proxy wrapper.
+    assert.match(
+      sourceCode,
+      /let\s+cachedSourceCanvas\s*:\s*HTMLCanvasElement\s*\|\s*null\s*=\s*null/,
+      'cachedSourceCanvas harus berupa variabel non-reaktif murni tanpa $state wrapper untuk menghindari proxy overhead'
     );
   });
 
@@ -142,5 +149,18 @@ test('SnapshotPreviewModal: Pencegahan Reactivity Loop & UI Thread Saturation', 
     // Pola yang diperbaiki hanya memanggil canvas capture 1 KALI saat modal dibuka
     assert.strictEqual(fixedCanvasCaptures, 1, 'Pola baru hanya meng-capture canvas 1 KALI saat modal dibuka');
     assert.strictEqual(fixedEffectCalls, 1, 'Pola baru tidak terpengaruh oleh WebSocket ticker ticks');
+  });
+
+  await t.test('6. Domain Vocabulary: Penegakan istilah kanonik Clean Chart Export sesuai GLOSSARY.md', () => {
+    assert.match(
+      sourceCode,
+      /Clean Chart Export/,
+      'SnapshotPreviewModal wajib menggunakan istilah kanonik Clean Chart Export'
+    );
+    assert.doesNotMatch(
+      sourceCode,
+      />\s*Clean Export\s*</,
+      'SnapshotPreviewModal tidak boleh menggunakan istilah non-kanonik Clean Export'
+    );
   });
 });

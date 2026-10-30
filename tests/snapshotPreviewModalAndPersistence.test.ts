@@ -1,6 +1,8 @@
 // Unit Tests untuk Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & AppSettings Persistence
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   DEFAULT_APP_SETTINGS,
   resolveAppSettings
@@ -620,5 +622,84 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
     assert.strictEqual(createSnapshotThumbnail(undefined as any), undefined);
     assert.strictEqual(createSnapshotThumbnail({} as any), undefined);
     assert.strictEqual(createSnapshotThumbnail(createMockCanvas(0, 0)), undefined);
+  });
+
+  await t.test('17. Ticket 3 (#100): Settings UI Native Folder Picker, Clean Chart Export Vocabulary & Preview Integration', () => {
+    // 1. GeneralTab.svelte Static Verification
+    const generalTabPath = path.resolve('src/lib/components/settings/GeneralTab.svelte');
+    const generalTabSource = fs.readFileSync(generalTabPath, 'utf8');
+
+    // Import pickSnapshotDirectory
+    assert.match(
+      generalTabSource,
+      /import\s*\{[^}]*pickSnapshotDirectory[^}]*\}\s*from\s*['"]\.\.\/\.\.\/services\/chartSnapshotService['"]/,
+      'GeneralTab.svelte harus mengimpor pickSnapshotDirectory dari chartSnapshotService'
+    );
+
+    // Tombol "Pilih Folder..." di dalam .directory-setting-group
+    assert.match(
+      generalTabSource,
+      /class="btn-pick-folder"[^>]*>[\s\S]*?Pilih Folder\.\.\.[\s\S]*?<\/button>/,
+      'GeneralTab.svelte harus menyertakan tombol "Pilih Folder..." dengan class btn-pick-folder'
+    );
+
+    // Handler pick snapshot directory yang memanggil onUpdateSettings saat path dipilih
+    assert.match(
+      generalTabSource,
+      /async function handlePickSnapshotDirectory[\s\S]*?pickSnapshotDirectory\(\)[\s\S]*?onUpdateSettings\(\{\s*snapshotDirectory:\s*\w+\s*\}\)/,
+      'handlePickSnapshotDirectory harus memanggil pickSnapshotDirectory() dan mengupdate settings jika path dipilih'
+    );
+
+    // Buka folder langsung memanggil openSnapshotFolder tanpa wrapper berlebihan
+    assert.match(
+      generalTabSource,
+      /onclick=\{\(\)\s*=>\s*openSnapshotFolder\(settings\.snapshotDirectory\)\}/,
+      'Tombol Buka Folder harus memanggil openSnapshotFolder langsung tanpa middleman wrapper'
+    );
+    assert.doesNotMatch(
+      generalTabSource,
+      /function handleOpenSnapshotFolder/,
+      'GeneralTab.svelte tidak boleh mempertahankan fungsi middleman handleOpenSnapshotFolder yang berlebihan'
+    );
+
+    // Penegakan Kosakata Domain: Clean Chart Export (bukan Clean Export)
+    assert.match(
+      generalTabSource,
+      /Clean Chart Export/,
+      'GeneralTab.svelte harus menggunakan istilah domain kanonik Clean Chart Export'
+    );
+    assert.doesNotMatch(
+      generalTabSource,
+      />\s*Clean Export\s*</,
+      'GeneralTab.svelte tidak boleh menggunakan istilah non-kanonik Clean Export'
+    );
+
+    // 2. SnapshotPreviewModal.svelte Static Verification
+    const previewModalPath = path.resolve('src/lib/components/SnapshotPreviewModal.svelte');
+    const previewModalSource = fs.readFileSync(previewModalPath, 'utf8');
+
+    // Svelte 5 Judgement Call: cachedSourceCanvas non-reactive
+    assert.match(
+      previewModalSource,
+      /let\s+cachedSourceCanvas\s*:\s*HTMLCanvasElement\s*\|\s*null\s*=\s*null;/,
+      'cachedSourceCanvas harus dideklarasikan sebagai variabel non-reaktif murni tanpa $state'
+    );
+    assert.doesNotMatch(
+      previewModalSource,
+      /let\s+cachedSourceCanvas\s*=\s*\$state/,
+      'cachedSourceCanvas tidak boleh menggunakan $state wrapper'
+    );
+
+    // Penegakan Kosakata Domain: Clean Chart Export pada tombol mode pratinjau
+    assert.match(
+      previewModalSource,
+      /<span class="btn-title">\s*Clean Chart Export\s*<\/span>/,
+      'SnapshotPreviewModal.svelte harus menampilkan teks Clean Chart Export pada mode toggle'
+    );
+    assert.doesNotMatch(
+      previewModalSource,
+      /<span class="btn-title">\s*Clean Export\s*<\/span>/,
+      'SnapshotPreviewModal.svelte tidak boleh menggunakan istilah non-kanonik Clean Export'
+    );
   });
 });

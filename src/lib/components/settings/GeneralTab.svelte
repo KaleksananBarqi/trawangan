@@ -10,6 +10,7 @@
     Clock,
     Camera,
     Folder,
+    FolderOpen,
     ExternalLink,
     Sparkles
   } from '@lucide/svelte';
@@ -20,7 +21,10 @@
     SUPPORTED_WORLD_CITIES,
     DEFAULT_WORLD_CLOCK_CITIES
   } from '../../services/worldClockService';
-  import { openSnapshotFolder } from '../../services/chartSnapshotService';
+  import {
+    openSnapshotFolder,
+    pickSnapshotDirectory
+  } from '../../services/chartSnapshotService';
 
   interface Props {
     settings: AppSettings;
@@ -57,8 +61,11 @@
     }, 4500);
   }
 
-  async function handleOpenSnapshotFolder(dir?: string) {
-    await openSnapshotFolder(dir);
+  async function handlePickSnapshotDirectory() {
+    const selected = await pickSnapshotDirectory();
+    if (selected) {
+      onUpdateSettings({ snapshotDirectory: selected });
+    }
   }
 </script>
 
@@ -259,9 +266,18 @@
       />
       <button
         type="button"
+        class="btn-pick-folder"
+        title="Pilih folder penyimpanan via dialog native sistem operasi"
+        onclick={handlePickSnapshotDirectory}
+      >
+        <FolderOpen size={13} />
+        <span>Pilih Folder...</span>
+      </button>
+      <button
+        type="button"
         class="btn-open-folder"
         title="Buka folder penyimpanan di File Manager"
-        onclick={() => handleOpenSnapshotFolder(settings.snapshotDirectory)}
+        onclick={() => openSnapshotFolder(settings.snapshotDirectory)}
       >
         <Folder size={13} />
         <span>Buka Folder</span>
@@ -315,7 +331,7 @@
       {#if settings.snapshotIncludeFrame !== false}
         <Sparkles size={13} /> Branded Frame
       {:else}
-        Clean Export
+        Clean Chart Export
       {/if}
     </button>
   </div>
@@ -538,12 +554,13 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    width: 55%;
-    max-width: 320px;
+    width: auto;
+    max-width: 440px;
   }
 
   .directory-input {
     flex: 1;
+    min-width: 130px;
     background-color: var(--bg-surface);
     border: 1px solid var(--border-hairline);
     color: var(--text-main);
@@ -562,6 +579,7 @@
     color: var(--text-dim);
   }
 
+  .btn-pick-folder,
   .btn-open-folder {
     display: flex;
     align-items: center;
@@ -577,6 +595,7 @@
     transition: all 0.15s ease;
   }
 
+  .btn-pick-folder:hover,
   .btn-open-folder:hover {
     background-color: var(--bg-hover);
     color: var(--text-main);
