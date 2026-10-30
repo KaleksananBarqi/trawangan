@@ -5,6 +5,34 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.25.0] - 2026-10-31
+
+### 🚀 Ditambahkan (Added)
+- **Mesin Gambar Berbasis Gestur "Draw by Holding" (ADR-0013, #102, #104, #105, #106, #107):**
+  - **Natural Inking via Shortcut Hold (`Shift+D` / `~`)**: Pengguna dapat menahan pintasan keyboard (`Shift+D` atau `~` / Backquote) lalu menggoreskan mouse di atas grafik secara bebas untuk langsung melahirkan alat gambar yang sesuai.
+  - **Pengenalan Pola Geometris Cerdas (*Gesture Recognizer*)**:
+    - *Trend Line*: Goresan garis lurus miring secara presisi menghubungkan titik awal dan akhir.
+    - *Ray*: Goresan garis lurus horizontal/miring yang menembus batas sumbu harga kanan.
+    - *Horizontal Line*: Goresan mendatar (< 15°) otomatis menempel (*snap*) pada wick / lilin terdekat.
+    - *Vertical Line*: Goresan tegak lurus (> 75°) menancap pada waktu bar lilin.
+    - *Rectangle / Box*: Goresan tertutup bersudut empat dengan deteksi rasio aspek bounding box.
+    - *Ellipse*: Goresan loop oval melingkar tertutup.
+    - *Fib Retracement*: Goresan tiga sisi zigzag swing-to-swing untuk memproyeksikan level Fibonacci.
+    - *Arrow*: Batang garis dengan ujung kait panah terarah.
+    - *Path*: Garis bersegmen dengan deteksi belokan sudut tajam.
+  - **Penghapusan Coretan Cepat (*Scribble Erase*)**: Menggoreskan coretan zig-zag bolak-balik di atas objek gambar yang ada akan langsung menghapusnya seketika, dengan dukungan penuh pemulihan riwayat *Undo* (`Ctrl+Z`).
+  - **Siklus Kandidat Interaktif (*Tab*) & Pembatalan (*Esc*)**: Menampilkan *floating HUD* kandidat berbatas waktu; menekan `Tab` berganti ke interpretasi alat alternatif (misal dari garis ke ray), dan `Esc` membatalkan pembuatan objek seketika.
+  - **Katalog Panduan Visual (*Visual Cheatsheet Modal*)**: Modal panduan visual "Draw by holding" dengan kartu ilustrasi pola coretan untuk setiap alat yang dapat diakses langsung dari tombol toolbar samping atau pintasan.
+- **Revamp Sistem Pintasan Keyboard & Input Timeframe Cepat (#102, #103):**
+  - **Timeframe Quick Input Bar**: Mengetik angka (misal `1`, `5`, `15`, `60`, `240`) langsung memunculkan popover bar pencarian timeframe yang cepat dan responsif, menggantikan popup lama yang kaku.
+  - **Input Dispatcher Terpusat**: Penyempurnaan isolasi penekanan tombol keyboard agar tidak bentrok dengan input form modal, Pine IDE, atau menu pencarian koin (`Ctrl+K`).
+  - **Pencegahan Konflik Shortcut**: Shortcut gestur dialihkan ke `Shift+D` agar tidak memicu pencarian koin (`D`), serta pemulihan tool otomatis saat tombol shortcut dilepas.
+
+### 🔄 Diubah (Changed)
+- **Seleksi Alat & Perubahan Kursor Otomatis Pasca Gestur**:
+  - Setelah goresan selesai, alat yang dikenali langsung aktif di toolbar dan kursor mouse otomatis berganti ke alat tersebut di kanvas grafik Vela.
+  - Resolusi titik anchor secara otomatis mengonversi koordinat piksel goresan ke nilai waktu dan harga (*time/price*) grafik Vela melalui *drawing projector*.
+
 ## [0.24.0] - 2026-10-30
 
 ### 🚀 Ditambahkan (Added)
