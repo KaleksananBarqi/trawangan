@@ -3,7 +3,7 @@
   import './chart.css';
   import { Scissors, Bell, X, WifiOff, Edit3 } from '@lucide/svelte';
   import { ChartSessionController } from '../services/chartSessionController';
-  import { chartDrawingController } from '../services/chartDrawingController';
+  import { chartDrawingController, type GestureCreationState } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { alertService } from '../services/alertService';
   import { marketFeed } from '../services/market';
@@ -66,6 +66,7 @@
   let hoveredBarDateText = $state('');
   let isHandpullActive = $state(false);
   let isGestureActive = $state(false);
+  let gestureCreationState = $state<GestureCreationState | null>(null);
   let gestureInkCanvas: HTMLCanvasElement | null = $state(null);
   let isDrawingGestureStroke = $state(false);
   let isContextMenuOpen = $state(false);
@@ -138,6 +139,7 @@
     unsubDrawingState = chartDrawingController.subscribe((st) => {
       isHandpullActive = st.activeTool === 'handpull';
       isGestureActive = chartDrawingController.isGestureMode();
+      gestureCreationState = st.lastGestureCreation;
       scheduleBadgePositionUpdate();
     });
     unsubOverlay = priceScaleOverlayController.subscribe((coords) => {
@@ -378,6 +380,7 @@
 
   function handleContainerPointerDown(e: PointerEvent) {
     scheduleBadgePositionUpdate();
+    chartDrawingController.dismissGestureHUD();
     if (isGestureActive && e.button === 0 && chartContainer) {
       syncInkCanvasSize();
       isDrawingGestureStroke = true;
@@ -446,6 +449,22 @@
   }
 
   function handleWindowKeyDown(e: KeyboardEvent) {
+    // Tab candidate cycling saat Gesture HUD aktif
+    if (e.key === 'Tab' && chartDrawingController.isGestureHUDActive()) {
+      e.preventDefault();
+      e.stopPropagation();
+      chartDrawingController.cycleGestureCandidate();
+      return;
+    }
+
+    // Esc cancel saat Gesture HUD aktif
+    if (e.key === 'Escape' && chartDrawingController.isGestureHUDActive()) {
+      e.preventDefault();
+      e.stopPropagation();
+      chartDrawingController.cancelGestureCreation();
+      return;
+    }
+
     if (e.key === 'Shift') {
       const snap = chartDrawingController.getSnapshot().snapMode;
       const inverted = snap === 'off' ? 'strong' : 'off';
@@ -493,6 +512,23 @@
       <span class="gesture-hud-dot"></span>
       <span>GESTURE DRAW</span>
       <span class="gesture-hud-sub">Tahan goresan di kanvas</span>
+    </div>
+  {/if}
+
+  {#if gestureCreationState}
+    {@const active = gestureCreationState.candidates[gestureCreationState.candidateIndex]}
+    {@const next = gestureCreationState.candidates.length > 1
+      ? gestureCreationState.candidates[(gestureCreationState.candidateIndex + 1) % gestureCreationState.candidates.length]
+      : null}
+    <div class="gesture-candidate-hud mono-nums" role="status" aria-live="polite">
+      <span class="gesture-candidate-tool">{active?.label || active?.tool}</span>
+      <span class="gesture-candidate-actions">
+        {#if next}
+          (Tab: {next.label || next.tool} • Esc: Batalkan)
+        {:else}
+          (Esc: Batalkan)
+        {/if}
+      </span>
     </div>
   {/if}
 

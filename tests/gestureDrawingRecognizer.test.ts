@@ -392,4 +392,46 @@ test('Core Gesture Recognizer Seam Suite (#104)', async (t) => {
     // Path mempertahankan koordinat simpul-simpul poliline
     assert.ok(res.points.length >= 4);
   });
+
+  await t.test('13. Deteksi pola goresan scribble zigzag bolak-balik menghasilkan tool scribble (#106)', () => {
+    // Pola coretan zigzag horizontal rapat bolak-balik (> 3 reversal, rasio pathLength / diagonal > 3.5)
+    const horizontalScribble: GesturePoint[] = [
+      { x: 100, y: 100 },
+      { x: 200, y: 105 }, // Kanan (+100)
+      { x: 105, y: 110 }, // Kiri (-95, Rev 1)
+      { x: 195, y: 115 }, // Kanan (+90, Rev 2)
+      { x: 110, y: 120 }, // Kiri (-85, Rev 3)
+      { x: 200, y: 125 }  // Kanan (+90, Rev 4)
+    ];
+
+    const resH = recognizeGesture(horizontalScribble);
+    assert.equal(resH.tool, 'scribble');
+    assert.ok(resH.confidence >= 0.85);
+    assert.equal(resH.candidates[0].tool, 'scribble');
+    assert.ok(resH.scribbleBounds);
+    assert.equal(resH.scribbleBounds.minX, 100);
+    assert.equal(resH.scribbleBounds.maxX, 200);
+    assert.equal(resH.scribbleBounds.minY, 100);
+    assert.equal(resH.scribbleBounds.maxY, 125);
+
+    // Pola coretan zigzag vertikal rapat bolak-balik
+    const verticalScribble: GesturePoint[] = [
+      { x: 100, y: 100 },
+      { x: 105, y: 200 }, // Bawah (+100)
+      { x: 110, y: 105 }, // Atas (-95, Rev 1)
+      { x: 115, y: 195 }, // Bawah (+90, Rev 2)
+      { x: 120, y: 110 }, // Atas (-85, Rev 3)
+      { x: 125, y: 200 }  // Bawah (+90, Rev 4)
+    ];
+
+    const resV = recognizeGesture(verticalScribble);
+    assert.equal(resV.tool, 'scribble');
+    assert.ok(resV.confidence >= 0.85);
+    assert.equal(resV.candidates[0].tool, 'scribble');
+    assert.ok(resV.scribbleBounds);
+    assert.equal(resV.scribbleBounds.minX, 100);
+    assert.equal(resV.scribbleBounds.maxX, 125);
+    assert.equal(resV.scribbleBounds.minY, 100);
+    assert.equal(resV.scribbleBounds.maxY, 200);
+  });
 });

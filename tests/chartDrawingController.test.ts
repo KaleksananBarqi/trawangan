@@ -485,6 +485,151 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     assert.equal(createdDrawings[createdDrawings.length - 1].type, 'path');
     assert.ok(createdDrawings[createdDrawings.length - 1].points.length >= 4);
   });
+
+  await t.test('13. Eksekusi Penghapusan Objek Gambar via Scribble Gesture dan Pemulihan Undo Stack (#106)', () => {
+    const controller = new ChartDrawingController();
+
+    let existingDrawings: any[] = [
+      { id: 'd-target', type: 'trendline', points: [{ x: 100, y: 100 }, { x: 200, y: 120 }] },
+      { id: 'd-other', type: 'trendline', points: [{ x: 500, y: 500 }, { x: 600, y: 600 }] }
+    ];
+
+    const calls: string[] = [];
+    const mockDrawings = {
+      all: () => existingDrawings,
+      removeMany: (ids: string[]) => {
+        calls.push(`removeMany:${ids.join(',')}`);
+        existingDrawings = existingDrawings.filter((d) => !ids.includes(d.id));
+      },
+      remove: (id: string) => {
+        calls.push(`remove:${id}`);
+        existingDrawings = existingDrawings.filter((d) => d.id !== id);
+      },
+      create: (spec: any) => {
+        existingDrawings.push(spec);
+        return spec;
+      },
+      undo: () => {
+        calls.push('undo');
+      },
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    controller.setTool('gesture');
+
+    // Buat goresan zigzag scribble di atas d-target (x: 100..200, y: 100..125)
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(200, 105);
+    controller.addGesturePoint(105, 110);
+    controller.addGesturePoint(195, 115);
+    controller.addGesturePoint(110, 120);
+    controller.addGesturePoint(200, 125);
+
+    const res = controller.finishGestureStroke();
+    assert.ok(res);
+    assert.equal(res.tool, 'scribble');
+
+    // d-target harus dihapus karena beririsan dengan scribbleBounds
+    assert.ok(calls.some((c) => c.includes('remove') && c.includes('d-target')));
+    assert.equal(existingDrawings.some((d) => d.id === 'd-target'), false);
+    // d-other tidak tersentuh
+    assert.equal(existingDrawings.some((d) => d.id === 'd-other'), true);
+
+    // Tekan Undo (Ctrl+Z) -> d-target harus dipulihkan
+    controller.undo();
+    assert.ok(calls.includes('undo'));
+    assert.equal(existingDrawings.some((d) => d.id === 'd-target'), true, 'd-target harus dipulihkan setelah undo');
+  });
+
+  await t.test('14. Floating HUD & Tab Candidate Cycling serta Esc Cancel (#106)', () => {
+    const controller = new ChartDrawingController();
+
+    let createdDrawings: any[] = [];
+    const deletedIds: string[] = [];
+
+    const mockDrawings = {
+      all: () => createdDrawings,
+      create: (spec: any) => {
+        const id = spec.id || `gen-${Date.now()}-${Math.random()}`;
+        const item = { id, ...spec };
+        createdDrawings.push(item);
+        return item;
+      },
+      remove: (id: string) => {
+        deletedIds.push(id);
+        createdDrawings = createdDrawings.filter((d) => d.id !== id);
+      },
+      removeMany: (ids: string[]) => {
+        deletedIds.push(...ids);
+        createdDrawings = createdDrawings.filter((d) => !ids.includes(d.id));
+      },
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    controller.setTool('gesture');
+
+    // Buat goresan ray/trendline yang memiliki kandidat alternatif
+    controller.startGestureStroke(200, 300);
+    controller.addGesturePoint(500, 250);
+    controller.addGesturePoint(750, 200);
+    controller.addGesturePoint(970, 180);
+
+    const res = controller.finishGestureStroke({
+      canvasWidth: 1000,
+      rightMarginThreshold: 50
+    });
+
+    assert.ok(res);
+    assert.equal(res.tool, 'ray');
+    assert.ok(res.candidates.length > 1);
+
+    // HUD harus aktif
+    assert.equal(controller.isGestureHUDActive(), true);
+    const creationState = controller.getLastGestureCreation();
+    assert.ok(creationState);
+    assert.equal(creationState.candidateIndex, 0);
+    assert.equal(creationState.candidates[0].tool, 'ray');
+
+    const firstDrawingId = creationState.drawingId;
+    assert.ok(firstDrawingId);
+
+    // 1. Tekan Tab untuk cycle ke kandidat berikutnya (misal trendline)
+    const cycled = controller.cycleGestureCandidate();
+    assert.equal(cycled, true);
+
+    const secondCreation = controller.getLastGestureCreation();
+    assert.ok(secondCreation);
+    assert.equal(secondCreation.candidateIndex, 1);
+    assert.notEqual(secondCreation.drawingId, firstDrawingId);
+    assert.ok(deletedIds.includes(firstDrawingId!));
+    assert.equal(createdDrawings.length, 1);
+    assert.equal(createdDrawings[0].type, secondCreation.candidates[1].tool);
+
+    // 2. Tekan Esc untuk membatalkan gambar yang baru dibuat
+    const secondDrawingId = secondCreation.drawingId;
+    const cancelled = controller.cancelGestureCreation();
+    assert.equal(cancelled, true);
+
+    // Drawing baru harus dihapus dan HUD tertutup
+    assert.ok(deletedIds.includes(secondDrawingId!));
+    assert.equal(createdDrawings.length, 0);
+    assert.equal(controller.isGestureHUDActive(), false);
+    assert.equal(controller.getLastGestureCreation(), null);
+  });
 });
 
 

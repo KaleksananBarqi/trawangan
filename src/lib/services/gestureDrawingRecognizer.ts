@@ -10,12 +10,19 @@
 
 export type LinearGestureTool = 'hline' | 'vline' | 'ray' | 'trendline';
 export type ComplexGestureTool = 'box' | 'ellipse' | 'arrow' | 'fibretracement' | 'path';
-export type GestureTool = LinearGestureTool | ComplexGestureTool;
+export type GestureTool = LinearGestureTool | ComplexGestureTool | 'scribble';
 
 export interface GesturePoint {
   x: number;
   y: number;
   time?: number;
+}
+
+export interface ScribbleBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 }
 
 export interface GestureCandidate {
@@ -29,6 +36,7 @@ export interface GestureRecognitionResult {
   confidence: number;
   candidates: GestureCandidate[];
   points: Array<{ x: number; y: number }>;
+  scribbleBounds?: ScribbleBounds;
 }
 
 export interface CandleWickItem {
@@ -213,6 +221,50 @@ export function calculateStrokeAngle(stroke: GesturePoint[]): number {
 }
 
 /**
+ * Menghitung frekuensi pembalikan arah koordinat pada goresan
+ * Digunakan untuk mendeteksi sapuan coretan zigzag rapat (scribble to erase)
+ */
+export function countCoordinateReversals(stroke: GesturePoint[]): {
+  reversalsX: number;
+  reversalsY: number;
+  maxReversals: number;
+} {
+  if (stroke.length < 3) return { reversalsX: 0, reversalsY: 0, maxReversals: 0 };
+
+  // Simplifikasi RDP ringan (epsilon 3px) untuk mengeliminasi jitter mikro mouse
+  const simplified = simplifyRDP(stroke, 3);
+  if (simplified.length < 3) return { reversalsX: 0, reversalsY: 0, maxReversals: 0 };
+
+  let reversalsX = 0;
+  let reversalsY = 0;
+
+  let lastDx = 0;
+  let lastDy = 0;
+
+  for (let i = 1; i < simplified.length; i++) {
+    const dx = simplified[i].x - simplified[i - 1].x;
+    const dy = simplified[i].y - simplified[i - 1].y;
+
+    if (Math.abs(dx) >= 3) {
+      if (lastDx !== 0 && ((dx > 0 && lastDx < 0) || (dx < 0 && lastDx > 0))) {
+        reversalsX++;
+      }
+      lastDx = dx;
+    }
+
+    if (Math.abs(dy) >= 3) {
+      if (lastDy !== 0 && ((dy > 0 && lastDy < 0) || (dy < 0 && lastDy > 0))) {
+        reversalsY++;
+      }
+      lastDy = dy;
+    }
+  }
+
+  const maxReversals = Math.max(reversalsX, reversalsY);
+  return { reversalsX, reversalsY, maxReversals };
+}
+
+/**
  * Menghitung jarak Euclidean linier antara dua titik
  */
 function getEuclideanDistance(p1: GesturePoint, p2: GesturePoint): number {
@@ -328,6 +380,41 @@ export function recognizeGesture(
 
   const wickList = options?.wicks || options?.candles || [];
   const wickRadius = options?.wickSnapRadius ?? 20;
+
+  // ─────────────────────────────────────────────────────────────
+  // 0. Deteksi Scribble to Erase (Pola Zigzag Bolak-balik Rapat)
+  // Kriteria: pembalikan arah koordinat (> 3 reversal) dan
+  // rasio panjang total jejak goresan terhadap diagonal bounding box (> 3.5)
+  // ─────────────────────────────────────────────────────────────
+  const { reversalsX, reversalsY, maxReversals } = countCoordinateReversals(stroke);
+  const lengthToDiagRatio = metrics.diagonal > 0 ? metrics.pathLength / metrics.diagonal : 0;
+  const isScribble =
+    (maxReversals > 3 || (reversalsX + reversalsY) > 4) &&
+    lengthToDiagRatio > 3.5 &&
+    metrics.diagonal >= 10;
+
+  if (isScribble) {
+    const confidence = 0.95;
+    const scribbleBounds: ScribbleBounds = {
+      minX: metrics.minX,
+      minY: metrics.minY,
+      maxX: metrics.maxX,
+      maxY: metrics.maxY
+    };
+
+    return {
+      tool: 'scribble',
+      confidence,
+      candidates: [
+        { tool: 'scribble', confidence, label: 'Scribble Erase' }
+      ],
+      points: [
+        { x: metrics.minX, y: metrics.minY },
+        { x: metrics.maxX, y: metrics.maxY }
+      ],
+      scribbleBounds
+    };
+  }
 
   // ─────────────────────────────────────────────────────────────
   // 1. Goresan Tertutup (Closed Loop): Box vs Ellipse

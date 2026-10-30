@@ -11,8 +11,18 @@ import {
   recognizeGesture,
   type GesturePoint,
   type GestureRecognitionResult,
-  type GestureRecognizerOptions
+  type GestureRecognizerOptions,
+  type ScribbleBounds,
+  type GestureCandidate
 } from './gestureDrawingRecognizer';
+
+export interface GestureCreationState {
+  drawingId: string | null;
+  candidates: GestureCandidate[];
+  candidateIndex: number;
+  points: Array<{ x: number; y: number }>;
+  expiresAt: number;
+}
 
 export interface DrawingState {
   activeTool: DrawingToolType | null;
@@ -24,6 +34,7 @@ export interface DrawingState {
   canUndo: boolean;
   canRedo: boolean;
   selectedDrawingId: string | null;
+  lastGestureCreation: GestureCreationState | null;
 }
 
 type Subscriber = (state: DrawingState) => void;
@@ -45,6 +56,72 @@ export function resolveDrawingKey(providerId: string | undefined, symbol: string
 }
 
 /**
+ * Memeriksa apakah suatu objek gambar beririsan dengan area goresan scribble
+ */
+export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBounds): boolean {
+  if (!drawing) return false;
+
+  // 1. Jika drawing memiliki properti bounds
+  if (drawing.bounds) {
+    const b = drawing.bounds;
+    const minX = b.minX ?? b.left ?? b.x ?? 0;
+    const maxX = b.maxX ?? b.right ?? (minX + (b.width ?? 0));
+    const minY = b.minY ?? b.top ?? b.y ?? 0;
+    const maxY = b.maxY ?? b.bottom ?? (minY + (b.height ?? 0));
+    return !(maxX < bounds.minX || minX > bounds.maxX || maxY < bounds.minY || minY > bounds.maxY);
+  }
+
+  // 2. Jika drawing memiliki points (Array<{ x: number, y: number }>)
+  if (Array.isArray(drawing.points) && drawing.points.length > 0) {
+    const xs = drawing.points.map((p: any) => p.x);
+    const ys = drawing.points.map((p: any) => p.y);
+    const pMinX = Math.min(...xs);
+    const pMaxX = Math.max(...xs);
+    const pMinY = Math.min(...ys);
+    const pMaxY = Math.max(...ys);
+    return !(pMaxX < bounds.minX || pMinX > bounds.maxX || pMaxY < bounds.minY || pMinY > bounds.maxY);
+  }
+
+  // 3. Jika drawing memiliki anchors (Array<{ x?: number, y?: number, price?: number, time?: number }>)
+  if (Array.isArray(drawing.anchors) && drawing.anchors.length > 0) {
+    const validAnchors = drawing.anchors.filter((a: any) => typeof a.x === 'number' && typeof a.y === 'number');
+    if (validAnchors.length > 0) {
+      const xs = validAnchors.map((a: any) => a.x);
+      const ys = validAnchors.map((a: any) => a.y);
+      const aMinX = Math.min(...xs);
+      const aMaxX = Math.max(...xs);
+      const aMinY = Math.min(...ys);
+      const aMaxY = Math.max(...ys);
+      return !(aMaxX < bounds.minX || aMinX > bounds.maxX || aMaxY < bounds.minY || aMinY > bounds.maxY);
+    }
+  }
+
+  // 4. Jika drawing memiliki koordinat x1, y1, x2, y2
+  if (typeof drawing.x1 === 'number' && typeof drawing.y1 === 'number') {
+    const x2 = typeof drawing.x2 === 'number' ? drawing.x2 : drawing.x1;
+    const y2 = typeof drawing.y2 === 'number' ? drawing.y2 : drawing.y1;
+    const dMinX = Math.min(drawing.x1, x2);
+    const dMaxX = Math.max(drawing.x1, x2);
+    const dMinY = Math.min(drawing.y1, y2);
+    const dMaxY = Math.max(drawing.y1, y2);
+    return !(dMaxX < bounds.minX || dMinX > bounds.maxX || dMaxY < bounds.minY || dMinY > bounds.maxY);
+  }
+
+  // 5. Jika drawing memiliki koordinat x, y (dan width/height opsional)
+  if (typeof drawing.x === 'number' && typeof drawing.y === 'number') {
+    const w = drawing.width ?? 0;
+    const h = drawing.height ?? 0;
+    const dMinX = drawing.x;
+    const dMaxX = drawing.x + w;
+    const dMinY = drawing.y;
+    const dMaxY = drawing.y + h;
+    return !(dMaxX < bounds.minX || dMinX > bounds.maxX || dMaxY < bounds.minY || dMinY > bounds.maxY);
+  }
+
+  return false;
+}
+
+/**
  * ChartDrawingController - Deep Module untuk Operasi Gambar Terminal Trawangan
  * Mengenkapsulasi manajemen alat gambar, mode snap/stay, undo/redo, adaptasi canvas Vela,
  * dan debounced persistence ke SQLite/localStorage dalam satu antarmuka yang ramping.
@@ -61,6 +138,11 @@ export class ChartDrawingController {
   private canRedo = true;
   private isRestoring = false;
   private persistedSnapMode: SnapMode | null = null;
+
+  private undoHistory: Array<{ action: 'erase'; drawings: any[] }> = [];
+  private redoHistory: Array<{ action: 'erase'; drawings: any[] }> = [];
+  private lastGestureCreation: GestureCreationState | null = null;
+  private gestureHudTimeout: any = null;
 
   private workspace: any = null;
   private getSymbol: () => string = () => 'BTCUSDT';
@@ -256,7 +338,7 @@ export class ChartDrawingController {
 
   /**
    * Menyelesaikan sapuan gestur, menjalankan recognizer deterministik,
-   * dan membuat objek gambar definitif pada drawing layer grafik.
+   * dan membuat objek gambar definitif pada drawing layer grafik atau menghapus via scribble.
    */
   finishGestureStroke(options?: GestureRecognizerOptions): GestureRecognitionResult | null {
     if (this.liveGestureStroke.length < 2) {
@@ -269,11 +351,36 @@ export class ChartDrawingController {
 
     const result = recognizeGesture(stroke, options);
 
+    // 1. Tangani Penghapusan Scribble to Erase
+    if (result.tool === 'scribble') {
+      if (result.scribbleBounds) {
+        this.eraseDrawingsInBounds(result.scribbleBounds);
+      }
+      if (!this.stayMode && !this.isHoldingGestureKey) {
+        this.setTool('cursor');
+      }
+      return result;
+    }
+
+    // 2. Pembuatan Objek Gambar Definitif
     if (result.tool) {
-      this.createDrawing({
+      const created = this.createDrawing({
         type: result.tool,
         points: result.points
       });
+
+      const drawingId = created?.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
+
+      // Simpan referensi lastGestureCreation untuk Floating HUD & Tab cycling
+      if (result.candidates && result.candidates.length > 0) {
+        this.setLastGestureCreation({
+          drawingId,
+          candidates: result.candidates,
+          candidateIndex: 0,
+          points: result.points,
+          expiresAt: Date.now() + 2500
+        });
+      }
 
       // Jika stayMode false dan bukan transient hold, kembalikan ke kursor
       if (!this.stayMode && !this.isHoldingGestureKey) {
@@ -282,6 +389,156 @@ export class ChartDrawingController {
     }
 
     return result;
+  }
+
+  /**
+   * Menghapus seluruh drawing yang beririsan dengan scribbleBounds dan merekamnya ke undo stack
+   */
+  eraseDrawingsInBounds(bounds: ScribbleBounds): string[] {
+    const activeChart = this.getActiveChart();
+    const allDrawings = activeChart?.drawings?.all?.() || this.activeDrawings;
+    if (!allDrawings || allDrawings.length === 0) return [];
+
+    const toDelete = allDrawings.filter((d: any) => checkDrawingIntersectsBounds(d, bounds));
+    if (toDelete.length === 0) return [];
+
+    const idsToDelete = toDelete.map((d: any) => d.id).filter(Boolean);
+    if (idsToDelete.length === 0) return [];
+
+    // Catat ke internal undo stack sebelum dihapus
+    this.undoHistory.push({
+      action: 'erase',
+      drawings: toDelete.map((d: any) => ({ ...d }))
+    });
+    this.redoHistory = [];
+
+    // Hapus via drawing layer delete method
+    try {
+      if (typeof activeChart.drawings.removeMany === 'function') {
+        activeChart.drawings.removeMany(idsToDelete);
+      } else if (typeof activeChart.drawings.remove === 'function') {
+        for (const id of idsToDelete) {
+          activeChart.drawings.remove(id);
+        }
+      }
+    } catch (err) {
+      console.warn('Gagal menghapus drawings via scribble:', err);
+    }
+
+    if (this.selectedDrawingId && idsToDelete.includes(this.selectedDrawingId)) {
+      this.selectedDrawingId = null;
+    }
+
+    this.handleDrawingMutated();
+    return idsToDelete;
+  }
+
+  /**
+   * Mengambil referensi gestur yang baru dibuat jika masih aktif (belum expired)
+   */
+  getLastGestureCreation(): GestureCreationState | null {
+    if (this.lastGestureCreation && Date.now() > this.lastGestureCreation.expiresAt) {
+      this.lastGestureCreation = null;
+    }
+    return this.lastGestureCreation;
+  }
+
+  /**
+   * Memeriksa apakah Floating Gesture HUD sedang aktif
+   */
+  isGestureHUDActive(): boolean {
+    return this.getLastGestureCreation() !== null;
+  }
+
+  /**
+   * Mengatur state referensi gestur terakhir dan mengelola timer auto-dismiss 2.5 detik
+   */
+  setLastGestureCreation(creation: GestureCreationState | null): void {
+    if (this.gestureHudTimeout) {
+      clearTimeout(this.gestureHudTimeout);
+      this.gestureHudTimeout = null;
+    }
+
+    this.lastGestureCreation = creation;
+
+    if (creation) {
+      const delay = Math.max(0, creation.expiresAt - Date.now());
+      this.gestureHudTimeout = setTimeout(() => {
+        if (this.lastGestureCreation && Date.now() >= this.lastGestureCreation.expiresAt) {
+          this.lastGestureCreation = null;
+          this.notify();
+        }
+      }, delay);
+    }
+
+    this.notify();
+  }
+
+  /**
+   * Menutup Floating Gesture HUD tanpa menghapus drawing
+   */
+  dismissGestureHUD(): void {
+    if (this.gestureHudTimeout) {
+      clearTimeout(this.gestureHudTimeout);
+      this.gestureHudTimeout = null;
+    }
+    if (this.lastGestureCreation) {
+      this.lastGestureCreation = null;
+      this.notify();
+    }
+  }
+
+  /**
+   * Beralih ke kandidat bentuk berikutnya saat tombol Tab ditekan ketika HUD aktif
+   */
+  cycleGestureCandidate(): boolean {
+    const current = this.getLastGestureCreation();
+    if (!current) return false;
+
+    const { candidates, candidateIndex, drawingId, points } = current;
+    if (!candidates || candidates.length <= 1) return false;
+
+    const nextIndex = (candidateIndex + 1) % candidates.length;
+    const nextCandidate = candidates[nextIndex];
+
+    // Hapus drawing sebelumnya
+    if (drawingId) {
+      this.deleteDrawing(drawingId);
+    }
+
+    // Buat drawing baru dengan tipe alat dari kandidat berikutnya
+    const created = this.createDrawing({
+      type: nextCandidate.tool,
+      points
+    });
+
+    const newDrawingId = created?.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
+
+    this.setLastGestureCreation({
+      drawingId: newDrawingId,
+      candidates,
+      candidateIndex: nextIndex,
+      points,
+      expiresAt: Date.now() + 2500
+    });
+
+    return true;
+  }
+
+  /**
+   * Membatalkan pembuatan gambar dan menutup HUD saat tombol Esc ditekan ketika HUD aktif
+   */
+  cancelGestureCreation(): boolean {
+    const current = this.getLastGestureCreation();
+    if (!current) return false;
+
+    const { drawingId } = current;
+    if (drawingId) {
+      this.deleteDrawing(drawingId);
+    }
+
+    this.dismissGestureHUD();
+    return true;
   }
 
   /**
@@ -342,7 +599,8 @@ export class ChartDrawingController {
       activeDrawings: [...this.activeDrawings],
       selectedDrawingId: this.selectedDrawingId,
       canUndo: this.canUndo,
-      canRedo: this.canRedo
+      canRedo: this.canRedo,
+      lastGestureCreation: this.getLastGestureCreation()
     };
   }
 
@@ -565,17 +823,47 @@ export class ChartDrawingController {
 
   /**
    * Batalkan aksi gambar terakhir (Undo)
+   * Mendukung pemulihan drawing yang terhapus karena scribble
    */
   undo(): void {
     const activeChart = this.getActiveChart();
+    let handledInternal = false;
+
+    if (this.undoHistory.length > 0) {
+      const lastAction = this.undoHistory.pop()!;
+      this.redoHistory.push(lastAction);
+
+      if (lastAction.action === 'erase') {
+        // Pulihkan drawing yang terhapus
+        for (const d of lastAction.drawings) {
+          if (activeChart?.drawings) {
+            if (typeof activeChart.drawings.create === 'function') {
+              activeChart.drawings.create(d);
+            } else if (typeof activeChart.drawings.add === 'function') {
+              activeChart.drawings.add(d.type || 'trendline', d);
+            } else if (typeof activeChart.drawings.all === 'function') {
+              const currentAll = activeChart.drawings.all();
+              if (Array.isArray(currentAll) && !currentAll.some((x: any) => x.id === d.id)) {
+                currentAll.push(d);
+              }
+            }
+          }
+        }
+        handledInternal = true;
+      }
+    }
+
     if (activeChart?.drawings) {
       try {
-        activeChart.drawings.undo();
-        this.handleDrawingMutated();
+        if (typeof activeChart.drawings.undo === 'function') {
+          activeChart.drawings.undo();
+        }
       } catch (e) {
         console.warn('ChartDrawingController undo error:', e);
       }
     }
+
+    this.handleDrawingMutated();
   }
 
   /**
@@ -583,14 +871,36 @@ export class ChartDrawingController {
    */
   redo(): void {
     const activeChart = this.getActiveChart();
+    let handledInternal = false;
+
+    if (this.redoHistory.length > 0) {
+      const lastAction = this.redoHistory.pop()!;
+      this.undoHistory.push(lastAction);
+
+      if (lastAction.action === 'erase') {
+        const ids = lastAction.drawings.map((d) => d.id).filter(Boolean);
+        if (ids.length > 0 && activeChart?.drawings) {
+          if (typeof activeChart.drawings.removeMany === 'function') {
+            activeChart.drawings.removeMany(ids);
+          } else if (typeof activeChart.drawings.remove === 'function') {
+            for (const id of ids) activeChart.drawings.remove(id);
+          }
+        }
+        handledInternal = true;
+      }
+    }
+
     if (activeChart?.drawings) {
       try {
-        activeChart.drawings.redo();
-        this.handleDrawingMutated();
+        if (typeof activeChart.drawings.redo === 'function') {
+          activeChart.drawings.redo();
+        }
       } catch (e) {
         console.warn('ChartDrawingController redo error:', e);
       }
     }
+
+    this.handleDrawingMutated();
   }
 
   /**
@@ -736,22 +1046,26 @@ export class ChartDrawingController {
   }
 
   /**
-   * Buat objek gambar programatik langsung pada chart (misal horizontal line dari menu konteks)
+   * Buat objek gambar programatik langsung pada chart (misal horizontal line dari menu konteks atau gesture)
    */
-  createDrawing(spec: { type: string; price?: number; [key: string]: any }): void {
+  createDrawing(spec: { type: string; price?: number; [key: string]: any }): any {
     const activeChart = this.getActiveChart();
     if (activeChart?.drawings) {
       try {
+        let created: any = null;
         if (typeof activeChart.drawings.create === 'function') {
-          activeChart.drawings.create(spec);
+          created = activeChart.drawings.create(spec);
         } else if (typeof activeChart.drawings.add === 'function') {
-          activeChart.drawings.add(spec.type, spec);
+          created = activeChart.drawings.add(spec.type, spec);
         }
         this.handleDrawingMutated();
+        const id = created?.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
+        return { id, ...created };
       } catch (e) {
         console.warn('ChartDrawingController createDrawing error:', e);
       }
     }
+    return null;
   }
 
   /**
@@ -975,6 +1289,10 @@ export class ChartDrawingController {
     // Cancel / Esc
     unbinders.push(
       dispatcher.bindHandler('cancel-action', () => {
+        if (this.isGestureHUDActive()) {
+          this.cancelGestureCreation();
+          return;
+        }
         if (this.activeTool !== null) {
           this.setTool(null);
         }
