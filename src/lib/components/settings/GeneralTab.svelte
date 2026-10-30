@@ -329,7 +329,7 @@
       onclick={() => onUpdateSettings({ snapshotIncludeFrame: settings.snapshotIncludeFrame === false })}
     >
       {#if settings.snapshotIncludeFrame !== false}
-        <Sparkles size={13} /> Branded Frame
+        <Sparkles size={13} /> Branded Snapshot Frame
       {:else}
         Clean Chart Export
       {/if}

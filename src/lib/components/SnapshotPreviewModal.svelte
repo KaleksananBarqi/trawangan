@@ -483,7 +483,7 @@
               >
                 <div class="mode-btn-content">
                   <Sparkles size={13} class="icon-sparkle" />
-                  <span class="btn-title">Branded Frame</span>
+                  <span class="btn-title">Branded Snapshot Frame</span>
                 </div>
                 <span class="btn-desc">Kartu showcase + Attribution Bar</span>
               </button>

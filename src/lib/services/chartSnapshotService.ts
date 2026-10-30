@@ -1,6 +1,6 @@
 /**
  * Layanan Kompositor Tangkapan Layar Offline (Offline Branded Snapshot Engine)
- * Membangun komposit kanvas 2D lokal murni dengan Branded Frame dan Attribution Bar.
+ * Membangun komposit kanvas 2D lokal murni dengan Branded Snapshot Frame dan Attribution Bar.
  */
 
 import { formatPriceLabel } from './priceScaleLabelService';
@@ -209,10 +209,18 @@ function drawRoundedRect(
   ctx.closePath();
 }
 
+export interface FallbackCanvas {
+  width: number;
+  height: number;
+  getContext: (contextId: string) => CanvasRenderingContext2D;
+  toDataURL: (type?: string) => string;
+  toBlob: (cb: (blob: Blob | null) => void, type?: string) => void;
+}
+
 /**
  * Helper internal untuk membuat fallback canvas sederhana di lingkungan non-browser
  */
-function createFallbackCanvas(width: number, height: number): any {
+function createFallbackCanvas(width: number, height: number): FallbackCanvas {
   return {
     width,
     height,
@@ -236,7 +244,7 @@ function createFallbackCanvas(width: number, height: number): any {
       fillText: () => {},
       drawImage: () => {},
       measureText: (text: string) => ({ width: text.length * 8 }),
-    }),
+    } as unknown as CanvasRenderingContext2D),
     toDataURL: (type = 'image/png') => `data:${type};base64,mockFallbackData`,
     toBlob: (cb: (blob: Blob | null) => void, type = 'image/png') => {
       try {
@@ -594,7 +602,7 @@ export function createSnapshotThumbnail(
     }
   }
 
-  let canvas: HTMLCanvasElement | any;
+  let canvas: HTMLCanvasElement | FallbackCanvas;
   if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
     canvas = document.createElement('canvas');
   } else {
@@ -606,7 +614,7 @@ export function createSnapshotThumbnail(
   const ctx = canvas.getContext('2d');
   if (!ctx) return undefined;
 
-  ctx.drawImage(sourceCanvas, 0, 0, thumbWidth, thumbHeight);
+  ctx.drawImage(sourceCanvas as CanvasImageSource, 0, 0, thumbWidth, thumbHeight);
   return canvas.toDataURL('image/png');
 }
 
@@ -645,21 +653,39 @@ export async function saveSnapshotToFile(
   filename: string,
   customDirectory?: string
 ): Promise<SaveSnapshotResult> {
-  let dataUrl = '';
-  if (typeof canvasOrDataUrl === 'string') {
-    dataUrl = canvasOrDataUrl;
-  } else if (canvasOrDataUrl && typeof canvasOrDataUrl.toDataURL === 'function') {
-    dataUrl = canvasOrDataUrl.toDataURL('image/png');
-  }
-
   // Jika berjalan di lingkungan desktop Tauri, gunakan Tauri IPC native untuk menyimpan ke folder tujuan
   if (isTauriEnvironment()) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
+      let bytes: Uint8Array | null = null;
+      let base64Data: string | null = null;
+
+      // Konversi kanvas secara asinkron via toBlob() -> arrayBuffer() -> Uint8Array
+      // Menghilangkan blocking toDataURL pada UI thread dan mengirim payload biner mentah ke Tauri
+      if (typeof canvasOrDataUrl !== 'string' && typeof canvasOrDataUrl.toBlob === 'function') {
+        const blob = await new Promise<Blob | null>((resolve) => {
+          canvasOrDataUrl.toBlob(resolve, 'image/png');
+        });
+        if (blob) {
+          const buffer = await blob.arrayBuffer();
+          bytes = new Uint8Array(buffer);
+        }
+      }
+
+      // Fallback base64 jika toBlob tidak tersedia atau input awal adalah data URL string
+      if (!bytes) {
+        if (typeof canvasOrDataUrl === 'string') {
+          base64Data = canvasOrDataUrl;
+        } else if (canvasOrDataUrl && typeof canvasOrDataUrl.toDataURL === 'function') {
+          base64Data = canvasOrDataUrl.toDataURL('image/png');
+        }
+      }
+
       const savedPath = await invoke<string>('save_snapshot_file', {
         directory: customDirectory && customDirectory.trim().length > 0 ? customDirectory.trim() : null,
         filename,
-        base64Data: dataUrl,
+        bytes,
+        base64Data,
       });
       return { success: true, filePath: savedPath, isFallback: false };
     } catch (err) {
@@ -668,7 +694,7 @@ export async function saveSnapshotToFile(
   }
 
   // Fallback ke unduhan browser standar (laporkan lokasi Downloads/ secara jujur dengan isFallback: true)
-  downloadSnapshot(dataUrl, filename);
+  downloadSnapshot(canvasOrDataUrl, filename);
   return {
     success: true,
     filePath: `Downloads/${filename}`,

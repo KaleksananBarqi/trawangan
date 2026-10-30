@@ -531,6 +531,20 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
       /^trawangan-.*-15m-20261030-182030\.png$/,
       'Format nama berkas tetap konsisten dan aman'
     );
+
+    // C. generateSnapshotFilename membersihkan karakter colon (:) dan Windows drive letter
+    const colonSymbol = 'C:BINANCE:BTCUSDT';
+    const colonFilename = generateSnapshotFilename(colonSymbol, '15m', date);
+    assert.strictEqual(
+      colonFilename.includes(':'),
+      false,
+      'Nama berkas tidak boleh memuat karakter colon (:)'
+    );
+    assert.match(
+      colonFilename,
+      /^trawangan-C-BINANCE-BTCUSDT-15m-20261030-182030\.png$/,
+      'Karakter colon (:) harus diganti dengan dash (-)'
+    );
   });
 
   await t.test('16. Ticket 2 (#99): Native Directory Picker, Type Safety, Honest Fallback & Lightweight Thumbnail', async () => {
@@ -598,6 +612,33 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
       assert.strictEqual(invokedCommand, 'save_snapshot_file');
       assert.strictEqual(invokedArgs.directory, '/home/trader/CustomSnapshots');
       assert.strictEqual(invokedArgs.filename, 'btc-breakout.png');
+      assert.ok(
+        invokedArgs.bytes instanceof Uint8Array,
+        'invokedArgs.bytes harus berupa Uint8Array binary payload'
+      );
+      assert.strictEqual(
+        invokedArgs.base64Data,
+        null,
+        'invokedArgs.base64Data harus null saat bytes biner tersedia'
+      );
+
+      // 3b. saveSnapshotToFile dengan string data URL di Tauri mengirimkan base64Data fallback
+      const dataUrlTauriRes = await saveSnapshotToFile(
+        'data:image/png;base64,mockStringPayload',
+        'raw-string.png',
+        '/home/trader/CustomSnapshots'
+      );
+      assert.strictEqual(dataUrlTauriRes.success, true);
+      assert.strictEqual(invokedArgs.bytes, null, 'invokedArgs.bytes harus null saat input berupa data URL');
+      assert.strictEqual(invokedArgs.base64Data, 'data:image/png;base64,mockStringPayload');
+
+      // 3c. saveSnapshotToFile dengan canvas tanpa toBlob fallback ke base64Data
+      const canvasWithoutBlob = {
+        toDataURL: () => 'data:image/png;base64,mockCanvasDataUrl',
+      } as any;
+      await saveSnapshotToFile(canvasWithoutBlob, 'no-blob.png', '/home/trader/CustomSnapshots');
+      assert.strictEqual(invokedArgs.bytes, null);
+      assert.strictEqual(invokedArgs.base64Data, 'data:image/png;base64,mockCanvasDataUrl');
 
       // 4. saveSnapshotToFile saat Tauri invoke melempar error -> fallback jujur ke Downloads/
       (globalThis as any).window.__TAURI_INTERNALS__.invoke = async () => {
@@ -674,6 +715,18 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
       'GeneralTab.svelte tidak boleh menggunakan istilah non-kanonik Clean Export'
     );
 
+    // Penegakan Kosakata Domain: Branded Snapshot Frame (sesuai GLOSSARY.md)
+    assert.match(
+      generalTabSource,
+      /Branded Snapshot Frame/,
+      'GeneralTab.svelte harus menggunakan istilah domain kanonik Branded Snapshot Frame'
+    );
+    assert.doesNotMatch(
+      generalTabSource,
+      />\s*Branded Frame\s*</,
+      'GeneralTab.svelte tidak boleh menggunakan istilah non-kanonik Branded Frame'
+    );
+
     // 2. SnapshotPreviewModal.svelte Static Verification
     const previewModalPath = path.resolve('src/lib/components/SnapshotPreviewModal.svelte');
     const previewModalSource = fs.readFileSync(previewModalPath, 'utf8');
@@ -690,7 +743,7 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
       'cachedSourceCanvas tidak boleh menggunakan $state wrapper'
     );
 
-    // Penegakan Kosakata Domain: Clean Chart Export pada tombol mode pratinjau
+    // Penegakan Kosakata Domain: Clean Chart Export & Branded Snapshot Frame pada tombol mode pratinjau
     assert.match(
       previewModalSource,
       /<span class="btn-title">\s*Clean Chart Export\s*<\/span>/,
@@ -700,6 +753,16 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
       previewModalSource,
       /<span class="btn-title">\s*Clean Export\s*<\/span>/,
       'SnapshotPreviewModal.svelte tidak boleh menggunakan istilah non-kanonik Clean Export'
+    );
+    assert.match(
+      previewModalSource,
+      /<span class="btn-title">\s*Branded Snapshot Frame\s*<\/span>/,
+      'SnapshotPreviewModal.svelte harus menampilkan teks Branded Snapshot Frame pada mode toggle'
+    );
+    assert.doesNotMatch(
+      previewModalSource,
+      /<span class="btn-title">\s*Branded Frame\s*<\/span>/,
+      'SnapshotPreviewModal.svelte tidak boleh menggunakan istilah non-kanonik Branded Frame'
     );
   });
 });
