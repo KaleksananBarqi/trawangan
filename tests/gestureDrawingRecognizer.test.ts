@@ -220,4 +220,176 @@ test('Core Gesture Recognizer Seam Suite (#104)', async (t) => {
     // Titik awal Y harus di-snap ke 300
     assert.equal(resRay.points[0].y, 300);
   });
+
+  await t.test('8. Klasifikasi loop 4 sudut menghasilkan box (Rectangle / Order Block) (#105)', () => {
+    // Loop 4 sisi persegi panjang tertutup
+    const boxStroke: GesturePoint[] = [
+      { x: 100, y: 100 },
+      { x: 200, y: 100 },
+      { x: 300, y: 100 },
+      { x: 300, y: 180 },
+      { x: 300, y: 250 },
+      { x: 200, y: 250 },
+      { x: 100, y: 250 },
+      { x: 100, y: 170 },
+      { x: 100, y: 100 }
+    ];
+
+    const res = recognizeGesture(boxStroke);
+    assert.equal(res.tool, 'box');
+    assert.ok(res.confidence >= 0.85);
+    assert.equal(res.candidates[0].tool, 'box');
+    assert.equal(res.candidates[0].label, 'Rectangle / Box');
+    assert.ok(res.candidates.some((c) => c.tool === 'ellipse'));
+    assert.equal(res.points.length, 2);
+    assert.equal(res.points[0].x, 100);
+    assert.equal(res.points[0].y, 100);
+    assert.equal(res.points[1].x, 300);
+    assert.equal(res.points[1].y, 250);
+
+    // Variasi: loop persegi panjang yang ujungnya sedikit tidak rapat (jarak < 25% diagonal)
+    const slightlyOpenBox: GesturePoint[] = [
+      { x: 150, y: 200 },
+      { x: 350, y: 200 },
+      { x: 350, y: 320 },
+      { x: 150, y: 320 },
+      { x: 155, y: 205 }
+    ];
+    const resOpen = recognizeGesture(slightlyOpenBox);
+    assert.equal(resOpen.tool, 'box');
+    assert.equal(resOpen.candidates[0].tool, 'box');
+  });
+
+  await t.test('9. Klasifikasi lingkaran atau oval mulus menghasilkan ellipse (#105)', () => {
+    // Kurva oval halus tanpa sudut tajam (36 titik)
+    const ovalStroke: GesturePoint[] = [];
+    const centerX = 200;
+    const centerY = 150;
+    const radiusX = 80;
+    const radiusY = 50;
+    for (let i = 0; i <= 36; i++) {
+      const angleRad = (i / 36) * 2 * Math.PI;
+      ovalStroke.push({
+        x: Math.round(centerX + radiusX * Math.cos(angleRad)),
+        y: Math.round(centerY + radiusY * Math.sin(angleRad))
+      });
+    }
+
+    const res = recognizeGesture(ovalStroke);
+    assert.equal(res.tool, 'ellipse');
+    assert.ok(res.confidence >= 0.85);
+    assert.equal(res.candidates[0].tool, 'ellipse');
+    assert.equal(res.candidates[0].label, 'Ellipse');
+    assert.ok(res.candidates.some((c) => c.tool === 'box'));
+    assert.equal(res.points.length, 2);
+    // Bounding box oval
+    assert.equal(res.points[0].x, centerX - radiusX);
+    assert.equal(res.points[0].y, centerY - radiusY);
+    assert.equal(res.points[1].x, centerX + radiusX);
+    assert.equal(res.points[1].y, centerY + radiusY);
+  });
+
+  await t.test('10. Klasifikasi goresan berbatang lurus dengan terminal hook menghasilkan arrow (#105)', () => {
+    // Panah horizontal: batang lurus dari x=100 ke x=400 (y=200), lalu kait balik ke (370, 170)
+    const horizontalArrow: GesturePoint[] = [
+      { x: 100, y: 200 },
+      { x: 200, y: 200 },
+      { x: 300, y: 200 },
+      { x: 400, y: 200 }, // Ujung panah
+      { x: 370, y: 170 }  // Kait panah tajam
+    ];
+
+    const res = recognizeGesture(horizontalArrow);
+    assert.equal(res.tool, 'arrow');
+    assert.ok(res.confidence >= 0.85);
+    assert.equal(res.candidates[0].tool, 'arrow');
+    assert.equal(res.candidates[0].label, 'Arrow');
+    assert.ok(res.candidates.some((c) => c.tool === 'trendline'));
+    assert.ok(res.candidates.some((c) => c.tool === 'ray'));
+    assert.equal(res.points.length, 2);
+    assert.equal(res.points[0].x, 100);
+    assert.equal(res.points[0].y, 200);
+    assert.equal(res.points[1].x, 400);
+    assert.equal(res.points[1].y, 200);
+
+    // Panah diagonal
+    const diagonalArrow: GesturePoint[] = [
+      { x: 100, y: 100 },
+      { x: 200, y: 200 },
+      { x: 300, y: 300 }, // Ujung panah
+      { x: 280, y: 260 }  // Kait panah
+    ];
+    const resDiag = recognizeGesture(diagonalArrow);
+    assert.equal(resDiag.tool, 'arrow');
+    assert.equal(resDiag.points[0].x, 100);
+    assert.equal(resDiag.points[1].x, 300);
+  });
+
+  await t.test('11. Klasifikasi goresan Z/N 3 segmen menghasilkan fibretracement & mendukung extreme wick snapping (#105)', () => {
+    // Pola Z (Swing High ke Swing Low)
+    const zStroke: GesturePoint[] = [
+      { x: 100, y: 100 },
+      { x: 200, y: 100 },
+      { x: 300, y: 100 }, // Belokan 1
+      { x: 220, y: 200 },
+      { x: 150, y: 300 }, // Belokan 2
+      { x: 250, y: 300 },
+      { x: 350, y: 300 }
+    ];
+
+    const res = recognizeGesture(zStroke);
+    assert.equal(res.tool, 'fibretracement');
+    assert.ok(res.confidence >= 0.85);
+    assert.equal(res.candidates[0].tool, 'fibretracement');
+    assert.equal(res.candidates[0].label, 'Fib Retracement');
+    assert.ok(res.candidates.some((c) => c.tool === 'path'));
+    assert.ok(res.candidates.some((c) => c.tool === 'trendline'));
+    assert.equal(res.points.length, 2);
+    assert.equal(res.points[0].y, 100);
+    assert.equal(res.points[1].y, 300);
+
+    // Pola N (Ayunan vertikal)
+    const nStroke: GesturePoint[] = [
+      { x: 100, y: 300 },
+      { x: 100, y: 100 }, // Belokan 1 (High)
+      { x: 200, y: 300 }, // Belokan 2 (Low)
+      { x: 200, y: 100 }
+    ];
+    const resN = recognizeGesture(nStroke);
+    assert.equal(resN.tool, 'fibretracement');
+
+    // Extreme Wick Snapping: menempelkan Y ekstrem ke High wick (92) dan Low wick (308)
+    const candleWicks = [
+      { highY: 92, lowY: 150 },
+      { highY: 260, lowY: 308 }
+    ];
+
+    const resSnapped = recognizeGesture(zStroke, {
+      wicks: candleWicks,
+      wickSnapRadius: 20
+    });
+    assert.equal(resSnapped.tool, 'fibretracement');
+    assert.equal(resSnapped.points[0].y, 92);  // Menempel ke 92 dari 100
+    assert.equal(resSnapped.points[1].y, 308); // Menempel ke 308 dari 300
+  });
+
+  await t.test('12. Klasifikasi poliline terbuka berkelok-kelok (> 2 belokan) menghasilkan path (#105)', () => {
+    // Poliline 4 segmen dengan 3 sudut tajam
+    const multiBendPath: GesturePoint[] = [
+      { x: 100, y: 100 },
+      { x: 200, y: 220 }, // Belokan 1
+      { x: 260, y: 140 }, // Belokan 2
+      { x: 360, y: 320 }, // Belokan 3
+      { x: 460, y: 200 }
+    ];
+
+    const res = recognizeGesture(multiBendPath);
+    assert.equal(res.tool, 'path');
+    assert.ok(res.confidence >= 0.85);
+    assert.equal(res.candidates[0].tool, 'path');
+    assert.equal(res.candidates[0].label, 'Path');
+    assert.ok(res.candidates.some((c) => c.tool === 'trendline'));
+    // Path mempertahankan koordinat simpul-simpul poliline
+    assert.ok(res.points.length >= 4);
+  });
 });

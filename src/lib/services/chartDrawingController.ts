@@ -742,7 +742,11 @@ export class ChartDrawingController {
     const activeChart = this.getActiveChart();
     if (activeChart?.drawings) {
       try {
-        activeChart.drawings.create?.(spec);
+        if (typeof activeChart.drawings.create === 'function') {
+          activeChart.drawings.create(spec);
+        } else if (typeof activeChart.drawings.add === 'function') {
+          activeChart.drawings.add(spec.type, spec);
+        }
         this.handleDrawingMutated();
       } catch (e) {
         console.warn('ChartDrawingController createDrawing error:', e);

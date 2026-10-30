@@ -396,6 +396,95 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     assert.equal(createdDrawings[0].type, 'hline');
     assert.equal(controller.getLiveGestureStroke().length, 0);
   });
+
+  await t.test('12. Integrasi Pembuatan Objek Gambar Geometris Kompleks (box, ellipse, arrow, fibretracement, path) dari Gesture (#105)', () => {
+    const controller = new ChartDrawingController();
+
+    const createdDrawings: any[] = [];
+    const mockDrawings = {
+      create: (spec: any) => createdDrawings.push(spec),
+      all: () => createdDrawings,
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    controller.setTool('gesture');
+
+    // 1. Box Gesture Stroke
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(300, 100);
+    controller.addGesturePoint(300, 250);
+    controller.addGesturePoint(100, 250);
+    controller.addGesturePoint(100, 100);
+    const boxRes = controller.finishGestureStroke();
+    assert.ok(boxRes);
+    assert.equal(boxRes.tool, 'box');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'box');
+
+    // 2. Ellipse Gesture Stroke
+    controller.setTool('gesture');
+    controller.startGestureStroke(280, 150);
+    for (let i = 1; i <= 36; i++) {
+      const angleRad = (i / 36) * 2 * Math.PI;
+      controller.addGesturePoint(
+        Math.round(200 + 80 * Math.cos(angleRad)),
+        Math.round(150 + 50 * Math.sin(angleRad))
+      );
+    }
+    const ellipseRes = controller.finishGestureStroke();
+    assert.ok(ellipseRes);
+    assert.equal(ellipseRes.tool, 'ellipse');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'ellipse');
+
+    // 3. Arrow Gesture Stroke
+    controller.setTool('gesture');
+    controller.startGestureStroke(100, 200);
+    controller.addGesturePoint(250, 200);
+    controller.addGesturePoint(400, 200);
+    controller.addGesturePoint(370, 170); // terminal hook
+    const arrowRes = controller.finishGestureStroke();
+    assert.ok(arrowRes);
+    assert.equal(arrowRes.tool, 'arrow');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'arrow');
+
+    // 4. Fib Retracement Gesture Stroke (Z-Shape)
+    controller.setTool('gesture');
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(200, 100);
+    controller.addGesturePoint(300, 100);
+    controller.addGesturePoint(220, 200);
+    controller.addGesturePoint(150, 300);
+    controller.addGesturePoint(250, 300);
+    controller.addGesturePoint(350, 300);
+    const fibRes = controller.finishGestureStroke({
+      wicks: [{ highY: 95, lowY: 150 }, { highY: 260, lowY: 305 }],
+      wickSnapRadius: 20
+    });
+    assert.ok(fibRes);
+    assert.equal(fibRes.tool, 'fibretracement');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'fibretracement');
+    assert.equal(createdDrawings[createdDrawings.length - 1].points[0].y, 95);
+    assert.equal(createdDrawings[createdDrawings.length - 1].points[1].y, 305);
+
+    // 5. Path Gesture Stroke (Polyline > 2 belokan)
+    controller.setTool('gesture');
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(200, 220);
+    controller.addGesturePoint(260, 140);
+    controller.addGesturePoint(360, 320);
+    controller.addGesturePoint(460, 200);
+    const pathRes = controller.finishGestureStroke();
+    assert.ok(pathRes);
+    assert.equal(pathRes.tool, 'path');
+    assert.equal(createdDrawings[createdDrawings.length - 1].type, 'path');
+    assert.ok(createdDrawings[createdDrawings.length - 1].points.length >= 4);
+  });
 });
 
 
