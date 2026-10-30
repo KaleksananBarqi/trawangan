@@ -248,6 +248,11 @@ export interface AppSettings {
   clipboardAutoOpen?: boolean;
   showWorldClocks?: boolean;
   worldClockCities?: string[];
+  // Snapshot Preferences (#95)
+  snapshotIncludeFrame?: boolean;
+  snapshotIncludePrice?: boolean;
+  snapshotIncludeTimestamp?: boolean;
+  snapshotScope?: 'active' | 'all';
 }
 
 

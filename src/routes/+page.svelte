@@ -14,6 +14,7 @@
   import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
   import AlertNotificationToast from '../lib/components/AlertNotificationToast.svelte';
   import SnapshotToast, { type SnapshotToastData } from '../lib/components/SnapshotToast.svelte';
+  import SnapshotPreviewModal from '../lib/components/SnapshotPreviewModal.svelte';
   import RightDockRail from '../lib/components/RightDockRail.svelte';
   import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
   import {
@@ -1156,7 +1157,8 @@
 
   async function handleQuickCopySnapshot() {
     try {
-      const canvas = chartComponent?.getChartScreenshotCanvas?.();
+      const scope = appSettings.snapshotScope ?? 'active';
+      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
       if (!canvas) {
         snapshotToast = {
           visible: true,
@@ -1169,8 +1171,10 @@
 
       const metadata = getActiveSnapshotMetadata();
       const composite = compositeSnapshot(canvas, {
-        mode: 'branded',
+        mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
         scale: 2,
+        includePrice: appSettings.snapshotIncludePrice ?? true,
+        includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
         metadata,
       });
 
@@ -1212,7 +1216,8 @@
 
   function handleQuickDownloadSnapshot() {
     try {
-      const canvas = chartComponent?.getChartScreenshotCanvas?.();
+      const scope = appSettings.snapshotScope ?? 'active';
+      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
       if (!canvas) {
         snapshotToast = {
           visible: true,
@@ -1225,8 +1230,10 @@
 
       const metadata = getActiveSnapshotMetadata();
       const composite = compositeSnapshot(canvas, {
-        mode: 'branded',
+        mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
         scale: 2,
+        includePrice: appSettings.snapshotIncludePrice ?? true,
+        includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
         metadata,
       });
 
@@ -1610,6 +1617,21 @@
     toast={snapshotToast}
     onDismiss={() => { snapshotToast = null; }}
     onOpenPreview={handleOpenSnapshotPreview}
+  />
+
+  <!-- Interactive Snapshot Preview Modal (#95) -->
+  <SnapshotPreviewModal
+    isOpen={isSnapshotPreviewOpen}
+    {activeSymbol}
+    {activeTimeframe}
+    {activeProviderId}
+    currentPrice={ticker?.price || null}
+    {currentLayout}
+    {appSettings}
+    getScreenshotCanvas={(scope) => chartComponent?.getChartScreenshotCanvas?.(scope) || null}
+    onUpdateSettings={handleUpdateSettings}
+    onClose={() => { isSnapshotPreviewOpen = false; }}
+    onLog={(msg, type) => addSystemLog(msg, type || 'info')}
   />
 
   <!-- Smart Clipboard Sentry / Deep Link Toast -->

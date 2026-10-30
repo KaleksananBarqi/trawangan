@@ -278,17 +278,79 @@
   export function enforceCurrentPriceLineOnCell(cell: any): void { controller.enforceCurrentPriceLine(cell); }
   export function applyWorkspaceTimezone(tz: string): void { controller.setTimezone(tz); }
   export function getActiveIndicators(): ActiveIndicatorInfo[] { return controller.getActiveIndicators(); }
-  export function getChartScreenshotCanvas(): HTMLCanvasElement | null {
+  export function getChartScreenshotCanvas(scope: 'active' | 'all' = 'active'): HTMLCanvasElement | null {
     const ws = controller.getWorkspace();
-    if (ws && typeof ws.screenshotCanvas === 'function') {
-      return ws.screenshotCanvas();
+    const cells = controller.getAllCells();
+
+    if (scope === 'all' && layout !== '1') {
+      // 1. Coba ambil tangkapan seluruh workspace langsung dari Vela workspace jika didukung
+      if (ws && typeof ws.screenshotCanvas === 'function') {
+        const fullCanvas = ws.screenshotCanvas();
+        if (fullCanvas) return fullCanvas;
+      }
+
+      // 2. Jika ada beberapa sel dan masing-masing sel memiliki canvas/screenshotCanvas
+      if (cells.length > 1 && typeof document !== 'undefined') {
+        const cellCanvases: { canvas: HTMLCanvasElement; rect?: DOMRect }[] = [];
+        for (const cell of cells) {
+          let c: HTMLCanvasElement | null = null;
+          if (typeof cell.screenshotCanvas === 'function') {
+            c = cell.screenshotCanvas();
+          } else if (cell.chart?.renderer && typeof cell.chart.renderer.screenshotCanvas === 'function') {
+            c = cell.chart.renderer.screenshotCanvas();
+          } else if (cell.element) {
+            c = cell.element.querySelector('canvas');
+          }
+          if (c) {
+            const rect = cell.element?.getBoundingClientRect?.();
+            cellCanvases.push({ canvas: c, rect });
+          }
+        }
+
+        // Jika berhasil mendapatkan canvas dari tiap sel dengan koordinat DOM
+        if (cellCanvases.length === cells.length && cellCanvases.every(item => item.rect)) {
+          const minLeft = Math.min(...cellCanvases.map(item => item.rect!.left));
+          const minTop = Math.min(...cellCanvases.map(item => item.rect!.top));
+          const maxRight = Math.max(...cellCanvases.map(item => item.rect!.right));
+          const maxBottom = Math.max(...cellCanvases.map(item => item.rect!.bottom));
+
+          const totalWidth = Math.round(maxRight - minLeft);
+          const totalHeight = Math.round(maxBottom - minTop);
+
+          if (totalWidth > 0 && totalHeight > 0) {
+            const compositeCanvas = document.createElement('canvas');
+            const scaleRatio = (cellCanvases[0].canvas.width) / (cellCanvases[0].rect!.width || 1);
+            compositeCanvas.width = Math.round(totalWidth * scaleRatio);
+            compositeCanvas.height = Math.round(totalHeight * scaleRatio);
+            const ctx = compositeCanvas.getContext('2d');
+            if (ctx) {
+              for (const item of cellCanvases) {
+                const dx = Math.round((item.rect!.left - minLeft) * scaleRatio);
+                const dy = Math.round((item.rect!.top - minTop) * scaleRatio);
+                const dw = Math.round(item.rect!.width * scaleRatio);
+                const dh = Math.round(item.rect!.height * scaleRatio);
+                ctx.drawImage(item.canvas, dx, dy, dw, dh);
+              }
+              return compositeCanvas;
+            }
+          }
+        }
+      }
     }
-    const activeCell = ws?.active || ws?.cells?.[0];
+
+    // Default atau scope === 'active': Ambil canvas dari active cell atau cell pertama
+    const activeCell = ws?.active || cells[0] || ws?.cells?.[0];
     if (activeCell && typeof activeCell.screenshotCanvas === 'function') {
-      return activeCell.screenshotCanvas();
+      const c = activeCell.screenshotCanvas();
+      if (c) return c;
     }
     if (activeCell?.chart?.renderer && typeof activeCell.chart.renderer.screenshotCanvas === 'function') {
-      return activeCell.chart.renderer.screenshotCanvas();
+      const c = activeCell.chart.renderer.screenshotCanvas();
+      if (c) return c;
+    }
+    if (activeCell?.element) {
+      const c = activeCell.element.querySelector('canvas');
+      if (c) return c as HTMLCanvasElement;
     }
     if (chartContainer) {
       const c = chartContainer.querySelector('canvas');
@@ -296,16 +358,21 @@
     }
     return null;
   }
-  export function getChartScreenshot(): string | null {
+  export function getChartScreenshot(scope: 'active' | 'all' = 'active'): string | null {
     const ws = controller.getWorkspace();
-    if (ws && typeof ws.screenshot === 'function') {
-      return ws.screenshot();
+    if (scope === 'all' && layout !== '1') {
+      if (ws && typeof ws.screenshot === 'function') {
+        const fullImg = ws.screenshot();
+        if (fullImg) return fullImg;
+      }
+    } else {
+      const activeCell = ws?.active || controller.getAllCells()[0] || ws?.cells?.[0];
+      if (activeCell && typeof activeCell.screenshot === 'function') {
+        const activeImg = activeCell.screenshot();
+        if (activeImg) return activeImg;
+      }
     }
-    const activeCell = ws?.active || ws?.cells?.[0];
-    if (activeCell && typeof activeCell.screenshot === 'function') {
-      return activeCell.screenshot();
-    }
-    const canvas = getChartScreenshotCanvas();
+    const canvas = getChartScreenshotCanvas(scope);
     if (canvas && typeof canvas.toDataURL === 'function') {
       return canvas.toDataURL('image/png');
     }
