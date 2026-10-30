@@ -49,14 +49,19 @@ export interface CandleWickItem {
   lowPrice?: number;
 }
 
+/**
+ * Tipe target level ekor lilin untuk snapping koordinat Y (objek wick/candle atau nilai koordinat y langsung)
+ */
+export type CandleWickTarget = CandleWickItem | number;
+
 export interface GestureRecognizerOptions {
   canvasWidth?: number;
   canvasHeight?: number;
   rightMarginThreshold?: number; // Margin ambang batas tepi kanan (default: 50px)
   wickSnapRadius?: number; // Radius magnet ekor lilin dalam piksel (default: 20px)
   isNearRightEdge?: boolean;
-  candles?: Array<CandleWickItem | { high: number; low: number } | number>;
-  wicks?: Array<CandleWickItem | { high: number; low: number } | number>;
+  candles?: CandleWickTarget[];
+  wicks?: CandleWickTarget[];
 }
 
 export interface WickSnapResult {
@@ -279,7 +284,7 @@ function getEuclideanDistance(p1: GesturePoint, p2: GesturePoint): number {
  */
 export function snapToNearestCandleWick(
   targetY: number,
-  candlesOrWicks: Array<CandleWickItem | { high: number; low: number } | number>,
+  candlesOrWicks: CandleWickTarget[],
   radius = 20
 ): WickSnapResult {
   if (!candlesOrWicks || candlesOrWicks.length === 0) {

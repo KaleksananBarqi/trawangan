@@ -56,10 +56,17 @@ export function resolveDrawingKey(providerId: string | undefined, symbol: string
 }
 
 /**
- * Memeriksa apakah suatu objek gambar beririsan dengan area goresan scribble
+ * Memeriksa apakah dua kotak pembatas AABB (Axis-Aligned Bounding Box) beririsan/tumpang tindih
  */
-export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBounds): boolean {
-  if (!drawing) return false;
+export function isAABBOverlap(a: ScribbleBounds, b: ScribbleBounds): boolean {
+  return !(a.maxX < b.minX || a.minX > b.maxX || a.maxY < b.minY || a.minY > b.maxY);
+}
+
+/**
+ * Mengekstrak koordinat batas AABB dari berbagai format objek gambar Vela
+ */
+export function extractDrawingBounds(drawing: any): ScribbleBounds | null {
+  if (!drawing) return null;
 
   // 1. Jika drawing memiliki properti bounds
   if (drawing.bounds) {
@@ -68,18 +75,19 @@ export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBound
     const maxX = b.maxX ?? b.right ?? (minX + (b.width ?? 0));
     const minY = b.minY ?? b.top ?? b.y ?? 0;
     const maxY = b.maxY ?? b.bottom ?? (minY + (b.height ?? 0));
-    return !(maxX < bounds.minX || minX > bounds.maxX || maxY < bounds.minY || minY > bounds.maxY);
+    return { minX, maxX, minY, maxY };
   }
 
   // 2. Jika drawing memiliki points (Array<{ x: number, y: number }>)
   if (Array.isArray(drawing.points) && drawing.points.length > 0) {
     const xs = drawing.points.map((p: any) => p.x);
     const ys = drawing.points.map((p: any) => p.y);
-    const pMinX = Math.min(...xs);
-    const pMaxX = Math.max(...xs);
-    const pMinY = Math.min(...ys);
-    const pMaxY = Math.max(...ys);
-    return !(pMaxX < bounds.minX || pMinX > bounds.maxX || pMaxY < bounds.minY || pMinY > bounds.maxY);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys)
+    };
   }
 
   // 3. Jika drawing memiliki anchors (Array<{ x?: number, y?: number, price?: number, time?: number }>)
@@ -88,11 +96,12 @@ export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBound
     if (validAnchors.length > 0) {
       const xs = validAnchors.map((a: any) => a.x);
       const ys = validAnchors.map((a: any) => a.y);
-      const aMinX = Math.min(...xs);
-      const aMaxX = Math.max(...xs);
-      const aMinY = Math.min(...ys);
-      const aMaxY = Math.max(...ys);
-      return !(aMaxX < bounds.minX || aMinX > bounds.maxX || aMaxY < bounds.minY || aMinY > bounds.maxY);
+      return {
+        minX: Math.min(...xs),
+        maxX: Math.max(...xs),
+        minY: Math.min(...ys),
+        maxY: Math.max(...ys)
+      };
     }
   }
 
@@ -100,25 +109,36 @@ export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBound
   if (typeof drawing.x1 === 'number' && typeof drawing.y1 === 'number') {
     const x2 = typeof drawing.x2 === 'number' ? drawing.x2 : drawing.x1;
     const y2 = typeof drawing.y2 === 'number' ? drawing.y2 : drawing.y1;
-    const dMinX = Math.min(drawing.x1, x2);
-    const dMaxX = Math.max(drawing.x1, x2);
-    const dMinY = Math.min(drawing.y1, y2);
-    const dMaxY = Math.max(drawing.y1, y2);
-    return !(dMaxX < bounds.minX || dMinX > bounds.maxX || dMaxY < bounds.minY || dMinY > bounds.maxY);
+    return {
+      minX: Math.min(drawing.x1, x2),
+      maxX: Math.max(drawing.x1, x2),
+      minY: Math.min(drawing.y1, y2),
+      maxY: Math.max(drawing.y1, y2)
+    };
   }
 
   // 5. Jika drawing memiliki koordinat x, y (dan width/height opsional)
   if (typeof drawing.x === 'number' && typeof drawing.y === 'number') {
     const w = drawing.width ?? 0;
     const h = drawing.height ?? 0;
-    const dMinX = drawing.x;
-    const dMaxX = drawing.x + w;
-    const dMinY = drawing.y;
-    const dMaxY = drawing.y + h;
-    return !(dMaxX < bounds.minX || dMinX > bounds.maxX || dMaxY < bounds.minY || dMinY > bounds.maxY);
+    return {
+      minX: drawing.x,
+      maxX: drawing.x + w,
+      minY: drawing.y,
+      maxY: drawing.y + h
+    };
   }
 
-  return false;
+  return null;
+}
+
+/**
+ * Memeriksa apakah suatu objek gambar beririsan dengan area goresan scribble
+ */
+export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBounds): boolean {
+  const drawingBounds = extractDrawingBounds(drawing);
+  if (!drawingBounds) return false;
+  return isAABBOverlap(drawingBounds, bounds);
 }
 
 /**
@@ -305,6 +325,13 @@ export class ChartDrawingController {
   }
 
   /**
+   * Memeriksa apakah mode Gesture sedang aktif secara sticky (bukan transient hold)
+   */
+  get isGestureModeActive(): boolean {
+    return this.activeTool === 'gesture' && !this.isHoldingGestureKey;
+  }
+
+  /**
    * Memeriksa apakah tombol pemicu gestur sedang ditahan
    */
   isHoldingGesture(): boolean {
@@ -356,8 +383,12 @@ export class ChartDrawingController {
       if (result.scribbleBounds) {
         this.eraseDrawingsInBounds(result.scribbleBounds);
       }
-      if (!this.stayMode && !this.isHoldingGestureKey) {
-        this.setTool('cursor');
+      // Jika mode transient hold aktif, kembalikan kursor ke tool sebelumnya
+      if (this.isHoldingGestureKey) {
+        const restoreTool = this.previousToolBeforeGesture ?? 'cursor';
+        this.previousToolBeforeGesture = null;
+        this.isHoldingGestureKey = false;
+        this.setTool(restoreTool);
       }
       return result;
     }
@@ -382,13 +413,39 @@ export class ChartDrawingController {
         });
       }
 
-      // Jika stayMode false dan bukan transient hold, kembalikan ke kursor
-      if (!this.stayMode && !this.isHoldingGestureKey) {
-        this.setTool('cursor');
+      // Hanya jika transient hold aktif, kembalikan kursor ke tool sebelumnya.
+      // Jika mode gesture diaktifkan via toggle sticky (this.isGestureModeActive),
+      // pertahankan mode 'gesture' agar pengguna dapat menggambar beberapa objek setup berturut-turut.
+      if (this.isHoldingGestureKey) {
+        const restoreTool = this.previousToolBeforeGesture ?? 'cursor';
+        this.previousToolBeforeGesture = null;
+        this.isHoldingGestureKey = false;
+        this.setTool(restoreTool);
       }
     }
 
     return result;
+  }
+
+  /**
+   * Helper privat untuk menghapus daftar drawing berdasarkan ID dari engine grafik Vela
+   */
+  private removeDrawingsFromChart(ids: string[]): void {
+    if (!ids || ids.length === 0) return;
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return;
+
+    try {
+      if (typeof activeChart.drawings.removeMany === 'function') {
+        activeChart.drawings.removeMany(ids);
+      } else if (typeof activeChart.drawings.remove === 'function') {
+        for (const id of ids) {
+          activeChart.drawings.remove(id);
+        }
+      }
+    } catch (err) {
+      console.warn('Gagal menghapus drawings dari chart engine:', err);
+    }
   }
 
   /**
@@ -412,18 +469,8 @@ export class ChartDrawingController {
     });
     this.redoHistory = [];
 
-    // Hapus via drawing layer delete method
-    try {
-      if (typeof activeChart.drawings.removeMany === 'function') {
-        activeChart.drawings.removeMany(idsToDelete);
-      } else if (typeof activeChart.drawings.remove === 'function') {
-        for (const id of idsToDelete) {
-          activeChart.drawings.remove(id);
-        }
-      }
-    } catch (err) {
-      console.warn('Gagal menghapus drawings via scribble:', err);
-    }
+    // Hapus via helper privat removeDrawingsFromChart
+    this.removeDrawingsFromChart(idsToDelete);
 
     if (this.selectedDrawingId && idsToDelete.includes(this.selectedDrawingId)) {
       this.selectedDrawingId = null;
@@ -879,13 +926,7 @@ export class ChartDrawingController {
 
       if (lastAction.action === 'erase') {
         const ids = lastAction.drawings.map((d) => d.id).filter(Boolean);
-        if (ids.length > 0 && activeChart?.drawings) {
-          if (typeof activeChart.drawings.removeMany === 'function') {
-            activeChart.drawings.removeMany(ids);
-          } else if (typeof activeChart.drawings.remove === 'function') {
-            for (const id of ids) activeChart.drawings.remove(id);
-          }
-        }
+        this.removeDrawingsFromChart(ids);
         handledInternal = true;
       }
     }
@@ -1006,22 +1047,11 @@ export class ChartDrawingController {
    * Hapus objek gambar individual berdasarkan ID
    */
   deleteDrawing(id: string): void {
-    const activeChart = this.getActiveChart();
-    if (!activeChart?.drawings) return;
-
-    try {
-      if (typeof activeChart.drawings.removeMany === 'function') {
-        activeChart.drawings.removeMany([id]);
-      } else if (typeof activeChart.drawings.remove === 'function') {
-        activeChart.drawings.remove(id);
-      }
-      if (this.selectedDrawingId === id) {
-        this.selectedDrawingId = null;
-      }
-      this.handleDrawingMutated();
-    } catch (err) {
-      console.warn(`Gagal menghapus drawing ${id}:`, err);
+    this.removeDrawingsFromChart([id]);
+    if (this.selectedDrawingId === id) {
+      this.selectedDrawingId = null;
     }
+    this.handleDrawingMutated();
   }
 
   /**

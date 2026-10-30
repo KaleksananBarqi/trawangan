@@ -1,7 +1,12 @@
 // Unit Tests untuk Deep ChartDrawingController
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ChartDrawingController } from '../src/lib/services/chartDrawingController';
+import {
+  ChartDrawingController,
+  isAABBOverlap,
+  extractDrawingBounds,
+  checkDrawingIntersectsBounds
+} from '../src/lib/services/chartDrawingController';
 import { CommandDispatcher } from '../src/lib/services/commandDispatcher';
 
 test('ChartDrawingController Deep Module Suite', async (t) => {
@@ -629,6 +634,96 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     assert.equal(createdDrawings.length, 0);
     assert.equal(controller.isGestureHUDActive(), false);
     assert.equal(controller.getLastGestureCreation(), null);
+  });
+
+  await t.test('15. Mode Gesture Sticky Toggle vs Transient Hold pada finishGestureStroke (#104, #106)', () => {
+    const controller = new ChartDrawingController();
+    const createdDrawings: any[] = [];
+    const mockDrawings = {
+      create: (spec: any) => {
+        const id = `item-${createdDrawings.length + 1}`;
+        const item = { id, ...spec };
+        createdDrawings.push(item);
+        return item;
+      },
+      all: () => createdDrawings,
+      on: () => {},
+      off: () => {}
+    };
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+
+    // Skenario A: Toggle Sticky Mode (Shift+D / Toolbar)
+    controller.setTool('gesture');
+    assert.equal(controller.isGestureModeActive, true);
+    assert.equal(controller.isHoldingGesture(), false);
+
+    // Goresan pertama
+    controller.startGestureStroke(100, 100);
+    controller.addGesturePoint(300, 102);
+    const stroke1 = controller.finishGestureStroke();
+    assert.ok(stroke1);
+    // Tool HARUS tetap 'gesture' (tidak boleh ter-reset ke 'cursor') agar user dapat menggambar setup beruntun
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+    assert.equal(controller.isGestureModeActive, true);
+
+    // Goresan kedua berturut-turut tanpa perlu toggle ulang
+    controller.startGestureStroke(100, 200);
+    controller.addGesturePoint(300, 202);
+    const stroke2 = controller.finishGestureStroke();
+    assert.ok(stroke2);
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+    assert.equal(createdDrawings.length, 2);
+
+    // Skenario B: Transient Hold Mode (Tahan tombol ~ atau hold)
+    controller.setTool('trendline');
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+
+    controller.setTransientGestureHold(true);
+    assert.equal(controller.isHoldingGesture(), true);
+    assert.equal(controller.isGestureModeActive, false);
+    assert.equal(controller.getSnapshot().activeTool, 'gesture');
+
+    // Tarik goresan saat menahan tombol
+    controller.startGestureStroke(50, 50);
+    controller.addGesturePoint(250, 50);
+    const strokeHold = controller.finishGestureStroke();
+    assert.ok(strokeHold);
+
+    // Pada transient hold, kursor otomatis dikembalikan ke tool sebelumnya ('trendline')
+    assert.equal(controller.getSnapshot().activeTool, 'trendline');
+    assert.equal(controller.isHoldingGesture(), false);
+  });
+
+  await t.test('16. Helper isAABBOverlap dan extractDrawingBounds mengeliminasi duplikasi kode', () => {
+    // 1. extractDrawingBounds dari berbagai struktur
+    const bBounds = extractDrawingBounds({ bounds: { minX: 10, maxX: 50, minY: 20, maxY: 60 } });
+    assert.deepEqual(bBounds, { minX: 10, maxX: 50, minY: 20, maxY: 60 });
+
+    const bPoints = extractDrawingBounds({ points: [{ x: 5, y: 15 }, { x: 25, y: 35 }] });
+    assert.deepEqual(bPoints, { minX: 5, maxX: 25, minY: 15, maxY: 35 });
+
+    const bAnchors = extractDrawingBounds({ anchors: [{ x: 100, y: 200 }, { x: 150, y: 250 }] });
+    assert.deepEqual(bAnchors, { minX: 100, maxX: 150, minY: 200, maxY: 250 });
+
+    const bCoords = extractDrawingBounds({ x1: 10, y1: 20, x2: 30, y2: 40 });
+    assert.deepEqual(bCoords, { minX: 10, maxX: 30, minY: 20, maxY: 40 });
+
+    const bBox = extractDrawingBounds({ x: 50, y: 60, width: 40, height: 30 });
+    assert.deepEqual(bBox, { minX: 50, maxX: 90, minY: 60, maxY: 90 });
+
+    assert.equal(extractDrawingBounds(null), null);
+
+    // 2. isAABBOverlap deteksi overlap vs disjoint
+    const boxA = { minX: 10, maxX: 50, minY: 10, maxY: 50 };
+    const boxOverlap = { minX: 40, maxX: 80, minY: 40, maxY: 80 };
+    const boxDisjoint = { minX: 100, maxX: 120, minY: 100, maxY: 120 };
+
+    assert.equal(isAABBOverlap(boxA, boxOverlap), true);
+    assert.equal(isAABBOverlap(boxA, boxDisjoint), false);
   });
 });
 

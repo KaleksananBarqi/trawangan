@@ -481,8 +481,10 @@
     if (e.key === 'Shift') {
       chartDrawingController.restoreOriginalSnapMode();
     }
-    // Release transient hold tombol `~` (Backquote / Tilde)
-    if (e.key === '`' || e.code === 'Backquote' || e.key === '~') {
+    // Release transient hold saat tombol `~` atau `Shift+D` dilepas (jika sedang gaya hold)
+    const isTilde = e.key === '`' || e.code === 'Backquote' || e.key === '~';
+    const isShiftOrD = e.key === 'Shift' || e.key === 'd' || e.key === 'D' || e.code === 'KeyD';
+    if (isTilde || (isShiftOrD && chartDrawingController.isHoldingGesture())) {
       chartDrawingController.setTransientGestureHold(false);
       isGestureActive = chartDrawingController.isGestureMode();
     }

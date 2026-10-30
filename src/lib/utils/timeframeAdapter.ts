@@ -98,7 +98,7 @@ export function isMonthlyTimeframe(tf: string): boolean {
 }
 
 /**
- * Parsing input cepat dari TimeframeQuickBar ke format interval standar Trawangan
+ * Parsing input cepat dari TimeframeQuickBar ke format interval standar trawangan
  * Contoh:
  * - "1" -> "1m"
  * - "15" -> "15m"
