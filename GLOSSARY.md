@@ -172,4 +172,12 @@ _Avoid_: Footer watermark, Copyright banner
 Aksi satu klik atau pintasan keyboard (`Ctrl+Shift+S`) untuk menyalin grafik ke clipboard sistem atau menyimpannya langsung sebagai file PNG dengan umpan balik visual notifikasi toast.
 _Avoid_: Snipping tool, Print screen, Screen grabber
 
+**Deterministic Trading Plan Ingestion**:
+Mekanisme penguraian teks rencana perdagangan berbasis aturan luring (*zero-LLM*) yang mengekstrak arah posisi (Bias), tingkat harga (Entry, Stop Loss, Target Profit bertingkat), dan rasio risiko/imbalan (R-multiple) secara instan dan deterministik dari format tabel Markdown maupun teks terstruktur.
+_Avoid_: OCR plan parser, LLM plan extractor, AI signal reader
+
+**Multi-Target Position Plan**:
+Visualisasi gambar terpadu pada kanvas grafik yang memetakan rencana posisi trading dengan titik masuk tunggal, tingkat batas risiko (Stop Loss), dan target keuntungan bertingkat (TP1, TP2, dst.) yang dilengkapi label harga serta metrik R-multiple untuk tiap jenjang target.
+_Avoid_: Single-target position only, Disjointed position boxes, Cluttered trade lines
+
 
