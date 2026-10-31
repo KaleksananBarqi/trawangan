@@ -157,16 +157,28 @@ Skema pemformatan harga dan label sumbu nilai dengan satuan mata uang kripto (se
 _Avoid_: Dollar-formatted crypto, Truncated satoshi, Fiat-only price scale
 
 **Branded Snapshot Frame**:
-Format tangkapan visual grafik yang membungkus kanvas dengan padding latar gelap minimalis dan bilah atribusi metadata di bagian bawah (logo monogram `tr`, teks `trawangan`, simbol, timeframe, bursa, harga, dan timestamp), menghasilkan kartu gambar siap bagikan tanpa menutupi area lilin candlestick.
-_Avoid_: Watermark diagonal, Stempel grafik, Cap chart, Obtrusive watermark
-
-**Clean Chart Export**:
-Mode ekspor tangkapan layar murni yang hanya mengambil piksel kanvas grafik lilin dan panel indikator tanpa pembungkus bingkai, padding luar, atau bilah metadata tambahan.
+Format tangkapan visual grafik yang membungkus kanvas dengan padding latar minimalis dan bilah atribusi metadata di bagian bawah (logo resmi aplikasi, identitas profil trader opsional, simbol, timeframe, bursa, harga, dan timestamp), menghasilkan kartu gambar siap bagikan dengan opsi tanda air keamanan di area kanvas.
 _Avoid_: Raw screen dump, Untagged chart
 
 **Attribution Bar**:
-Bilah metadata terpadu di sisi bawah Branded Snapshot Frame yang merangkum identitas brand `trawangan`, instrumen aktif, interval waktu, harga pasar terkini, dan stempel waktu lokal pengguna secara rapi dan presisi.
+Bilah metadata terpadu di sisi bawah Branded Snapshot Frame yang merangkum identitas brand `trawangan`, instrumen aktif, interval waktu, harga pasar terkini, stempel waktu lokal pengguna, serta atribusi profil kustom trader.
 _Avoid_: Footer watermark, Copyright banner
+
+**Trader Profile Attribution**:
+Identitas personal trader (foto profil/avatar, nama pengguna, dan deskripsi singkat/handle media sosial) yang disematkan secara elegan pada bilah atribusi tangkapan layar untuk personal branding dan keaslian analisis.
+_Avoid_: Anonymous watermark, Fixed author tag
+
+**Security Watermark**:
+Tanda air proteksi semi-transparan (teks identitas atau logo personal) yang dirender di lapisan latar kanvas grafik di belakang candlestick saat ekspor maupun tampilan kerja untuk mencegah pencurian atau klaim sepihak analisis teknikal di media sosial.
+_Avoid_: Opaque watermark, Distracting overlay
+
+**Custom Canvas Background**:
+Lapisan latar visual kanvas grafik (warna solid kustom maupun gradien vertikal) yang dapat disetel langsung dari menu pengaturan tema tanpa mengganggu kontras elemen candlestick dan sumbu harga.
+_Avoid_: Hardcoded theme background only, Fixed chart canvas fill
+
+**Themed Thesis Overlay**:
+Komponen visual kartu tesis trading plan (`FloatingThesisCard`) yang secara reaktif mengadopsi palet warna dan gaya visual Theme Preset aktif, menggantikan skema warna gelap kaku.
+_Avoid_: Hardcoded obsidian card, Desynced plan theme
 
 **Quick Snapshot Action**:
 Aksi satu klik atau pintasan keyboard (`Ctrl+Shift+S`) untuk menyalin grafik ke clipboard sistem atau menyimpannya langsung sebagai file PNG dengan umpan balik visual notifikasi toast.
