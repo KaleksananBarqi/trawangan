@@ -248,4 +248,68 @@ test('Price Scale Labels (Indikator & Posisi Drawing) Seam Suite', async (t) => 
     assert.equal(badges[0].price, 0.005123);
     assert.equal(badges[0].label, '0.005123');
   });
+
+  await t.test('8. Multi-Target Staged Position: Menghasilkan label TP1 & TP2 ber-R-multiple dan mendeduplikasi Entry serta SL', () => {
+    const stage1 = {
+      id: 'plan_pos_stage_1',
+      type: 'position',
+      visible: true,
+      anchors: [
+        { time: 1700000000000, price: 78300.0 }, // Entry
+        { time: 1700000600000, price: 78900.0 }, // Stop Loss
+        { time: 1700000600000, price: 77300.0 }, // TP1
+      ],
+      metadata: {
+        planId: 'plan_123',
+        stageIndex: 1,
+        targetLabel: 'TP1',
+        rMultiple: 1.6666,
+      },
+      style: { lineColor: '#3b82f6' },
+    };
+
+    const stage2 = {
+      id: 'plan_pos_stage_2',
+      type: 'position',
+      visible: true,
+      anchors: [
+        { time: 1700000600000, price: 78300.0 }, // Entry yang sama
+        { time: 1700001200000, price: 78900.0 }, // Stop Loss yang sama
+        { time: 1700001200000, price: 76270.0 }, // TP2
+      ],
+      metadata: {
+        planId: 'plan_123',
+        stageIndex: 2,
+        targetLabel: 'TP2',
+        rMultiple: 3.3833,
+      },
+      style: { lineColor: '#3b82f6' },
+    };
+
+    const badges = extractDrawingPriceBadges([stage1, stage2] as any, dummyPriceToY);
+
+    // Harus ada tepat 4 badge (1 Entry, 1 SL, 1 TP1, 1 TP2) tanpa duplikasi Entry/SL
+    assert.equal(badges.length, 4);
+
+    const entryBadges = badges.filter((b) => b.kind === 'entry');
+    assert.equal(entryBadges.length, 1);
+    assert.equal(entryBadges[0].price, 78300.0);
+    assert.equal(entryBadges[0].title, 'Entry');
+
+    const slBadges = badges.filter((b) => b.kind === 'stop_loss');
+    assert.equal(slBadges.length, 1);
+    assert.equal(slBadges[0].price, 78900.0);
+    assert.equal(slBadges[0].title, 'Stop (SL)');
+
+    const tpBadges = badges.filter((b) => b.kind === 'take_profit');
+    assert.equal(tpBadges.length, 2);
+
+    const tp1 = tpBadges.find((b) => b.price === 77300.0);
+    assert.ok(tp1);
+    assert.equal(tp1.title, 'TP1 | 1.67R');
+
+    const tp2 = tpBadges.find((b) => b.price === 76270.0);
+    assert.ok(tp2);
+    assert.equal(tp2.title, 'TP2 | 3.38R');
+  });
 });

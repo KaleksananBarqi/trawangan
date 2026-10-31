@@ -72,6 +72,8 @@ export function extractDrawingPriceBadges(
   if (!Array.isArray(drawings) || drawings.length === 0) return [];
 
   const badges: PriceScaleBadge[] = [];
+  const seenEntries = new Set<string>();
+  const seenStopLosses = new Set<string>();
 
   for (const d of drawings) {
     if (!d || d.visible === false) continue;
@@ -90,44 +92,58 @@ export function extractDrawingPriceBadges(
       const stopPrice = sanitize(prices?.stop ?? anchors[1]?.price);
       const targetPrice = sanitize(prices?.target ?? anchors[2]?.price);
 
+      const planKey = d.metadata?.planId || d.id;
+
       if (typeof entryPrice === 'number' && !isNaN(entryPrice)) {
-        const col = d.style?.lineColor || '#3b82f6';
-        badges.push({
-          id: `draw_${d.id}_entry`,
-          price: entryPrice,
-          label: formatPriceLabel(entryPrice, quoteCurrency),
-          color: col,
-          bgColor: col,
-          kind: 'entry',
-          title: 'Entry',
-          y: priceToY ? priceToY(entryPrice) : null,
-        });
+        const entryKey = `${planKey}_${entryPrice}`;
+        if (!seenEntries.has(entryKey)) {
+          seenEntries.add(entryKey);
+          const col = d.style?.lineColor || '#00f0ff';
+          badges.push({
+            id: `draw_${d.id}_entry`,
+            price: entryPrice,
+            label: formatPriceLabel(entryPrice, quoteCurrency),
+            color: col,
+            bgColor: '#1e293b',
+            kind: 'entry',
+            title: 'Entry',
+            y: priceToY ? priceToY(entryPrice) : null,
+          });
+        }
       }
 
       if (typeof targetPrice === 'number' && !isNaN(targetPrice)) {
+        const stageLabel = d.metadata?.targetLabel || (d.targetLabel ? d.targetLabel : 'Target (TP)');
+        const rMult = typeof d.metadata?.rMultiple === 'number'
+          ? ` | ${d.metadata.rMultiple.toFixed(2)}R`
+          : '';
         badges.push({
           id: `draw_${d.id}_tp`,
           price: targetPrice,
           label: formatPriceLabel(targetPrice, quoteCurrency),
           color: '#10b981', // Hijau Bullish Take Profit
-          bgColor: '#10b981',
+          bgColor: '#064e3b',
           kind: 'take_profit',
-          title: 'Target (TP)',
+          title: `${stageLabel}${rMult}`,
           y: priceToY ? priceToY(targetPrice) : null,
         });
       }
 
       if (typeof stopPrice === 'number' && !isNaN(stopPrice)) {
-        badges.push({
-          id: `draw_${d.id}_sl`,
-          price: stopPrice,
-          label: formatPriceLabel(stopPrice, quoteCurrency),
-          color: '#ef4444', // Merah Bearish Stop Loss
-          bgColor: '#ef4444',
-          kind: 'stop_loss',
-          title: 'Stop (SL)',
-          y: priceToY ? priceToY(stopPrice) : null,
-        });
+        const slKey = `${planKey}_${stopPrice}`;
+        if (!seenStopLosses.has(slKey)) {
+          seenStopLosses.add(slKey);
+          badges.push({
+            id: `draw_${d.id}_sl`,
+            price: stopPrice,
+            label: formatPriceLabel(stopPrice, quoteCurrency),
+            color: '#ef4444', // Merah Bearish Stop Loss
+            bgColor: '#7f1d1d',
+            kind: 'stop_loss',
+            title: 'Stop (SL)',
+            y: priceToY ? priceToY(stopPrice) : null,
+          });
+        }
       }
     } else if (
       d.type === 'hline' ||

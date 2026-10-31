@@ -101,6 +101,13 @@
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
   $effect(() => { const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor; if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }); });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
+  $effect(() => {
+    const show = showDrawingPriceLabels;
+    if (isMounted) {
+      priceScaleOverlayController.updateDrawings(chartDrawingController.getSnapshot().activeDrawings || [], show);
+      scheduleBadgePositionUpdate();
+    }
+  });
   $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
   $effect(() => { const v = showVolume; if (isMounted && v !== undefined) controller.setShowVolume(v); });
   $effect(() => {
@@ -146,6 +153,7 @@
         syncInkCanvasSize();
       }
       gestureCreationState = st.lastGestureCreation;
+      priceScaleOverlayController.updateDrawings(st.activeDrawings || [], showDrawingPriceLabels);
       scheduleBadgePositionUpdate();
     });
     unsubOverlay = priceScaleOverlayController.subscribe((coords) => {
