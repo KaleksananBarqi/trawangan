@@ -231,6 +231,7 @@ export interface UserProfileConfig {
 }
 
 /**
+/**
  * Konfigurasi kustom latar belakang kanvas grafik (#128)
  * Mendukung mode tema bawaan ('theme'), warna tunggal ('solid'), dan gradien vertikal ('gradient').
  */
@@ -239,6 +240,16 @@ export interface CustomChartBackgroundConfig {
   solidColor?: string;
   gradientTop?: string;
   gradientBottom?: string;
+}
+
+/**
+ * Konfigurasi tanda air keamanan anti-pencurian semi-transparan pada kanvas (#127)
+ */
+export interface SecurityWatermarkConfig {
+  enabled: boolean;
+  text?: string;
+  opacity: number; // 0.05 - 0.30, default: 0.10
+  showOnLiveCanvas: boolean; // default: false
 }
 }
 
@@ -281,6 +292,8 @@ export interface AppSettings {
   snapshotScaleMultiplier?: SnapshotScaleMultiplier;
   // Trader Profile & Attribution Settings (#126)
   userProfile?: UserProfileConfig;
+  // Security Watermark Anti-Theft Settings (#127)
+  securityWatermark?: SecurityWatermarkConfig;
 }
 
 /**

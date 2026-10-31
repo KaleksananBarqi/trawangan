@@ -225,6 +225,7 @@
       includeTimestamp,
       metadata,
       userProfile: appSettings.userProfile,
+      watermark: appSettings.securityWatermark,
     };
 
     return compositeSnapshot(sourceCanvas, options);
