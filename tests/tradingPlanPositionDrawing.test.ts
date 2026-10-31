@@ -103,13 +103,19 @@ describe('Ticket 2 (#111): Staged Multi-Target Position Drawing Engine', () => {
 
     const result = controller.createMultiTargetPosition(plan, { barSpanPerTarget: span });
     assert.ok(result, 'Hasil createMultiTargetPosition tidak boleh null');
-    assert.equal(result.drawingIds.length, 2, 'Harus membuat 2 drawing id untuk 2 target TP');
-    assert.equal(result.drawings.length, 2, 'Harus menghasilkan 2 objek drawing');
+    // 2 target TP + 1 auto-draw context zone (FVG)
+    assert.equal(result.drawingIds.length, 3, 'Harus membuat 3 drawing id (2 target TP + 1 FVG context box)');
+    assert.equal(result.drawings.length, 3, 'Harus menghasilkan 3 objek drawing');
 
     const drawings = getDrawings();
-    assert.equal(drawings.length, 2);
+    assert.equal(drawings.length, 3);
 
-    const [stage1, stage2] = drawings;
+    const positionDrawings = drawings.filter((d) => d.type === 'position');
+    const contextDrawings = drawings.filter((d) => d.type === 'box');
+    assert.equal(positionDrawings.length, 2, 'Harus ada 2 drawing posisi bertingkat');
+    assert.equal(contextDrawings.length, 1, 'Harus ada 1 drawing zona konteks FVG');
+
+    const [stage1, stage2] = positionDrawings;
 
     // Evaluasi Stage 1 (TP1)
     const expectedT0 = baseTime;
@@ -137,6 +143,21 @@ describe('Ticket 2 (#111): Staged Multi-Target Position Drawing Engine', () => {
     assert.deepEqual(stage2.anchors[0], { time: expectedT1, price: 81200 }); // Entry identik berlanjut dari t1
     assert.deepEqual(stage2.anchors[1], { time: expectedT2, price: 81400 }); // Stop Loss identik
     assert.deepEqual(stage2.anchors[2], { time: expectedT2, price: 79429 }); // TP2
+
+    // Evaluasi Context Zone (FVG Box)
+    const fvgBox = contextDrawings[0];
+    assert.equal(fvgBox.metadata?.role, 'context_zone');
+    assert.equal(fvgBox.metadata?.low, 81182.2);
+    assert.equal(fvgBox.metadata?.high, 81236.7);
+    assert.equal(fvgBox.anchors[0].price, 81236.7);
+    assert.equal(fvgBox.anchors[1].price, 81182.2);
+
+    // Evaluasi jika drawContextZones dimatikan secara eksplisit
+    const { controller: ctrl2, getDrawings: getDrawings2 } = createMockChartWorkspace();
+    const resultNoZones = ctrl2.createMultiTargetPosition(plan, { drawContextZones: false });
+    assert.ok(resultNoZones);
+    assert.equal(resultNoZones.drawings.length, 2, 'Hanya 2 posisi tanpa FVG box bila dimatikan');
+    assert.equal(getDrawings2().length, 2);
 
     // Evaluasi Metadata Konsistensi
     assert.ok(stage1.metadata.planId, 'planId wajib ada');
@@ -228,26 +249,32 @@ describe('Ticket 2 (#111): Staged Multi-Target Position Drawing Engine', () => {
 
     const created = controller.createMultiTargetPosition(plan);
     assert.ok(created);
-    assert.equal(getDrawings().length, 2);
-    const [id1, id2] = created.drawingIds;
+    // 2 target position + 1 context zone
+    assert.equal(getDrawings().length, 3);
+    assert.equal(controller.getActivePlans().length, 1);
+    const [id1, id2, id3] = created.drawingIds;
 
     // 1. Panggil Undo (Ctrl+Z) -> Seluruh drawing stage harus dihapus serentak
     controller.undo();
     assert.equal(getDrawings().length, 0, 'Seluruh stage drawing harus dihapus dari chart saat undo');
+    assert.equal(controller.getActivePlans().length, 0, 'activePlans harus kosong saat undo');
     assert.ok(
-      calls.some((c) => c === `removeMany:${id1},${id2}` || (c.includes(id1) && c.includes(id2))),
-      'removeMany harus dipanggil serentak untuk kedua drawing ID'
+      calls.some((c) => c.includes('removeMany') && c.includes(id1) && c.includes(id2)),
+      'removeMany harus dipanggil serentak untuk seluruh drawing ID'
     );
 
     // 2. Panggil Redo (Ctrl+Y) -> Seluruh drawing stage harus dipulihkan serentak
     controller.redo();
-    assert.equal(getDrawings().length, 2, 'Kedua drawing stage harus dipulihkan kembali saat redo');
+    assert.equal(getDrawings().length, 3, 'Seluruh drawing stage harus dipulihkan kembali saat redo');
+    assert.equal(controller.getActivePlans().length, 1, 'activePlans harus kembali terdaftar saat redo');
     assert.equal(getDrawings()[0].id, id1);
     assert.equal(getDrawings()[1].id, id2);
+    assert.equal(getDrawings()[2].id, id3);
 
     // 3. Panggil Undo kembali
     controller.undo();
-    assert.equal(getDrawings().length, 0, 'Kedua drawing harus terhapus kembali saat undo kedua');
+    assert.equal(getDrawings().length, 0, 'Seluruh drawing harus terhapus kembali saat undo kedua');
+    assert.equal(controller.getActivePlans().length, 0);
   });
 
   it('6. Sanity Guard & Proteksi Rencana Tidak Valid (Invalid Plan Rejection)', () => {
@@ -339,5 +366,40 @@ TP3: 3100 (6.00R)
       assert.equal(d.anchors[0].price, 2500); // Entry
       assert.equal(d.anchors[1].price, 2400); // Stop Loss
     }
+  });
+
+  it('8. Registry Active Plans, Toggle Thesis Cards, dan Remove Plan (#115)', () => {
+    const plan = parseTradingPlan(sampleMarkdown);
+    const { controller, getDrawings } = createMockChartWorkspace();
+
+    const created = controller.createMultiTargetPosition(plan);
+    assert.ok(created);
+
+    // Verifikasi registry activePlans
+    const activePlans = controller.getActivePlans();
+    assert.equal(activePlans.length, 1);
+    const planId = activePlans[0].id;
+    assert.ok(planId);
+    assert.equal(activePlans[0].bias, 'bearish');
+
+    // Verifikasi state default showThesisCards
+    assert.equal(controller.isThesisCardsVisible(), true);
+
+    // Toggle visibilitas Thesis Cards
+    const visible1 = controller.toggleThesisCardsVisible();
+    assert.equal(visible1, false);
+    assert.equal(controller.isThesisCardsVisible(), false);
+
+    const visible2 = controller.toggleThesisCardsVisible();
+    assert.equal(visible2, true);
+    assert.equal(controller.isThesisCardsVisible(), true);
+
+    // Explicit setThesisCardsVisible
+    controller.setThesisCardsVisible(false);
+    assert.equal(controller.isThesisCardsVisible(), false);
+
+    // Remove plan via planId
+    controller.removePlan(planId);
+    assert.equal(controller.getActivePlans().length, 0);
   });
 });

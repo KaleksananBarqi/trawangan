@@ -354,4 +354,59 @@ Take Profit: 110
       assert.ok(plan.validation.errors.length > 0);
     });
   });
+
+  describe('6. Ekstraksi Kesimpulan, Probabilitas Setup & Skenario Invalidasi (#115)', () => {
+    it('mengurai Bagian 6 Kesimpulan, Probabilitas Setup, dan Skenario Invalidasi', () => {
+      const userFullText = `
+5. Trading Plan
+
+*Definisi: Entry diasumsikan dieksekusi konservatif pada rata-rata level Premium di 78300. Nilai R dikalkulasi dari Entry (78300) dan SL (78900). R = |78300 - 78900| = 600.*
+
+| Parameter | Nilai |
+| --- | --- |
+| Bias | Bearish |
+| Entry | 78300.0 (Tunggu harga masuk FVG MTF 78200.0 - 78377.9 diikuti 15m Bearish CHoCH) |
+| Alasan Entry | Area *unfilled Bearish FVG* 1H bertumpang tindih dengan FVG 4H, merepresentasikan inefisiensi Premium yang belum dimitigasi **[FAKTA]**. Level ini adalah zona suplai institusional **[INFERENSI]**. |
+| Stop Loss | 78900.0 |
+| Alasan SL | Level ini diletakkan di atas MTF Swing High 78776.5 **[FAKTA]**. Jika level ini dibreak dan dipertahankan (close body), struktur MTF tervalidasi *shift* ke Bullish, menginvalidasi setup Bearish ini **[INFERENSI]**. |
+| TP1 | 77300.0 |
+| R multiple TP1 | 1.66R (R=600, Reward= |
+| Alasan TP1 | Target objektif pertama menyapu SSL internal di 15m *Swing Low* terdekat **[FAKTA]**. Ini adalah titik aman pertama untuk mengamankan sebagian porsi posisi **[INFERENSI]**. |
+| TP2 | 76270.0 |
+| R multiple TP2 | 3.38R (R=600, Reward= |
+| Alasan TP2 | Eksternal *Sell Side Liquidity* absolut dari rentang MTF, di mana penumpukan mayoritas *Stop Loss* LONG makro ritel bersarang **[INFERENSI]**. |
+| RRR aktual (TP1) | 1:1.66 |
+| RRR aktual (TP2) | 1:3.38 |
+
+### 6. Kesimpulan & Confidence Level
+
+* **Probabilitas Setup:** Medium-High. Tren HTF dan MTF sepenuhnya searah (Bearish). FVG Premium tersedia dengan jelas sebagai katalis entry, ditunjang pembentukan LTF *inducement*. (Catatan: RRR TP1 adalah 1:1.66 yang berada di bawah rasio emas 1:2, sehingga manajemen lot di TP1 harus rasional, sembari mempertahankan sisi *runners* untuk TP2 di atas 3R).
+* **Skenario Invalidasi:** Jika harga agresif menembus level 78776.5 dengan candle 1H ditutup (*close*) kuat di atas level tersebut tanpa formasi penolakan (wick) atau absennya CHoCH Bearish LTF 15m, maka institusi tengah merombak arah tren makro dan setup SHORT batal secara mekanis.
+      `.trim();
+
+      const plan = parseTradingPlan(userFullText);
+
+      assert.equal(plan.bias, 'bearish');
+      assert.equal(plan.entry, 78300.0);
+      assert.equal(plan.stopLoss, 78900.0);
+      assert.equal(plan.riskAmount, 600.0);
+      assert.equal(plan.targets.length, 2);
+      assert.equal(plan.targets[0].price, 77300.0);
+      assert.equal(plan.targets[1].price, 76270.0);
+
+      // Verifikasi Kesimpulan
+      assert.ok(plan.conclusion);
+      assert.equal(plan.conclusion.probability, 'Medium-High');
+      assert.match(plan.conclusion.probabilityNotes || '', /Tren HTF dan MTF sepenuhnya searah/);
+      assert.match(plan.conclusion.invalidationScenario || '', /Jika harga agresif menembus level 78776.5/);
+
+      // Verifikasi Definisi
+      assert.match(plan.definition || '', /Entry diasumsikan dieksekusi konservatif/);
+
+      // Verifikasi Zona FVG
+      assert.ok(plan.contextZones.length > 0);
+      assert.equal(plan.contextZones[0].low, 78200.0);
+      assert.equal(plan.contextZones[0].high, 78377.9);
+    });
+  });
 });

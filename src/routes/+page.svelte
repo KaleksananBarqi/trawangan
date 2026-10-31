@@ -200,6 +200,8 @@
   let isDrawingsHidden = $state(false);
   let activeDrawings = $state<any[]>([]);
   let selectedDrawingId = $state<string | null>(null);
+  let hasActivePlans = $state(false);
+  let showThesisCards = $state(true);
 
   // Deep Link & Clipboard Sentry State
   let detectedChartLink = $state<{ target: ParsedChartTarget; rawUrl: string } | null>(null);
@@ -539,6 +541,8 @@
       isDrawingsHidden = state.isHidden;
       activeDrawings = state.activeDrawings;
       selectedDrawingId = state.selectedDrawingId;
+      hasActivePlans = Boolean(state.activePlans && state.activePlans.length > 0);
+      showThesisCards = state.showThesisCards ?? true;
     });
 
     // Deep Link & Clipboard Watcher Sentry
@@ -1426,6 +1430,9 @@
           onClear={handleClear}
           onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
           onOpenImportPlan={() => handleOpenImportPlanModal()}
+          {hasActivePlans}
+          {showThesisCards}
+          onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
         />
       {/if}
 

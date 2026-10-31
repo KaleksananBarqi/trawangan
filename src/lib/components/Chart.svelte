@@ -12,6 +12,7 @@
   import { isEditableElement } from '../services/commandDispatcher';
   import { isTradingPlanText } from '../services/planParserService';
   import ChartContextMenu from './ChartContextMenu.svelte';
+  import FloatingThesisCard from './FloatingThesisCard.svelte';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
     Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace
@@ -84,6 +85,8 @@
   let draggingAlertPrice = $state<number | null>(null);
   let drawingPriceBadges = $state<PriceScaleBadge[]>([]);
   let indicatorPriceBadges = $state<PriceScaleBadge[]>([]);
+  let activePlans = $state<Array<any>>([]);
+  let showThesisCards = $state(true);
 
   let unsubAlerts: (() => void) | null = null;
   let unsubDrawingState: (() => void) | null = null;
@@ -153,6 +156,8 @@
         syncInkCanvasSize();
       }
       gestureCreationState = st.lastGestureCreation;
+      activePlans = st.activePlans || [];
+      showThesisCards = st.showThesisCards ?? true;
       priceScaleOverlayController.updateDrawings(st.activeDrawings || [], showDrawingPriceLabels);
       scheduleBadgePositionUpdate();
     });
@@ -706,6 +711,17 @@
     </div>
   {/if}
 
+  {#if showThesisCards}
+    {#each activePlans as plan, idx (plan.id)}
+      <FloatingThesisCard
+        {plan}
+        initialX={16 + idx * 24}
+        initialY={56 + idx * 24}
+        onClose={(id) => chartDrawingController.removePlan(id)}
+      />
+    {/each}
+  {/if}
+
   <ChartContextMenu
     isOpen={isContextMenuOpen}
     x={contextMenuX}
@@ -713,11 +729,14 @@
     {symbol}
     price={contextMenuPrice}
     time={contextMenuTime}
+    hasActivePlans={activePlans.length > 0}
+    {showThesisCards}
     onCreateAlert={() => { if (contextMenuPrice) onRequestCreateAlert?.(symbol, contextMenuPrice); isContextMenuOpen = false; }}
     onDrawHorizontalLine={() => { chartDrawingController.setTool('hline'); isContextMenuOpen = false; }}
     onResetChartScale={fitChart}
     onOpenSettings={() => { openChartSettings(); isContextMenuOpen = false; }}
     onOpenImportPlan={() => { isContextMenuOpen = false; onOpenImportPlan?.(); }}
+    onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
     onClose={() => (isContextMenuOpen = false)}
   />
 </div>

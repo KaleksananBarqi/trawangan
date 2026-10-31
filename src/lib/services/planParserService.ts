@@ -29,6 +29,12 @@ export interface PlanValidationResult {
   warnings: string[];
 }
 
+export interface PlanConclusion {
+  probability?: string;
+  probabilityNotes?: string;
+  invalidationScenario?: string;
+}
+
 export interface ParsedTradingPlan {
   bias: TradeBias;
   entry: number;
@@ -39,6 +45,8 @@ export interface ParsedTradingPlan {
   contextZones: ContextZone[];
   rawText: string;
   validation: PlanValidationResult;
+  conclusion?: PlanConclusion;
+  definition?: string;
 }
 
 export interface ParseTradingPlanOptions {
@@ -96,12 +104,26 @@ function extractContextZones(text: string, tickSize?: number): ContextZone[] {
   if (!text) return zones;
 
   // Pola rentang harga: angka - angka
-  // Bisa didahului oleh kata seperti "area FVG LTF", "Bearish FVG", "zona", dll.
-  const regex = /(?:(?:di dalam\s+|area\s+|zona\s+)?([a-zA-Z0-9_\s]{2,30}?(?:FVG|OB|Order Block|Imbalance|Demand|Supply|Zone|Area)[a-zA-Z0-9_\s]{0,15}?)\s+)?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|s\/d|to)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)/gi;
+  // Memeriksa konteks apakah memuat kata kunci seperti FVG, OB, Imbalance, Zona, Area, dll.
+  const regex = /(?:(?:di dalam|tunggu harga masuk|masuk|area|zona)?\s*([a-zA-Z0-9_\s]{0,35}?(?:FVG|OB|Order Block|Imbalance|Demand|Supply|Zone|Area|Rentang|Range)[a-zA-Z0-9_\s]{0,20}?)\s+)?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|s\/d|to)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)/gi;
 
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
-    const rawLabel = match[1]?.trim() || 'Context Zone';
+    const rawLabel = match[1]?.trim() || '';
+    const fullMatch = match[0];
+    const matchIndex = match.index;
+    const surrounding = text.substring(Math.max(0, matchIndex - 20), matchIndex + fullMatch.length + 20);
+
+    // Abaikan kalkulasi rumus matematika seperti |78300 - 78900| atau R = |...|
+    if (/R\s*=|\|\s*[+-]?\d+(?:\.\d+)?\s*[-–—]\s*[+-]?\d+(?:\.\d+)?\s*\|/.test(surrounding)) {
+      continue;
+    }
+
+    // Jika tidak ada kata kunci struktural di label atau sekitar, abaikan
+    if (!rawLabel && !/(?:fvg|ob|order block|imbalance|zona|area|demand|supply|range)/i.test(surrounding)) {
+      continue;
+    }
+
     const num1 = parseFloat(match[2].replace(/,/g, ''));
     const num2 = parseFloat(match[3].replace(/,/g, ''));
 
@@ -116,7 +138,9 @@ function extractContextZones(text: string, tickSize?: number): ContextZone[] {
     }
 
     // Bersihkan label
-    let cleanLabel = rawLabel.replace(/^di dalam\s+/i, '').replace(/^area\s+/i, '').trim();
+    let cleanLabel = rawLabel
+      .replace(/^(?:di dalam|tunggu harga masuk|masuk|area|zona)\s+/i, '')
+      .trim();
     if (!cleanLabel) cleanLabel = 'Context Zone';
 
     // Hindari duplikasi zona yang sama persis
@@ -127,6 +151,57 @@ function extractContextZones(text: string, tickSize?: number): ContextZone[] {
   }
 
   return zones;
+}
+
+/**
+ * Mengekstrak bagian Definisi dan Kesimpulan & Skenario Invalidasi (#115).
+ */
+function extractConclusionAndDefinition(text: string): {
+  conclusion?: PlanConclusion;
+  definition?: string;
+} {
+  let definition: string | undefined;
+  let conclusion: PlanConclusion | undefined;
+
+  // 1. Ekstraksi Definisi (misal: *Definisi: ...*)
+  const defMatch = text.match(/(?:\*|_)?(?:Definisi|Definition)\s*:\s*([^\n\r]+)/i);
+  if (defMatch) {
+    definition = defMatch[1].replace(/[*_]/g, '').trim();
+  }
+
+  // 2. Ekstraksi Kesimpulan / Confidence Level / Skenario Invalidasi
+  let prob: string | undefined;
+  let probNotes: string | undefined;
+  let invalidation: string | undefined;
+
+  // Match Probabilitas Setup
+  const probMatch = text.match(/(?:Probabilitas(?:\s+Setup)?|Probability)\s*:\s*\*?\*?([^\n\r]+)/i);
+  if (probMatch) {
+    const rawProb = probMatch[1].trim();
+    const dotIndex = rawProb.indexOf('.');
+    if (dotIndex !== -1 && dotIndex < 30) {
+      prob = rawProb.substring(0, dotIndex).replace(/[*_]/g, '').trim();
+      probNotes = rawProb.substring(dotIndex + 1).replace(/^[*_\s]+/, '').trim();
+    } else {
+      prob = rawProb.replace(/[*_]/g, '').trim();
+    }
+  }
+
+  // Match Skenario Invalidasi
+  const invMatch = text.match(/(?:Skenario\s+Invalidasi|Invalidation(?:\s+Scenario)?)\s*:\s*\*?\*?([^\n\r]+)/i);
+  if (invMatch) {
+    invalidation = invMatch[1].replace(/^[*_\s]+/, '').trim();
+  }
+
+  if (prob || invalidation || probNotes) {
+    conclusion = {
+      ...(prob ? { probability: prob } : {}),
+      ...(probNotes ? { probabilityNotes: probNotes } : {}),
+      ...(invalidation ? { invalidationScenario: invalidation } : {}),
+    };
+  }
+
+  return { conclusion, definition };
 }
 
 /**
@@ -482,6 +557,9 @@ export function parseTradingPlan(
   // Validasi Sanity Guard
   const validation = validatePlanSanity(bias, entry, stopLoss, targets);
 
+  // Ekstraksi Kesimpulan dan Definisi (#115)
+  const { conclusion, definition } = extractConclusionAndDefinition(text);
+
   return {
     bias,
     entry,
@@ -492,6 +570,8 @@ export function parseTradingPlan(
     contextZones,
     rawText: text,
     validation,
+    ...(conclusion ? { conclusion } : {}),
+    ...(definition ? { definition } : {}),
   };
 }
 

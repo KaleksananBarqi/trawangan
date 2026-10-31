@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Bell, Minus, Copy, RotateCcw, Check, Sparkles, SlidersHorizontal } from '@lucide/svelte';
+  import { Bell, Minus, Copy, RotateCcw, Check, Sparkles, SlidersHorizontal, Eye, EyeOff } from '@lucide/svelte';
 
   interface Props {
 
@@ -10,11 +10,14 @@
     symbol: string;
     price: number | null;
     time: number | null;
+    hasActivePlans?: boolean;
+    showThesisCards?: boolean;
     onCreateAlert: (symbol: string, price: number) => void;
     onDrawHorizontalLine?: (price: number) => void;
     onResetChartScale?: () => void;
     onOpenSettings?: () => void;
     onOpenImportPlan?: () => void;
+    onToggleThesisCards?: () => void;
     onClose: () => void;
   }
 
@@ -25,11 +28,14 @@
     symbol,
     price,
     time,
+    hasActivePlans = false,
+    showThesisCards = true,
     onCreateAlert,
     onDrawHorizontalLine,
     onResetChartScale,
     onOpenSettings,
     onOpenImportPlan,
+    onToggleThesisCards,
     onClose,
   }: Props = $props();
 
@@ -258,6 +264,31 @@
         </div>
         <span class="shortcut-tag mono-nums">Ctrl+Shift+P</span>
       </button>
+
+      {#if hasActivePlans}
+        <!-- Toggle Tesis Rencana Perdagangan (#115) -->
+        <button
+          type="button"
+          class="menu-item"
+          onclick={() => {
+            onToggleThesisCards?.();
+            onClose();
+          }}
+        >
+          <div class="item-left">
+            <span class="icon-wrap {showThesisCards ? 'text-amber' : 'text-dim'}">
+              {#if showThesisCards}
+                <EyeOff size={13} />
+              {:else}
+                <Eye size={13} />
+              {/if}
+            </span>
+            <span class="item-label">
+              {showThesisCards ? 'Sembunyikan Tesis Rencana' : 'Tampilkan Tesis Rencana'}
+            </span>
+          </div>
+        </button>
+      {/if}
 
       <div class="menu-divider"></div>
 

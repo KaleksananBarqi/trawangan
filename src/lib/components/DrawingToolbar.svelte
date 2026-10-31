@@ -39,6 +39,7 @@
     Unlock,
     Eye,
     EyeOff,
+    FileText,
     Undo2,
     Redo2,
     Trash2,
@@ -88,6 +89,9 @@
     onToggleCollapse?: () => void;
     onOpenGestureGuide?: () => void;
     onOpenImportPlan?: () => void;
+    hasActivePlans?: boolean;
+    showThesisCards?: boolean;
+    onToggleThesisCards?: () => void;
   }
 
   let {
@@ -110,6 +114,9 @@
     onToggleCollapse,
     onOpenGestureGuide,
     onOpenImportPlan,
+    hasActivePlans = false,
+    showThesisCards = true,
+    onToggleThesisCards,
   }: Props = $props();
 
   // State flyout menu
@@ -731,6 +738,20 @@
       {/if}
     </button>
   </div>
+
+  {#if hasActivePlans}
+    <!-- Toggle Thesis Cards Floating HUD (#115) -->
+    <div class="tool-item">
+      <button
+        type="button"
+        class="tool-btn {showThesisCards ? 'active text-cyan' : 'text-dim'}"
+        title={showThesisCards ? 'Sembunyikan Tesis Posisi di Grafik' : 'Tampilkan Tesis Posisi di Grafik'}
+        onclick={onToggleThesisCards}
+      >
+        <FileText size={15} />
+      </button>
+    </div>
+  {/if}
 
   <div class="tool-divider"></div>
 
