@@ -5,8 +5,10 @@ import { parseTradingPlan } from '../src/lib/services/planParserService';
 import {
   drawPriceScaleBadgesOnCanvas,
   drawThesisCardOnCanvas,
+  drawSnapshotThesisCard,
   renderScreenshotCanvasWithOverlay
 } from '../src/lib/services/chartSnapshotOverlayService';
+import { THEME_PRESETS, type ThemeConfig } from '../src/lib/constants/themes';
 import type { PriceScaleBadge } from '../src/lib/services/priceScaleLabelService';
 
 describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence Suite', () => {
@@ -30,7 +32,9 @@ describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence 
 `.trim();
 
   function createMock2DContext() {
-    const drawOps: Array<{ op: string; args: any[] }> = [];
+    const drawOps: Array<{ op: string; args: any[]; fillStyle?: string; strokeStyle?: string }> = [];
+    let _fillStyle = '#ffffff';
+    let _strokeStyle = '#000000';
     const ctx = {
       save: () => drawOps.push({ op: 'save', args: [] }),
       restore: () => drawOps.push({ op: 'restore', args: [] }),
@@ -41,14 +45,16 @@ describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence 
       quadraticCurveTo: (...args: any[]) => drawOps.push({ op: 'quadraticCurveTo', args }),
       arc: (...args: any[]) => drawOps.push({ op: 'arc', args }),
       setLineDash: (...args: any[]) => drawOps.push({ op: 'setLineDash', args }),
-      fill: () => drawOps.push({ op: 'fill', args: [] }),
-      stroke: () => drawOps.push({ op: 'stroke', args: [] }),
+      fill: () => drawOps.push({ op: 'fill', args: [], fillStyle: _fillStyle }),
+      stroke: () => drawOps.push({ op: 'stroke', args: [], strokeStyle: _strokeStyle }),
       clip: () => drawOps.push({ op: 'clip', args: [] }),
-      fillText: (text: string, x: number, y: number) => drawOps.push({ op: 'fillText', args: [text, x, y] }),
+      fillText: (text: string, x: number, y: number) => drawOps.push({ op: 'fillText', args: [text, x, y], fillStyle: _fillStyle }),
       drawImage: (...args: any[]) => drawOps.push({ op: 'drawImage', args }),
       measureText: (text: string) => ({ width: text.length * 8 }),
-      fillStyle: '#ffffff',
-      strokeStyle: '#000000',
+      get fillStyle() { return _fillStyle; },
+      set fillStyle(val: string) { _fillStyle = val; },
+      get strokeStyle() { return _strokeStyle; },
+      set strokeStyle(val: string) { _strokeStyle = val; },
       lineWidth: 1,
       font: '10px sans-serif',
       textAlign: 'left',
@@ -218,6 +224,118 @@ describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence 
       controller.restorePlans([planRecord], true);
       assert.equal(controller.getActivePlans().length, 1);
       assert.equal(getDrawings().length, 3);
+    });
+  });
+
+  describe('3. Ticket #129: Harmonize Thesis Card & Snapshot Overlay with Theme Tokens', () => {
+    it('mengadopsi token tema aktif (bgSecondary, borderSubtle, textPrimary, textMuted) dan bukan warna hardcoded rgba(13, 20, 36)', () => {
+      const { ctx, drawOps } = createMock2DContext();
+      const plan = parseTradingPlan(sampleMarkdown);
+      const planWithId = { ...plan, id: 'plan_theme_test' };
+      const formatPrice = (p: number | null) => (p ? p.toFixed(1) : '--');
+
+      const customTheme: ThemeConfig = {
+        ...THEME_PRESETS.binance,
+        tokens: {
+          ...THEME_PRESETS.binance.tokens,
+          bgSecondary: '#1E2329',
+          borderSubtle: '#252930',
+          textPrimary: '#EAECEF',
+          textMuted: '#848E9C'
+        }
+      };
+
+      drawSnapshotThesisCard(ctx, planWithId, 2, 2, formatPrice, 16, 56, 340, undefined, false, customTheme);
+
+      // Verifikasi TIDAK ADA warna hardcoded rgba(13, 20, 36, ...)
+      const fillStyles = drawOps.map((op) => op.fillStyle).filter(Boolean);
+      const hasHardcodedBg = fillStyles.some((c) => String(c).includes('13, 20, 36'));
+      assert.equal(hasHardcodedBg, false, 'Tidak boleh menggunakan latar belakang hardcoded rgba(13, 20, 36, ...)');
+
+      // Verifikasi latar belakang kartu mengadopsi bgSecondary (#1E2329 -> rgba(30, 35, 41, ...))
+      const hasSecondaryBg = fillStyles.some((c) => String(c).includes('30, 35, 41') || String(c).includes('#1E2329'));
+      assert.ok(hasSecondaryBg, 'Latar belakang kartu harus mengadopsi token bgSecondary tema aktif');
+
+      // Verifikasi border mengadopsi borderSubtle (#252930 -> rgba(37, 41, 48, ...))
+      const strokeStyles = drawOps.map((op) => op.strokeStyle).filter(Boolean);
+      const hasBorderSubtle = strokeStyles.some((c) => String(c).includes('37, 41, 48') || String(c).includes('#252930'));
+      assert.ok(hasBorderSubtle, 'Border kartu harus mengadopsi token borderSubtle tema aktif');
+
+      // Verifikasi teks utama mengadopsi textPrimary (#EAECEF)
+      const fillTexts = drawOps.filter((op) => op.op === 'fillText');
+      const hasTextPrimary = fillTexts.some((op) => op.fillStyle === '#EAECEF');
+      assert.ok(hasTextPrimary, 'Teks utama kartu harus mengadopsi token textPrimary');
+
+      // Verifikasi label/judul mengadopsi textMuted (#848E9C)
+      const hasTextMuted = fillTexts.some((op) => op.fillStyle === '#848E9C');
+      assert.ok(hasTextMuted, 'Label kartu harus mengadopsi token textMuted');
+    });
+
+    it('badge bias Bullish dan Bearish selaras dengan warna tema aktif (Signature putih/pink, Binance hijau/merah)', () => {
+      const formatPrice = (p: number | null) => (p ? p.toFixed(1) : '--');
+
+      const bullishMarkdown = sampleMarkdown.replace('Bias | Bearish', 'Bias | Bullish');
+      const bullishPlan = { ...parseTradingPlan(bullishMarkdown), id: 'plan_bullish' };
+      const bearishPlan = { ...parseTradingPlan(sampleMarkdown), id: 'plan_bearish' };
+
+      // 1. Signature Theme: Bullish = White (#F7F7F7), Bearish = Hot Pink (#FF69B4)
+      {
+        const { ctx, drawOps } = createMock2DContext();
+        drawSnapshotThesisCard(ctx, bullishPlan, 2, 2, formatPrice, 16, 56, 340, undefined, false, THEME_PRESETS.signature);
+        const bullBadgeOp = drawOps.find((op) => op.op === 'fillText' && String(op.args[0]).includes('BULLISH'));
+        assert.ok(bullBadgeOp, 'Harus merender badge BULLISH');
+        assert.equal(bullBadgeOp.fillStyle, THEME_PRESETS.signature.tokens.bullColor, 'Bullish badge pada tema Signature harus berwarna putih (#F7F7F7)');
+      }
+      {
+        const { ctx, drawOps } = createMock2DContext();
+        drawSnapshotThesisCard(ctx, bearishPlan, 2, 2, formatPrice, 16, 56, 340, undefined, false, THEME_PRESETS.signature);
+        const bearBadgeOp = drawOps.find((op) => op.op === 'fillText' && String(op.args[0]).includes('BEARISH'));
+        assert.ok(bearBadgeOp, 'Harus merender badge BEARISH');
+        assert.equal(bearBadgeOp.fillStyle, THEME_PRESETS.signature.tokens.bearColor, 'Bearish badge pada tema Signature harus berwarna hot pink (#FF69B4)');
+      }
+
+      // 2. Binance Theme: Bullish = Green (#0ECB81), Bearish = Red (#F6465D)
+      {
+        const { ctx, drawOps } = createMock2DContext();
+        drawSnapshotThesisCard(ctx, bullishPlan, 2, 2, formatPrice, 16, 56, 340, undefined, false, THEME_PRESETS.binance);
+        const bullBadgeOp = drawOps.find((op) => op.op === 'fillText' && String(op.args[0]).includes('BULLISH'));
+        assert.ok(bullBadgeOp, 'Harus merender badge BULLISH');
+        assert.equal(bullBadgeOp.fillStyle, THEME_PRESETS.binance.tokens.bullColor, 'Bullish badge pada tema Binance harus berwarna hijau (#0ECB81)');
+      }
+      {
+        const { ctx, drawOps } = createMock2DContext();
+        drawSnapshotThesisCard(ctx, bearishPlan, 2, 2, formatPrice, 16, 56, 340, undefined, false, THEME_PRESETS.binance);
+        const bearBadgeOp = drawOps.find((op) => op.op === 'fillText' && String(op.args[0]).includes('BEARISH'));
+        assert.ok(bearBadgeOp, 'Harus merender badge BEARISH');
+        assert.equal(bearBadgeOp.fillStyle, THEME_PRESETS.binance.tokens.bearColor, 'Bearish badge pada tema Binance harus berwarna merah (#F6465D)');
+      }
+    });
+
+    it('renderScreenshotCanvasWithOverlay menerima context dengan themeConfig secara aman', () => {
+      const plan = parseTradingPlan(sampleMarkdown);
+      const planWithId = { ...plan, id: 'plan_render_1' };
+      const formatPrice = (p: number | null) => (p ? p.toFixed(1) : '--');
+
+      const mockBase = {
+        width: 800,
+        height: 600
+      } as any;
+
+      // Pada lingkungan non-DOM (Node.js tanpa document), mengembalikan baseCanvas secara aman
+      const result = renderScreenshotCanvasWithOverlay({
+        baseCanvas: mockBase,
+        containerWidth: 800,
+        containerHeight: 600,
+        drawingPriceBadges: [],
+        showDrawingPriceLabels: false,
+        activePlans: [planWithId],
+        showThesisCards: true,
+        getPriceY: () => 100,
+        formatPrice,
+        themeConfig: THEME_PRESETS.binance
+      });
+
+      assert.equal(result, mockBase);
     });
   });
 });

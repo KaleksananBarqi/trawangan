@@ -6,6 +6,7 @@
 
 import type { PriceScaleBadge } from './priceScaleLabelService';
 import type { ParsedTradingPlan } from './planParserService';
+import { THEME_PRESETS, type ThemeConfig } from '../constants/themes';
 
 export interface OverlayRenderContext {
   baseCanvas: HTMLCanvasElement;
@@ -18,6 +19,35 @@ export interface OverlayRenderContext {
   cardGeometries?: Record<string, { x: number; y: number; width: number; height: number; isWideMode?: boolean }>;
   getPriceY: (price: number) => number | null;
   formatPrice: (price: number | null) => string;
+  themeConfig?: ThemeConfig;
+}
+
+/**
+ * Mengonversi warna format hex (#RGB, #RRGGBB) atau rgb/rgba ke string rgba(r, g, b, a)
+ */
+function colorToRgba(color: string, alpha: number): string {
+  if (!color) return `rgba(23, 23, 23, ${alpha})`;
+  if (color.startsWith('rgba(')) {
+    return color.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, `rgba($1,$2,$3, ${alpha})`);
+  }
+  if (color.startsWith('rgb(')) {
+    return color.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+  }
+  if (color.startsWith('#')) {
+    const hex = color.replace('#', '').trim();
+    let r = 0, g = 0, b = 0;
+    if (hex.length === 3) {
+      r = parseInt(hex[0] + hex[0], 16);
+      g = parseInt(hex[1] + hex[1], 16);
+      b = parseInt(hex[2] + hex[2], 16);
+    } else if (hex.length >= 6) {
+      r = parseInt(hex.substring(0, 2), 16);
+      g = parseInt(hex.substring(2, 4), 16);
+      b = parseInt(hex.substring(4, 6), 16);
+    }
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return color;
 }
 
 /**
@@ -135,9 +165,9 @@ function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: n
 /**
  * Menggambar titik pegangan seret (Grip Dots) pada header kartu
  */
-function drawGripDots(ctx: CanvasRenderingContext2D, x: number, y: number, scaleX: number, scaleY: number): void {
+function drawGripDots(ctx: CanvasRenderingContext2D, x: number, y: number, scaleX: number, scaleY: number, color: string = '#64748b'): void {
   ctx.save();
-  ctx.fillStyle = '#64748b';
+  ctx.fillStyle = color;
   const dotR = Math.max(1, 1.2 * scaleX);
   const stepX = Math.round(4 * scaleX);
   const stepY = Math.round(4 * scaleY);
@@ -156,6 +186,7 @@ function drawGripDots(ctx: CanvasRenderingContext2D, x: number, y: number, scale
 
 /**
  * Merender Floating Thesis Card di kanvas snapshot dengan fidelitas visual penuh
+ * dan mengadopsi token tema aktif.
  */
 export function drawThesisCardOnCanvas(
   ctx: CanvasRenderingContext2D,
@@ -167,13 +198,35 @@ export function drawThesisCardOnCanvas(
   posY: number = 56,
   cardWidth: number = 340,
   cardHeight?: number,
-  isWideMode: boolean = false
+  isWideMode: boolean = false,
+  themeConfig?: ThemeConfig
 ): void {
   const scaledX = Math.round(posX * scaleX);
   const scaledY = Math.round(posY * scaleY);
   const scaledW = Math.round(cardWidth * scaleX);
+
+  // Ambil token tema aktif (fallback ke Signature cyber-monochrome jika tidak diberikan)
+  const activeTheme = themeConfig || THEME_PRESETS.signature;
+  const tokens = activeTheme.tokens;
+  const chartTokens = activeTheme.chart;
+
+  // Latar belakang sekunder kartu
+  const bgSecondary = tokens.bgSecondary || tokens.bgContainer || tokens.bgPanel || '#171717';
+  const cardBgColor = colorToRgba(bgSecondary, 0.94);
+
+  // Border kartu dan pemisah
+  const borderSubtle = tokens.borderSubtle || '#222222';
+
+  // Tipografi teks utama dan label sekunder
+  const textPrimary = tokens.textPrimary || tokens.textMain || '#F7F7F7';
+  const textMuted = tokens.textMuted || '#A3A3A3';
+
+  // Bias Bullish dan Bearish sesuai konfigurasi candlestick tema aktif
   const isBearish = plan.bias === 'bearish';
-  const biasBadgeColor = isBearish ? '#ff69b4' : '#00ff88';
+  const bullColor = tokens.bullColor || chartTokens.upColor || '#F7F7F7';
+  const bearColor = tokens.bearColor || chartTokens.downColor || '#FF69B4';
+  const biasBadgeColor = isBearish ? bearColor : bullColor;
+  const brandCyan = tokens.brandCyan || '#38bdf8';
 
   ctx.save();
 
@@ -256,22 +309,22 @@ export function drawThesisCardOnCanvas(
     ? Math.round(cardHeight * scaleY)
     : calculatedTotalH;
 
-  // 1. Background Obsidian Glassmorphism
+  // 1. Background Glassmorphism dengan warna sekunder tema
   drawRoundedRect(ctx, scaledX, scaledY, scaledW, finalCardH, 10 * scaleX);
-  ctx.fillStyle = 'rgba(13, 20, 36, 0.94)';
+  ctx.fillStyle = cardBgColor;
   ctx.fill();
 
-  ctx.strokeStyle = isBearish ? 'rgba(255, 105, 180, 0.45)' : 'rgba(0, 255, 136, 0.45)';
+  ctx.strokeStyle = borderSubtle;
   ctx.lineWidth = Math.max(1, Math.round(1.5 * scaleX));
   ctx.stroke();
 
   // 2. Header Banner
   drawRoundedRect(ctx, scaledX, scaledY, scaledW, headerH, { tl: 10 * scaleX, tr: 10 * scaleX, br: 0, bl: 0 });
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+  ctx.fillStyle = colorToRgba(borderSubtle, 0.2);
   ctx.fill();
 
   // Grip dots di pojok kiri header
-  drawGripDots(ctx, scaledX + Math.round(10 * scaleX), scaledY + headerH / 2, scaleX, scaleY);
+  drawGripDots(ctx, scaledX + Math.round(10 * scaleX), scaledY + headerH / 2, scaleX, scaleY, textMuted);
 
   // Bias Badge di Header
   let cursorX = scaledX + Math.round(24 * scaleX);
@@ -284,7 +337,7 @@ export function drawThesisCardOnCanvas(
   const biasPad = Math.round(8 * scaleX);
 
   drawRoundedRect(ctx, cursorX, headerCenterY - Math.round(8 * scaleY), biasTextW + biasPad, Math.round(16 * scaleY), 3 * scaleX);
-  ctx.fillStyle = isBearish ? 'rgba(255, 105, 180, 0.2)' : 'rgba(0, 255, 136, 0.2)';
+  ctx.fillStyle = colorToRgba(biasBadgeColor, 0.2);
   ctx.fill();
   ctx.strokeStyle = biasBadgeColor;
   ctx.lineWidth = 1;
@@ -300,12 +353,12 @@ export function drawThesisCardOnCanvas(
     const probText = String(plan.conclusion.probability);
     const probTextW = ctx.measureText ? ctx.measureText(probText).width : probText.length * 6 * scaleX;
     drawRoundedRect(ctx, cursorX, headerCenterY - Math.round(8 * scaleY), probTextW + biasPad, Math.round(16 * scaleY), 3 * scaleX);
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.18)';
+    ctx.fillStyle = colorToRgba(brandCyan, 0.18);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+    ctx.strokeStyle = colorToRgba(brandCyan, 0.4);
     ctx.lineWidth = 1;
     ctx.stroke();
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = brandCyan;
     ctx.fillText(probText, cursorX + biasPad / 2, headerCenterY);
   }
 
@@ -317,19 +370,19 @@ export function drawThesisCardOnCanvas(
     const defLines = wrapCanvasText(ctx, plan.definition, contentW - Math.round(14 * scaleX));
     const defBoxH = defLines.length * bodyLineHeight + Math.round(8 * scaleY);
     drawRoundedRect(ctx, contentLeft, currentY, contentW, defBoxH, { tl: 0, bl: 0, tr: 4 * scaleX, br: 4 * scaleX });
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.fillStyle = colorToRgba(borderSubtle, 0.25);
     ctx.fill();
 
-    // Border aksen kiri biru
+    // Border aksen kiri biru/cyan
     ctx.beginPath();
     ctx.moveTo(contentLeft, currentY);
     ctx.lineTo(contentLeft, currentY + defBoxH);
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = brandCyan;
     ctx.lineWidth = Math.round(2 * scaleX);
     ctx.stroke();
 
     ctx.font = `italic ${subFontSize}px sans-serif`;
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = textMuted;
     let defLineY = currentY + Math.round(8 * scaleY);
     for (const dLine of defLines) {
       ctx.fillText(dLine, contentLeft + Math.round(8 * scaleX), defLineY);
@@ -340,7 +393,7 @@ export function drawThesisCardOnCanvas(
 
   // Seksi 1: KATALIS ENTRY
   ctx.font = `bold ${Math.round(9.5 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
-  ctx.fillStyle = '#64748b';
+  ctx.fillStyle = textMuted;
   ctx.fillText('⚡ KATALIS ENTRY', contentLeft, currentY);
 
   ctx.fillStyle = biasBadgeColor;
@@ -364,12 +417,12 @@ export function drawThesisCardOnCanvas(
       }
 
       drawRoundedRect(ctx, pillX, currentY - pillH / 2, pillW, pillH, 3 * scaleX);
-      ctx.fillStyle = isBearish ? 'rgba(255, 105, 180, 0.12)' : 'rgba(0, 255, 136, 0.12)';
+      ctx.fillStyle = colorToRgba(biasBadgeColor, 0.12);
       ctx.fill();
-      ctx.strokeStyle = isBearish ? 'rgba(255, 105, 180, 0.3)' : 'rgba(0, 255, 136, 0.3)';
+      ctx.strokeStyle = colorToRgba(biasBadgeColor, 0.3);
       ctx.stroke();
 
-      ctx.fillStyle = isBearish ? '#ff69b4' : '#00ff88';
+      ctx.fillStyle = biasBadgeColor;
       ctx.fillText(zoneStr, pillX + Math.round(5 * scaleX), currentY);
       pillX += pillW + Math.round(5 * scaleX);
     }
@@ -379,7 +432,7 @@ export function drawThesisCardOnCanvas(
   // Teks Alasan Entry
   if (entryReasonLines.length > 0) {
     ctx.font = `${bodyFontSize}px sans-serif`;
-    ctx.fillStyle = '#cbd5e1';
+    ctx.fillStyle = textPrimary;
     for (const line of entryReasonLines) {
       ctx.fillText(line, contentLeft, currentY);
       currentY += bodyLineHeight;
@@ -391,14 +444,14 @@ export function drawThesisCardOnCanvas(
   ctx.beginPath();
   ctx.moveTo(contentLeft, currentY);
   ctx.lineTo(contentLeft + contentW, currentY);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+  ctx.strokeStyle = colorToRgba(borderSubtle, 0.5);
   ctx.lineWidth = 1;
   ctx.stroke();
   currentY += Math.round(10 * scaleY);
 
   // Seksi 2: INVALIDASI & STOP LOSS
   ctx.font = `bold ${Math.round(9.5 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
-  ctx.fillStyle = '#64748b';
+  ctx.fillStyle = textMuted;
   ctx.fillText('🛡️ INVALIDASI & STOP LOSS', contentLeft, currentY);
 
   ctx.fillStyle = '#ef4444';
@@ -410,7 +463,7 @@ export function drawThesisCardOnCanvas(
   // Teks Alasan Stop Loss
   if (slReasonLines.length > 0) {
     ctx.font = `${bodyFontSize}px sans-serif`;
-    ctx.fillStyle = '#cbd5e1';
+    ctx.fillStyle = textPrimary;
     for (const line of slReasonLines) {
       ctx.fillText(line, contentLeft, currentY);
       currentY += bodyLineHeight;
@@ -458,7 +511,7 @@ export function drawThesisCardOnCanvas(
   ctx.beginPath();
   ctx.moveTo(contentLeft, currentY);
   ctx.lineTo(contentLeft + contentW, currentY);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+  ctx.strokeStyle = colorToRgba(borderSubtle, 0.5);
   ctx.lineWidth = 1;
   ctx.stroke();
   currentY += Math.round(10 * scaleY);
@@ -466,7 +519,7 @@ export function drawThesisCardOnCanvas(
   // Seksi 3: TARGET LIKUIDITAS
   if (Array.isArray(plan.targets) && plan.targets.length > 0) {
     ctx.font = `bold ${Math.round(9.5 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
-    ctx.fillStyle = '#64748b';
+    ctx.fillStyle = textMuted;
     ctx.fillText(`🎯 TARGET LIKUIDITAS (${plan.targets.length})`, contentLeft, currentY);
     currentY += Math.round(14 * scaleY);
 
@@ -476,9 +529,9 @@ export function drawThesisCardOnCanvas(
       const itemH = Math.round(20 * scaleY) + (rLines.length > 0 ? rLines.length * bodyLineHeight + Math.round(6 * scaleY) : 0);
 
       drawRoundedRect(ctx, contentLeft, currentY, contentW, itemH, 5 * scaleX);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+      ctx.fillStyle = colorToRgba(tokens.bgDarkest || '#0F0F0F', 0.4);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      ctx.strokeStyle = colorToRgba(borderSubtle, 0.4);
       ctx.stroke();
 
       const itemCenterY = currentY + Math.round(10 * scaleY);
@@ -488,13 +541,13 @@ export function drawThesisCardOnCanvas(
       ctx.font = `bold ${Math.round(8.5 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
       const tpW = (ctx.measureText ? ctx.measureText(tpLabel).width : 22 * scaleX) + Math.round(6 * scaleX);
       drawRoundedRect(ctx, contentLeft + Math.round(5 * scaleX), itemCenterY - Math.round(6 * scaleY), tpW, Math.round(13 * scaleY), 2 * scaleX);
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+      ctx.fillStyle = colorToRgba(bullColor, 0.15);
       ctx.fill();
-      ctx.fillStyle = '#10b981';
+      ctx.fillStyle = bullColor;
       ctx.fillText(tpLabel, contentLeft + Math.round(8 * scaleX), itemCenterY);
 
       // TP Price
-      ctx.fillStyle = '#f1f5f9';
+      ctx.fillStyle = textPrimary;
       ctx.font = `bold ${Math.round(9.5 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
       const priceStr = `${formatPrice(tgt.price)}`;
       ctx.fillText(priceStr, contentLeft + Math.round(14 * scaleX) + tpW, itemCenterY);
@@ -506,9 +559,9 @@ export function drawThesisCardOnCanvas(
         const rW = (ctx.measureText ? ctx.measureText(rStr).width : 34 * scaleX) + Math.round(6 * scaleX);
         const rX = contentLeft + contentW - rW - Math.round(5 * scaleX);
         drawRoundedRect(ctx, rX, itemCenterY - Math.round(6 * scaleY), rW, Math.round(13 * scaleY), 2 * scaleX);
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+        ctx.fillStyle = colorToRgba(brandCyan, 0.12);
         ctx.fill();
-        ctx.fillStyle = '#38bdf8';
+        ctx.fillStyle = brandCyan;
         ctx.fillText(rStr, rX + Math.round(3 * scaleX), itemCenterY);
       }
 
@@ -516,7 +569,7 @@ export function drawThesisCardOnCanvas(
       if (rLines.length > 0) {
         let rLineY = currentY + Math.round(20 * scaleY);
         ctx.font = `${subFontSize}px sans-serif`;
-        ctx.fillStyle = '#94a3b8';
+        ctx.fillStyle = textMuted;
         for (const line of rLines) {
           ctx.fillText(line, contentLeft + Math.round(6 * scaleX), rLineY);
           rLineY += bodyLineHeight;
@@ -531,14 +584,14 @@ export function drawThesisCardOnCanvas(
   if (plan.riskAmount || probNotesLines.length > 0) {
     if (plan.riskAmount) {
       ctx.font = `500 ${Math.round(8.5 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
-      ctx.fillStyle = '#64748b';
+      ctx.fillStyle = textMuted;
       ctx.fillText(`Unit Risiko (R): ${formatPrice(plan.riskAmount)}`, contentLeft, currentY);
       currentY += Math.round(12 * scaleY);
     }
 
     if (probNotesLines.length > 0) {
       ctx.font = `${subFontSize}px sans-serif`;
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = textPrimary;
       for (const line of probNotesLines) {
         ctx.fillText(line, contentLeft, currentY);
         currentY += bodyLineHeight;
@@ -548,6 +601,11 @@ export function drawThesisCardOnCanvas(
 
   ctx.restore();
 }
+
+/**
+ * Alias penamaan drawThesisCardOnCanvas untuk konsistensi API snapshot overlay
+ */
+export const drawSnapshotThesisCard = drawThesisCardOnCanvas;
 
 /**
  * Menghasilkan kanvas tangkapan layar yang memadukan grafik lilin dasar dengan seluruh overlay visual
@@ -608,7 +666,8 @@ export function renderScreenshotCanvasWithOverlay(context: OverlayRenderContext)
         posY,
         cardWidth,
         cardHeight,
-        isWideMode
+        isWideMode,
+        context.themeConfig
       );
     }
   }
