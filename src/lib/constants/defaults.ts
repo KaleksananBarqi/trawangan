@@ -68,7 +68,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     opacity: 0.10,
     showOnLiveCanvas: false,
   },
-  },
   syncConfig: { ...DEFAULT_SYNC_CONFIG },
 };
 
