@@ -54,6 +54,21 @@ export interface ParseTradingPlanOptions {
 }
 
 /**
+ * Format angka harga standar untuk trading plan tanpa hardcoded simbol fiat ($).
+ * Mematuhi aturan Crypto-Denominated Precision (GLOSSARY.md).
+ */
+export function formatPlanPrice(val: number | undefined): string {
+  if (typeof val !== 'number' || isNaN(val)) return '-';
+  if (val >= 1000) {
+    return val.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+  }
+  if (val >= 1) {
+    return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  }
+  return val.toString();
+}
+
+/**
  * Membersihkan angka dari pemisah ribuan dan mengekstrak float numerik pertama.
  */
 function extractFirstPrice(rawVal: string): number | null {
@@ -174,7 +189,7 @@ function extractConclusionAndDefinition(text: string): {
   let probNotes: string | undefined;
   let invalidation: string | undefined;
 
-  // Match Probabilitas Setup
+  // Pencocokan Probabilitas Setup
   const probMatch = text.match(/(?:Probabilitas(?:\s+Setup)?|Probability)\s*:\s*\*?\*?([^\n\r]+)/i);
   if (probMatch) {
     const rawProb = probMatch[1].trim();
@@ -187,7 +202,7 @@ function extractConclusionAndDefinition(text: string): {
     }
   }
 
-  // Match Skenario Invalidasi
+  // Pencocokan Skenario Invalidasi
   const invMatch = text.match(/(?:Skenario\s+Invalidasi|Invalidation(?:\s+Scenario)?)\s*:\s*\*?\*?([^\n\r]+)/i);
   if (invMatch) {
     invalidation = invMatch[1].replace(/^[*_\s]+/, '').trim();

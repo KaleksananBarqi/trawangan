@@ -25,7 +25,7 @@ Di sisi lain, `trawangan` berpegang teguh pada prinsip terminal charting desktop
    - Mengikat pembuatan grup posisi ini ke dalam satu transaksi riwayat *Undo/Redo* atomik (`Ctrl+Z`).
 
 4. **Alur Antarmuka Pengguna (UI/UX) & Pintasan**:
-   - Menyediakan modal dialog **"Import Trading Plan"** dengan pintasan keyboard cepat **`Ctrl + Shift + P`**, menu konteks grafik, dan tombol pada Drawing Toolbar.
+   - Menyediakan modal dialog **"Import Trading Plan"** dengan pintasan keyboard cepat **`Ctrl + Shift + P`**, tombol pada Header Topbar (bersanding dengan Indikator), dan tombol pada Drawing Toolbar.
    - Dilengkapi *Live Preview* reaktif yang menampilkan kartu parameter, status validasi, dan rincian R-multiple secara instan saat teks ditempelkan (*paste*).
    - Mengintegrasikan pendengar *Smart Clipboard Paste* pada kanvas grafik yang otomatis membuka modal impor saat teks tabel terdeteksi.
 

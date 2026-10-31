@@ -1563,12 +1563,18 @@
             <div class="tree-group-content">
               {#each activePlans as plan (plan.id)}
                 {@const isBear = plan.bias === 'bearish'}
-                <div class="layer-item plan-layer-item">
+                {@const planTooltip = [
+                  `Trading Plan ${plan.bias?.toUpperCase()} (${plan.targets?.length || 0} TP)`,
+                  plan.reasons?.entry ? `Katalis Entry: ${plan.reasons.entry}` : null,
+                  plan.reasons?.stopLoss ? `Stop Loss: ${plan.reasons.stopLoss}` : null,
+                  plan.conclusion?.invalidationScenario ? `Invalidasi: ${plan.conclusion.invalidationScenario}` : null
+                ].filter(Boolean).join('\n')}
+                <div class="layer-item plan-layer-item" title={planTooltip}>
                   <div class="layer-info">
                     <span class="layer-icon {isBear ? 'text-pink' : 'text-emerald'}">
                       <Sparkles size={13} />
                     </span>
-                    <span class="layer-name" title="Trading Plan {plan.bias?.toUpperCase()}">
+                    <span class="layer-name">
                       Plan {plan.bias?.toUpperCase()} ({plan.targets?.length || 0} TP)
                     </span>
                     {#if plan.conclusion?.probability}

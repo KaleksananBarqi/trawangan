@@ -677,7 +677,7 @@
     <div
       class="snap-halo-indicator"
       style="top: {snapInfo.candleY}px; {snapInfo.candleX !== undefined ? `left: ${snapInfo.candleX}px; margin-left: -7px;` : 'right: 80px;'}"
-      title="Magnet terkunci ke {snapInfo.type?.toUpperCase()}: ${formatPrice(snapInfo.price)}"
+      title="Magnet terkunci ke {snapInfo.type?.toUpperCase()}: {formatPrice(snapInfo.price)}"
     >
       <div class="snap-halo-dot"></div>
       <div class="snap-halo-pulse"></div>
@@ -688,9 +688,9 @@
     {#each drawingPriceBadges as badge (badge.id)}
       {@const yPos = getPriceY(badge.price)}
       {#if yPos !== null && yPos >= 0}
-        <div class="price-scale-badge-item mono-nums" style="top: {yPos}px; background-color: {badge.bgColor || badge.color}; color: #ffffff; border: 1px solid {badge.color}66;" title="{badge.title || badge.label}: ${formatPrice(badge.price)}">
+        <div class="price-scale-badge-item mono-nums" style="top: {yPos}px; background-color: {badge.bgColor || badge.color}; color: #ffffff; border: 1px solid {badge.color}66;" title="{badge.title || badge.label}: {badge.label || formatPrice(badge.price)}">
           {#if badge.title}<span class="badge-tag">{badge.title}</span>{/if}
-          <span class="badge-num">${formatPrice(badge.price)}</span>
+          <span class="badge-num">{badge.label || formatPrice(badge.price)}</span>
         </div>
       {/if}
     {/each}
@@ -700,9 +700,9 @@
     {#each indicatorPriceBadges as badge (badge.id)}
       {@const yPos = getPriceY(badge.price)}
       {#if yPos !== null && yPos >= 0}
-        <div class="price-scale-badge-item indicator-badge mono-nums" style="top: {yPos}px; border-left: 3px solid {badge.color}; background-color: {badge.bgColor || '#0f172a'}; color: {badge.color}; border-top: 1px solid rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.08);" title="{badge.title || badge.label}: ${formatPrice(badge.price)}">
+        <div class="price-scale-badge-item indicator-badge mono-nums" style="top: {yPos}px; border-left: 3px solid {badge.color}; background-color: {badge.bgColor || '#0f172a'}; color: {badge.color}; border-top: 1px solid rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.08);" title="{badge.title || badge.label}: {badge.label || formatPrice(badge.price)}">
           {#if badge.title}<span class="badge-tag">{badge.title}</span>{/if}
-          <span class="badge-num">${formatPrice(badge.price)}</span>
+          <span class="badge-num">{badge.label || formatPrice(badge.price)}</span>
         </div>
       {/if}
     {/each}

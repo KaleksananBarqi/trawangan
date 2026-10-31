@@ -71,7 +71,7 @@ export function drawPriceScaleBadgesOnCanvas(
     if (yPos === null || isNaN(yPos)) continue;
 
     const canvasY = Math.round(yPos * scaleY);
-    const priceText = `$${formatPrice(badge.price)}`;
+    const priceText = badge.label || formatPrice(badge.price);
     const fullText = badge.title ? `${badge.title} ${priceText}` : priceText;
 
     const textWidth = ctx.measureText ? ctx.measureText(fullText).width : fullText.length * 7 * scaleX;
@@ -186,7 +186,7 @@ export function drawThesisCardOnCanvas(
   ctx.fillStyle = '#64748b';
   ctx.fillText('ENTRY:', contentLeft, currentY);
   ctx.fillStyle = biasBadgeColor;
-  ctx.fillText(`$${formatPrice(plan.entry)}`, contentLeft + Math.round(50 * scaleX), currentY);
+  ctx.fillText(`${formatPrice(plan.entry)}`, contentLeft + Math.round(50 * scaleX), currentY);
 
   if (plan.contextZones && plan.contextZones.length > 0) {
     const fvgStr = `[FVG ${formatPrice(plan.contextZones[0].low)} - ${formatPrice(plan.contextZones[0].high)}]`;
@@ -202,12 +202,12 @@ export function drawThesisCardOnCanvas(
   ctx.fillStyle = '#64748b';
   ctx.fillText('STOP:', contentLeft, currentY);
   ctx.fillStyle = '#ef4444';
-  ctx.fillText(`$${formatPrice(plan.stopLoss)}`, contentLeft + Math.round(50 * scaleX), currentY);
+  ctx.fillText(`${formatPrice(plan.stopLoss)}`, contentLeft + Math.round(50 * scaleX), currentY);
 
   if (plan.riskAmount) {
     ctx.font = `500 ${Math.round(8.5 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText(`(R = $${formatPrice(plan.riskAmount)})`, contentLeft + Math.round(135 * scaleX), currentY);
+    ctx.fillText(`(R = ${formatPrice(plan.riskAmount)})`, contentLeft + Math.round(135 * scaleX), currentY);
   }
 
   currentY += baseLineHeight;
@@ -220,7 +220,7 @@ export function drawThesisCardOnCanvas(
       ctx.fillStyle = '#10b981';
       ctx.fillText(`TP${i + 1}:`, contentLeft, currentY);
       ctx.fillStyle = '#f1f5f9';
-      ctx.fillText(`$${formatPrice(tgt.price)}`, contentLeft + Math.round(50 * scaleX), currentY);
+      ctx.fillText(`${formatPrice(tgt.price)}`, contentLeft + Math.round(50 * scaleX), currentY);
 
       if (tgt.rMultiple) {
         ctx.fillStyle = '#38bdf8';

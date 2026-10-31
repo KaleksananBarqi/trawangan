@@ -16,6 +16,7 @@
   } from '@lucide/svelte';
   import {
     parseTradingPlan,
+    formatPlanPrice,
     type ParsedTradingPlan
   } from '../services/planParserService';
 
@@ -75,10 +76,7 @@
 
   function formatPrice(val: number | null | undefined): string {
     if (val === null || val === undefined || isNaN(val) || val <= 0) return '--';
-    if (val >= 1000) {
-      return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-    return val >= 1 ? val.toFixed(4) : val.toFixed(6);
+    return formatPlanPrice(val);
   }
 
   async function handlePasteFromClipboard() {

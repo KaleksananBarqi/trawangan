@@ -140,7 +140,7 @@ export function extractDrawingPriceBadges(
             color: '#ef4444', // Merah Bearish Stop Loss
             bgColor: '#7f1d1d',
             kind: 'stop_loss',
-            title: 'Stop (SL)',
+            title: d.metadata?.planId ? 'SL' : 'Stop (SL)',
             y: priceToY ? priceToY(stopPrice) : null,
           });
         }

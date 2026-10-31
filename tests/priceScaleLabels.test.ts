@@ -299,7 +299,7 @@ test('Price Scale Labels (Indikator & Posisi Drawing) Seam Suite', async (t) => 
     const slBadges = badges.filter((b) => b.kind === 'stop_loss');
     assert.equal(slBadges.length, 1);
     assert.equal(slBadges[0].price, 78900.0);
-    assert.equal(slBadges[0].title, 'Stop (SL)');
+    assert.equal(slBadges[0].title, 'SL');
 
     const tpBadges = badges.filter((b) => b.kind === 'take_profit');
     assert.equal(tpBadges.length, 2);

@@ -94,7 +94,7 @@ describe('Ticket 7 (#117): UX Revamp - Plan Ingestion, Object Tree & Granular De
 
     const plan = parseTradingPlan(sampleBearishMarkdown);
     assert.ok(plan);
-    const pos = controller.createMultiTargetPosition(plan, 1700000000000);
+    const pos = controller.createMultiTargetPosition(plan, { anchorTime: 1700000000000 });
     assert.ok(pos);
 
     const activePlans = controller.getActivePlans();
@@ -111,8 +111,8 @@ describe('Ticket 7 (#117): UX Revamp - Plan Ingestion, Object Tree & Granular De
     const plan2 = parseTradingPlan(sampleBullishMarkdown);
     assert.ok(plan1 && plan2);
 
-    controller.createMultiTargetPosition(plan1, 1700000000000);
-    controller.createMultiTargetPosition(plan2, 1700000000000);
+    controller.createMultiTargetPosition(plan1, { anchorTime: 1700000000000 });
+    controller.createMultiTargetPosition(plan2, { anchorTime: 1700000000000 });
 
     let activePlans = controller.getActivePlans();
     assert.equal(activePlans.length, 2);
@@ -144,7 +144,7 @@ describe('Ticket 7 (#117): UX Revamp - Plan Ingestion, Object Tree & Granular De
 
     const plan = parseTradingPlan(sampleBearishMarkdown);
     assert.ok(plan);
-    controller.createMultiTargetPosition(plan, 1700000000000);
+    controller.createMultiTargetPosition(plan, { anchorTime: 1700000000000 });
 
     assert.ok(controller.getSnapshot().activeDrawings.length > 0);
 

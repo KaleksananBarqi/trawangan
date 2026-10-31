@@ -119,9 +119,9 @@ describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence 
 
       const fillTextOps = drawOps.filter((op) => op.op === 'fillText');
       assert.equal(fillTextOps.length, 3, 'Harus merender 3 teks badge');
-      assert.ok(fillTextOps.some((op) => String(op.args[0]).includes('ENTRY $78300.0')));
-      assert.ok(fillTextOps.some((op) => String(op.args[0]).includes('SL $78900.0')));
-      assert.ok(fillTextOps.some((op) => String(op.args[0]).includes('TP1 (1.66R) $77300.0')));
+      assert.ok(fillTextOps.some((op) => String(op.args[0]).includes('ENTRY') && String(op.args[0]).includes('78,300')));
+      assert.ok(fillTextOps.some((op) => String(op.args[0]).includes('SL') && String(op.args[0]).includes('78,900')));
+      assert.ok(fillTextOps.some((op) => String(op.args[0]).includes('TP1 (1.66R)') && String(op.args[0]).includes('77,300')));
     });
 
     it('merender Floating Thesis Card ke kanvas snapshot dengan teks entri, invalidasi, dan target', () => {
@@ -139,8 +139,8 @@ describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence 
 
       assert.ok(textRendered.includes('BEARISH'), 'Harus merender badge bias BEARISH');
       assert.ok(textRendered.includes('Medium-High'), 'Harus merender badge probabilitas Medium-High');
-      assert.ok(textRendered.some((t) => t.includes('$78300.0')), 'Harus memuat harga entry');
-      assert.ok(textRendered.some((t) => t.includes('$78900.0')), 'Harus memuat harga stop loss');
+      assert.ok(textRendered.some((t) => t.includes('78300.0')), 'Harus memuat harga entry');
+      assert.ok(textRendered.some((t) => t.includes('78900.0')), 'Harus memuat harga stop loss');
       assert.ok(textRendered.some((t) => t.includes('TP1:')), 'Harus memuat TP1');
       assert.ok(textRendered.some((t) => t.includes('TP2:')), 'Harus memuat TP2');
     });

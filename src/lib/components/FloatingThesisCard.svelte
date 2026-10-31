@@ -14,7 +14,7 @@
     Layers,
     EyeOff
   } from '@lucide/svelte';
-  import type { ParsedTradingPlan } from '../services/planParserService';
+  import { formatPlanPrice, type ParsedTradingPlan } from '../services/planParserService';
 
   interface Props {
     plan: ParsedTradingPlan & { id: string };
@@ -45,14 +45,14 @@
 
   let cardEl = $state<HTMLDivElement | null>(null);
 
-  // Dragging Card State
+  // State Penyeretan Kartu (Dragging)
   let isDragging = $state(false);
   let dragStartX = 0;
   let dragStartY = 0;
   let initialCardX = 0;
   let initialCardY = 0;
 
-  // Resizing Card State
+  // State Pengubahan Ukuran Kartu (Resizing)
   let isResizing = $state(false);
   let resizeStartX = 0;
   let resizeStartY = 0;
@@ -126,10 +126,7 @@
   }
 
   function formatPrice(p?: number): string {
-    if (p === undefined || isNaN(p)) return '--';
-    if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
-    if (p >= 1) return p.toFixed(4);
-    return p.toFixed(6);
+    return formatPlanPrice(p);
   }
 
   // Highlight tag epistemik seperti [FAKTA], [INFERENSI], [SPEKULASI]
@@ -268,227 +265,111 @@
 
     <!-- Scrollable Thesis Body -->
     <div class="thesis-body custom-scroll {isWideMode ? 'columns-grid' : ''}">
-      {#if isWideMode}
-        <!-- Kolom Kiri: Katalis Entry, FVG, Definisi, & Risiko -->
-        <div class="thesis-col left-col">
-          {#if plan.definition}
-            <div class="definition-banner">
-              <Info size={11} class="def-icon" />
-              <span class="def-text">{plan.definition}</span>
-            </div>
-          {/if}
+      {#if plan.definition}
+        <div class="definition-banner">
+          <Info size={11} class="def-icon" />
+          <span class="def-text">{plan.definition}</span>
+        </div>
+      {/if}
 
-          <!-- Section: Katalis Entry & FVG -->
-          <div class="thesis-section entry-section">
-            <div class="section-title-row">
-              <span class="section-icon"><Zap size={11} /></span>
-              <span class="section-label">KATALIS ENTRY</span>
-              <span class="price-val mono-nums {isBearish ? 'bearish' : 'bullish'}">
-                ${formatPrice(plan.entry)}
-              </span>
-            </div>
-
-            {#if plan.contextZones && plan.contextZones.length > 0}
-              <div class="zones-container">
-                {#each plan.contextZones as zone}
-                  <div class="zone-pill {isBearish ? 'bearish' : 'bullish'} mono-nums">
-                    <Layers size={10} />
-                    <span>{zone.label || 'FVG'}: ${formatPrice(zone.low)} - ${formatPrice(zone.high)}</span>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-
-            {#if plan.reasons.entry}
-              <div class="reason-text">
-                {@html formatEpistemicText(plan.reasons.entry)}
-              </div>
-            {/if}
-          </div>
-
-          <!-- Section: Ringkasan Probabilitas & Risiko -->
-          {#if plan.riskAmount || plan.conclusion?.probabilityNotes}
-            <div class="thesis-section risk-summary-section">
-              {#if plan.riskAmount}
-                <div class="risk-meta-row mono-nums">
-                  <span class="meta-lbl">Unit Risiko (R):</span>
-                  <span class="meta-val">${formatPrice(plan.riskAmount)}</span>
-                </div>
-              {/if}
-              {#if plan.conclusion?.probabilityNotes}
-                <div class="prob-notes">
-                  {@html formatEpistemicText(plan.conclusion.probabilityNotes)}
-                </div>
-              {/if}
-            </div>
-          {/if}
+      <!-- Section: Katalis Entry & FVG -->
+      <div class="thesis-section entry-section">
+        <div class="section-title-row">
+          <span class="section-icon"><Zap size={11} /></span>
+          <span class="section-label">KATALIS ENTRY</span>
+          <span class="price-val mono-nums {isBearish ? 'bearish' : 'bullish'}">
+            {formatPrice(plan.entry)}
+          </span>
         </div>
 
-        <!-- Kolom Kanan: Skenario Invalidasi & Target Likuiditas -->
-        <div class="thesis-col right-col">
-          <!-- Section: Proteksi & Skenario Invalidasi -->
-          <div class="thesis-section sl-section">
-            <div class="section-title-row">
-              <span class="section-icon sl"><ShieldAlert size={11} /></span>
-              <span class="section-label">INVALIDASI & STOP LOSS</span>
-              <span class="price-val mono-nums sl">
-                ${formatPrice(plan.stopLoss)}
-              </span>
-            </div>
-
-            {#if plan.reasons.stopLoss}
-              <div class="reason-text">
-                {@html formatEpistemicText(plan.reasons.stopLoss)}
-              </div>
-            {/if}
-
-            {#if plan.conclusion?.invalidationScenario}
-              <div class="invalidation-box">
-                <span class="inv-badge">SKENARIO BATAL</span>
-                <span class="inv-content">
-                  {@html formatEpistemicText(plan.conclusion.invalidationScenario)}
-                </span>
-              </div>
-            {/if}
-          </div>
-
-          <!-- Section: Target Likuiditas (Take Profit) -->
-          <div class="thesis-section tp-section">
-            <div class="section-title-row">
-              <span class="section-icon tp"><Target size={11} /></span>
-              <span class="section-label">TARGET LIKUIDITAS ({plan.targets.length})</span>
-            </div>
-
-            <div class="targets-list">
-              {#each plan.targets as tgt, idx}
-                {@const targetKey = `tp${idx + 1}`}
-                {@const reason = plan.reasons[targetKey]}
-                <div class="target-item">
-                  <div class="target-item-header">
-                    <span class="target-badge mono-nums">TP{idx + 1}</span>
-                    <span class="target-price mono-nums">${formatPrice(tgt.price)}</span>
-                    {#if tgt.rMultiple}
-                      <span class="r-badge mono-nums">+{tgt.rMultiple.toFixed(2)}R</span>
-                    {/if}
-                  </div>
-                  {#if reason}
-                    <div class="target-reason">
-                      {@html formatEpistemicText(reason)}
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          </div>
-        </div>
-      {:else}
-        <!-- Tampilan Standar 1 Kolom Ringkas -->
-        {#if plan.definition}
-          <div class="definition-banner">
-            <Info size={11} class="def-icon" />
-            <span class="def-text">{plan.definition}</span>
-          </div>
-        {/if}
-
-        <!-- Section: Katalis Entry & FVG -->
-        <div class="thesis-section entry-section">
-          <div class="section-title-row">
-            <span class="section-icon"><Zap size={11} /></span>
-            <span class="section-label">KATALIS ENTRY</span>
-            <span class="price-val mono-nums {isBearish ? 'bearish' : 'bullish'}">
-              ${formatPrice(plan.entry)}
-            </span>
-          </div>
-
-          {#if plan.contextZones && plan.contextZones.length > 0}
-            <div class="zones-container">
-              {#each plan.contextZones as zone}
-                <div class="zone-pill {isBearish ? 'bearish' : 'bullish'} mono-nums">
-                  <Layers size={10} />
-                  <span>{zone.label || 'FVG'}: ${formatPrice(zone.low)} - ${formatPrice(zone.high)}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
-
-          {#if plan.reasons.entry}
-            <div class="reason-text">
-              {@html formatEpistemicText(plan.reasons.entry)}
-            </div>
-          {/if}
-        </div>
-
-        <!-- Section: Proteksi & Skenario Invalidasi -->
-        <div class="thesis-section sl-section">
-          <div class="section-title-row">
-            <span class="section-icon sl"><ShieldAlert size={11} /></span>
-            <span class="section-label">INVALIDASI & STOP LOSS</span>
-            <span class="price-val mono-nums sl">
-              ${formatPrice(plan.stopLoss)}
-            </span>
-          </div>
-
-          {#if plan.reasons.stopLoss}
-            <div class="reason-text">
-              {@html formatEpistemicText(plan.reasons.stopLoss)}
-            </div>
-          {/if}
-
-          {#if plan.conclusion?.invalidationScenario}
-            <div class="invalidation-box">
-              <span class="inv-badge">SKENARIO BATAL</span>
-              <span class="inv-content">
-                {@html formatEpistemicText(plan.conclusion.invalidationScenario)}
-              </span>
-            </div>
-          {/if}
-        </div>
-
-        <!-- Section: Target Likuiditas (Take Profit) -->
-        <div class="thesis-section tp-section">
-          <div class="section-title-row">
-            <span class="section-icon tp"><Target size={11} /></span>
-            <span class="section-label">TARGET LIKUIDITAS ({plan.targets.length})</span>
-          </div>
-
-          <div class="targets-list">
-            {#each plan.targets as tgt, idx}
-              {@const targetKey = `tp${idx + 1}`}
-              {@const reason = plan.reasons[targetKey]}
-              <div class="target-item">
-                <div class="target-item-header">
-                  <span class="target-badge mono-nums">TP{idx + 1}</span>
-                  <span class="target-price mono-nums">${formatPrice(tgt.price)}</span>
-                  {#if tgt.rMultiple}
-                    <span class="r-badge mono-nums">+{tgt.rMultiple.toFixed(2)}R</span>
-                  {/if}
-                </div>
-                {#if reason}
-                  <div class="target-reason">
-                    {@html formatEpistemicText(reason)}
-                  </div>
-                {/if}
+        {#if plan.contextZones && plan.contextZones.length > 0}
+          <div class="zones-container">
+            {#each plan.contextZones as zone}
+              <div class="zone-pill {isBearish ? 'bearish' : 'bullish'} mono-nums">
+                <Layers size={10} />
+                <span>{zone.label || 'FVG'}: {formatPrice(zone.low)} - {formatPrice(zone.high)}</span>
               </div>
             {/each}
           </div>
-        </div>
+        {/if}
 
-        <!-- Section: Ringkasan Probabilitas & Risiko -->
-        {#if plan.riskAmount || plan.conclusion?.probabilityNotes}
-          <div class="thesis-section risk-summary-section">
-            {#if plan.riskAmount}
-              <div class="risk-meta-row mono-nums">
-                <span class="meta-lbl">Unit Risiko (R):</span>
-                <span class="meta-val">${formatPrice(plan.riskAmount)}</span>
-              </div>
-            {/if}
-            {#if plan.conclusion?.probabilityNotes}
-              <div class="prob-notes">
-                {@html formatEpistemicText(plan.conclusion.probabilityNotes)}
-              </div>
-            {/if}
+        {#if plan.reasons.entry}
+          <div class="reason-text">
+            {@html formatEpistemicText(plan.reasons.entry)}
           </div>
         {/if}
+      </div>
+
+      <!-- Section: Proteksi & Skenario Invalidasi -->
+      <div class="thesis-section sl-section">
+        <div class="section-title-row">
+          <span class="section-icon sl"><ShieldAlert size={11} /></span>
+          <span class="section-label">INVALIDASI & STOP LOSS</span>
+          <span class="price-val mono-nums sl">
+            {formatPrice(plan.stopLoss)}
+          </span>
+        </div>
+
+        {#if plan.reasons.stopLoss}
+          <div class="reason-text">
+            {@html formatEpistemicText(plan.reasons.stopLoss)}
+          </div>
+        {/if}
+
+        {#if plan.conclusion?.invalidationScenario}
+          <div class="invalidation-box">
+            <span class="inv-badge">SKENARIO BATAL</span>
+            <span class="inv-content">
+              {@html formatEpistemicText(plan.conclusion.invalidationScenario)}
+            </span>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Section: Target Likuiditas (Take Profit) -->
+      <div class="thesis-section tp-section">
+        <div class="section-title-row">
+          <span class="section-icon tp"><Target size={11} /></span>
+          <span class="section-label">TARGET LIKUIDITAS ({plan.targets.length})</span>
+        </div>
+
+        <div class="targets-list">
+          {#each plan.targets as tgt, idx}
+            {@const targetKey = `tp${idx + 1}`}
+            {@const reason = plan.reasons[targetKey]}
+            <div class="target-item">
+              <div class="target-item-header">
+                <span class="target-badge mono-nums">TP{idx + 1}</span>
+                <span class="target-price mono-nums">{formatPrice(tgt.price)}</span>
+                {#if tgt.rMultiple}
+                  <span class="r-badge mono-nums">+{tgt.rMultiple.toFixed(2)}R</span>
+                {/if}
+              </div>
+              {#if reason}
+                <div class="target-reason">
+                  {@html formatEpistemicText(reason)}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </div>
+
+      <!-- Section: Ringkasan Probabilitas & Risiko -->
+      {#if plan.riskAmount || plan.conclusion?.probabilityNotes}
+        <div class="thesis-section risk-summary-section">
+          {#if plan.riskAmount}
+            <div class="risk-meta-row mono-nums">
+              <span class="meta-lbl">Unit Risiko (R):</span>
+              <span class="meta-val">{formatPrice(plan.riskAmount)}</span>
+            </div>
+          {/if}
+          {#if plan.conclusion?.probabilityNotes}
+            <div class="prob-notes">
+              {@html formatEpistemicText(plan.conclusion.probabilityNotes)}
+            </div>
+          {/if}
+        </div>
       {/if}
     </div>
 
@@ -718,12 +599,27 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
+    align-items: start;
   }
 
-  .thesis-col {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+  .thesis-body.columns-grid .definition-banner {
+    grid-column: 1 / -1;
+  }
+
+  .thesis-body.columns-grid .entry-section {
+    grid-column: 1;
+  }
+
+  .thesis-body.columns-grid .risk-summary-section {
+    grid-column: 1;
+  }
+
+  .thesis-body.columns-grid .sl-section {
+    grid-column: 2;
+  }
+
+  .thesis-body.columns-grid .tp-section {
+    grid-column: 2;
   }
 
   .custom-scroll::-webkit-scrollbar {
