@@ -616,16 +616,7 @@
   role="region"
   aria-label="Area Grafik Utama"
 >
-  <div bind:this={chartContainer} class="vela-container"></div>
-  <canvas
-    bind:this={gestureInkCanvas}
-    class="gesture-ink-canvas {isGestureActive ? 'active' : ''}"
-    onpointerdown={handleGesturePointerDown}
-    onpointermove={handleGesturePointerMove}
-    onpointerup={handleGesturePointerUp}
-    onpointercancel={handleGesturePointerCancel}
-  ></canvas>
-
+  <!-- Lapisan Watermark Keamanan Live Canvas (Diletakkan di lapisan belakang candlestick / z-index 0) -->
   {#if securityWatermark?.enabled && securityWatermark?.showOnLiveCanvas}
     {@const watermarkText = resolveSecurityWatermarkText(securityWatermark, userProfile)}
     <div
@@ -638,6 +629,16 @@
       </span>
     </div>
   {/if}
+
+  <div bind:this={chartContainer} class="vela-container"></div>
+  <canvas
+    bind:this={gestureInkCanvas}
+    class="gesture-ink-canvas {isGestureActive ? 'active' : ''}"
+    onpointerdown={handleGesturePointerDown}
+    onpointermove={handleGesturePointerMove}
+    onpointerup={handleGesturePointerUp}
+    onpointercancel={handleGesturePointerCancel}
+  ></canvas>
 
   {#if isGestureActive}
     <div class="gesture-mode-hud mono-nums">

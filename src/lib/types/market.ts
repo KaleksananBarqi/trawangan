@@ -221,7 +221,6 @@ export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' 
 export type UiDensity = 'compact' | 'regular' | 'comfortable';
 
 /**
-/**
  * Konfigurasi profil personal trader untuk atribusi snapshot frame (#126)
  */
 export interface UserProfileConfig {
@@ -230,7 +229,6 @@ export interface UserProfileConfig {
   avatarDataUrl?: string;
 }
 
-/**
 /**
  * Konfigurasi kustom latar belakang kanvas grafik (#128)
  * Mendukung mode tema bawaan ('theme'), warna tunggal ('solid'), dan gradien vertikal ('gradient').

@@ -6,9 +6,10 @@
     ShieldCheck,
     AtSign,
     Sparkles,
+    Camera,
     Image as ImageIcon
   } from '@lucide/svelte';
-  import type { AppSettings, UserProfileConfig, SecurityWatermarkConfig } from '../../types/market';
+  import type { AppSettings, UserProfileConfig, SecurityWatermarkConfig, SnapshotScaleMultiplier } from '../../types/market';
   import { resolveSecurityWatermarkText } from '../../services/chartSnapshotService';
 
   interface Props {
@@ -72,12 +73,26 @@
     const u = currentProfile.username?.trim();
     const h = currentProfile.handle?.trim();
     if (u && h) {
-      return `${u} (${h.startsWith('@') ? h : '@' + h})`;
+      return `${u} · ${h.startsWith('@') ? h : '@' + h}`;
     }
     if (u) return u;
     if (h) return h.startsWith('@') ? h : `@${h}`;
-    return 'misal: Satoshi Nakamoto (@nakamoto)';
+    return 'misal: Satoshi Nakamoto · @nakamoto';
   });
+
+  // Opsi pilihan multiplier skala resolusi bawaan (#124, #125)
+  const scaleMultiplierOptions: Array<{ value: SnapshotScaleMultiplier; label: string; desc: string }> = [
+    { value: 1, label: '1x', desc: 'Standar' },
+    { value: 2, label: '2x (HiDPI)', desc: 'HiDPI Retina' },
+    { value: 4, label: '4x (4K)', desc: 'Ultra HD 4K' },
+    { value: 6, label: '6x (Super HD)', desc: 'Super HD 6K' },
+  ];
+
+  // Preferensi snapshot turunan dengan fallback bawaan
+  const currentScaleMultiplier = $derived<SnapshotScaleMultiplier>(settings.snapshotScaleMultiplier ?? 2);
+  const currentIncludeFrame = $derived<boolean>(settings.snapshotIncludeFrame !== false);
+  const currentIncludePrice = $derived<boolean>(settings.snapshotIncludePrice !== false);
+  const currentIncludeTimestamp = $derived<boolean>(settings.snapshotIncludeTimestamp !== false);
 
   function updateProfile(patch: Partial<UserProfileConfig>) {
     fileErrorMessage = null;
@@ -453,6 +468,94 @@
         <span class="mock-candle green" style="height: 60px;"></span>
       </div>
     </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- Seksi 3: Preferensi Tangkapan Layar Bawaan (#124, #125) -->
+  <div class="snapshot-header-group">
+    <div class="header-with-badge">
+      <h4 class="section-title">Preferensi Tangkapan Layar Bawaan</h4>
+      <span class="snapshot-tag mono-nums">
+        <Camera size={11} />
+        SNAPSHOT
+      </span>
+    </div>
+    <p class="section-subtitle">
+      Konfigurasikan resolusi bawaan dan informasi yang disematkan saat mengambil snapshot grafik cepat atau via dialog ekspor.
+    </p>
+  </div>
+
+  <!-- 1. Selector Chip Multiplier Resolusi Bawaan: 1x, 2x (HiDPI), 4x (4K), 6x (Super HD) -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Resolusi Snapshot Bawaan (Scale Multiplier)</span>
+      <span class="setting-desc">Tingkat ketajaman kanvas grafik yang dihasilkan (HiDPI hingga Ultra HD 6K)</span>
+    </div>
+    <div class="multiplier-chips-group">
+      {#each scaleMultiplierOptions as opt}
+        <button
+          type="button"
+          class="chip-toggle {currentScaleMultiplier === opt.value ? 'active' : ''}"
+          onclick={() => onUpdateSettings({ snapshotScaleMultiplier: opt.value })}
+          title="{opt.desc} ({opt.value}x)"
+        >
+          <span class="chip-dot"></span>
+          <span>{opt.label}</span>
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <!-- 2. Toggle Switch snapshotIncludeFrame (Bingkai Branded Frame Bawaan) -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Bingkai Branded Frame Bawaan</span>
+      <span class="setting-desc">Sematkan kartu showcase dengan Attribution Bar (identitas trader, logo, harga) atau kanvas murni</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {currentIncludeFrame ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ snapshotIncludeFrame: !currentIncludeFrame })}
+      aria-pressed={currentIncludeFrame}
+    >
+      <span class="toggle-dot"></span>
+      <span>{currentIncludeFrame ? 'Branded Frame' : 'Clean Chart'}</span>
+    </button>
+  </div>
+
+  <!-- 3. Toggle Switch snapshotIncludePrice (Sertakan Harga Terakhir) -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Sertakan Harga Terakhir</span>
+      <span class="setting-desc">Tampilkan nilai harga pasar aktif di Attribution Bar snapshot</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {currentIncludePrice ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ snapshotIncludePrice: !currentIncludePrice })}
+      aria-pressed={currentIncludePrice}
+    >
+      <span class="toggle-dot"></span>
+      <span>{currentIncludePrice ? 'Sertakan' : 'Sembunyikan'}</span>
+    </button>
+  </div>
+
+  <!-- 4. Toggle Switch snapshotIncludeTimestamp (Sertakan Stempel Waktu Lokal) -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Sertakan Stempel Waktu Lokal</span>
+      <span class="setting-desc">Tampilkan informasi tanggal dan jam analisis lokal saat grafik diambil</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {currentIncludeTimestamp ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ snapshotIncludeTimestamp: !currentIncludeTimestamp })}
+      aria-pressed={currentIncludeTimestamp}
+    >
+      <span class="toggle-dot"></span>
+      <span>{currentIncludeTimestamp ? 'Sertakan' : 'Sembunyikan'}</span>
+    </button>
   </div>
 </div>
 
@@ -1079,5 +1182,74 @@
 
   .mock-candle.red {
     background-color: #f23645;
+  }
+
+  /* Seksi 3: Preferensi Tangkapan Layar Bawaan (#124, #125) */
+  .snapshot-header-group {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 4px;
+  }
+
+  .snapshot-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9.5px;
+    font-weight: 700;
+    color: #38bdf8;
+    background-color: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    padding: 1px 6px;
+    border-radius: var(--radius-xs, 4px);
+    letter-spacing: 0.05em;
+  }
+
+  .multiplier-chips-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .chip-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background-color: var(--bg-darkest, #0c0c0c);
+    border: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.1));
+    color: var(--text-muted, #8e8e8e);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono, monospace);
+    padding: 4px 10px;
+    border-radius: var(--radius-xs, 4px);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .chip-toggle:hover {
+    color: var(--text-main, #ffffff);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  .chip-toggle.active {
+    color: #ff69b4;
+    border-color: rgba(255, 105, 180, 0.5);
+    background-color: rgba(255, 105, 180, 0.12);
+  }
+
+  .chip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--text-dim, #666666);
+    transition: all 0.15s ease;
+  }
+
+  .chip-toggle.active .chip-dot {
+    background-color: #ff69b4;
+    box-shadow: 0 0 5px rgba(255, 105, 180, 0.6);
   }
 </style>

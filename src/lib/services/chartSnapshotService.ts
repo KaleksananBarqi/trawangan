@@ -416,7 +416,7 @@ export function resolveSecurityWatermarkText(
   const handle = profile?.handle?.trim();
   if (username && handle) {
     const formattedHandle = handle.startsWith('@') ? handle : `@${handle}`;
-    return `${username} (${formattedHandle})`;
+    return formattedHandle ? `${username} · ${formattedHandle}` : username;
   }
   if (username) {
     return username;

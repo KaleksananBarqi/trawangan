@@ -137,6 +137,7 @@
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 1;
 }
 
 /* Garis panduan vertikal pemotong lilin presisi */
@@ -610,7 +611,7 @@
   letter-spacing: 0.02em;
 }
 
-/* Live Security Watermark Overlay (#127) */
+/* Live Security Watermark Overlay (#127) - Diletakkan di lapisan belakang candlestick (z-index: 0) */
 .live-security-watermark-overlay {
   position: absolute;
   inset: 0;
@@ -620,7 +621,7 @@
   pointer-events: none;
   user-select: none;
   overflow: hidden;
-  z-index: 2;
+  z-index: 0;
   transition: opacity 0.15s ease;
 }
 

@@ -146,12 +146,12 @@ describe('Tiket #127: Anti-Theft Semi-Transparent Security Watermark Suite', () 
       );
       assert.equal(customRes, 'PRIVATE TRADING GROUP');
 
-      // 2. Teks kosong -> fallback ke username dan handle profil
+      // 2. Teks kosong -> fallback ke username dan handle profil dengan format canonical titik tengah
       const fallbackBoth = resolveSecurityWatermarkText(
         { enabled: true, text: '   ', opacity: 0.15, showOnLiveCanvas: false },
         { username: 'Satoshi Nakamoto', handle: '@nakamoto' }
       );
-      assert.equal(fallbackBoth, 'Satoshi Nakamoto (@nakamoto)');
+      assert.equal(fallbackBoth, 'Satoshi Nakamoto · @nakamoto');
 
       // 3. Hanya username
       const fallbackNameOnly = resolveSecurityWatermarkText(
@@ -251,9 +251,9 @@ describe('Tiket #127: Anti-Theft Semi-Transparent Security Watermark Suite', () 
       }, mockCanvas);
 
       const fillTextOps = mockCanvas.operations.filter(
-        (op) => op.method === 'fillText' && op.args[0] === 'John Doe (@johndoe)'
+        (op) => op.method === 'fillText' && op.args[0] === 'John Doe · @johndoe'
       );
-      assert.equal(fillTextOps.length, 1, 'Teks fallback John Doe (@johndoe) harus dirender saat watermark.text kosong');
+      assert.equal(fillTextOps.length, 1, 'Teks fallback John Doe · @johndoe harus dirender saat watermark.text kosong');
     });
   });
 
