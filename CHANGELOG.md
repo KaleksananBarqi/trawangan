@@ -5,6 +5,34 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.26.0] - 2026-10-31
+
+### 🚀 Ditambahkan (Added)
+- **Penerimaan Rencana Perdagangan Deterministik & Posisi Multi-Target (ADR-0014, #109, #110, #111, #112, #113, #115, #119, #120, #121, #122, #123):**
+  - **Parser Rencana Perdagangan Lokal Cepat (Zero-LLM & Zero-OCR)**: Mesin parser deterministik berbasis regex (< 5 ms) yang mengekstrak parameter posisi (`Bias`, `Entry`, `Stop Loss`, `TP1..TPn`), rasio RRR / R-multiple, zona Fair Value Gap (FVG), serta narasi analisis kualitatif dari tabel Markdown maupun teks bebas.
+  - **Sanity Guard & Tick-Aligned Price Guard**: Validasi konsistensi logika arah posisi (Bearish: SL > Entry > TP; Bullish: SL < Entry < TP) serta penyelarasan harga otomatis dengan tick size bursa aktif (`roundToTickSize`).
+  - **Staged Multi-Target Position Drawing Engine**: Pemetaan target bertingkat ke dalam kontigu kotak posisi bertingkat ($t_0 \to t_1$, $t_1 \to t_2$) yang berbagi Entry & SL matematis identik, dengan label R-multiple dinamis dan transaksi Undo/Redo atomik serentak (`Ctrl+Z`).
+  - **Kartu Tesis Melayang HUD (Glassmorphism Floating Thesis Card)**: HUD melayang semitransparan di atas kanvas grafik yang dapat digeser (*draggable*) dan diminimalkan (*minimizable*), menampilkan sorotan epistemik (`[FAKTA]`, `[INFERENSI]`, `[SPEKULASI]`), skenario pembatalan (*invalidation scenario*), penggambaran otomatis kotak zona FVG (*auto-draw FVG box*), serta badge harga Entry/SL/TP pada sumbu harga kanan.
+  - **Penyelarasan Snapshot High-Fidelity & Isolasi Simbol Koin**: Kartu tesis kini terintegrasi secara proporsional ke dalam komposit ekspor grafik tanpa ruang kosong gelap (*void*), dan rencana perdagangan terisolasi secara ketat per simbol koin aktif (setup BTC tidak bocor saat membuka SOL).
+  - **Akses Cepat & Smart Canvas Paste**: Modal import dapat dipanggil via pintasan global `Ctrl + Shift + P`, tombol Drawing Toolbar, menu konteks klik kanan, atau deteksi tempel otomatis kanvas `Ctrl + V`.
+- **Komposit Tangkapan Layar Ultra HD, Profil Trader, Watermark Keamanan & Latar Kanvas Kustom (ADR-0015, #124, #125, #126, #127, #128, #129, #130):**
+  - **Multi-Scale Snapshot Compositing (1x, 2x HiDPI, 4x Ultra HD, 6x Super HD)**: Dukungan ekspor resolusi ekstrim hingga 6x Super HD (~11520x6480 piksel) dengan penyesuaian skala elemen tipografi dan pratinjau dimensi piksel instan (*real-time dimension badge*).
+  - **Integrasi Logo Resmi Vektor**: Mengganti monogram manual `tr` dengan logo SVG resmi `trawangan` beresolusi tinggi pada *Branded Snapshot Frame*.
+  - **Pengaturan Profil Trader Mandiri (Offline-First) & Atribusi Personal**: Tab pengaturan "Profil & Watermark" baru untuk mengunggah avatar lokal (Base64), menyetel username, handle `@social`, dan deskripsi ringkas (*bio*), dengan kliping sirkular native pada Attribution Bar snapshot.
+  - **Tanda Air Keamanan Anti-Maling (Anti-Theft Security Watermark)**: Teks watermark diagonal semi-transparan berputar -32° di tengah grafik kanvas untuk melindungi karya analisis dari pembajakan/reupload, dengan kontrol opasitas (5%–30%), opsi tampil di kanvas kerja langsung, serta sakelar toggle interaktif langsung di modal pratinjau snapshot.
+  - **Latar Belakang Kanvas Grafik Kustom (Custom Canvas Background)**: Opsi fleksibel di tab Appearance untuk mengatur latar grafik ke mode Tema Preset Bawaan (`theme`), Warna Heksadesimal Tunggal (`solid`), atau Gradien Vertikal Dua Warna (`gradient`), yang direproduksi secara identik di kanvas live WebGL maupun ekspor 2D snapshot.
+  - **Harmonisasi Desain Tema Kartu Tesis & Snapshot**: Sinkronisasi penuh token warna CSS kartu tesis melayang dan overlay snapshot dengan tema grafik aktif (#129).
+
+### 🔄 Diubah (Changed)
+- **Penyempurnaan Alur Gestur Pasca Menggambar (Draw by Holding Engine)**:
+  - Mengembalikan kursor mouse ke kursor default dan mengaktifkan seleksi langsung (*auto-select*) pada objek gambar baru hasil gestur.
+  - Mengisolasi penanganan pointer event kanvas tinta (*ink canvas*) dan mereset status drag grafik untuk mencegah pergeseran kanvas hantu (*ghost panning*).
+
+### 🐛 Diperbaiki (Fixed)
+- **Perbaikan Transparansi Kanvas Vela & Urutan Kompositor Watermark**:
+  - Mengatasi latar belakang hitam pekat internal kontainer Vela saat mode custom background aktif.
+  - Memperbaiki urutan komposit snapshot agar lilin grafik dirender terlebih dahulu sebelum tanda air keamanan, memastikan teks watermark profil melayang jelas di atas candlestick tanpa tertimpa kanvas pekat.
+
 ## [0.25.0] - 2026-10-31
 
 ### 🚀 Ditambahkan (Added)
