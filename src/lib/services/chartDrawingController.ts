@@ -59,6 +59,18 @@ export function resolveDrawingKey(providerId: string | undefined, symbol: string
 }
 
 /**
+ * Membandingkan dua simbol instrumen perdagangan dengan normalisasi nama dan toleransi sufiks kontrak (.P / PERP)
+ */
+export function isSameSymbol(symA?: string, symB?: string): boolean {
+  if (!symA || !symB) return false;
+  const cleanA = symA.replace(/^[^:]+:/, '').trim().toUpperCase();
+  const cleanB = symB.replace(/^[^:]+:/, '').trim().toUpperCase();
+  if (cleanA === cleanB) return true;
+  const strip = (s: string) => s.replace(/\.P$|-PERP$|PERP$/i, '').replace(/[-_/]/g, '');
+  return strip(cleanA) === strip(cleanB);
+}
+
+/**
  * Memeriksa apakah dua kotak pembatas AABB (Axis-Aligned Bounding Box) beririsan/tumpang tindih
  */
 export function isAABBOverlap(a: ScribbleBounds, b: ScribbleBounds): boolean {
@@ -1457,7 +1469,9 @@ export class ChartDrawingController {
     }
 
     // Simpan ke activePlans registry untuk konsumsi FloatingThesisCard
-    const planRecord = { ...plan, id: planId };
+    const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+    const targetSymbol = plan.symbol || curSym;
+    const planRecord = { ...plan, id: planId, symbol: targetSymbol };
     this.activePlans.set(planId, planRecord);
     this.planDrawingIds.set(planId, new Set(createdDrawingIds));
 
@@ -1479,9 +1493,27 @@ export class ChartDrawingController {
   }
 
   /**
-   * Dapatkan seluruh rencana perdagangan aktif di kanvas
+   * Dapatkan seluruh rencana perdagangan aktif di kanvas yang terfilter sesuai koin/simbol aktif
    */
-  getActivePlans(): Array<ParsedTradingPlan & { id: string }> {
+  getActivePlans(symbolFilter?: string): Array<ParsedTradingPlan & { id: string; symbol?: string }> {
+    const all = Array.from(this.activePlans.values());
+    const filter =
+      symbolFilter !== undefined
+        ? symbolFilter
+        : typeof this.getSymbol === 'function'
+          ? this.getSymbol()
+          : undefined;
+
+    if (!filter || filter === '*' || filter.toUpperCase() === 'ALL') {
+      return all;
+    }
+    return all.filter((p) => !p.symbol || isSameSymbol(p.symbol, filter));
+  }
+
+  /**
+   * Dapatkan seluruh rencana perdagangan tanpa filter simbol (untuk persistensi sesi menyeluruh)
+   */
+  getAllActivePlans(): Array<ParsedTradingPlan & { id: string; symbol?: string }> {
     return Array.from(this.activePlans.values());
   }
 
@@ -1548,15 +1580,22 @@ export class ChartDrawingController {
   /**
    * Pulihkan koleksi rencana perdagangan aktif ke kanvas (Workspace Persistence)
    */
-  restorePlans(plans: Array<ParsedTradingPlan & { id: string }>, showCards: boolean = true): void {
+  restorePlans(plans: Array<ParsedTradingPlan & { id: string; symbol?: string }>, showCards: boolean = true): void {
     if (!Array.isArray(plans) || plans.length === 0) return;
     this.showThesisCards = showCards;
+    const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
     for (const plan of plans) {
       if (!this.activePlans.has(plan.id)) {
-        this.createMultiTargetPosition(plan, {
-          planId: plan.id,
-          drawContextZones: true
-        });
+        this.createMultiTargetPosition(
+          {
+            ...plan,
+            symbol: plan.symbol || curSym
+          },
+          {
+            planId: plan.id,
+            drawContextZones: true
+          }
+        );
       }
     }
     this.notify();
@@ -1597,10 +1636,16 @@ export class ChartDrawingController {
 
         // Sinkronisasi activePlans dengan activeDrawings:
         // Himpun seluruh drawing ID yang saat ini masih ada di kanvas (baik visible maupun hidden)
+        const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
         const existingDrawingIds = new Set(this.activeDrawings.map((d: any) => d.id).filter(Boolean));
 
         // Rencana hanya dihapus jika SEMUA drawing yang terkait dengannya sudah tidak ada di kanvas
+        // DAN hanya jika plan tersebut diasosiasikan dengan koin aktif saat ini
         for (const [pid, drawingIdSet] of Array.from(this.planDrawingIds.entries())) {
+          const plan = this.activePlans.get(pid);
+          if (plan && plan.symbol && !isSameSymbol(plan.symbol, curSym)) {
+            continue; // Lindungi rencana milik koin lain agar tidak terhapus saat beralih koin
+          }
           if (drawingIdSet && drawingIdSet.size > 0) {
             const hasAnyDrawing = Array.from(drawingIdSet).some((did) => existingDrawingIds.has(did));
             if (!hasAnyDrawing) {
@@ -1612,7 +1657,10 @@ export class ChartDrawingController {
 
         // Bersihkan plan lama yang tidak memiliki entri di planDrawingIds dan tidak ada di activeDrawings
         const activePlanIds = new Set(this.activeDrawings.map((d: any) => d.metadata?.planId).filter(Boolean));
-        for (const pid of Array.from(this.activePlans.keys())) {
+        for (const [pid, plan] of Array.from(this.activePlans.entries())) {
+          if (plan && plan.symbol && !isSameSymbol(plan.symbol, curSym)) {
+            continue; // Lindungi rencana milik koin lain
+          }
           if (!this.planDrawingIds.has(pid) && !activePlanIds.has(pid)) {
             this.activePlans.delete(pid);
           }
@@ -1724,11 +1772,11 @@ export class ChartDrawingController {
         activeChart.drawings.fromJSON(doc);
         this.activeDrawings = activeChart.drawings.all?.() || [];
       }
-      this.notify();
     } catch (err) {
       console.warn('Gagal memulihkan drawings:', err);
     } finally {
       this.isRestoring = false;
+      this.notify();
     }
   }
 

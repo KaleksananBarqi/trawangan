@@ -47,6 +47,7 @@ export interface ParsedTradingPlan {
   validation: PlanValidationResult;
   conclusion?: PlanConclusion;
   definition?: string;
+  symbol?: string;
 }
 
 export interface ParseTradingPlanOptions {
@@ -337,6 +338,7 @@ export function parseTradingPlan(
   let bias: TradeBias = 'neutral';
   let rawEntry = 0;
   let rawStopLoss = 0;
+  let parsedSymbol: string | undefined;
   const reasons: Record<string, string> = {};
 
   interface TargetEntry {
@@ -415,6 +417,25 @@ export function parseTradingPlan(
         bias = 'bullish';
       } else {
         bias = 'neutral';
+      }
+      continue;
+    }
+
+    // 1b. Pasangan / Koin / Simbol Instrumen (#123)
+    if (
+      cleanKey === 'symbol' ||
+      cleanKey === 'simbol' ||
+      cleanKey === 'pair' ||
+      cleanKey === 'pasangan' ||
+      cleanKey === 'koin' ||
+      cleanKey === 'coin' ||
+      cleanKey === 'instrument' ||
+      cleanKey === 'instrumen' ||
+      cleanKey === 'ticker'
+    ) {
+      const symMatch = cleanVal.match(/([A-Za-z0-9_\-\.]+)/);
+      if (symMatch) {
+        parsedSymbol = symMatch[1].replace('/', '').toUpperCase();
       }
       continue;
     }
@@ -584,6 +605,15 @@ export function parseTradingPlan(
   // Ekstraksi Kesimpulan dan Definisi (#115)
   const { conclusion, definition } = extractConclusionAndDefinition(text);
 
+  // Fallback deteksi simbol koin dari teks jika belum ada di tabel parameter
+  if (!parsedSymbol) {
+    const symRegex = /\b([A-Z0-9]{2,10}(?:USDT|BUSD|USDC|USD|BTC)(?:\.P)?)\b/i;
+    const headerMatch = (text || '').match(symRegex);
+    if (headerMatch) {
+      parsedSymbol = headerMatch[1].toUpperCase();
+    }
+  }
+
   return {
     bias,
     entry,
@@ -596,6 +626,7 @@ export function parseTradingPlan(
     validation,
     ...(conclusion ? { conclusion } : {}),
     ...(definition ? { definition } : {}),
+    ...(parsedSymbol ? { symbol: parsedSymbol } : {}),
   };
 }
 

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import './chart.css';
-  import { Scissors, Bell, X, WifiOff, Edit3, Eye } from '@lucide/svelte';
+  import { Scissors, Bell, X, WifiOff, Edit3 } from '@lucide/svelte';
   import { ChartSessionController } from '../services/chartSessionController';
-  import { chartDrawingController, type GestureCreationState } from '../services/chartDrawingController';
+  import { chartDrawingController, isSameSymbol, type GestureCreationState } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { alertService } from '../services/alertService';
   import { marketFeed } from '../services/market';
@@ -88,6 +88,9 @@
   let indicatorPriceBadges = $state<PriceScaleBadge[]>([]);
   let activePlans = $state<Array<any>>([]);
   let showThesisCards = $state(true);
+  let scopedActivePlans = $derived(
+    activePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, symbol))
+  );
 
   let unsubAlerts: (() => void) | null = null;
   let unsubDrawingState: (() => void) | null = null;
@@ -332,7 +335,7 @@
       containerHeight: chartContainer.clientHeight || baseCanvas.height,
       drawingPriceBadges,
       showDrawingPriceLabels,
-      activePlans,
+      activePlans: scopedActivePlans,
       showThesisCards,
       cardGeometries: thesisCardGeometries,
       getPriceY: (p) => getPriceY(p),
@@ -741,7 +744,7 @@
   {/if}
 
   {#if showThesisCards}
-    {#each activePlans as plan, idx (plan.id)}
+    {#each scopedActivePlans as plan, idx (plan.id)}
       <FloatingThesisCard
         {plan}
         initialX={16 + idx * 24}
@@ -751,17 +754,6 @@
         onGeometryChange={handleThesisCardGeometryChange}
       />
     {/each}
-  {:else if activePlans.length > 0}
-    <!-- Floating Restore Pill saat Tesis Disembunyikan (#116) -->
-    <button
-      type="button"
-      class="restore-thesis-pill obsidian-card mono-nums"
-      title="Tampilkan Kembali Tesis Rencana Perdagangan"
-      onclick={() => chartDrawingController.setThesisCardsVisible(true)}
-    >
-      <Eye size={12} class="restore-icon" />
-      <span>TAMPILKAN TESIS ({activePlans.length})</span>
-    </button>
   {/if}
 
   <ChartContextMenu

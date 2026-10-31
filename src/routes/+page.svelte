@@ -181,9 +181,13 @@
   }
 
   function handleApplyImportPlan(plan: ParsedTradingPlan) {
-    const result = chartDrawingController.createMultiTargetPosition(plan);
+    const planWithSymbol = {
+      ...plan,
+      symbol: plan.symbol || activeSymbol
+    };
+    const result = chartDrawingController.createMultiTargetPosition(planWithSymbol);
     if (result) {
-      addSystemLog('Trading Plan ' + plan.bias.toUpperCase() + ' berhasil diterapkan ke chart', 'success');
+      addSystemLog(`Trading Plan ${plan.bias.toUpperCase()} (${planWithSymbol.symbol}) berhasil diterapkan ke chart`, 'success');
       isImportPlanModalOpen = false;
     }
   }

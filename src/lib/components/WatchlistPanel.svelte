@@ -44,6 +44,7 @@
   import { loadWatchlist, saveWatchlist } from '../services/persistence';
   import { marketFeed } from '../services/market';
   import { alertService } from '../services/alertService';
+  import { isSameSymbol } from '../services/chartDrawingController';
   import {
     parseWatchlistEntry,
     formatWatchlistEntry,
@@ -150,6 +151,9 @@
   let isIndicatorsGroupOpen = $state(true);
   let isPlansGroupOpen = $state(true);
   let isDrawingsGroupOpen = $state(true);
+  let scopedPlans = $derived(
+    activePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, activeSymbol))
+  );
   let nativeVolumeCount = $derived(showVolume ? 1 : 0);
   let totalIndicatorsCount = $derived(activeIndicators.length + nativeVolumeCount);
 
@@ -1545,7 +1549,7 @@
                 {/if}
               </span>
               <span>Trading Plan</span>
-              <span class="group-count mono-nums">{activePlans.length}</span>
+              <span class="group-count mono-nums">{scopedPlans.length}</span>
             </div>
 
             <div class="group-bulk-actions">
@@ -1561,7 +1565,7 @@
 
           {#if isPlansGroupOpen}
             <div class="tree-group-content">
-              {#each activePlans as plan (plan.id)}
+              {#each scopedPlans as plan (plan.id)}
                 {@const isBear = plan.bias === 'bearish'}
                 {@const planTooltip = [
                   `Trading Plan ${plan.bias?.toUpperCase()} (${plan.targets?.length || 0} TP)`,
@@ -1606,7 +1610,7 @@
                 </div>
               {/each}
 
-              {#if activePlans.length === 0}
+              {#if scopedPlans.length === 0}
                 <div class="empty-subgroup">
                   <span>Tidak ada trading plan aktif</span>
                   <button
