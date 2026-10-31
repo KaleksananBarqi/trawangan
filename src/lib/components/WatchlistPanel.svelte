@@ -38,7 +38,8 @@
     Pencil,
     MoreHorizontal,
     Folder,
-    GripVertical
+    GripVertical,
+    Sparkles
   } from '@lucide/svelte';
   import { loadWatchlist, saveWatchlist } from '../services/persistence';
   import { marketFeed } from '../services/market';
@@ -93,6 +94,11 @@
     onRequestCreateAlert?: () => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
     onOpenSymbolSearch?: () => void;
+    activePlans?: Array<any>;
+    showThesisCards?: boolean;
+    onToggleThesisCards?: () => void;
+    onRemovePlan?: (id: string) => void;
+    onOpenImportPlan?: () => void;
   }
 
   let {
@@ -124,6 +130,11 @@
     onRequestCreateAlert,
     onRequestEditAlert,
     onOpenSymbolSearch,
+    activePlans = [],
+    showThesisCards = true,
+    onToggleThesisCards,
+    onRemovePlan,
+    onOpenImportPlan,
   }: Props = $props();
 
   let internalTab = $state<'watchlist' | 'alerts' | 'objects'>('watchlist');
@@ -137,6 +148,7 @@
 
   // State Collapsible Groups di Tab Objects
   let isIndicatorsGroupOpen = $state(true);
+  let isPlansGroupOpen = $state(true);
   let isDrawingsGroupOpen = $state(true);
   let nativeVolumeCount = $derived(showVolume ? 1 : 0);
   let totalIndicatorsCount = $derived(activeIndicators.length + nativeVolumeCount);
@@ -1509,6 +1521,95 @@
               {#if activeIndicators.length === 0 && !showVolume}
                 <div class="empty-subgroup">
                   <span>Tidak ada indikator aktif</span>
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+
+        <!-- 1.5 GRUP TRADING PLAN (DETERMINISTIC INGESTION) (#117) -->
+        <div class="tree-group">
+          <div class="tree-group-header">
+            <div
+              class="tree-group-title clickable"
+              role="button"
+              tabindex="0"
+              onclick={() => (isPlansGroupOpen = !isPlansGroupOpen)}
+              onkeydown={(e) => e.key === 'Enter' && (isPlansGroupOpen = !isPlansGroupOpen)}
+            >
+              <span class="chevron-icon">
+                {#if isPlansGroupOpen}
+                  <ChevronDown size={13} />
+                {:else}
+                  <ChevronRight size={13} />
+                {/if}
+              </span>
+              <span>Trading Plan</span>
+              <span class="group-count mono-nums">{activePlans.length}</span>
+            </div>
+
+            <div class="group-bulk-actions">
+              <button
+                class="icon-action-btn"
+                title="Input & Import Trading Plan (Ctrl+Shift+P)"
+                onclick={() => onOpenImportPlan?.()}
+              >
+                <Sparkles size={12} class="text-cyan-accent" />
+              </button>
+            </div>
+          </div>
+
+          {#if isPlansGroupOpen}
+            <div class="tree-group-content">
+              {#each activePlans as plan (plan.id)}
+                {@const isBear = plan.bias === 'bearish'}
+                <div class="layer-item plan-layer-item">
+                  <div class="layer-info">
+                    <span class="layer-icon {isBear ? 'text-pink' : 'text-emerald'}">
+                      <Sparkles size={13} />
+                    </span>
+                    <span class="layer-name" title="Trading Plan {plan.bias?.toUpperCase()}">
+                      Plan {plan.bias?.toUpperCase()} ({plan.targets?.length || 0} TP)
+                    </span>
+                    {#if plan.conclusion?.probability}
+                      <span class="plan-prob-chip mono-nums">{plan.conclusion.probability}</span>
+                    {/if}
+                  </div>
+
+                  <div class="layer-actions">
+                    <button
+                      class="icon-action-btn {showThesisCards ? 'visible' : 'hidden'}"
+                      title={showThesisCards ? 'Sembunyikan Kartu Tesis di Grafik' : 'Tampilkan Kartu Tesis di Grafik'}
+                      onclick={() => onToggleThesisCards?.()}
+                    >
+                      {#if showThesisCards}
+                        <Eye size={12} />
+                      {:else}
+                        <EyeOff size={12} />
+                      {/if}
+                    </button>
+
+                    <button
+                      class="icon-action-btn delete"
+                      title="Hapus Rencana Perdagangan Ini"
+                      onclick={() => onRemovePlan?.(plan.id)}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              {/each}
+
+              {#if activePlans.length === 0}
+                <div class="empty-subgroup">
+                  <span>Tidak ada trading plan aktif</span>
+                  <button
+                    class="empty-action-link"
+                    type="button"
+                    onclick={() => onOpenImportPlan?.()}
+                  >
+                    + Import Plan
+                  </button>
                 </div>
               {/if}
             </div>
@@ -2975,6 +3076,45 @@
     font-size: 10px;
     color: var(--text-dim);
     font-style: italic;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .empty-action-link {
+    background: transparent;
+    border: none;
+    color: #38bdf8;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+  }
+
+  .empty-action-link:hover {
+    background: rgba(56, 189, 248, 0.12);
+  }
+
+  .plan-prob-chip {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    margin-left: 4px;
+  }
+
+  .text-pink {
+    color: #ff69b4 !important;
+  }
+
+  .text-emerald {
+    color: #00ff88 !important;
   }
 
   .empty-state {

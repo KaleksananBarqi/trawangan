@@ -756,14 +756,10 @@
     {symbol}
     price={contextMenuPrice}
     time={contextMenuTime}
-    hasActivePlans={activePlans.length > 0}
-    {showThesisCards}
     onCreateAlert={() => { if (contextMenuPrice) onRequestCreateAlert?.(symbol, contextMenuPrice); isContextMenuOpen = false; }}
     onDrawHorizontalLine={() => { chartDrawingController.setTool('hline'); isContextMenuOpen = false; }}
     onResetChartScale={fitChart}
     onOpenSettings={() => { openChartSettings(); isContextMenuOpen = false; }}
-    onOpenImportPlan={() => { isContextMenuOpen = false; onOpenImportPlan?.(); }}
-    onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
     onClose={() => (isContextMenuOpen = false)}
   />
 </div>

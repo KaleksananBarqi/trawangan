@@ -17,6 +17,7 @@
     Circle,
     Triangle,
     Paintbrush,
+    PenTool,
     Highlighter,
     Layers,
     DollarSign,
@@ -85,6 +86,9 @@
     onUndo: () => void;
     onRedo: () => void;
     onClear: () => void;
+    onClearDrawings?: () => void;
+    onClearIndicators?: () => void;
+    onClearAll?: () => void;
     isCollapsed?: boolean;
     onToggleCollapse?: () => void;
     onOpenGestureGuide?: () => void;
@@ -110,6 +114,9 @@
     onUndo,
     onRedo,
     onClear,
+    onClearDrawings,
+    onClearIndicators,
+    onClearAll,
     isCollapsed = false,
     onToggleCollapse,
     onOpenGestureGuide,
@@ -120,7 +127,7 @@
   }: Props = $props();
 
   // State flyout menu
-  let openFlyout = $state<DrawingGroupId | 'pointer' | null>(null);
+  let openFlyout = $state<DrawingGroupId | 'pointer' | 'clear' | null>(null);
   let lastUsedPointerTool = $state<DrawingToolType>('cursor');
   let searchQuery = $state('');
   let isFavoritesBarVisible = $state(true);
@@ -299,6 +306,21 @@
         const toolItem = target.closest('.tool-item') || target;
         const rect = toolItem.getBoundingClientRect();
         flyoutTop = Math.max(8, Math.min(rect.top - 4, window.innerHeight - 440));
+      }
+    }
+  }
+
+  function toggleClearFlyout(e?: MouseEvent | Event) {
+    if (openFlyout === 'clear') {
+      openFlyout = null;
+    } else {
+      openFlyout = 'clear';
+      searchQuery = '';
+      if (e && e.currentTarget) {
+        const target = e.currentTarget as HTMLElement;
+        const toolItem = target.closest('.tool-item') || target;
+        const rect = toolItem.getBoundingClientRect();
+        flyoutTop = Math.max(8, Math.min(rect.top - 60, window.innerHeight - 240));
       }
     }
   }
@@ -781,14 +803,110 @@
   </div>
 
   <div class="tool-item">
-    <button
-      type="button"
-      class="tool-btn delete-btn"
-      title="Hapus Seluruh Objek Gambar di Grafik"
-      onclick={onClear}
+    <div
+      class="tool-btn-wrapper {openFlyout === 'clear' ? 'flyout-open' : ''}"
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        toggleClearFlyout(e);
+      }}
     >
-      <Trash2 size={15} />
-    </button>
+      <button
+        type="button"
+        class="tool-btn delete-btn"
+        title="Pilihan Pembersihan Grafik (Klik kanan atau panah untuk pilihan)"
+        onclick={(e) => toggleClearFlyout(e)}
+      >
+        <Trash2 size={15} />
+      </button>
+      <button
+        type="button"
+        class="sub-arrow-btn"
+        title="Buka Pilihan Hapus (Gambar / Indikator / Keduanya)"
+        onclick={(e) => {
+          e.stopPropagation();
+          toggleClearFlyout(e);
+        }}
+      >
+        <span class="sub-arrow">▸</span>
+      </button>
+    </div>
+
+    <!-- Submenu Flyout Pembersihan Grafik (#117) -->
+    {#if openFlyout === 'clear'}
+      <div
+        class="flyout-menu obsidian-panel"
+        style="top: {flyoutTop}px;"
+        onclick={(e) => e.stopPropagation()}
+      >
+        <div class="flyout-header-row">
+          <span class="flyout-header-title">Pembersihan Grafik</span>
+        </div>
+
+        <div class="flyout-items-list">
+          <!-- 1. Hapus Gambar Saja -->
+          <button
+            type="button"
+            class="flyout-item-btn"
+            title="Bersihkan seluruh coretan & objek gambar tanpa menghapus indikator"
+            onclick={() => {
+              openFlyout = null;
+              if (onClearDrawings) onClearDrawings();
+              else onClear();
+            }}
+          >
+            <span class="flyout-item-icon text-amber">
+              <PenTool size={13} />
+            </span>
+            <div class="flyout-item-text">
+              <span class="flyout-item-label">Hapus Gambar</span>
+              <span class="flyout-item-desc">Bersihkan seluruh coretan & gambar</span>
+            </div>
+          </button>
+
+          <!-- 2. Hapus Indikator Saja -->
+          <button
+            type="button"
+            class="flyout-item-btn"
+            title="Bersihkan seluruh indikator teknikal & volume tanpa menghapus coretan gambar"
+            onclick={() => {
+              openFlyout = null;
+              if (onClearIndicators) onClearIndicators();
+            }}
+          >
+            <span class="flyout-item-icon text-cyan">
+              <Layers size={13} />
+            </span>
+            <div class="flyout-item-text">
+              <span class="flyout-item-label">Hapus Indikator</span>
+              <span class="flyout-item-desc">Hapus seluruh indikator Pine & volume</span>
+            </div>
+          </button>
+
+          <!-- 3. Hapus Keduanya -->
+          <button
+            type="button"
+            class="flyout-item-btn danger-item"
+            title="Bersihkan seluruh gambar dan indikator sekaligus"
+            onclick={() => {
+              openFlyout = null;
+              if (onClearAll) onClearAll();
+              else {
+                onClear();
+                if (onClearIndicators) onClearIndicators();
+              }
+            }}
+          >
+            <span class="flyout-item-icon text-red">
+              <Trash2 size={13} />
+            </span>
+            <div class="flyout-item-text">
+              <span class="flyout-item-label text-red">Hapus Gambar & Indikator</span>
+              <span class="flyout-item-desc">Bersihkan grafik sepenuhnya</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    {/if}
   </div>
   </div>
 

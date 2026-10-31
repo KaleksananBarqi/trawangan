@@ -200,6 +200,7 @@
   let isDrawingsHidden = $state(false);
   let activeDrawings = $state<any[]>([]);
   let selectedDrawingId = $state<string | null>(null);
+  let currentActivePlans = $state<any[]>([]);
   let hasActivePlans = $state(false);
   let showThesisCards = $state(true);
 
@@ -541,6 +542,7 @@
       isDrawingsHidden = state.isHidden;
       activeDrawings = state.activeDrawings;
       selectedDrawingId = state.selectedDrawingId;
+      currentActivePlans = state.activePlans || [];
       hasActivePlans = Boolean(state.activePlans && state.activePlans.length > 0);
       showThesisCards = state.showThesisCards ?? true;
     });
@@ -1073,11 +1075,30 @@
     chartDrawingController.redo();
   }
 
-  function handleClear() {
-    if (confirm('Hapus semua objek gambar pada grafik saat ini?')) {
-      chartDrawingController.clearAll();
-      addSystemLog('Seluruh objek gambar dibersihkan.', 'warn');
+  async function handleClearDrawings() {
+    await chartDrawingController.clearAll();
+    addSystemLog('Seluruh objek gambar di grafik dibersihkan.', 'info');
+  }
+
+  function handleClearIndicators() {
+    if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
+      chartComponent.clearAllIndicators();
     }
+    activeIndicators = [];
+    addSystemLog('Seluruh indikator teknikal di grafik dibersihkan.', 'info');
+  }
+
+  async function handleClearAll() {
+    await chartDrawingController.clearAll();
+    if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
+      chartComponent.clearAllIndicators();
+    }
+    activeIndicators = [];
+    addSystemLog('Seluruh objek gambar dan indikator di grafik dibersihkan.', 'warn');
+  }
+
+  function handleClear() {
+    handleClearDrawings();
   }
 
   // ─── Bar Replay Handlers (Didelegasikan ke Modul Deep replaySession) ───
@@ -1388,6 +1409,8 @@
     onToggleDrawingToolbar={() => leftToolbarService.toggleCollapse()}
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
+    onOpenImportPlan={() => handleOpenImportPlanModal()}
+    activePlansCount={currentActivePlans.length}
     onOpenSettingsModal={(tab = 'general') => {
       settingsInitialTab = tab as any;
       isSettingsModalOpen = true;
@@ -1439,6 +1462,9 @@
           onUndo={handleUndo}
           onRedo={handleRedo}
           onClear={handleClear}
+          onClearDrawings={handleClearDrawings}
+          onClearIndicators={handleClearIndicators}
+          onClearAll={handleClearAll}
           onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
           onOpenImportPlan={() => handleOpenImportPlanModal()}
           {hasActivePlans}
@@ -1557,6 +1583,11 @@
           onBulkHideDrawings={(hidden) => chartDrawingController.bulkHideDrawings(hidden)}
           onBulkLockDrawings={(locked) => chartDrawingController.bulkLockDrawings(locked)}
           onBulkDeleteDrawings={() => chartDrawingController.bulkDeleteDrawings()}
+          activePlans={currentActivePlans}
+          {showThesisCards}
+          onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
+          onRemovePlan={(id) => chartDrawingController.removePlan(id)}
+          onOpenImportPlan={() => handleOpenImportPlanModal()}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
           onOpenSymbolSearch={() => {
