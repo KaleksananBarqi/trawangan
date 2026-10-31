@@ -1394,7 +1394,10 @@ export class ChartDrawingController {
           bias: plan.bias,
           reasons: plan.reasons,
           contextZones: plan.contextZones,
-          rawPlanText: plan.rawText
+          rawPlanText: plan.rawText,
+          lastEntry: plan.entry,
+          lastStop: plan.stopLoss,
+          lastTarget: target.price
         }
       };
 
@@ -1614,8 +1617,8 @@ export class ChartDrawingController {
         // Tempelkan kembali metadata ke activeDrawings jika tersedia di drawingMetadata
         for (const d of this.activeDrawings) {
           if (d && d.id) {
-            if (this.drawingMetadata.has(d.id) && !d.metadata) {
-              d.metadata = this.drawingMetadata.get(d.id);
+            if (this.drawingMetadata.has(d.id)) {
+              d.metadata = { ...(this.drawingMetadata.get(d.id) || {}), ...(d.metadata || {}) };
             }
             if (this.drawingPlanMap.has(d.id) && (!d.metadata || !d.metadata.planId)) {
               d.metadata = { ...(d.metadata || {}), planId: this.drawingPlanMap.get(d.id) };
@@ -1629,6 +1632,118 @@ export class ChartDrawingController {
             for (const a of d.anchors) {
               if (typeof a.price === 'number') {
                 a.price = roundToTickSize(a.price);
+              }
+            }
+          }
+        }
+
+        // Bidirectional Sync: Sinkronkan mutasi koordinat anchor posisi ke objek activePlans
+        for (const drawing of this.activeDrawings) {
+          if (drawing && drawing.type === 'position' && drawing.metadata?.planId) {
+            const planId = drawing.metadata.planId;
+            const plan = this.activePlans.get(planId);
+            if (plan && Array.isArray(drawing.anchors) && drawing.anchors.length >= 3) {
+              const sanitize = (val: unknown) => (typeof val === 'number' && !isNaN(val) ? roundToTickSize(val) : undefined);
+              const prices = typeof drawing.prices === 'function' ? drawing.prices() : null;
+              const currentEntry = sanitize(prices?.entry ?? drawing.anchors[0]?.price);
+              const currentStop = sanitize(prices?.stop ?? drawing.anchors[1]?.price);
+              const currentTarget = sanitize(prices?.target ?? drawing.anchors[2]?.price);
+
+              const stageIndex = typeof drawing.metadata.stageIndex === 'number' ? drawing.metadata.stageIndex - 1 : 0;
+              const meta = drawing.metadata;
+              const prevEntry = typeof meta.lastEntry === 'number' ? meta.lastEntry : plan.entry;
+              const prevStop = typeof meta.lastStop === 'number' ? meta.lastStop : plan.stopLoss;
+              const prevTarget = typeof meta.lastTarget === 'number' ? meta.lastTarget : plan.targets[stageIndex]?.price;
+
+              let planChanged = false;
+
+              // Deteksi perubahan Stop Loss pada drawing ini
+              if (typeof currentStop === 'number' && currentStop > 0 && currentStop !== prevStop) {
+                plan.stopLoss = currentStop;
+                meta.lastStop = currentStop;
+                planChanged = true;
+
+                // Sinkronkan stopLoss ke seluruh sibling drawings milik plan yang sama
+                for (const siblingDrawing of this.activeDrawings) {
+                  if (siblingDrawing && siblingDrawing.metadata?.planId === planId && Array.isArray(siblingDrawing.anchors) && siblingDrawing.anchors[1]) {
+                    siblingDrawing.anchors[1].price = currentStop;
+                    if (siblingDrawing.metadata) siblingDrawing.metadata.lastStop = currentStop;
+                    if (this.drawingMetadata.has(siblingDrawing.id)) {
+                      this.drawingMetadata.get(siblingDrawing.id).lastStop = currentStop;
+                    }
+                  }
+                }
+              }
+
+              // Deteksi perubahan Entry pada drawing ini
+              if (typeof currentEntry === 'number' && currentEntry > 0 && currentEntry !== prevEntry) {
+                plan.entry = currentEntry;
+                meta.lastEntry = currentEntry;
+                planChanged = true;
+
+                // Sinkronkan entry ke seluruh sibling drawings milik plan yang sama
+                for (const siblingDrawing of this.activeDrawings) {
+                  if (siblingDrawing && siblingDrawing.metadata?.planId === planId && Array.isArray(siblingDrawing.anchors) && siblingDrawing.anchors[0]) {
+                    siblingDrawing.anchors[0].price = currentEntry;
+                    if (siblingDrawing.metadata) siblingDrawing.metadata.lastEntry = currentEntry;
+                    if (this.drawingMetadata.has(siblingDrawing.id)) {
+                      this.drawingMetadata.get(siblingDrawing.id).lastEntry = currentEntry;
+                    }
+                  }
+                }
+              }
+
+              // Deteksi perubahan Target pada drawing ini
+              if (plan.targets && plan.targets[stageIndex]) {
+                if (typeof currentTarget === 'number' && currentTarget > 0 && currentTarget !== prevTarget) {
+                  plan.targets[stageIndex].price = currentTarget;
+                  meta.lastTarget = currentTarget;
+                  if (this.drawingMetadata.has(drawing.id)) {
+                    this.drawingMetadata.get(drawing.id).lastTarget = currentTarget;
+                  }
+                  planChanged = true;
+                }
+              }
+
+              // Inisialisasi last values jika belum ada
+              if (meta.lastEntry === undefined) meta.lastEntry = plan.entry;
+              if (meta.lastStop === undefined) meta.lastStop = plan.stopLoss;
+              if (meta.lastTarget === undefined && plan.targets[stageIndex]) meta.lastTarget = plan.targets[stageIndex].price;
+
+              // Update riskAmount dan R-multiple jika ada harga yang berubah
+              if (planChanged) {
+                const risk = Math.abs(plan.entry - plan.stopLoss);
+                plan.riskAmount = risk;
+
+                if (risk > 0 && Array.isArray(plan.targets)) {
+                  const isBearish = plan.bias === 'bearish' || (plan.stopLoss > plan.entry);
+                  for (let i = 0; i < plan.targets.length; i++) {
+                    const tgt = plan.targets[i];
+                    if (typeof tgt.price === 'number') {
+                      tgt.distance = Math.abs(tgt.price - plan.entry);
+                      const rawR = isBearish
+                        ? (plan.entry - tgt.price) / risk
+                        : (tgt.price - plan.entry) / risk;
+                      tgt.rMultiple = parseFloat(rawR.toFixed(2));
+                    }
+                  }
+
+                  // Update targetLabel dan metadata rMultiple pada seluruh stage drawings milik plan ini
+                  for (const siblingDrawing of this.activeDrawings) {
+                    if (siblingDrawing && siblingDrawing.metadata?.planId === planId) {
+                      const sIdx = typeof siblingDrawing.metadata.stageIndex === 'number' ? siblingDrawing.metadata.stageIndex - 1 : 0;
+                      if (plan.targets[sIdx] && typeof plan.targets[sIdx].rMultiple === 'number') {
+                        const updatedR = plan.targets[sIdx].rMultiple;
+                        siblingDrawing.metadata.rMultiple = updatedR;
+                        if (this.drawingMetadata.has(siblingDrawing.id)) {
+                          this.drawingMetadata.get(siblingDrawing.id).rMultiple = updatedR;
+                        }
+                        const baseLabel = siblingDrawing.metadata.targetLabel || `TP${sIdx + 1}`;
+                        siblingDrawing.targetLabel = `${baseLabel} (${updatedR.toFixed(2)}R)`;
+                      }
+                    }
+                  }
+                }
               }
             }
           }

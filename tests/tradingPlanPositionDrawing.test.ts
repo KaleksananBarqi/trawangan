@@ -402,4 +402,56 @@ TP3: 3100 (6.00R)
     controller.removePlan(planId);
     assert.equal(controller.getActivePlans().length, 0);
   });
+
+  it('9. Bidirectional Sync: Mutasi anchor gambar memperbarui activePlans dan kalkulasi R dinamis', () => {
+    const plan = parseTradingPlan(sampleMarkdown);
+    const { controller, getDrawings } = createMockChartWorkspace();
+
+    const created = controller.createMultiTargetPosition(plan);
+    assert.ok(created);
+
+    const drawings = getDrawings();
+    assert.ok(drawings.length >= 2);
+
+    // Initial plan check
+    const initialPlans = controller.getActivePlans();
+    assert.equal(initialPlans.length, 1);
+    assert.equal(initialPlans[0].entry, 81200.0);
+    assert.equal(initialPlans[0].stopLoss, 81400.0);
+    assert.equal(initialPlans[0].riskAmount, 200.0);
+
+    // Simulasi user menggeser SL dari 81400 ke 81500 pada stage 1
+    // anchors[1] adalah SL
+    drawings[0].anchors[1].price = 81500.0;
+    // Simulasi user menggeser TP1 dari 80355.4 ke 80600.0 (jarak = 81200 - 80600 = 600)
+    // anchors[2] adalah Target
+    drawings[0].anchors[2].price = 80600.0;
+
+    // Trigger mutasi gambar kanvas
+    controller.handleDrawingMutated();
+
+    // Verifikasi activePlans terupdate secara reaktif
+    const updatedPlans = controller.getActivePlans();
+    assert.equal(updatedPlans.length, 1);
+    const updatedPlan = updatedPlans[0];
+
+    assert.equal(updatedPlan.stopLoss, 81500.0);
+    assert.equal(updatedPlan.riskAmount, 300.0); // |81200 - 81500|
+    assert.equal(updatedPlan.targets[0].price, 80600.0);
+    // TP1 R baru: 600 / 300 = 2.00R
+    assert.equal(updatedPlan.targets[0].rMultiple, 2.0);
+
+    // Simulasi user menggeser Entry dari 81200 ke 81100 pada stage 2
+    // anchors[0] adalah Entry
+    drawings[1].anchors[0].price = 81100.0;
+    controller.handleDrawingMutated();
+
+    const planAfterEntryMove = controller.getActivePlans()[0];
+    assert.equal(planAfterEntryMove.entry, 81100.0);
+    // New risk: |81100 - 81500| = 400
+    assert.equal(planAfterEntryMove.riskAmount, 400.0);
+    // Seluruh stage drawing tersinkronisasi entry-nya
+    assert.equal(drawings[0].anchors[0].price, 81100.0);
+    assert.equal(drawings[1].anchors[0].price, 81100.0);
+  });
 });

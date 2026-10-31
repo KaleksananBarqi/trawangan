@@ -149,6 +149,7 @@ describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence 
       assert.ok(textRendered.includes('Medium-High'), 'Harus merender badge probabilitas Medium-High');
       assert.ok(textRendered.some((t) => t.includes('78300.0')), 'Harus memuat harga entry');
       assert.ok(textRendered.some((t) => t.includes('78900.0')), 'Harus memuat harga stop loss');
+      assert.ok(textRendered.includes('-1.00R'), 'Harus merender badge R stop loss -1.00R');
       assert.ok(textRendered.some((t) => t.includes('TP1:')), 'Harus memuat TP1');
       assert.ok(textRendered.some((t) => t.includes('TP2:')), 'Harus memuat TP2');
     });
@@ -177,6 +178,18 @@ describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence 
       // 3. Verifikasi R-Multiple Badges
       assert.ok(textRendered.some((t) => t.includes('+1.66R')), 'Harus memuat badge +1.66R');
       assert.ok(textRendered.some((t) => t.includes('+3.38R')), 'Harus memuat badge +3.38R');
+
+      // 3b. Verifikasi Target dengan R Negatif tidak menghasilkan '+-'
+      const negativePlan = {
+        ...planWithId,
+        id: 'plan_neg_1',
+        targets: [{ id: 'tp1', label: 'TP1', price: 79000, distance: 700, rMultiple: -0.50 }]
+      };
+      const { ctx: negCtx, drawOps: negOps } = createMock2DContext();
+      drawThesisCardOnCanvas(negCtx, negativePlan as any, 2, 2, formatPrice, 16, 56, 340);
+      const negText = negOps.filter((op) => op.op === 'fillText').map((op) => String(op.args[0]));
+      assert.ok(negText.includes('-0.50R'), 'Harus merender -0.50R tanpa awalan ganda +-');
+      assert.ok(!negText.some((t) => t.includes('+-')), 'Tidak boleh ada teks +-');
 
       // 4. Verifikasi Tombol Interaktif Window TIDAK dirender
       assert.ok(!textRendered.includes('X'), 'Tidak boleh ada tombol close X');

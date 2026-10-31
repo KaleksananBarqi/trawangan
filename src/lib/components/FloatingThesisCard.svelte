@@ -334,6 +334,7 @@
           <span class="price-val mono-nums sl">
             {formatPrice(plan.stopLoss)}
           </span>
+          <span class="r-badge sl-r-badge mono-nums">-1.00R</span>
         </div>
 
         {#if plan.reasons.stopLoss}
@@ -367,8 +368,8 @@
               <div class="target-item-header">
                 <span class="target-badge mono-nums">TP{idx + 1}</span>
                 <span class="target-price mono-nums">{formatPrice(tgt.price)}</span>
-                {#if tgt.rMultiple}
-                  <span class="r-badge mono-nums">+{tgt.rMultiple.toFixed(2)}R</span>
+                {#if typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)}
+                  <span class="r-badge mono-nums {tgt.rMultiple < 0 ? 'sl-r-badge' : ''}">{tgt.rMultiple >= 0 ? '+' : ''}{tgt.rMultiple.toFixed(2)}R</span>
                 {/if}
               </div>
               {#if reason}
@@ -846,6 +847,11 @@
     background: rgba(56, 189, 248, 0.1);
     padding: 1px 4px;
     border-radius: 3px;
+  }
+
+  .r-badge.sl-r-badge {
+    color: var(--color-bearish, var(--bear-color, #ef4444));
+    background: rgba(239, 68, 68, 0.12);
   }
 
   .target-reason {

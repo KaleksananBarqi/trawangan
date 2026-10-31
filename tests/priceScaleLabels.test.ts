@@ -39,14 +39,14 @@ test('Price Scale Labels (Indikator & Posisi Drawing) Seam Suite', async (t) => 
     assert.ok(tp);
     assert.equal(tp.price, 2601.57);
     assert.equal(tp.label, '2,601.57');
-    assert.equal(tp.title, 'Target (TP)');
+    assert.equal(tp.title, 'Target (+3.12R)');
     assert.equal(tp.color, '#10b981'); // Bullish green
 
     const sl = badges.find((b) => b.kind === 'stop_loss');
     assert.ok(sl);
     assert.equal(sl.price, 2529.75);
     assert.equal(sl.label, '2,529.75');
-    assert.equal(sl.title, 'Stop (SL)');
+    assert.equal(sl.title, 'Stop (-1.00R)');
     assert.equal(sl.color, '#ef4444'); // Bearish red
   });
 
@@ -72,14 +72,14 @@ test('Price Scale Labels (Indikator & Posisi Drawing) Seam Suite', async (t) => 
     assert.ok(tp);
     assert.equal(tp.price, 2480.00);
     assert.equal(tp.label, '2,480.00');
-    assert.equal(tp.title, 'Target (TP)');
+    assert.equal(tp.title, 'Target (+1.23R)');
     assert.equal(tp.color, '#10b981');
 
     const sl = badges.find((b) => b.kind === 'stop_loss');
     assert.ok(sl);
     assert.equal(sl.price, 2601.57);
     assert.equal(sl.label, '2,601.57');
-    assert.equal(sl.title, 'Stop (SL)');
+    assert.equal(sl.title, 'Stop (-1.00R)');
     assert.equal(sl.color, '#ef4444');
   });
 
@@ -299,17 +299,89 @@ test('Price Scale Labels (Indikator & Posisi Drawing) Seam Suite', async (t) => 
     const slBadges = badges.filter((b) => b.kind === 'stop_loss');
     assert.equal(slBadges.length, 1);
     assert.equal(slBadges[0].price, 78900.0);
-    assert.equal(slBadges[0].title, 'SL');
+    assert.equal(slBadges[0].title, 'SL (-1.00R)');
 
     const tpBadges = badges.filter((b) => b.kind === 'take_profit');
     assert.equal(tpBadges.length, 2);
 
     const tp1 = tpBadges.find((b) => b.price === 77300.0);
     assert.ok(tp1);
-    assert.equal(tp1.title, 'TP1 | 1.67R');
+    assert.equal(tp1.title, 'TP1 (+1.67R)');
 
     const tp2 = tpBadges.find((b) => b.price === 76270.0);
     assert.ok(tp2);
-    assert.equal(tp2.title, 'TP2 | 3.38R');
+    assert.equal(tp2.title, 'TP2 (+3.38R)');
+  });
+
+  await t.test('9. Zero-division guard: Ketika entry == stopLoss, R tidak menghasilkan NaN atau Infinity', () => {
+    const drawing = {
+      id: 'pos_zero_div',
+      type: 'position',
+      visible: true,
+      anchors: [
+        { time: 1700000000000, price: 50000 }, // Entry
+        { time: 1700000600000, price: 50000 }, // SL sama persis dengan Entry
+        { time: 1700000600000, price: 55000 }, // TP
+      ],
+      style: { lineColor: '#3b82f6' },
+    };
+
+    const badges = extractDrawingPriceBadges([drawing] as any, dummyPriceToY);
+    const sl = badges.find((b) => b.kind === 'stop_loss');
+    assert.ok(sl);
+    assert.equal(sl.title, 'Stop (SL)');
+
+    const tp = badges.find((b) => b.kind === 'take_profit');
+    assert.ok(tp);
+    assert.equal(tp.title, 'Target (TP)');
+  });
+
+  await t.test('9b. Zero-division guard pada Trading Plan: Ketika entry == stopLoss, tidak menampilkan stale R dari metadata', () => {
+    const drawing = {
+      id: 'plan_zero_div',
+      type: 'position',
+      visible: true,
+      anchors: [
+        { time: 1700000000000, price: 80000 },
+        { time: 1700000600000, price: 80000 },
+        { time: 1700000600000, price: 78000 },
+      ],
+      metadata: {
+        planId: 'plan_zero_div_1',
+        stageIndex: 1,
+        targetLabel: 'TP1',
+        rMultiple: 2.50,
+      },
+      style: { lineColor: '#3b82f6' },
+    };
+
+    const badges = extractDrawingPriceBadges([drawing] as any, dummyPriceToY);
+    const sl = badges.find((b) => b.kind === 'stop_loss');
+    assert.ok(sl);
+    assert.equal(sl.title, 'SL');
+
+    const tp = badges.find((b) => b.kind === 'take_profit');
+    assert.ok(tp);
+    assert.equal(tp.title, 'TP1 (TP)');
+  });
+
+  await t.test('10. Inverse target direction: Ketika target ditarik melawan arah bias, tanda R bernilai minus', () => {
+    // Posisi Long tapi TP ditarik ke bawah Entry (di antara Entry dan SL)
+    const drawing = {
+      id: 'pos_inverse',
+      type: 'position',
+      visible: true,
+      anchors: [
+        { time: 1700000000000, price: 100 }, // Entry
+        { time: 1700000600000, price: 80 },  // SL (Long setup, risk = 20)
+        { time: 1700000600000, price: 90 },  // TP ditarik di bawah Entry (-10 / 20 = -0.50R)
+      ],
+      style: { lineColor: '#3b82f6' },
+    };
+
+    const badges = extractDrawingPriceBadges([drawing] as any, dummyPriceToY);
+    const tp = badges.find((b) => b.kind === 'take_profit');
+    assert.ok(tp);
+    assert.equal(tp.title, 'Target (-0.50R)');
   });
 });

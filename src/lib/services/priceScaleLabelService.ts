@@ -92,9 +92,16 @@ export function extractDrawingPriceBadges(
       const stopPrice = sanitize(prices?.stop ?? anchors[1]?.price);
       const targetPrice = sanitize(prices?.target ?? anchors[2]?.price);
 
+      const hasValidEntry = typeof entryPrice === 'number' && !isNaN(entryPrice);
+      const hasValidStop = typeof stopPrice === 'number' && !isNaN(stopPrice);
+      const hasValidTarget = typeof targetPrice === 'number' && !isNaN(targetPrice);
+
+      const riskDistance = hasValidEntry && hasValidStop ? Math.abs(entryPrice - stopPrice) : 0;
+      const isBearish = d.metadata?.bias === 'bearish' || (hasValidEntry && hasValidStop && stopPrice > entryPrice);
+
       const planKey = d.metadata?.planId || d.id;
 
-      if (typeof entryPrice === 'number' && !isNaN(entryPrice)) {
+      if (hasValidEntry) {
         const entryKey = `${planKey}_${entryPrice}`;
         if (!seenEntries.has(entryKey)) {
           seenEntries.add(entryKey);
@@ -112,11 +119,31 @@ export function extractDrawingPriceBadges(
         }
       }
 
-      if (typeof targetPrice === 'number' && !isNaN(targetPrice)) {
-        const stageLabel = d.metadata?.targetLabel || (d.targetLabel ? d.targetLabel : 'Target (TP)');
-        const rMult = typeof d.metadata?.rMultiple === 'number'
-          ? ` | ${d.metadata.rMultiple.toFixed(2)}R`
-          : '';
+      if (hasValidTarget) {
+        // Ekstraksi basis label target (misal 'TP1', 'TP2', 'Target')
+        let baseLabel = d.metadata?.targetLabel || (d.metadata?.stageIndex ? `TP${d.metadata.stageIndex}` : '');
+        if (!baseLabel && d.targetLabel) {
+          // Bersihkan teks kurung lama jika ada (misal 'TP1 (4.22R)' -> 'TP1')
+          baseLabel = d.targetLabel.replace(/\s*\([^)]*\)/g, '').trim();
+        }
+        if (!baseLabel) {
+          baseLabel = d.metadata?.planId ? 'TP' : 'Target';
+        }
+
+        let tpTitle = `${baseLabel} (TP)`;
+        if (riskDistance > 0 && hasValidEntry) {
+          // Hitung R dinamis sesuai arah posisi
+          const rawR = isBearish
+            ? (entryPrice - targetPrice) / riskDistance
+            : (targetPrice - entryPrice) / riskDistance;
+          const sign = rawR >= 0 ? '+' : '-';
+          const rStr = `${sign}${Math.abs(rawR).toFixed(2)}R`;
+          tpTitle = `${baseLabel} (${rStr})`;
+        } else if ((!hasValidEntry || !hasValidStop) && typeof d.metadata?.rMultiple === 'number' && !isNaN(d.metadata.rMultiple)) {
+          const sign = d.metadata.rMultiple >= 0 ? '+' : '-';
+          tpTitle = `${baseLabel} (${sign}${Math.abs(d.metadata.rMultiple).toFixed(2)}R)`;
+        }
+
         badges.push({
           id: `draw_${d.id}_tp`,
           price: targetPrice,
@@ -124,15 +151,18 @@ export function extractDrawingPriceBadges(
           color: '#10b981', // Hijau Bullish Take Profit
           bgColor: '#064e3b',
           kind: 'take_profit',
-          title: `${stageLabel}${rMult}`,
+          title: tpTitle,
           y: priceToY ? priceToY(targetPrice) : null,
         });
       }
 
-      if (typeof stopPrice === 'number' && !isNaN(stopPrice)) {
+      if (hasValidStop) {
         const slKey = `${planKey}_${stopPrice}`;
         if (!seenStopLosses.has(slKey)) {
           seenStopLosses.add(slKey);
+          const slBase = d.metadata?.planId ? 'SL' : 'Stop';
+          const slTitle = riskDistance > 0 ? `${slBase} (-1.00R)` : (d.metadata?.planId ? 'SL' : 'Stop (SL)');
+
           badges.push({
             id: `draw_${d.id}_sl`,
             price: stopPrice,
@@ -140,7 +170,7 @@ export function extractDrawingPriceBadges(
             color: '#ef4444', // Merah Bearish Stop Loss
             bgColor: '#7f1d1d',
             kind: 'stop_loss',
-            title: d.metadata?.planId ? 'SL' : 'Stop (SL)',
+            title: slTitle,
             y: priceToY ? priceToY(stopPrice) : null,
           });
         }

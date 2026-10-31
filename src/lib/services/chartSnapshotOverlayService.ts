@@ -454,9 +454,23 @@ export function drawThesisCardOnCanvas(
   ctx.fillStyle = textMuted;
   ctx.fillText('🛡️ INVALIDASI & STOP LOSS', contentLeft, currentY);
 
+  // R-Multiple Badge untuk SL (-1.00R)
+  const slRStr = '-1.00R';
+  ctx.font = `bold ${Math.round(8 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
+  const slRW = (ctx.measureText ? ctx.measureText(slRStr).width : 34 * scaleX) + Math.round(6 * scaleX);
+  const slRX = contentLeft + contentW - slRW;
+  drawRoundedRect(ctx, slRX, currentY - Math.round(6 * scaleY), slRW, Math.round(13 * scaleY), 2 * scaleX);
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+  ctx.fill();
+  ctx.fillStyle = '#ef4444';
+  ctx.textAlign = 'left';
+  ctx.fillText(slRStr, slRX + Math.round(3 * scaleX), currentY);
+
+  // Harga SL di sebelah kiri badge R
+  ctx.font = `bold ${Math.round(9.5 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
   ctx.fillStyle = '#ef4444';
   ctx.textAlign = 'right';
-  ctx.fillText(`${formatPrice(plan.stopLoss)}`, contentLeft + contentW, currentY);
+  ctx.fillText(`${formatPrice(plan.stopLoss)}`, slRX - Math.round(6 * scaleX), currentY);
   ctx.textAlign = 'left';
   currentY += Math.round(14 * scaleY);
 
@@ -554,14 +568,17 @@ export function drawThesisCardOnCanvas(
 
       // R-Multiple Badge jika ada
       if (typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)) {
-        const rStr = `+${tgt.rMultiple.toFixed(2)}R`;
+        const sign = tgt.rMultiple >= 0 ? '+' : '';
+        const rStr = `${sign}${tgt.rMultiple.toFixed(2)}R`;
+        const isNegative = tgt.rMultiple < 0;
+        const badgeColor = isNegative ? '#ef4444' : brandCyan;
         ctx.font = `bold ${Math.round(8 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
         const rW = (ctx.measureText ? ctx.measureText(rStr).width : 34 * scaleX) + Math.round(6 * scaleX);
         const rX = contentLeft + contentW - rW - Math.round(5 * scaleX);
         drawRoundedRect(ctx, rX, itemCenterY - Math.round(6 * scaleY), rW, Math.round(13 * scaleY), 2 * scaleX);
-        ctx.fillStyle = colorToRgba(brandCyan, 0.12);
+        ctx.fillStyle = colorToRgba(badgeColor, 0.12);
         ctx.fill();
-        ctx.fillStyle = brandCyan;
+        ctx.fillStyle = badgeColor;
         ctx.fillText(rStr, rX + Math.round(3 * scaleX), itemCenterY);
       }
 
