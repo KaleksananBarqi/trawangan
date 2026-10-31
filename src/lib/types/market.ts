@@ -220,6 +220,17 @@ export interface ObjectTreeItem {
 export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass';
 export type UiDensity = 'compact' | 'regular' | 'comfortable';
 
+/**
+ * Konfigurasi kustom latar belakang kanvas grafik (#128)
+ * Mendukung mode tema bawaan ('theme'), warna tunggal ('solid'), dan gradien vertikal ('gradient').
+ */
+export interface CustomChartBackgroundConfig {
+  mode: 'theme' | 'solid' | 'gradient';
+  solidColor?: string;
+  gradientTop?: string;
+  gradientBottom?: string;
+}
+
 export interface AppSettings {
   timezone: string;
   soundEnabled: boolean;
@@ -235,6 +246,7 @@ export interface AppSettings {
   themePreset?: ThemePresetId;
   customBullColor?: string;
   customBearColor?: string;
+  customChartBackground?: CustomChartBackgroundConfig;
   fontFamilyUi?: string;
   fontFamilyMono?: string;
   uiDensity?: UiDensity;

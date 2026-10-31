@@ -17,7 +17,8 @@
   import FloatingThesisCard from './FloatingThesisCard.svelte';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
-    Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace
+    Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
+    CustomChartBackgroundConfig
   } from '../types/market';
   import type { PriceScaleBadge } from '../services/priceScaleLabelService';
   import type { FeedConnectionStatus } from '../services/market/types';
@@ -41,12 +42,13 @@
     onOpenImportPlan?: (initialText?: string) => void;
     themePreset?: ThemePresetId; fontSize?: number; timezone?: string;
     customBullColor?: string; customBearColor?: string;
+    customChartBackground?: CustomChartBackgroundConfig;
   }
 
   let {
     symbol, timeframe, defaultTimeframe = '15m', layout, providerId = 'binance',
     themePreset = 'signature', fontSize = 12, timezone = 'Asia/Jakarta',
-    customBullColor, customBearColor,
+    customBullColor, customBearColor, customChartBackground,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
@@ -58,7 +60,7 @@
 
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
-    fontSize, timezone, customBullColor, customBearColor,
+    fontSize, timezone, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange
   });
 
@@ -109,6 +111,10 @@
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
   $effect(() => { const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor; if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }); });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
+  $effect(() => {
+    const bg = customChartBackground;
+    if (isMounted) controller.setCustomChartBackground(bg);
+  });
   $effect(() => {
     const show = showDrawingPriceLabels;
     if (isMounted) {
@@ -579,12 +585,26 @@
   }
 
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
+
+  const chartBackgroundStyle = $derived.by(() => {
+    const cfg = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+    if (customChartBackground?.mode === 'gradient') {
+      const top = customChartBackground.gradientTop || '#0F0F0F';
+      const bottom = customChartBackground.gradientBottom || '#181A20';
+      return `background: linear-gradient(180deg, ${top}, ${bottom});`;
+    }
+    if (customChartBackground?.mode === 'solid' && customChartBackground.solidColor) {
+      return `background: ${customChartBackground.solidColor};`;
+    }
+    return `background: ${cfg.chart.background};`;
+  });
 </script>
 
 <svelte:window onkeydown={handleWindowKeyDown} onkeyup={handleWindowKeyUp} />
 
 <div 
   class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''} {isHandpullActive ? 'handpull-mode' : ''} {isGestureActive ? 'gesture-mode' : ''}"
+  style={chartBackgroundStyle}
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}
   onpointerdown={scheduleBadgePositionUpdate}

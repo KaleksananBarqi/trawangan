@@ -4,7 +4,7 @@
  */
 
 import { formatPriceLabel } from './priceScaleLabelService';
-import type { SnapshotScaleMultiplier } from '../types/market';
+import type { SnapshotScaleMultiplier, CustomChartBackgroundConfig } from '../types/market';
 
 export type { SnapshotScaleMultiplier } from '../types/market';
 export type SnapshotScope = 'active' | 'all';
@@ -27,6 +27,7 @@ export interface SnapshotOptions {
   scaleMultiplier?: SnapshotScaleMultiplier;
   padding?: number;
   backgroundColor?: string;
+  customBackground?: CustomChartBackgroundConfig;
   includePrice?: boolean;
   includeTimestamp?: boolean;
   includeBrandUrl?: boolean;
@@ -381,7 +382,22 @@ export function compositeSnapshot(
   if (!ctx) return canvas;
 
   // Jika mode clean, render murni raster grafik tanpa bingkai luar
+  const customBg = options.customBackground;
+  const isCustomSolid = customBg?.mode === 'solid' && Boolean(customBg.solidColor);
+  const isCustomGradient =
+    customBg?.mode === 'gradient' && Boolean(customBg.gradientTop || customBg.gradientBottom);
+
   if (mode === 'clean') {
+    if (isCustomSolid) {
+      ctx.fillStyle = customBg!.solidColor!;
+      ctx.fillRect(0, 0, dim.width, dim.height);
+    } else if (isCustomGradient) {
+      const grad = ctx.createLinearGradient(0, 0, 0, dim.height);
+      grad.addColorStop(0, customBg!.gradientTop || '#0F0F0F');
+      grad.addColorStop(1, customBg!.gradientBottom || '#181A20');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, dim.width, dim.height);
+    }
     ctx.drawImage(sourceCanvasOrImage, 0, 0, dim.width, dim.height);
     return canvas;
   }
@@ -389,7 +405,16 @@ export function compositeSnapshot(
   // --- 1. Container Background & Outer Border ---
   ctx.save();
   drawRoundedRect(ctx, 0, 0, dim.width, dim.height, 12 * scale);
-  ctx.fillStyle = options.backgroundColor || '#0F0F0F';
+  if (isCustomSolid) {
+    ctx.fillStyle = customBg!.solidColor!;
+  } else if (isCustomGradient) {
+    const outerGrad = ctx.createLinearGradient(0, 0, 0, dim.height);
+    outerGrad.addColorStop(0, customBg!.gradientTop || '#0F0F0F');
+    outerGrad.addColorStop(1, customBg!.gradientBottom || '#181A20');
+    ctx.fillStyle = outerGrad;
+  } else {
+    ctx.fillStyle = options.backgroundColor || '#0F0F0F';
+  }
   ctx.fill();
 
   ctx.lineWidth = Math.max(1, Math.round(1 * scale));
@@ -401,6 +426,19 @@ export function compositeSnapshot(
   ctx.save();
   drawRoundedRect(ctx, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight, 8 * scale);
   ctx.clip();
+
+  // Render latar belakang kustom area chart jika aktif (#128)
+  if (isCustomSolid) {
+    ctx.fillStyle = customBg!.solidColor!;
+    ctx.fillRect(dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
+  } else if (isCustomGradient) {
+    const chartGrad = ctx.createLinearGradient(0, dim.chartY, 0, dim.chartY + dim.chartHeight);
+    chartGrad.addColorStop(0, customBg!.gradientTop || '#0F0F0F');
+    chartGrad.addColorStop(1, customBg!.gradientBottom || '#181A20');
+    ctx.fillStyle = chartGrad;
+    ctx.fillRect(dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
+  }
+
   ctx.drawImage(sourceCanvasOrImage, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
   ctx.restore();
 
