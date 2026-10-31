@@ -1,4 +1,4 @@
-import type { AppSettings, MultiChartSyncConfig, UserProfileConfig } from '../types/market';
+import type { AppSettings, MultiChartSyncConfig, UserProfileConfig, CustomChartBackgroundConfig } from '../types/market';
 import { DEFAULT_WORLD_CLOCK_CITIES } from '../services/worldClockService';
 
 /**
@@ -53,6 +53,13 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     username: '',
     handle: '',
     avatarDataUrl: undefined,
+  },
+  // Kustomisasi latar belakang grafik (solid & vertikal gradient) (#128)
+  customChartBackground: {
+    mode: 'theme',
+    solidColor: '#0F0F0F',
+    gradientTop: '#0F0F0F',
+    gradientBottom: '#181A20',
   },
   syncConfig: { ...DEFAULT_SYNC_CONFIG },
 };
@@ -113,6 +120,26 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
         ? saved.snapshotScaleMultiplier
         : (DEFAULT_APP_SETTINGS.snapshotScaleMultiplier ?? 2),
     userProfile,
+    customChartBackground: {
+      mode:
+        saved.customChartBackground?.mode === 'solid' ||
+        saved.customChartBackground?.mode === 'gradient' ||
+        saved.customChartBackground?.mode === 'theme'
+          ? saved.customChartBackground.mode
+          : 'theme',
+      solidColor:
+        saved.customChartBackground?.solidColor ||
+        DEFAULT_APP_SETTINGS.customChartBackground?.solidColor ||
+        '#0F0F0F',
+      gradientTop:
+        saved.customChartBackground?.gradientTop ||
+        DEFAULT_APP_SETTINGS.customChartBackground?.gradientTop ||
+        '#0F0F0F',
+      gradientBottom:
+        saved.customChartBackground?.gradientBottom ||
+        DEFAULT_APP_SETTINGS.customChartBackground?.gradientBottom ||
+        '#181A20',
+    },
     syncConfig: mergedSyncConfig,
   };
 }

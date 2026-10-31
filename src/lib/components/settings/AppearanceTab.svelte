@@ -9,7 +9,7 @@
     MAX_FONT_SIZE,
     DEFAULT_FONT_SIZE
   } from '../../constants/themes';
-  import type { AppSettings } from '../../types/market';
+  import type { AppSettings, CustomChartBackgroundConfig } from '../../types/market';
 
   interface Props {
     settings: AppSettings;
@@ -41,6 +41,66 @@
 
   function handleResetCandleColors() {
     onUpdateSettings({ customBullColor: undefined, customBearColor: undefined });
+  }
+
+  // Kustomisasi latar belakang grafik (solid & vertikal gradient) (#128)
+  const customBg = $derived<CustomChartBackgroundConfig>(
+    settings.customChartBackground || {
+      mode: 'theme',
+      solidColor: '#0F0F0F',
+      gradientTop: '#0F0F0F',
+      gradientBottom: '#181A20',
+    }
+  );
+  const bgMode = $derived(customBg.mode || 'theme');
+  const solidColorVal = $derived(customBg.solidColor || activePreset.chart.background || '#0F0F0F');
+  const gradientTopVal = $derived(customBg.gradientTop || activePreset.chart.background || '#0F0F0F');
+  const gradientBottomVal = $derived(customBg.gradientBottom || '#181A20');
+  const isCustomBgActive = $derived(bgMode !== 'theme');
+
+  function handleSetBgMode(mode: 'theme' | 'solid' | 'gradient') {
+    onUpdateSettings({
+      customChartBackground: {
+        ...customBg,
+        mode,
+      },
+    });
+  }
+
+  function handleUpdateSolidColor(solidColor: string) {
+    onUpdateSettings({
+      customChartBackground: {
+        ...customBg,
+        solidColor,
+      },
+    });
+  }
+
+  function handleUpdateGradientTop(gradientTop: string) {
+    onUpdateSettings({
+      customChartBackground: {
+        ...customBg,
+        gradientTop,
+      },
+    });
+  }
+
+  function handleUpdateGradientBottom(gradientBottom: string) {
+    onUpdateSettings({
+      customChartBackground: {
+        ...customBg,
+        gradientBottom,
+      },
+    });
+  }
+
+  function handleResetCustomBg() {
+    onUpdateSettings({
+      customChartBackground: {
+        ...customBg,
+        mode: 'theme',
+      },
+    });
   }
 </script>
 
@@ -195,6 +255,179 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Kustomisasi Latar Belakang Grafik (Solid & Vertical Gradient) (#128) -->
+  <div class="custom-candle-box custom-bg-box">
+    <div class="custom-candle-header">
+      <div class="custom-candle-info">
+        <span class="custom-candle-title">Latar Belakang Grafik</span>
+        <span class="custom-candle-desc">
+          Sesuaikan latar kanvas grafik dengan warna solid atau gradien vertikal kustom tanpa mengubah elemen tema lainnya.
+        </span>
+      </div>
+      <div class="custom-candle-actions">
+        {#if isCustomBgActive}
+          <span class="custom-active-badge">Custom Aktif</span>
+        {:else}
+          <span class="custom-theme-badge">Mengikuti Tema</span>
+        {/if}
+        <button
+          type="button"
+          class="btn-reset-candle"
+          onclick={handleResetCustomBg}
+          disabled={!isCustomBgActive}
+          title="Kembalikan latar belakang grafik ke setelan bawaan tema aktif"
+        >
+          <RotateCcw size={12} />
+          <span>Reset ke Bawaan Tema</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mode Selector Chips / Radio Buttons -->
+    <div class="bg-mode-chips" role="radiogroup" aria-label="Mode Latar Belakang Grafik">
+      <button
+        type="button"
+        class="bg-mode-chip {bgMode === 'theme' ? 'active' : ''}"
+        role="radio"
+        aria-checked={bgMode === 'theme'}
+        onclick={() => handleSetBgMode('theme')}
+      >
+        <span>Bawaan Tema</span>
+      </button>
+      <button
+        type="button"
+        class="bg-mode-chip {bgMode === 'solid' ? 'active' : ''}"
+        role="radio"
+        aria-checked={bgMode === 'solid'}
+        onclick={() => handleSetBgMode('solid')}
+      >
+        <span>Warna Solid</span>
+      </button>
+      <button
+        type="button"
+        class="bg-mode-chip {bgMode === 'gradient' ? 'active' : ''}"
+        role="radio"
+        aria-checked={bgMode === 'gradient'}
+        onclick={() => handleSetBgMode('gradient')}
+      >
+        <span>Gradien Vertikal</span>
+      </button>
+    </div>
+
+    {#if bgMode === 'solid'}
+      <div class="custom-candle-inputs">
+        <div class="candle-picker-card">
+          <div class="picker-label-row">
+            <span class="picker-title">Warna Latar Solid</span>
+            <span class="picker-current-hex mono-nums">{solidColorVal}</span>
+          </div>
+          <div class="picker-controls">
+            <input
+              type="color"
+              class="color-input"
+              value={solidColorVal}
+              onchange={(e) => handleUpdateSolidColor(e.currentTarget.value)}
+              aria-label="Warna Latar Solid"
+            />
+            <input
+              type="text"
+              class="hex-text-input mono-nums"
+              value={solidColorVal}
+              maxlength="7"
+              onchange={(e) => {
+                let val = e.currentTarget.value.trim();
+                if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                  val = '#' + val;
+                }
+                if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
+                  handleUpdateSolidColor(val);
+                }
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    {:else if bgMode === 'gradient'}
+      <div class="gradient-config-container">
+        <!-- Live Preview Strip -->
+        <div class="gradient-preview-wrap">
+          <span class="preview-strip-label">Pratinjau Gradien Vertikal</span>
+          <div
+            class="gradient-live-strip"
+            style="background: linear-gradient(180deg, {gradientTopVal}, {gradientBottomVal});"
+            title="Pratinjau Gradien Vertikal: {gradientTopVal} -> {gradientBottomVal}"
+          ></div>
+        </div>
+
+        <div class="custom-candle-inputs">
+          <!-- Gradient Top Picker -->
+          <div class="candle-picker-card">
+            <div class="picker-label-row">
+              <span class="picker-title">Warna Atas (Top)</span>
+              <span class="picker-current-hex mono-nums">{gradientTopVal}</span>
+            </div>
+            <div class="picker-controls">
+              <input
+                type="color"
+                class="color-input"
+                value={gradientTopVal}
+                onchange={(e) => handleUpdateGradientTop(e.currentTarget.value)}
+                aria-label="Warna Atas Gradien"
+              />
+              <input
+                type="text"
+                class="hex-text-input mono-nums"
+                value={gradientTopVal}
+                maxlength="7"
+                onchange={(e) => {
+                  let val = e.currentTarget.value.trim();
+                  if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                    val = '#' + val;
+                  }
+                  if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
+                    handleUpdateGradientTop(val);
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          <!-- Gradient Bottom Picker -->
+          <div class="candle-picker-card">
+            <div class="picker-label-row">
+              <span class="picker-title">Warna Bawah (Bottom)</span>
+              <span class="picker-current-hex mono-nums">{gradientBottomVal}</span>
+            </div>
+            <div class="picker-controls">
+              <input
+                type="color"
+                class="color-input"
+                value={gradientBottomVal}
+                onchange={(e) => handleUpdateGradientBottom(e.currentTarget.value)}
+                aria-label="Warna Bawah Gradien"
+              />
+              <input
+                type="text"
+                class="hex-text-input mono-nums"
+                value={gradientBottomVal}
+                maxlength="7"
+                onchange={(e) => {
+                  let val = e.currentTarget.value.trim();
+                  if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                    val = '#' + val;
+                  }
+                  if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
+                    handleUpdateGradientBottom(val);
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -653,6 +886,63 @@
 
   .hex-text-input:focus {
     border-color: var(--brand-primary, #ff69b4);
+  }
+
+  .bg-mode-chips {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .bg-mode-chip {
+    padding: 6px 12px;
+    background: var(--bg-elevated, #1a1a1a);
+    border: 1px solid var(--border-subtle, #282828);
+    border-radius: 6px;
+    color: var(--text-muted, #a3a3a3);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .bg-mode-chip:hover {
+    color: var(--text-main, #ffffff);
+    border-color: var(--border-hover, #444444);
+  }
+
+  .bg-mode-chip.active {
+    background: rgba(255, 105, 180, 0.12);
+    border-color: var(--brand-primary, #ff69b4);
+    color: var(--brand-primary, #ff69b4);
+    font-weight: 700;
+  }
+
+  .gradient-config-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .gradient-preview-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .preview-strip-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-muted, #888888);
+  }
+
+  .gradient-live-strip {
+    height: 32px;
+    width: 100%;
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle, #333333);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
   }
 
   .setting-row {

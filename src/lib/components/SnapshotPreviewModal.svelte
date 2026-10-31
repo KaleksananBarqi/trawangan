@@ -220,6 +220,7 @@
       mode: includeFrame ? 'branded' : 'clean',
       scaleMultiplier: scaleMultiplier,
       backgroundColor,
+      customBackground: appSettings.customChartBackground,
       includePrice,
       includeTimestamp,
       metadata,
