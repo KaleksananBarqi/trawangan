@@ -85,16 +85,25 @@ function extractFirstPrice(rawVal: string): number | null {
 }
 
 /**
- * Mengekstrak nilai R-multiple dari teks (misal "4.22R", "4.22 R", atau angka float).
+ * Mengekstrak nilai R-multiple dari teks (misal "4.22R", "4.22 R", rasio "1:2.81", atau angka float).
  */
 function extractRMultiple(rawVal: string): number | null {
   if (!rawVal) return null;
-  // Cari pola angka yang diikuti huruf R atau r
+
+  // 1. Cek format rasio seperti "1 : 2.81", "1:2.81", atau "1 : 1.66" (ambil sisi reward)
+  const ratioMatch = rawVal.match(/1\s*:\s*([+-]?\d+(?:\.\d+)?)/);
+  if (ratioMatch) {
+    const parsed = parseFloat(ratioMatch[1]);
+    if (!isNaN(parsed)) return parsed;
+  }
+
+  // 2. Cari pola angka yang diikuti huruf R atau r (misal "4.22R", "4.22 R")
   const rMatch = rawVal.match(/([+-]?\d+(?:\.\d+)?)\s*[rR]\b/);
   if (rMatch) {
     const parsed = parseFloat(rMatch[1]);
     if (!isNaN(parsed)) return parsed;
   }
+
   return extractFirstPrice(rawVal);
 }
 
@@ -443,10 +452,10 @@ export function parseTradingPlan(
       continue;
     }
 
-    // 5. R Multiple TP
-    const rMultipleMatch = cleanKey.match(/(?:r multiple|rmultiple|r-multiple|rr|rrr)\s*(?:tp|take profit|target)?\s*(\d*)/);
-    if (rMultipleMatch) {
-      const targetNum = parseInt(rMultipleMatch[1], 10) || 1;
+    // 5. R Multiple TP / RRR (mendukung R multiple TP1 maupun RRR aktual (TP1))
+    if (/^(?:r\s*multiple|rmultiple|r-multiple|rrr|rr)\b/.test(cleanKey)) {
+      const numMatch = cleanKey.match(/(?:tp|target|\b)(\d+)\b/);
+      const targetNum = numMatch ? parseInt(numMatch[1], 10) : 1;
       const target = getOrCreateTarget(targetNum);
       const extractedR = extractRMultiple(cleanVal);
       if (extractedR !== null) {

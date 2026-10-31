@@ -407,6 +407,52 @@ Take Profit: 110
       assert.ok(plan.contextZones.length > 0);
       assert.equal(plan.contextZones[0].low, 78200.0);
       assert.equal(plan.contextZones[0].high, 78377.9);
+
+      // Verifikasi Ekstraksi RRR Rasio (1 : X)
+      assert.equal(plan.targets[0].rMultiple, 1.66);
+      assert.equal(plan.targets[1].rMultiple, 3.38);
+    });
+
+    it('Ticket 1 (#120): Mengurai format analisis SMC/ICT dengan format rasio 1:X dan rMultiple eksplisit tanpa distorsi', () => {
+      const userSample = `
+## 1. Multi-Timeframe Alignment
+Struktur tren Bearish.
+
+## 5. Trading Plan
+| Parameter | Nilai |
+| --- | --- |
+| Bias | **Bearish** [INFERENSI] |
+| Entry | **77640.0** (Limit order pasca-sweep BSL) |
+| Alasan Entry | Menangkap aksi manipulasi stop run [FAKTA + INFERENSI] |
+| Stop Loss | **77850.0** [INFERENSI] |
+| Alasan SL | Di atas batas toleransi wick [FAKTA] |
+| TP1 | **77050.0** [INFERENSI] |
+| R multiple TP1 | **2.81R** (Dasar: Jarak) |
+| Alasan TP1 | Pool Internal SSL [INFERENSI] |
+| TP2 | **76250.0** [INFERENSI] |
+| R multiple TP2 | **6.62R** (Dasar: Jarak) |
+| Alasan TP2 | Pool External SSL [INFERENSI] |
+| RRR aktual (TP1) | **1 : 2.81** |
+| RRR aktual (TP2) | **1 : 6.62** |
+
+## 6. Kesimpulan & Confidence Level
+* **Probabilitas Setup:** **Medium Confidence**. Tren HTF mendukung penuh skenario pelemahan.
+* **Skenario Invalidasi:** Setup dinyatakan batal jika candle 1H ditutup di atas level **77850.0**.
+      `.trim();
+
+      const plan = parseTradingPlan(userSample);
+
+      assert.equal(plan.bias, 'bearish');
+      assert.equal(plan.entry, 77640.0);
+      assert.equal(plan.stopLoss, 77850.0);
+      assert.equal(plan.riskAmount, 210.0);
+      assert.equal(plan.targets.length, 2);
+      assert.equal(plan.targets[0].price, 77050.0);
+      assert.equal(plan.targets[0].rMultiple, 2.81);
+      assert.equal(plan.targets[1].price, 76250.0);
+      assert.equal(plan.targets[1].rMultiple, 6.62);
+      assert.equal(plan.conclusion?.probability, 'Medium Confidence');
+      assert.match(plan.conclusion?.invalidationScenario || '', /77850\.0/);
     });
   });
 });
