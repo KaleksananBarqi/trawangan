@@ -17,6 +17,7 @@
     Circle,
     Triangle,
     Paintbrush,
+    PenTool,
     Highlighter,
     Layers,
     DollarSign,
@@ -39,6 +40,7 @@
     Unlock,
     Eye,
     EyeOff,
+    FileText,
     Undo2,
     Redo2,
     Trash2,
@@ -84,9 +86,16 @@
     onUndo: () => void;
     onRedo: () => void;
     onClear: () => void;
+    onClearDrawings?: () => void;
+    onClearIndicators?: () => void;
+    onClearAll?: () => void;
     isCollapsed?: boolean;
     onToggleCollapse?: () => void;
     onOpenGestureGuide?: () => void;
+    onOpenImportPlan?: () => void;
+    hasActivePlans?: boolean;
+    showThesisCards?: boolean;
+    onToggleThesisCards?: () => void;
   }
 
   let {
@@ -105,13 +114,20 @@
     onUndo,
     onRedo,
     onClear,
+    onClearDrawings,
+    onClearIndicators,
+    onClearAll,
     isCollapsed = false,
     onToggleCollapse,
     onOpenGestureGuide,
+    onOpenImportPlan,
+    hasActivePlans = false,
+    showThesisCards = true,
+    onToggleThesisCards,
   }: Props = $props();
 
   // State flyout menu
-  let openFlyout = $state<DrawingGroupId | 'pointer' | null>(null);
+  let openFlyout = $state<DrawingGroupId | 'pointer' | 'clear' | null>(null);
   let lastUsedPointerTool = $state<DrawingToolType>('cursor');
   let searchQuery = $state('');
   let isFavoritesBarVisible = $state(true);
@@ -290,6 +306,21 @@
         const toolItem = target.closest('.tool-item') || target;
         const rect = toolItem.getBoundingClientRect();
         flyoutTop = Math.max(8, Math.min(rect.top - 4, window.innerHeight - 440));
+      }
+    }
+  }
+
+  function toggleClearFlyout(e?: MouseEvent | Event) {
+    if (openFlyout === 'clear') {
+      openFlyout = null;
+    } else {
+      openFlyout = 'clear';
+      searchQuery = '';
+      if (e && e.currentTarget) {
+        const target = e.currentTarget as HTMLElement;
+        const toolItem = target.closest('.tool-item') || target;
+        const rect = toolItem.getBoundingClientRect();
+        flyoutTop = Math.max(8, Math.min(rect.top - 60, window.innerHeight - 240));
       }
     }
   }
@@ -574,6 +605,27 @@
             </div>
           {/if}
 
+          {#if group.id === 'measure_volume' && onOpenImportPlan}
+            <!-- Quick Action Import Plan pada kelompok alat ukur/posisi -->
+            <div class="import-plan-quick-action">
+              <button
+                type="button"
+                class="import-plan-flyout-btn"
+                title="Buka modal Import Trading Plan (Ctrl+Shift+P)"
+                onclick={() => {
+                  openFlyout = null;
+                  onOpenImportPlan();
+                }}
+              >
+                <span class="flyout-item-icon text-cyan">
+                  <Sparkles size={13} />
+                </span>
+                <span class="flyout-item-label font-semibold">Import Trading Plan...</span>
+                <span class="flyout-item-shortcut mono-nums">Ctrl+Shift+P</span>
+              </button>
+            </div>
+          {/if}
+
           {#if group.id === 'annotations'}
             <!-- Quick Stamp Palette (Target, Warning, Breakout, Pin, Flag) -->
             <div class="stamp-quick-palette">
@@ -709,6 +761,20 @@
     </button>
   </div>
 
+  {#if hasActivePlans}
+    <!-- Toggle Thesis Cards Floating HUD (#115) -->
+    <div class="tool-item">
+      <button
+        type="button"
+        class="tool-btn {showThesisCards ? 'active text-cyan' : 'text-dim'}"
+        title={showThesisCards ? 'Sembunyikan Tesis Posisi di Grafik' : 'Tampilkan Tesis Posisi di Grafik'}
+        onclick={onToggleThesisCards}
+      >
+        <FileText size={15} />
+      </button>
+    </div>
+  {/if}
+
   <div class="tool-divider"></div>
 
   <!-- 8. History & Clear Utilities -->
@@ -737,14 +803,110 @@
   </div>
 
   <div class="tool-item">
-    <button
-      type="button"
-      class="tool-btn delete-btn"
-      title="Hapus Seluruh Objek Gambar di Grafik"
-      onclick={onClear}
+    <div
+      class="tool-btn-wrapper {openFlyout === 'clear' ? 'flyout-open' : ''}"
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        toggleClearFlyout(e);
+      }}
     >
-      <Trash2 size={15} />
-    </button>
+      <button
+        type="button"
+        class="tool-btn delete-btn"
+        title="Pilihan Pembersihan Grafik (Klik kanan atau panah untuk pilihan)"
+        onclick={(e) => toggleClearFlyout(e)}
+      >
+        <Trash2 size={15} />
+      </button>
+      <button
+        type="button"
+        class="sub-arrow-btn"
+        title="Buka Pilihan Hapus (Gambar / Indikator / Keduanya)"
+        onclick={(e) => {
+          e.stopPropagation();
+          toggleClearFlyout(e);
+        }}
+      >
+        <span class="sub-arrow">▸</span>
+      </button>
+    </div>
+
+    <!-- Submenu Flyout Pembersihan Grafik (#117) -->
+    {#if openFlyout === 'clear'}
+      <div
+        class="flyout-menu obsidian-panel"
+        style="top: {flyoutTop}px;"
+        onclick={(e) => e.stopPropagation()}
+      >
+        <div class="flyout-header-row">
+          <span class="flyout-header-title">Pembersihan Grafik</span>
+        </div>
+
+        <div class="flyout-items-list">
+          <!-- 1. Hapus Gambar Saja -->
+          <button
+            type="button"
+            class="flyout-item-btn"
+            title="Bersihkan seluruh coretan & objek gambar tanpa menghapus indikator"
+            onclick={() => {
+              openFlyout = null;
+              if (onClearDrawings) onClearDrawings();
+              else onClear();
+            }}
+          >
+            <span class="flyout-item-icon text-amber">
+              <PenTool size={13} />
+            </span>
+            <div class="flyout-item-text">
+              <span class="flyout-item-label">Hapus Gambar</span>
+              <span class="flyout-item-desc">Bersihkan seluruh coretan & gambar</span>
+            </div>
+          </button>
+
+          <!-- 2. Hapus Indikator Saja -->
+          <button
+            type="button"
+            class="flyout-item-btn"
+            title="Bersihkan seluruh indikator teknikal & volume tanpa menghapus coretan gambar"
+            onclick={() => {
+              openFlyout = null;
+              if (onClearIndicators) onClearIndicators();
+            }}
+          >
+            <span class="flyout-item-icon text-cyan">
+              <Layers size={13} />
+            </span>
+            <div class="flyout-item-text">
+              <span class="flyout-item-label">Hapus Indikator</span>
+              <span class="flyout-item-desc">Hapus seluruh indikator Pine & volume</span>
+            </div>
+          </button>
+
+          <!-- 3. Hapus Keduanya -->
+          <button
+            type="button"
+            class="flyout-item-btn danger-item"
+            title="Bersihkan seluruh gambar dan indikator sekaligus"
+            onclick={() => {
+              openFlyout = null;
+              if (onClearAll) onClearAll();
+              else {
+                onClear();
+                if (onClearIndicators) onClearIndicators();
+              }
+            }}
+          >
+            <span class="flyout-item-icon text-red">
+              <Trash2 size={13} />
+            </span>
+            <div class="flyout-item-text">
+              <span class="flyout-item-label text-red">Hapus Gambar & Indikator</span>
+              <span class="flyout-item-desc">Bersihkan grafik sepenuhnya</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    {/if}
   </div>
   </div>
 
@@ -1167,6 +1329,34 @@
   .toolbar-gesture-help-cue:hover {
     transform: scale(1.2);
     background-color: #7dd3fc;
+  }
+
+  .import-plan-quick-action {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .import-plan-flyout-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(0, 229, 255, 0.08);
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    border-radius: 4px;
+    color: var(--text-main, #e8e9ed);
+    cursor: pointer;
+    transition: all 0.12s ease;
+    text-align: left;
+    font-size: 11px;
+  }
+
+  .import-plan-flyout-btn:hover {
+    background: rgba(0, 229, 255, 0.16);
+    border-color: rgba(0, 229, 255, 0.45);
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.2);
   }
 
   .stamp-quick-palette {

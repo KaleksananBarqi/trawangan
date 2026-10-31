@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Bell, Minus, Copy, RotateCcw, Check, Sparkles, SlidersHorizontal } from '@lucide/svelte';
+  import { Bell, Minus, Copy, RotateCcw, Check, SlidersHorizontal } from '@lucide/svelte';
 
   interface Props {
 
@@ -126,7 +126,6 @@
       onOpenSettings?.();
     }, 16);
   }
-
 
   function handleBackdropClick(e: MouseEvent) {
     // Abaikan jika klik terjadi dalam waktu 180ms dari saat menu dibuka (sisa event mouseup/click saat klik kanan)

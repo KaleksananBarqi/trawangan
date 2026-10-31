@@ -3,14 +3,17 @@
   import './chart.css';
   import { Scissors, Bell, X, WifiOff, Edit3 } from '@lucide/svelte';
   import { ChartSessionController } from '../services/chartSessionController';
-  import { chartDrawingController, type GestureCreationState } from '../services/chartDrawingController';
+  import { chartDrawingController, isSameSymbol, type GestureCreationState } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { alertService } from '../services/alertService';
   import { marketFeed } from '../services/market';
   import { replaySession } from '../services/replay';
   import { findNearestOhlcPoint } from '../services/priceSnapService';
   import { isEditableElement } from '../services/commandDispatcher';
+  import { isTradingPlanText } from '../services/planParserService';
+  import { renderScreenshotCanvasWithOverlay } from '../services/chartSnapshotOverlayService';
   import ChartContextMenu from './ChartContextMenu.svelte';
+  import FloatingThesisCard from './FloatingThesisCard.svelte';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
     Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace
@@ -34,6 +37,7 @@
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
     onRequestCreateAlert?: (symbol: string, price: number) => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
+    onOpenImportPlan?: (initialText?: string) => void;
     themePreset?: ThemePresetId; fontSize?: number; timezone?: string;
     customBullColor?: string; customBearColor?: string;
   }
@@ -45,7 +49,7 @@
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
-    onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert,
+    onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenImportPlan,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -82,6 +86,11 @@
   let draggingAlertPrice = $state<number | null>(null);
   let drawingPriceBadges = $state<PriceScaleBadge[]>([]);
   let indicatorPriceBadges = $state<PriceScaleBadge[]>([]);
+  let activePlans = $state<Array<any>>([]);
+  let showThesisCards = $state(true);
+  let scopedActivePlans = $derived(
+    activePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, symbol))
+  );
 
   let unsubAlerts: (() => void) | null = null;
   let unsubDrawingState: (() => void) | null = null;
@@ -99,6 +108,13 @@
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
   $effect(() => { const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor; if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }); });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
+  $effect(() => {
+    const show = showDrawingPriceLabels;
+    if (isMounted) {
+      priceScaleOverlayController.updateDrawings(chartDrawingController.getSnapshot().activeDrawings || [], show);
+      scheduleBadgePositionUpdate();
+    }
+  });
   $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
   $effect(() => { const v = showVolume; if (isMounted && v !== undefined) controller.setShowVolume(v); });
   $effect(() => {
@@ -144,6 +160,9 @@
         syncInkCanvasSize();
       }
       gestureCreationState = st.lastGestureCreation;
+      activePlans = st.activePlans || [];
+      showThesisCards = st.showThesisCards ?? true;
+      priceScaleOverlayController.updateDrawings(st.activeDrawings || [], showDrawingPriceLabels);
       scheduleBadgePositionUpdate();
     });
     unsubOverlay = priceScaleOverlayController.subscribe((coords) => {
@@ -153,10 +172,12 @@
     unsubFeedConnection = marketFeed.onConnectionChange((st: FeedConnectionStatus) => {
       feedConnectionStatus = st; if (st.state === 'connected') isDismissedConnectionWarning = false;
     });
+    window.addEventListener('paste', handleCanvasPaste);
   });
 
   onDestroy(() => {
     isMounted = false; unsubAlerts?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
+    window.removeEventListener('paste', handleCanvasPaste);
     replaySession.bindDriver(null); controller.destroy();
   });
 
@@ -195,6 +216,19 @@
     candleX?: number;
     price: number;
   } | null>(null);
+
+  // Pelacakan geometri posisi & dimensi kartu tesis aktif untuk sinkronisasi snapshot
+  let thesisCardGeometries = $state<Record<string, { x: number; y: number; width: number; height: number; isWideMode: boolean }>>({});
+
+  function handleThesisCardGeometryChange(geo: { planId: string; x: number; y: number; width: number; height: number; isWideMode: boolean }) {
+    thesisCardGeometries[geo.planId] = {
+      x: geo.x,
+      y: geo.y,
+      width: geo.width,
+      height: geo.height,
+      isWideMode: geo.isWideMode
+    };
+  }
 
   async function refreshCachedCandles() {
     try {
@@ -291,7 +325,22 @@
   export function applyWorkspaceTimezone(tz: string): void { controller.setTimezone(tz); }
   export function getActiveIndicators(): ActiveIndicatorInfo[] { return controller.getActiveIndicators(); }
   export function getChartScreenshotCanvas(scope: 'active' | 'all' = 'active'): HTMLCanvasElement | null {
-    return controller.getScreenshotCanvas(scope);
+    const baseCanvas = controller.getScreenshotCanvas(scope);
+    if (!baseCanvas) return null;
+    if (!chartContainer) return baseCanvas;
+
+    return renderScreenshotCanvasWithOverlay({
+      baseCanvas,
+      containerWidth: chartContainer.clientWidth || baseCanvas.width,
+      containerHeight: chartContainer.clientHeight || baseCanvas.height,
+      drawingPriceBadges,
+      showDrawingPriceLabels,
+      activePlans: scopedActivePlans,
+      showThesisCards,
+      cardGeometries: thesisCardGeometries,
+      getPriceY: (p) => getPriceY(p),
+      formatPrice: (p) => formatPrice(p)
+    });
   }
   export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
     return controller.addPineIndicator(src, t, i, p);
@@ -514,6 +563,17 @@
     }
   }
 
+  function handleCanvasPaste(e: ClipboardEvent) {
+    if (isEditableElement(e.target)) return;
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+    const text = clipboardData.getData('text/plain') || clipboardData.getData('text');
+    if (text && isTradingPlanText(text)) {
+      e.preventDefault();
+      onOpenImportPlan?.(text);
+    }
+  }
+
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
 </script>
 
@@ -524,6 +584,7 @@
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}
   onpointerdown={scheduleBadgePositionUpdate}
+  onpaste={handleCanvasPaste}
   role="region"
   aria-label="Area Grafik Utama"
 >
@@ -633,7 +694,7 @@
     <div
       class="snap-halo-indicator"
       style="top: {snapInfo.candleY}px; {snapInfo.candleX !== undefined ? `left: ${snapInfo.candleX}px; margin-left: -7px;` : 'right: 80px;'}"
-      title="Magnet terkunci ke {snapInfo.type?.toUpperCase()}: ${formatPrice(snapInfo.price)}"
+      title="Magnet terkunci ke {snapInfo.type?.toUpperCase()}: {formatPrice(snapInfo.price)}"
     >
       <div class="snap-halo-dot"></div>
       <div class="snap-halo-pulse"></div>
@@ -644,9 +705,9 @@
     {#each drawingPriceBadges as badge (badge.id)}
       {@const yPos = getPriceY(badge.price)}
       {#if yPos !== null && yPos >= 0}
-        <div class="price-scale-badge-item mono-nums" style="top: {yPos}px; background-color: {badge.bgColor || badge.color}; color: #ffffff; border: 1px solid {badge.color}66;" title="{badge.title || badge.label}: ${formatPrice(badge.price)}">
+        <div class="price-scale-badge-item mono-nums" style="top: {yPos}px; background-color: {badge.bgColor || badge.color}; color: #ffffff; border: 1px solid {badge.color}66;" title="{badge.title || badge.label}: {badge.label || formatPrice(badge.price)}">
           {#if badge.title}<span class="badge-tag">{badge.title}</span>{/if}
-          <span class="badge-num">${formatPrice(badge.price)}</span>
+          <span class="badge-num">{badge.label || formatPrice(badge.price)}</span>
         </div>
       {/if}
     {/each}
@@ -656,9 +717,9 @@
     {#each indicatorPriceBadges as badge (badge.id)}
       {@const yPos = getPriceY(badge.price)}
       {#if yPos !== null && yPos >= 0}
-        <div class="price-scale-badge-item indicator-badge mono-nums" style="top: {yPos}px; border-left: 3px solid {badge.color}; background-color: {badge.bgColor || '#0f172a'}; color: {badge.color}; border-top: 1px solid rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.08);" title="{badge.title || badge.label}: ${formatPrice(badge.price)}">
+        <div class="price-scale-badge-item indicator-badge mono-nums" style="top: {yPos}px; border-left: 3px solid {badge.color}; background-color: {badge.bgColor || '#0f172a'}; color: {badge.color}; border-top: 1px solid rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.08);" title="{badge.title || badge.label}: {badge.label || formatPrice(badge.price)}">
           {#if badge.title}<span class="badge-tag">{badge.title}</span>{/if}
-          <span class="badge-num">${formatPrice(badge.price)}</span>
+          <span class="badge-num">{badge.label || formatPrice(badge.price)}</span>
         </div>
       {/if}
     {/each}
@@ -680,6 +741,19 @@
         <button type="button" class="cancel-hint-btn" onclick={cancelCutoffSelection}>Batal (Esc)</button>
       </div>
     </div>
+  {/if}
+
+  {#if showThesisCards}
+    {#each scopedActivePlans as plan, idx (plan.id)}
+      <FloatingThesisCard
+        {plan}
+        initialX={16 + idx * 24}
+        initialY={56 + idx * 24}
+        onClose={(id) => chartDrawingController.removePlan(id)}
+        onHide={() => chartDrawingController.setThesisCardsVisible(false)}
+        onGeometryChange={handleThesisCardGeometryChange}
+      />
+    {/each}
   {/if}
 
   <ChartContextMenu

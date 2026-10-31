@@ -7,6 +7,7 @@ import {
 } from './persistence';
 import type { CommandDispatcher } from './commandDispatcher';
 import { roundToTickSize } from './priceSnapService';
+import type { ParsedTradingPlan } from './planParserService';
 import {
   recognizeGesture,
   type GesturePoint,
@@ -35,6 +36,8 @@ export interface DrawingState {
   canRedo: boolean;
   selectedDrawingId: string | null;
   lastGestureCreation: GestureCreationState | null;
+  activePlans: Array<ParsedTradingPlan & { id: string }>;
+  showThesisCards: boolean;
 }
 
 type Subscriber = (state: DrawingState) => void;
@@ -53,6 +56,18 @@ export function resolveDrawingKey(providerId: string | undefined, symbol: string
   }
   const p = (providerId || 'binance').trim().toLowerCase();
   return `${p}:${clean.toUpperCase()}`;
+}
+
+/**
+ * Membandingkan dua simbol instrumen perdagangan dengan normalisasi nama dan toleransi sufiks kontrak (.P / PERP)
+ */
+export function isSameSymbol(symA?: string, symB?: string): boolean {
+  if (!symA || !symB) return false;
+  const cleanA = symA.replace(/^[^:]+:/, '').trim().toUpperCase();
+  const cleanB = symB.replace(/^[^:]+:/, '').trim().toUpperCase();
+  if (cleanA === cleanB) return true;
+  const strip = (s: string) => s.replace(/\.P$|-PERP$|PERP$/i, '').replace(/[-_/]/g, '');
+  return strip(cleanA) === strip(cleanB);
 }
 
 /**
@@ -141,6 +156,133 @@ export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBound
   return isAABBOverlap(drawingBounds, bounds);
 }
 
+export type DrawingUndoAction =
+  | { action: 'erase'; drawings: any[] }
+  | {
+      action: 'create_multi_position';
+      drawings: any[];
+      drawingIds: string[];
+      plan?: ParsedTradingPlan & { id: string };
+    };
+
+/**
+ * Konversi representasi string timeframe menjadi interval durasi dalam milidetik (ms).
+ * Fallback default adalah 3,600,000 ms (1 jam).
+ */
+export function parseTimeframeToMs(tf?: string): number {
+  if (!tf) return 3600000;
+  const trimmed = tf.trim();
+
+  // 1. Bulan (Kapital M atau 1M atau 1mo)
+  if (trimmed === '1M' || trimmed === 'M' || trimmed.toLowerCase() === '1mo' || trimmed.toLowerCase() === 'month') {
+    return 30 * 24 * 3600 * 1000;
+  }
+
+  const lower = trimmed.toLowerCase();
+
+  // 2. Minggu
+  if (lower === 'w' || lower === '1w' || lower.endsWith('w')) {
+    const num = parseInt(lower, 10) || 1;
+    return num * 7 * 24 * 3600 * 1000;
+  }
+
+  // 3. Hari
+  if (lower === 'd' || lower === '1d' || lower.endsWith('d')) {
+    const num = parseInt(lower, 10) || 1;
+    return num * 24 * 3600 * 1000;
+  }
+
+  // 4. Jam
+  if (lower.endsWith('h')) {
+    const num = parseInt(lower, 10) || 1;
+    return num * 3600 * 1000;
+  }
+
+  // 5. Menit
+  if (lower.endsWith('m')) {
+    const num = parseInt(lower, 10) || 1;
+    return num * 60 * 1000;
+  }
+
+  // 6. Angka polos (Vela minute interval: '1', '15', '60', '240')
+  if (/^\d+$/.test(lower)) {
+    const num = parseInt(lower, 10);
+    return num > 0 ? num * 60 * 1000 : 3600000;
+  }
+
+  return 3600000;
+}
+
+/**
+ * Mengambil waktu lilin terakhir dan estimasi interval waktu candle (deltaT) dari chart aktif.
+ */
+export function resolveCandleMetrics(
+  activeChart: any,
+  defaultTimeframe?: string
+): { latestCandleTime: number; deltaT: number } {
+  let candles: any[] | null = null;
+  if (activeChart) {
+    if (typeof activeChart.data === 'function') {
+      try {
+        const d = activeChart.data();
+        if (Array.isArray(d)) candles = d;
+      } catch (_) {}
+    } else if (Array.isArray(activeChart.data)) {
+      candles = activeChart.data;
+    } else if (Array.isArray(activeChart.candles)) {
+      candles = activeChart.candles;
+    } else if (typeof activeChart.getCandles === 'function') {
+      try {
+        const d = activeChart.getCandles();
+        if (Array.isArray(d)) candles = d;
+      } catch (_) {}
+    } else if (activeChart.series && typeof activeChart.series.data === 'function') {
+      try {
+        const d = activeChart.series.data();
+        if (Array.isArray(d)) candles = d;
+      } catch (_) {}
+    }
+  }
+
+  const getCandleTimestamp = (c: any): number | null => {
+    if (!c) return null;
+    if (typeof c.time === 'number') return c.time;
+    if (typeof c.t === 'number') return c.t;
+    if (typeof c.timestamp === 'number') return c.timestamp;
+    if (Array.isArray(c) && typeof c[0] === 'number') return c[0];
+    return null;
+  };
+
+  let latestCandleTime = 0;
+  let deltaT = 0;
+
+  if (candles && candles.length > 0) {
+    const last = candles[candles.length - 1];
+    const t = getCandleTimestamp(last);
+    if (t !== null && t > 0) {
+      latestCandleTime = t;
+    }
+
+    if (candles.length >= 2) {
+      const prev = candles[candles.length - 2];
+      const prevT = getCandleTimestamp(prev);
+      if (t !== null && prevT !== null && t > prevT) {
+        deltaT = t - prevT;
+      }
+    }
+  }
+
+  if (deltaT <= 0) {
+    deltaT = parseTimeframeToMs(defaultTimeframe);
+  }
+
+  if (latestCandleTime <= 0) {
+    latestCandleTime = Date.now();
+  }
+
+  return { latestCandleTime, deltaT };
+}
+
 /**
  * ChartDrawingController - Deep Module untuk Operasi Gambar Terminal Trawangan
  * Mengenkapsulasi manajemen alat gambar, mode snap/stay, undo/redo, adaptasi canvas Vela,
@@ -159,10 +301,16 @@ export class ChartDrawingController {
   private isRestoring = false;
   private persistedSnapMode: SnapMode | null = null;
 
-  private undoHistory: Array<{ action: 'erase'; drawings: any[] }> = [];
-  private redoHistory: Array<{ action: 'erase'; drawings: any[] }> = [];
+  private undoHistory: DrawingUndoAction[] = [];
+  private redoHistory: DrawingUndoAction[] = [];
   private lastGestureCreation: GestureCreationState | null = null;
   private gestureHudTimeout: any = null;
+
+  private activePlans = new Map<string, ParsedTradingPlan & { id: string }>();
+  private planDrawingIds = new Map<string, Set<string>>();
+  private drawingMetadata = new Map<string, any>();
+  private drawingPlanMap = new Map<string, string>();
+  private showThesisCards = true;
 
   private workspace: any = null;
   private getSymbol: () => string = () => 'BTCUSDT';
@@ -443,6 +591,13 @@ export class ChartDrawingController {
         for (const id of ids) {
           activeChart.drawings.remove(id);
         }
+      } else if (typeof activeChart.drawings.all === 'function') {
+        const currentAll = activeChart.drawings.all();
+        if (Array.isArray(currentAll)) {
+          const remaining = currentAll.filter((d: any) => !ids.includes(d?.id));
+          currentAll.length = 0;
+          currentAll.push(...remaining);
+        }
       }
     } catch (err) {
       console.warn('Gagal menghapus drawings dari chart engine:', err);
@@ -658,7 +813,9 @@ export class ChartDrawingController {
       selectedDrawingId: this.selectedDrawingId,
       canUndo: this.canUndo,
       canRedo: this.canRedo,
-      lastGestureCreation: this.getLastGestureCreation()
+      lastGestureCreation: this.getLastGestureCreation(),
+      activePlans: this.getActivePlans(),
+      showThesisCards: this.showThesisCards
     };
   }
 
@@ -881,7 +1038,7 @@ export class ChartDrawingController {
 
   /**
    * Batalkan aksi gambar terakhir (Undo)
-   * Mendukung pemulihan drawing yang terhapus karena scribble
+   * Mendukung pemulihan drawing yang terhapus karena scribble serta pembatalan grup multi-target
    */
   undo(): void {
     const activeChart = this.getActiveChart();
@@ -908,10 +1065,22 @@ export class ChartDrawingController {
           }
         }
         handledInternal = true;
+      } else if (lastAction.action === 'create_multi_position') {
+        const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
+        this.removeDrawingsFromChart(ids);
+        if (lastAction.plan) {
+          this.activePlans.delete(lastAction.plan.id);
+          this.planDrawingIds.delete(lastAction.plan.id);
+        }
+        if (this.selectedDrawingId && ids.includes(this.selectedDrawingId)) {
+          this.selectedDrawingId = null;
+        }
+        handledInternal = true;
       }
     }
 
-    if (activeChart?.drawings) {
+    const isBatchCreate = this.redoHistory[this.redoHistory.length - 1]?.action === 'create_multi_position';
+    if (!isBatchCreate && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.undo === 'function') {
           activeChart.drawings.undo();
@@ -939,10 +1108,32 @@ export class ChartDrawingController {
         const ids = lastAction.drawings.map((d) => d.id).filter(Boolean);
         this.removeDrawingsFromChart(ids);
         handledInternal = true;
+      } else if (lastAction.action === 'create_multi_position') {
+        for (const d of lastAction.drawings) {
+          if (activeChart?.drawings) {
+            if (typeof activeChart.drawings.create === 'function') {
+              activeChart.drawings.create(d);
+            } else if (typeof activeChart.drawings.add === 'function') {
+              activeChart.drawings.add(d.type || 'position', d);
+            } else if (typeof activeChart.drawings.all === 'function') {
+              const currentAll = activeChart.drawings.all();
+              if (Array.isArray(currentAll) && !currentAll.some((x: any) => x.id === d.id)) {
+                currentAll.push(d);
+              }
+            }
+          }
+        }
+        if (lastAction.plan) {
+          this.activePlans.set(lastAction.plan.id, lastAction.plan);
+          const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
+          this.planDrawingIds.set(lastAction.plan.id, new Set(ids));
+        }
+        handledInternal = true;
       }
     }
 
-    if (activeChart?.drawings) {
+    const isBatchCreate = this.undoHistory[this.undoHistory.length - 1]?.action === 'create_multi_position';
+    if (!isBatchCreate && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.redo === 'function') {
           activeChart.drawings.redo();
@@ -978,6 +1169,10 @@ export class ChartDrawingController {
 
     this.activeDrawings = [];
     this.selectedDrawingId = null;
+    this.activePlans.clear();
+    this.planDrawingIds.clear();
+    this.drawingMetadata.clear();
+    this.drawingPlanMap.clear();
     this.notify();
   }
 
@@ -1119,13 +1314,291 @@ export class ChartDrawingController {
           created = activeChart.drawings.add(drawingInit.type, drawingInit);
         }
         this.handleDrawingMutated();
-        const id = created?.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
-        return { id, ...created };
+        const id = created?.id || spec.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
+        return { ...drawingInit, ...(created && typeof created === 'object' ? created : {}), id };
       } catch (e) {
         console.warn('ChartDrawingController createDrawing error:', e);
       }
     }
     return null;
+  }
+
+  /**
+   * Membuat rangkaian objek gambar posisi bertingkat (Staged Multi-Target Position)
+   * Berdasarkan rencana perdagangan yang telah diurai (ParsedTradingPlan).
+   * Menghasilkan visualisasi kotak risiko/imbalan per target stage dengan transaksi undo atomik.
+   */
+  createMultiTargetPosition(
+    plan: ParsedTradingPlan & { id?: string },
+    options?: {
+      planId?: string;
+      anchorTime?: number;
+      barSpanPerTarget?: number;
+      paneId?: string;
+      drawContextZones?: boolean;
+    }
+  ): { drawingIds: string[]; drawings: any[] } | null {
+    if (!plan) return null;
+    if (plan.validation && !plan.validation.valid) return null;
+    if (!plan.entry || !plan.stopLoss || !plan.targets || plan.targets.length === 0) {
+      return null;
+    }
+
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) {
+      return null;
+    }
+
+    const currentTf = typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m';
+    const metrics = resolveCandleMetrics(activeChart, currentTf);
+
+    const deltaT = metrics.deltaT > 0 ? metrics.deltaT : 3600000;
+    const t0 = options?.anchorTime || metrics.latestCandleTime || Date.now();
+    const span = options?.barSpanPerTarget && options.barSpanPerTarget > 0 ? options.barSpanPerTarget : 25;
+    const paneId = options?.paneId || 'price';
+
+    const planId = options?.planId || plan.id || `plan_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const createdDrawings: any[] = [];
+    const createdDrawingIds: string[] = [];
+
+    // 1. Gambar kotak posisi bertingkat (Staged Position Boxes)
+    for (let i = 0; i < plan.targets.length; i++) {
+      const target = plan.targets[i];
+      if (typeof target.price !== 'number' || isNaN(target.price)) continue;
+
+      const startTime = t0 + i * span * deltaT;
+      const endTime = startTime + span * deltaT;
+
+      const rMultipleFormatted =
+        typeof target.rMultiple === 'number' && !isNaN(target.rMultiple)
+          ? `${target.label || `TP${i + 1}`} (${target.rMultiple.toFixed(2)}R)`
+          : target.label || `TP${i + 1}`;
+
+      const stageDrawingSpec: any = {
+        type: 'position',
+        paneId,
+        showPrices: true,
+        showTargetLabel: true,
+        showStopLabel: true,
+        targetLabel: rMultipleFormatted,
+        anchors: [
+          { time: startTime, price: plan.entry },
+          { time: endTime, price: plan.stopLoss },
+          { time: endTime, price: target.price }
+        ],
+        metadata: {
+          planId,
+          stageIndex: i + 1,
+          targetLabel: target.label || `TP${i + 1}`,
+          rMultiple: target.rMultiple,
+          bias: plan.bias,
+          reasons: plan.reasons,
+          contextZones: plan.contextZones,
+          rawPlanText: plan.rawText
+        }
+      };
+
+      const created = this.createDrawing(stageDrawingSpec);
+      if (created) {
+        const id = created.id || stageDrawingSpec.id;
+        const drawingRecord = {
+          ...stageDrawingSpec,
+          ...created,
+          id
+        };
+        createdDrawings.push(drawingRecord);
+        if (id) {
+          createdDrawingIds.push(id);
+          this.drawingMetadata.set(id, stageDrawingSpec.metadata);
+          this.drawingPlanMap.set(id, planId);
+        }
+      }
+    }
+
+    // 2. Gambar kotak zona FVG / Context Zone semi-transparan otomatis (#115)
+    if (options?.drawContextZones !== false && Array.isArray(plan.contextZones) && plan.contextZones.length > 0) {
+      const isBearish = plan.bias === 'bearish';
+      const lastEndTime = t0 + plan.targets.length * span * deltaT;
+
+      for (const zone of plan.contextZones) {
+        if (typeof zone.low !== 'number' || typeof zone.high !== 'number' || isNaN(zone.low) || isNaN(zone.high)) {
+          continue;
+        }
+
+        const boxSpec: any = {
+          type: 'box',
+          paneId,
+          anchors: [
+            { time: t0, price: zone.high },
+            { time: lastEndTime, price: zone.low }
+          ],
+          style: {
+            fillColor: isBearish ? 'rgba(255, 105, 180, 0.12)' : 'rgba(0, 255, 136, 0.12)',
+            lineColor: isBearish ? 'rgba(255, 105, 180, 0.45)' : 'rgba(0, 255, 136, 0.45)',
+            lineWidth: 1
+          },
+          text: {
+            value: zone.label || 'FVG Zone',
+            color: isBearish ? '#FF69B4' : '#00FF88'
+          },
+          metadata: {
+            planId,
+            role: 'context_zone',
+            zoneLabel: zone.label,
+            low: zone.low,
+            high: zone.high
+          }
+        };
+
+        const createdBox = this.createDrawing(boxSpec);
+        if (createdBox) {
+          const boxId = createdBox.id || boxSpec.id;
+          const boxRecord = { ...boxSpec, ...createdBox, id: boxId };
+          createdDrawings.push(boxRecord);
+          if (boxId) {
+          createdDrawingIds.push(boxId);
+          this.drawingMetadata.set(boxId, boxSpec.metadata);
+          this.drawingPlanMap.set(boxId, planId);
+        }
+        }
+      }
+    }
+
+    if (createdDrawings.length === 0) {
+      return null;
+    }
+
+    // Simpan ke activePlans registry untuk konsumsi FloatingThesisCard
+    const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+    const targetSymbol = plan.symbol || curSym;
+    const planRecord = { ...plan, id: planId, symbol: targetSymbol };
+    this.activePlans.set(planId, planRecord);
+    this.planDrawingIds.set(planId, new Set(createdDrawingIds));
+
+    // Catat seluruh ID drawing yang dibuat ke undoHistory sebagai aksi atomik tunggal
+    this.undoHistory.push({
+      action: 'create_multi_position',
+      drawings: createdDrawings,
+      drawingIds: createdDrawingIds,
+      plan: planRecord
+    });
+    this.redoHistory = [];
+
+    this.notify();
+
+    return {
+      drawingIds: createdDrawingIds,
+      drawings: createdDrawings
+    };
+  }
+
+  /**
+   * Dapatkan seluruh rencana perdagangan aktif di kanvas yang terfilter sesuai koin/simbol aktif
+   */
+  getActivePlans(symbolFilter?: string): Array<ParsedTradingPlan & { id: string; symbol?: string }> {
+    const all = Array.from(this.activePlans.values());
+    const filter =
+      symbolFilter !== undefined
+        ? symbolFilter
+        : typeof this.getSymbol === 'function'
+          ? this.getSymbol()
+          : undefined;
+
+    if (!filter || filter === '*' || filter.toUpperCase() === 'ALL') {
+      return all;
+    }
+    return all.filter((p) => !p.symbol || isSameSymbol(p.symbol, filter));
+  }
+
+  /**
+   * Dapatkan seluruh rencana perdagangan tanpa filter simbol (untuk persistensi sesi menyeluruh)
+   */
+  getAllActivePlans(): Array<ParsedTradingPlan & { id: string; symbol?: string }> {
+    return Array.from(this.activePlans.values());
+  }
+
+  /**
+   * Status visibilitas Thesis Cards
+   */
+  isThesisCardsVisible(): boolean {
+    return this.showThesisCards;
+  }
+
+  /**
+   * Atur visibilitas Thesis Cards
+   */
+  setThesisCardsVisible(visible: boolean): void {
+    this.showThesisCards = visible;
+    this.notify();
+  }
+
+  /**
+   * Toggle visibilitas Thesis Cards
+   */
+  toggleThesisCardsVisible(): boolean {
+    this.showThesisCards = !this.showThesisCards;
+    this.notify();
+    return this.showThesisCards;
+  }
+
+  /**
+   * Hapus rencana perdagangan tertentu beserta seluruh drawing terkait
+   */
+  removePlan(planId: string): void {
+    const drawingIdSet = this.planDrawingIds.get(planId) || new Set<string>();
+    const toDelete = this.activeDrawings.filter((d) => d.metadata?.planId === planId || drawingIdSet.has(d.id));
+    const idsToDelete = toDelete.map((d) => d.id).filter(Boolean);
+
+    this.activePlans.delete(planId);
+    this.planDrawingIds.delete(planId);
+    for (const id of idsToDelete) {
+      this.drawingMetadata.delete(id);
+      this.drawingPlanMap.delete(id);
+    }
+
+    if (idsToDelete.length > 0) {
+      this.removeDrawingsFromChart(idsToDelete);
+    }
+    this.notify();
+  }
+
+  /**
+   * Bersihkan seluruh rencana perdagangan aktif beserta gambarnya dari kanvas
+   */
+  clearAllPlans(): void {
+    const planIds = Array.from(this.activePlans.keys());
+    for (const pid of planIds) {
+      this.removePlan(pid);
+    }
+    this.activePlans.clear();
+    this.planDrawingIds.clear();
+    this.drawingMetadata.clear();
+    this.drawingPlanMap.clear();
+    this.notify();
+  }
+
+  /**
+   * Pulihkan koleksi rencana perdagangan aktif ke kanvas (Workspace Persistence)
+   */
+  restorePlans(plans: Array<ParsedTradingPlan & { id: string; symbol?: string }>, showCards: boolean = true): void {
+    if (!Array.isArray(plans) || plans.length === 0) return;
+    this.showThesisCards = showCards;
+    const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+    for (const plan of plans) {
+      if (!this.activePlans.has(plan.id)) {
+        this.createMultiTargetPosition(
+          {
+            ...plan,
+            symbol: plan.symbol || curSym
+          },
+          {
+            planId: plan.id,
+            drawContextZones: true
+          }
+        );
+      }
+    }
+    this.notify();
   }
 
   /**
@@ -1138,6 +1611,18 @@ export class ChartDrawingController {
       try {
         this.activeDrawings = [...(activeChart.drawings.all?.() || [])];
 
+        // Tempelkan kembali metadata ke activeDrawings jika tersedia di drawingMetadata
+        for (const d of this.activeDrawings) {
+          if (d && d.id) {
+            if (this.drawingMetadata.has(d.id) && !d.metadata) {
+              d.metadata = this.drawingMetadata.get(d.id);
+            }
+            if (this.drawingPlanMap.has(d.id) && (!d.metadata || !d.metadata.planId)) {
+              d.metadata = { ...(d.metadata || {}), planId: this.drawingPlanMap.get(d.id) };
+            }
+          }
+        }
+
         // Tick-Aligned Price Guard: Sanitasi anchors harga pada setiap gambar
         for (const d of this.activeDrawings) {
           if (Array.isArray(d.anchors)) {
@@ -1146,6 +1631,38 @@ export class ChartDrawingController {
                 a.price = roundToTickSize(a.price);
               }
             }
+          }
+        }
+
+        // Sinkronisasi activePlans dengan activeDrawings:
+        // Himpun seluruh drawing ID yang saat ini masih ada di kanvas (baik visible maupun hidden)
+        const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+        const existingDrawingIds = new Set(this.activeDrawings.map((d: any) => d.id).filter(Boolean));
+
+        // Rencana hanya dihapus jika SEMUA drawing yang terkait dengannya sudah tidak ada di kanvas
+        // DAN hanya jika plan tersebut diasosiasikan dengan koin aktif saat ini
+        for (const [pid, drawingIdSet] of Array.from(this.planDrawingIds.entries())) {
+          const plan = this.activePlans.get(pid);
+          if (plan && plan.symbol && !isSameSymbol(plan.symbol, curSym)) {
+            continue; // Lindungi rencana milik koin lain agar tidak terhapus saat beralih koin
+          }
+          if (drawingIdSet && drawingIdSet.size > 0) {
+            const hasAnyDrawing = Array.from(drawingIdSet).some((did) => existingDrawingIds.has(did));
+            if (!hasAnyDrawing) {
+              this.activePlans.delete(pid);
+              this.planDrawingIds.delete(pid);
+            }
+          }
+        }
+
+        // Bersihkan plan lama yang tidak memiliki entri di planDrawingIds dan tidak ada di activeDrawings
+        const activePlanIds = new Set(this.activeDrawings.map((d: any) => d.metadata?.planId).filter(Boolean));
+        for (const [pid, plan] of Array.from(this.activePlans.entries())) {
+          if (plan && plan.symbol && !isSameSymbol(plan.symbol, curSym)) {
+            continue; // Lindungi rencana milik koin lain
+          }
+          if (!this.planDrawingIds.has(pid) && !activePlanIds.has(pid)) {
+            this.activePlans.delete(pid);
           }
         }
 
@@ -1255,11 +1772,11 @@ export class ChartDrawingController {
         activeChart.drawings.fromJSON(doc);
         this.activeDrawings = activeChart.drawings.all?.() || [];
       }
-      this.notify();
     } catch (err) {
       console.warn('Gagal memulihkan drawings:', err);
     } finally {
       this.isRestoring = false;
+      this.notify();
     }
   }
 

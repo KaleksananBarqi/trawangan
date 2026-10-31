@@ -19,6 +19,9 @@
   import RightDockRail from '../lib/components/RightDockRail.svelte';
   import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
   import DrawByHoldingModal from '../lib/components/DrawByHoldingModal.svelte';
+  import ImportPlanModal from '../lib/components/ImportPlanModal.svelte';
+  import type { ParsedTradingPlan } from '../lib/services/planParserService';
+  import { getAdaptiveTickSize } from '../lib/services/priceSnapService';
   import {
     compositeSnapshot,
     copySnapshotToClipboard,
@@ -136,6 +139,8 @@
   let timeframeQuickBarInitialInput = $state('');
   let isShortcutCheatsheetOpen = $state(false);
   let isDrawByHoldingModalOpen = $state(false);
+  let isImportPlanModalOpen = $state(false);
+  let importPlanInitialText = $state('');
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
 
@@ -170,6 +175,23 @@
     triggeredAlertsToasts = triggeredAlertsToasts.filter((a) => a.id !== id);
   }
 
+  function handleOpenImportPlanModal(initialText = '') {
+    importPlanInitialText = initialText;
+    isImportPlanModalOpen = true;
+  }
+
+  function handleApplyImportPlan(plan: ParsedTradingPlan) {
+    const planWithSymbol = {
+      ...plan,
+      symbol: plan.symbol || activeSymbol
+    };
+    const result = chartDrawingController.createMultiTargetPosition(planWithSymbol);
+    if (result) {
+      addSystemLog(`Trading Plan ${plan.bias.toUpperCase()} (${planWithSymbol.symbol}) berhasil diterapkan ke chart`, 'success');
+      isImportPlanModalOpen = false;
+    }
+  }
+
   // Deep Replay Session Reactive State
   let replaySnapshot = $state<ReplaySnapshot>(replaySession.getSnapshot());
   let isReplayDatePickerOpen = $state(false);
@@ -182,6 +204,9 @@
   let isDrawingsHidden = $state(false);
   let activeDrawings = $state<any[]>([]);
   let selectedDrawingId = $state<string | null>(null);
+  let currentActivePlans = $state<any[]>([]);
+  let hasActivePlans = $state(false);
+  let showThesisCards = $state(true);
 
   // Deep Link & Clipboard Sentry State
   let detectedChartLink = $state<{ target: ParsedChartTarget; rawUrl: string } | null>(null);
@@ -450,6 +475,10 @@
         handleSelectTool('position');
         addSystemLog('Shortcut: Tool Posisi Long/Short Risk/Reward dipilih (Alt+R)', 'info');
       }),
+      commandDispatcher.bindHandler('open-import-plan', () => {
+        handleOpenImportPlanModal();
+        addSystemLog('Shortcut: Buka modal Import Trading Plan (Ctrl+Shift+P)', 'info');
+      }),
       commandDispatcher.bindHandler('fit-chart-z', () => {
         if (chartComponent?.fitChart) chartComponent.fitChart();
         addSystemLog('Shortcut: Reset skala/fit grafik (Alt+Z)', 'info');
@@ -517,6 +546,9 @@
       isDrawingsHidden = state.isHidden;
       activeDrawings = state.activeDrawings;
       selectedDrawingId = state.selectedDrawingId;
+      currentActivePlans = state.activePlans || [];
+      hasActivePlans = Boolean(state.activePlans && state.activePlans.length > 0);
+      showThesisCards = state.showThesisCards ?? true;
     });
 
     // Deep Link & Clipboard Watcher Sentry
@@ -821,6 +853,8 @@
       providerId: activeProviderId,
       activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
       syncConfig: { ...syncConfig },
+      activePlans: chartDrawingController.getActivePlans(),
+      showThesisCards: chartDrawingController.isThesisCardsVisible(),
     });
     activeWorkspace = saved;
     if (saved && saved.id) {
@@ -925,6 +959,13 @@
         }
       }
 
+      // 7. Pulihkan rencana perdagangan dan kartu tesis aktif (#116)
+      if (Array.isArray(w.activePlans) && w.activePlans.length > 0) {
+        chartDrawingController.restorePlans(w.activePlans, w.showThesisCards ?? true);
+      } else {
+        chartDrawingController.clearAllPlans();
+      }
+
       const indCount = w.indicators?.length || 0;
       const indTitles = w.indicators && w.indicators.length > 0
         ? w.indicators.map((i: any) => i.title).join(', ')
@@ -984,6 +1025,8 @@
           providerId: activeProviderId,
           activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
           syncConfig: { ...syncConfig },
+          activePlans: chartDrawingController.getActivePlans(),
+          showThesisCards: chartDrawingController.isThesisCardsVisible(),
         });
         activeWorkspace = saved;
         if (saved && saved.id) {
@@ -1036,11 +1079,30 @@
     chartDrawingController.redo();
   }
 
-  function handleClear() {
-    if (confirm('Hapus semua objek gambar pada grafik saat ini?')) {
-      chartDrawingController.clearAll();
-      addSystemLog('Seluruh objek gambar dibersihkan.', 'warn');
+  async function handleClearDrawings() {
+    await chartDrawingController.clearAll();
+    addSystemLog('Seluruh objek gambar di grafik dibersihkan.', 'info');
+  }
+
+  function handleClearIndicators() {
+    if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
+      chartComponent.clearAllIndicators();
     }
+    activeIndicators = [];
+    addSystemLog('Seluruh indikator teknikal di grafik dibersihkan.', 'info');
+  }
+
+  async function handleClearAll() {
+    await chartDrawingController.clearAll();
+    if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
+      chartComponent.clearAllIndicators();
+    }
+    activeIndicators = [];
+    addSystemLog('Seluruh objek gambar dan indikator di grafik dibersihkan.', 'warn');
+  }
+
+  function handleClear() {
+    handleClearDrawings();
   }
 
   // ─── Bar Replay Handlers (Didelegasikan ke Modul Deep replaySession) ───
@@ -1351,6 +1413,8 @@
     onToggleDrawingToolbar={() => leftToolbarService.toggleCollapse()}
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
+    onOpenImportPlan={() => handleOpenImportPlanModal()}
+    activePlansCount={currentActivePlans.length}
     onOpenSettingsModal={(tab = 'general') => {
       settingsInitialTab = tab as any;
       isSettingsModalOpen = true;
@@ -1402,7 +1466,14 @@
           onUndo={handleUndo}
           onRedo={handleRedo}
           onClear={handleClear}
+          onClearDrawings={handleClearDrawings}
+          onClearIndicators={handleClearIndicators}
+          onClearAll={handleClearAll}
           onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
+          onOpenImportPlan={() => handleOpenImportPlanModal()}
+          {hasActivePlans}
+          {showThesisCards}
+          onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
         />
       {/if}
 
@@ -1460,6 +1531,7 @@
           onStrategyUpdate={handleStrategyUpdate}
           onRequestCreateAlert={handleRequestCreateAlert}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
+          onOpenImportPlan={(text) => handleOpenImportPlanModal(text || '')}
         />
       </div>
 
@@ -1515,6 +1587,11 @@
           onBulkHideDrawings={(hidden) => chartDrawingController.bulkHideDrawings(hidden)}
           onBulkLockDrawings={(locked) => chartDrawingController.bulkLockDrawings(locked)}
           onBulkDeleteDrawings={() => chartDrawingController.bulkDeleteDrawings()}
+          activePlans={currentActivePlans}
+          {showThesisCards}
+          onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
+          onRemovePlan={(id) => chartDrawingController.removePlan(id)}
+          onOpenImportPlan={() => handleOpenImportPlanModal()}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
           onOpenSymbolSearch={() => {
@@ -1767,6 +1844,15 @@
   <DrawByHoldingModal
     isOpen={isDrawByHoldingModalOpen}
     onClose={() => (isDrawByHoldingModalOpen = false)}
+  />
+
+  <!-- Modal Import Trading Plan Deterministik (#112) -->
+  <ImportPlanModal
+    isOpen={isImportPlanModalOpen}
+    initialText={importPlanInitialText}
+    tickSize={ticker?.price ? getAdaptiveTickSize(ticker.price) : undefined}
+    onApply={handleApplyImportPlan}
+    onClose={() => (isImportPlanModalOpen = false)}
   />
 </div>
 

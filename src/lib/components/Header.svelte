@@ -66,6 +66,8 @@
     onToggleWatchlist?: () => void;
     onToggleReplay?: () => void;
     onOpenIndicatorModal: () => void;
+    onOpenImportPlan?: () => void;
+    activePlansCount?: number;
     onOpenSettingsModal?: (tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help') => void;
     onRequestCreateAlert?: () => void;
     onOpenSymbolSearch?: () => void;
@@ -113,6 +115,8 @@
     onToggleWatchlist,
     onToggleReplay,
     onOpenIndicatorModal,
+    onOpenImportPlan,
+    activePlansCount = 0,
     onOpenSettingsModal,
     onRequestCreateAlert,
     onOpenSymbolSearch,
@@ -322,6 +326,19 @@
       <span>Indikator</span>
       {#if activeIndicators && activeIndicators.length > 0}
         <span class="count-badge mono-nums">{activeIndicators.length}</span>
+      {/if}
+    </button>
+
+    <!-- Tombol Input Trade Plan (Deterministic Ingestion) (#117) -->
+    <button
+      class="action-btn indicator-header-btn plan-header-btn {activePlansCount > 0 ? 'has-active' : ''}"
+      title="Input & Import Trading Plan (Ctrl+Shift+P)"
+      onclick={() => onOpenImportPlan?.()}
+    >
+      <Sparkles size={13} class={activePlansCount > 0 ? 'text-brand' : 'text-cyan-accent'} />
+      <span>Trade Plan</span>
+      {#if activePlansCount > 0}
+        <span class="count-badge mono-nums">{activePlansCount}</span>
       {/if}
     </button>
 
