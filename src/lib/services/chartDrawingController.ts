@@ -7,6 +7,7 @@ import {
 } from './persistence';
 import type { CommandDispatcher } from './commandDispatcher';
 import { roundToTickSize } from './priceSnapService';
+import type { ParsedTradingPlan } from './planParserService';
 import {
   recognizeGesture,
   type GesturePoint,
@@ -141,6 +142,128 @@ export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBound
   return isAABBOverlap(drawingBounds, bounds);
 }
 
+export type DrawingUndoAction =
+  | { action: 'erase'; drawings: any[] }
+  | { action: 'create_multi_position'; drawings: any[]; drawingIds: string[] };
+
+/**
+ * Konversi representasi string timeframe menjadi interval durasi dalam milidetik (ms).
+ * Fallback default adalah 3,600,000 ms (1 jam).
+ */
+export function parseTimeframeToMs(tf?: string): number {
+  if (!tf) return 3600000;
+  const trimmed = tf.trim();
+
+  // 1. Bulan (Kapital M atau 1M atau 1mo)
+  if (trimmed === '1M' || trimmed === 'M' || trimmed.toLowerCase() === '1mo' || trimmed.toLowerCase() === 'month') {
+    return 30 * 24 * 3600 * 1000;
+  }
+
+  const lower = trimmed.toLowerCase();
+
+  // 2. Minggu
+  if (lower === 'w' || lower === '1w' || lower.endsWith('w')) {
+    const num = parseInt(lower, 10) || 1;
+    return num * 7 * 24 * 3600 * 1000;
+  }
+
+  // 3. Hari
+  if (lower === 'd' || lower === '1d' || lower.endsWith('d')) {
+    const num = parseInt(lower, 10) || 1;
+    return num * 24 * 3600 * 1000;
+  }
+
+  // 4. Jam
+  if (lower.endsWith('h')) {
+    const num = parseInt(lower, 10) || 1;
+    return num * 3600 * 1000;
+  }
+
+  // 5. Menit
+  if (lower.endsWith('m')) {
+    const num = parseInt(lower, 10) || 1;
+    return num * 60 * 1000;
+  }
+
+  // 6. Angka polos (Vela minute interval: '1', '15', '60', '240')
+  if (/^\d+$/.test(lower)) {
+    const num = parseInt(lower, 10);
+    return num > 0 ? num * 60 * 1000 : 3600000;
+  }
+
+  return 3600000;
+}
+
+/**
+ * Mengambil waktu lilin terakhir dan estimasi interval waktu candle (deltaT) dari chart aktif.
+ */
+export function resolveCandleMetrics(
+  activeChart: any,
+  defaultTimeframe?: string
+): { latestCandleTime: number; deltaT: number } {
+  let candles: any[] | null = null;
+  if (activeChart) {
+    if (typeof activeChart.data === 'function') {
+      try {
+        const d = activeChart.data();
+        if (Array.isArray(d)) candles = d;
+      } catch (_) {}
+    } else if (Array.isArray(activeChart.data)) {
+      candles = activeChart.data;
+    } else if (Array.isArray(activeChart.candles)) {
+      candles = activeChart.candles;
+    } else if (typeof activeChart.getCandles === 'function') {
+      try {
+        const d = activeChart.getCandles();
+        if (Array.isArray(d)) candles = d;
+      } catch (_) {}
+    } else if (activeChart.series && typeof activeChart.series.data === 'function') {
+      try {
+        const d = activeChart.series.data();
+        if (Array.isArray(d)) candles = d;
+      } catch (_) {}
+    }
+  }
+
+  const getCandleTimestamp = (c: any): number | null => {
+    if (!c) return null;
+    if (typeof c.time === 'number') return c.time;
+    if (typeof c.t === 'number') return c.t;
+    if (typeof c.timestamp === 'number') return c.timestamp;
+    if (Array.isArray(c) && typeof c[0] === 'number') return c[0];
+    return null;
+  };
+
+  let latestCandleTime = 0;
+  let deltaT = 0;
+
+  if (candles && candles.length > 0) {
+    const last = candles[candles.length - 1];
+    const t = getCandleTimestamp(last);
+    if (t !== null && t > 0) {
+      latestCandleTime = t;
+    }
+
+    if (candles.length >= 2) {
+      const prev = candles[candles.length - 2];
+      const prevT = getCandleTimestamp(prev);
+      if (t !== null && prevT !== null && t > prevT) {
+        deltaT = t - prevT;
+      }
+    }
+  }
+
+  if (deltaT <= 0) {
+    deltaT = parseTimeframeToMs(defaultTimeframe);
+  }
+
+  if (latestCandleTime <= 0) {
+    latestCandleTime = Date.now();
+  }
+
+  return { latestCandleTime, deltaT };
+}
+
 /**
  * ChartDrawingController - Deep Module untuk Operasi Gambar Terminal Trawangan
  * Mengenkapsulasi manajemen alat gambar, mode snap/stay, undo/redo, adaptasi canvas Vela,
@@ -159,8 +282,8 @@ export class ChartDrawingController {
   private isRestoring = false;
   private persistedSnapMode: SnapMode | null = null;
 
-  private undoHistory: Array<{ action: 'erase'; drawings: any[] }> = [];
-  private redoHistory: Array<{ action: 'erase'; drawings: any[] }> = [];
+  private undoHistory: DrawingUndoAction[] = [];
+  private redoHistory: DrawingUndoAction[] = [];
   private lastGestureCreation: GestureCreationState | null = null;
   private gestureHudTimeout: any = null;
 
@@ -442,6 +565,13 @@ export class ChartDrawingController {
       } else if (typeof activeChart.drawings.remove === 'function') {
         for (const id of ids) {
           activeChart.drawings.remove(id);
+        }
+      } else if (typeof activeChart.drawings.all === 'function') {
+        const currentAll = activeChart.drawings.all();
+        if (Array.isArray(currentAll)) {
+          const remaining = currentAll.filter((d: any) => !ids.includes(d?.id));
+          currentAll.length = 0;
+          currentAll.push(...remaining);
         }
       }
     } catch (err) {
@@ -881,7 +1011,7 @@ export class ChartDrawingController {
 
   /**
    * Batalkan aksi gambar terakhir (Undo)
-   * Mendukung pemulihan drawing yang terhapus karena scribble
+   * Mendukung pemulihan drawing yang terhapus karena scribble serta pembatalan grup multi-target
    */
   undo(): void {
     const activeChart = this.getActiveChart();
@@ -908,10 +1038,18 @@ export class ChartDrawingController {
           }
         }
         handledInternal = true;
+      } else if (lastAction.action === 'create_multi_position') {
+        const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
+        this.removeDrawingsFromChart(ids);
+        if (this.selectedDrawingId && ids.includes(this.selectedDrawingId)) {
+          this.selectedDrawingId = null;
+        }
+        handledInternal = true;
       }
     }
 
-    if (activeChart?.drawings) {
+    const isBatchCreate = this.redoHistory[this.redoHistory.length - 1]?.action === 'create_multi_position';
+    if (!isBatchCreate && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.undo === 'function') {
           activeChart.drawings.undo();
@@ -939,10 +1077,27 @@ export class ChartDrawingController {
         const ids = lastAction.drawings.map((d) => d.id).filter(Boolean);
         this.removeDrawingsFromChart(ids);
         handledInternal = true;
+      } else if (lastAction.action === 'create_multi_position') {
+        for (const d of lastAction.drawings) {
+          if (activeChart?.drawings) {
+            if (typeof activeChart.drawings.create === 'function') {
+              activeChart.drawings.create(d);
+            } else if (typeof activeChart.drawings.add === 'function') {
+              activeChart.drawings.add(d.type || 'position', d);
+            } else if (typeof activeChart.drawings.all === 'function') {
+              const currentAll = activeChart.drawings.all();
+              if (Array.isArray(currentAll) && !currentAll.some((x: any) => x.id === d.id)) {
+                currentAll.push(d);
+              }
+            }
+          }
+        }
+        handledInternal = true;
       }
     }
 
-    if (activeChart?.drawings) {
+    const isBatchCreate = this.undoHistory[this.undoHistory.length - 1]?.action === 'create_multi_position';
+    if (!isBatchCreate && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.redo === 'function') {
           activeChart.drawings.redo();
@@ -1119,13 +1274,118 @@ export class ChartDrawingController {
           created = activeChart.drawings.add(drawingInit.type, drawingInit);
         }
         this.handleDrawingMutated();
-        const id = created?.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
-        return { id, ...created };
+        const id = created?.id || spec.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
+        return { ...drawingInit, ...(created && typeof created === 'object' ? created : {}), id };
       } catch (e) {
         console.warn('ChartDrawingController createDrawing error:', e);
       }
     }
     return null;
+  }
+
+  /**
+   * Membuat rangkaian objek gambar posisi bertingkat (Staged Multi-Target Position)
+   * Berdasarkan rencana perdagangan yang telah diurai (ParsedTradingPlan).
+   * Menghasilkan visualisasi kotak risiko/imbalan per target stage dengan transaksi undo atomik.
+   */
+  createMultiTargetPosition(
+    plan: ParsedTradingPlan,
+    options?: {
+      anchorTime?: number;
+      barSpanPerTarget?: number;
+      paneId?: string;
+    }
+  ): { drawingIds: string[]; drawings: any[] } | null {
+    if (!plan) return null;
+    if (plan.validation && !plan.validation.valid) return null;
+    if (!plan.entry || !plan.stopLoss || !plan.targets || plan.targets.length === 0) {
+      return null;
+    }
+
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) {
+      return null;
+    }
+
+    const currentTf = typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m';
+    const metrics = resolveCandleMetrics(activeChart, currentTf);
+
+    const deltaT = metrics.deltaT > 0 ? metrics.deltaT : 3600000;
+    const t0 = options?.anchorTime || metrics.latestCandleTime || Date.now();
+    const span = options?.barSpanPerTarget && options.barSpanPerTarget > 0 ? options.barSpanPerTarget : 25;
+    const paneId = options?.paneId || 'price';
+
+    const planId = `plan_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const createdDrawings: any[] = [];
+    const createdDrawingIds: string[] = [];
+
+    for (let i = 0; i < plan.targets.length; i++) {
+      const target = plan.targets[i];
+      if (typeof target.price !== 'number' || isNaN(target.price)) continue;
+
+      const startTime = t0 + i * span * deltaT;
+      const endTime = startTime + span * deltaT;
+
+      const rMultipleFormatted =
+        typeof target.rMultiple === 'number' && !isNaN(target.rMultiple)
+          ? `${target.label || `TP${i + 1}`} (${target.rMultiple.toFixed(2)}R)`
+          : target.label || `TP${i + 1}`;
+
+      const stageDrawingSpec: any = {
+        type: 'position',
+        paneId,
+        showPrices: true,
+        showTargetLabel: true,
+        showStopLabel: true,
+        targetLabel: rMultipleFormatted,
+        anchors: [
+          { time: startTime, price: plan.entry },
+          { time: endTime, price: plan.stopLoss },
+          { time: endTime, price: target.price }
+        ],
+        metadata: {
+          planId,
+          stageIndex: i + 1,
+          targetLabel: target.label || `TP${i + 1}`,
+          rMultiple: target.rMultiple,
+          bias: plan.bias,
+          reasons: plan.reasons,
+          contextZones: plan.contextZones,
+          rawPlanText: plan.rawText
+        }
+      };
+
+      const created = this.createDrawing(stageDrawingSpec);
+      if (created) {
+        const id = created.id || stageDrawingSpec.id;
+        const drawingRecord = {
+          ...stageDrawingSpec,
+          ...created,
+          id
+        };
+        createdDrawings.push(drawingRecord);
+        if (id) {
+          createdDrawingIds.push(id);
+        }
+      }
+    }
+
+    if (createdDrawings.length === 0) {
+      return null;
+    }
+
+    // Catat seluruh ID drawing yang dibuat ke undoHistory sebagai aksi atomik tunggal
+    this.undoHistory.push({
+      action: 'create_multi_position',
+      drawings: createdDrawings,
+      drawingIds: createdDrawingIds
+    });
+    this.redoHistory = [];
+
+    return {
+      drawingIds: createdDrawingIds,
+      drawings: createdDrawings
+    };
   }
 
   /**
