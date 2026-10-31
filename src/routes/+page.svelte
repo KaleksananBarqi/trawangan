@@ -847,6 +847,8 @@
       providerId: activeProviderId,
       activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
       syncConfig: { ...syncConfig },
+      activePlans: chartDrawingController.getActivePlans(),
+      showThesisCards: chartDrawingController.isThesisCardsVisible(),
     });
     activeWorkspace = saved;
     if (saved && saved.id) {
@@ -951,6 +953,13 @@
         }
       }
 
+      // 7. Pulihkan rencana perdagangan dan kartu tesis aktif (#116)
+      if (Array.isArray(w.activePlans) && w.activePlans.length > 0) {
+        chartDrawingController.restorePlans(w.activePlans, w.showThesisCards ?? true);
+      } else {
+        chartDrawingController.clearAllPlans();
+      }
+
       const indCount = w.indicators?.length || 0;
       const indTitles = w.indicators && w.indicators.length > 0
         ? w.indicators.map((i: any) => i.title).join(', ')
@@ -1010,6 +1019,8 @@
           providerId: activeProviderId,
           activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
           syncConfig: { ...syncConfig },
+          activePlans: chartDrawingController.getActivePlans(),
+          showThesisCards: chartDrawingController.isThesisCardsVisible(),
         });
         activeWorkspace = saved;
         if (saved && saved.id) {

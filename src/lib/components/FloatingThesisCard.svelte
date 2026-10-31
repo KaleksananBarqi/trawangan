@@ -4,13 +4,15 @@
     GripVertical,
     Minus,
     Maximize2,
+    Minimize2,
     X,
     ShieldAlert,
     Target,
     Zap,
     Info,
     ChevronDown,
-    Layers
+    Layers,
+    EyeOff
   } from '@lucide/svelte';
   import type { ParsedTradingPlan } from '../services/planParserService';
 
@@ -18,30 +20,48 @@
     plan: ParsedTradingPlan & { id: string };
     initialX?: number;
     initialY?: number;
+    initialWidth?: number;
+    initialHeight?: number;
     onClose?: (planId: string) => void;
+    onHide?: (planId: string) => void;
   }
 
   let {
     plan,
     initialX = 16,
     initialY = 56,
-    onClose
+    initialWidth = 340,
+    initialHeight,
+    onClose,
+    onHide
   }: Props = $props();
 
   let isMinimized = $state(false);
+  let isWideMode = $state(false);
+  let cardWidth = $state(initialWidth);
+  let cardHeight = $state<number | null>(initialHeight || null);
   let posX = $state(initialX);
   let posY = $state(initialY);
 
+  let cardEl = $state<HTMLDivElement | null>(null);
+
+  // Dragging Card State
   let isDragging = $state(false);
   let dragStartX = 0;
   let dragStartY = 0;
   let initialCardX = 0;
   let initialCardY = 0;
 
+  // Resizing Card State
+  let isResizing = $state(false);
+  let resizeStartX = 0;
+  let resizeStartY = 0;
+  let initialResizeWidth = 0;
+  let initialResizeHeight = 0;
+
   function handleStartDrag(e: MouseEvent) {
-    // Abaikan jika klik terjadi pada tombol action
     const target = e.target as HTMLElement;
-    if (target.closest('button')) return;
+    if (target.closest('button') || target.closest('.resize-handle')) return;
 
     isDragging = true;
     dragStartX = e.clientX;
@@ -65,6 +85,44 @@
     isDragging = false;
     window.removeEventListener('mousemove', handleDragging);
     window.removeEventListener('mouseup', handleStopDrag);
+  }
+
+  function handleStartResize(e: MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    isResizing = true;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    initialResizeWidth = cardWidth;
+    initialResizeHeight = cardEl ? cardEl.offsetHeight : 420;
+
+    window.addEventListener('mousemove', handleResizing);
+    window.addEventListener('mouseup', handleStopResize);
+  }
+
+  function handleResizing(e: MouseEvent) {
+    if (!isResizing) return;
+    const dx = e.clientX - resizeStartX;
+    const dy = e.clientY - resizeStartY;
+    cardWidth = Math.max(300, Math.min(840, initialResizeWidth + dx));
+    cardHeight = Math.max(220, Math.min(760, initialResizeHeight + dy));
+    isWideMode = cardWidth >= 520;
+  }
+
+  function handleStopResize() {
+    isResizing = false;
+    window.removeEventListener('mousemove', handleResizing);
+    window.removeEventListener('mouseup', handleStopResize);
+  }
+
+  function toggleWideMode() {
+    if (isWideMode) {
+      cardWidth = 340;
+      isWideMode = false;
+    } else {
+      cardWidth = 580;
+      isWideMode = true;
+    }
   }
 
   function formatPrice(p?: number): string {
@@ -118,6 +176,15 @@
 
     <button
       type="button"
+      class="pill-btn hide"
+      title="Sembunyikan Tesis dari Grafik"
+      onclick={() => onHide?.(plan.id)}
+    >
+      <EyeOff size={11} />
+    </button>
+
+    <button
+      type="button"
       class="pill-btn close"
       title="Tutup & Hapus Rencana"
       onclick={() => onClose?.(plan.id)}
@@ -128,8 +195,9 @@
 {:else}
   <!-- Full Glassmorphism Floating Card HUD -->
   <div
-    class="floating-thesis-card obsidian-card"
-    style="left: {posX}px; top: {posY}px;"
+    bind:this={cardEl}
+    class="floating-thesis-card obsidian-card {isWideMode ? 'wide-layout' : ''}"
+    style="left: {posX}px; top: {posY}px; width: {cardWidth}px; {cardHeight ? `height: ${cardHeight}px;` : ''}"
     role="region"
     aria-label="Tesis Rencana Perdagangan"
   >
@@ -152,6 +220,31 @@
       </div>
 
       <div class="header-actions">
+        <!-- Tombol Toggle Mode Lebar (Wide Mode 580px) -->
+        <button
+          type="button"
+          class="card-btn {isWideMode ? 'active-wide' : ''}"
+          title={isWideMode ? 'Persempit Jendela (340px)' : 'Lebarkan Jendela Tesis (580px)'}
+          onclick={toggleWideMode}
+        >
+          {#if isWideMode}
+            <Minimize2 size={12} />
+          {:else}
+            <Maximize2 size={12} />
+          {/if}
+        </button>
+
+        <!-- Tombol Sembunyikan (Hide) -->
+        <button
+          type="button"
+          class="card-btn"
+          title="Sembunyikan Tesis dari Grafik"
+          onclick={() => onHide?.(plan.id)}
+        >
+          <EyeOff size={12} />
+        </button>
+
+        <!-- Tombol Minimize ke Pill -->
         <button
           type="button"
           class="card-btn"
@@ -160,10 +253,12 @@
         >
           <Minus size={12} />
         </button>
+
+        <!-- Tombol Close & Delete -->
         <button
           type="button"
           class="card-btn close"
-          title="Tutup & Hapus Rencana"
+          title="Tutup & Hapus Rencana dari Grafik"
           onclick={() => onClose?.(plan.id)}
         >
           <X size={12} />
@@ -172,113 +267,242 @@
     </div>
 
     <!-- Scrollable Thesis Body -->
-    <div class="thesis-body custom-scroll">
-      {#if plan.definition}
-        <div class="definition-banner">
-          <Info size={11} class="def-icon" />
-          <span class="def-text">{plan.definition}</span>
-        </div>
-      {/if}
+    <div class="thesis-body custom-scroll {isWideMode ? 'columns-grid' : ''}">
+      {#if isWideMode}
+        <!-- Kolom Kiri: Katalis Entry, FVG, Definisi, & Risiko -->
+        <div class="thesis-col left-col">
+          {#if plan.definition}
+            <div class="definition-banner">
+              <Info size={11} class="def-icon" />
+              <span class="def-text">{plan.definition}</span>
+            </div>
+          {/if}
 
-      <!-- Section: Katalis Entry & FVG -->
-      <div class="thesis-section entry-section">
-        <div class="section-title-row">
-          <span class="section-icon"><Zap size={11} /></span>
-          <span class="section-label">KATALIS ENTRY</span>
-          <span class="price-val mono-nums {isBearish ? 'bearish' : 'bullish'}">
-            ${formatPrice(plan.entry)}
-          </span>
-        </div>
+          <!-- Section: Katalis Entry & FVG -->
+          <div class="thesis-section entry-section">
+            <div class="section-title-row">
+              <span class="section-icon"><Zap size={11} /></span>
+              <span class="section-label">KATALIS ENTRY</span>
+              <span class="price-val mono-nums {isBearish ? 'bearish' : 'bullish'}">
+                ${formatPrice(plan.entry)}
+              </span>
+            </div>
 
-        {#if plan.contextZones && plan.contextZones.length > 0}
-          <div class="zones-container">
-            {#each plan.contextZones as zone}
-              <div class="zone-pill {isBearish ? 'bearish' : 'bullish'} mono-nums">
-                <Layers size={10} />
-                <span>{zone.label || 'FVG'}: ${formatPrice(zone.low)} - ${formatPrice(zone.high)}</span>
+            {#if plan.contextZones && plan.contextZones.length > 0}
+              <div class="zones-container">
+                {#each plan.contextZones as zone}
+                  <div class="zone-pill {isBearish ? 'bearish' : 'bullish'} mono-nums">
+                    <Layers size={10} />
+                    <span>{zone.label || 'FVG'}: ${formatPrice(zone.low)} - ${formatPrice(zone.high)}</span>
+                  </div>
+                {/each}
               </div>
-            {/each}
-          </div>
-        {/if}
+            {/if}
 
-        {#if plan.reasons.entry}
-          <div class="reason-text">
-            {@html formatEpistemicText(plan.reasons.entry)}
-          </div>
-        {/if}
-      </div>
-
-      <!-- Section: Proteksi & Skenario Invalidasi -->
-      <div class="thesis-section sl-section">
-        <div class="section-title-row">
-          <span class="section-icon sl"><ShieldAlert size={11} /></span>
-          <span class="section-label">INVALIDASI & STOP LOSS</span>
-          <span class="price-val mono-nums sl">
-            ${formatPrice(plan.stopLoss)}
-          </span>
-        </div>
-
-        {#if plan.reasons.stopLoss}
-          <div class="reason-text">
-            {@html formatEpistemicText(plan.reasons.stopLoss)}
-          </div>
-        {/if}
-
-        {#if plan.conclusion?.invalidationScenario}
-          <div class="invalidation-box">
-            <span class="inv-badge">SKENARIO BATAL</span>
-            <span class="inv-content">
-              {@html formatEpistemicText(plan.conclusion.invalidationScenario)}
-            </span>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Section: Target Likuiditas (Take Profit) -->
-      <div class="thesis-section tp-section">
-        <div class="section-title-row">
-          <span class="section-icon tp"><Target size={11} /></span>
-          <span class="section-label">TARGET LIKUIDITAS ({plan.targets.length})</span>
-        </div>
-
-        <div class="targets-list">
-          {#each plan.targets as tgt, idx}
-            {@const targetKey = `tp${idx + 1}`}
-            {@const reason = plan.reasons[targetKey]}
-            <div class="target-item">
-              <div class="target-item-header">
-                <span class="target-badge mono-nums">TP{idx + 1}</span>
-                <span class="target-price mono-nums">${formatPrice(tgt.price)}</span>
-                {#if tgt.rMultiple}
-                  <span class="r-badge mono-nums">+{tgt.rMultiple.toFixed(2)}R</span>
-                {/if}
+            {#if plan.reasons.entry}
+              <div class="reason-text">
+                {@html formatEpistemicText(plan.reasons.entry)}
               </div>
-              {#if reason}
-                <div class="target-reason">
-                  {@html formatEpistemicText(reason)}
+            {/if}
+          </div>
+
+          <!-- Section: Ringkasan Probabilitas & Risiko -->
+          {#if plan.riskAmount || plan.conclusion?.probabilityNotes}
+            <div class="thesis-section risk-summary-section">
+              {#if plan.riskAmount}
+                <div class="risk-meta-row mono-nums">
+                  <span class="meta-lbl">Unit Risiko (R):</span>
+                  <span class="meta-val">${formatPrice(plan.riskAmount)}</span>
+                </div>
+              {/if}
+              {#if plan.conclusion?.probabilityNotes}
+                <div class="prob-notes">
+                  {@html formatEpistemicText(plan.conclusion.probabilityNotes)}
                 </div>
               {/if}
             </div>
-          {/each}
+          {/if}
         </div>
-      </div>
 
-      <!-- Section: Ringkasan Probabilitas & Manajemen Risiko -->
-      {#if plan.riskAmount || plan.conclusion?.probabilityNotes}
-        <div class="thesis-section risk-summary-section">
-          {#if plan.riskAmount}
-            <div class="risk-meta-row mono-nums">
-              <span class="meta-lbl">Unit Risiko (R):</span>
-              <span class="meta-val">${formatPrice(plan.riskAmount)}</span>
+        <!-- Kolom Kanan: Skenario Invalidasi & Target Likuiditas -->
+        <div class="thesis-col right-col">
+          <!-- Section: Proteksi & Skenario Invalidasi -->
+          <div class="thesis-section sl-section">
+            <div class="section-title-row">
+              <span class="section-icon sl"><ShieldAlert size={11} /></span>
+              <span class="section-label">INVALIDASI & STOP LOSS</span>
+              <span class="price-val mono-nums sl">
+                ${formatPrice(plan.stopLoss)}
+              </span>
+            </div>
+
+            {#if plan.reasons.stopLoss}
+              <div class="reason-text">
+                {@html formatEpistemicText(plan.reasons.stopLoss)}
+              </div>
+            {/if}
+
+            {#if plan.conclusion?.invalidationScenario}
+              <div class="invalidation-box">
+                <span class="inv-badge">SKENARIO BATAL</span>
+                <span class="inv-content">
+                  {@html formatEpistemicText(plan.conclusion.invalidationScenario)}
+                </span>
+              </div>
+            {/if}
+          </div>
+
+          <!-- Section: Target Likuiditas (Take Profit) -->
+          <div class="thesis-section tp-section">
+            <div class="section-title-row">
+              <span class="section-icon tp"><Target size={11} /></span>
+              <span class="section-label">TARGET LIKUIDITAS ({plan.targets.length})</span>
+            </div>
+
+            <div class="targets-list">
+              {#each plan.targets as tgt, idx}
+                {@const targetKey = `tp${idx + 1}`}
+                {@const reason = plan.reasons[targetKey]}
+                <div class="target-item">
+                  <div class="target-item-header">
+                    <span class="target-badge mono-nums">TP{idx + 1}</span>
+                    <span class="target-price mono-nums">${formatPrice(tgt.price)}</span>
+                    {#if tgt.rMultiple}
+                      <span class="r-badge mono-nums">+{tgt.rMultiple.toFixed(2)}R</span>
+                    {/if}
+                  </div>
+                  {#if reason}
+                    <div class="target-reason">
+                      {@html formatEpistemicText(reason)}
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {:else}
+        <!-- Tampilan Standar 1 Kolom Ringkas -->
+        {#if plan.definition}
+          <div class="definition-banner">
+            <Info size={11} class="def-icon" />
+            <span class="def-text">{plan.definition}</span>
+          </div>
+        {/if}
+
+        <!-- Section: Katalis Entry & FVG -->
+        <div class="thesis-section entry-section">
+          <div class="section-title-row">
+            <span class="section-icon"><Zap size={11} /></span>
+            <span class="section-label">KATALIS ENTRY</span>
+            <span class="price-val mono-nums {isBearish ? 'bearish' : 'bullish'}">
+              ${formatPrice(plan.entry)}
+            </span>
+          </div>
+
+          {#if plan.contextZones && plan.contextZones.length > 0}
+            <div class="zones-container">
+              {#each plan.contextZones as zone}
+                <div class="zone-pill {isBearish ? 'bearish' : 'bullish'} mono-nums">
+                  <Layers size={10} />
+                  <span>{zone.label || 'FVG'}: ${formatPrice(zone.low)} - ${formatPrice(zone.high)}</span>
+                </div>
+              {/each}
             </div>
           {/if}
-          {#if plan.conclusion?.probabilityNotes}
-            <div class="prob-notes">
-              {@html formatEpistemicText(plan.conclusion.probabilityNotes)}
+
+          {#if plan.reasons.entry}
+            <div class="reason-text">
+              {@html formatEpistemicText(plan.reasons.entry)}
             </div>
           {/if}
         </div>
+
+        <!-- Section: Proteksi & Skenario Invalidasi -->
+        <div class="thesis-section sl-section">
+          <div class="section-title-row">
+            <span class="section-icon sl"><ShieldAlert size={11} /></span>
+            <span class="section-label">INVALIDASI & STOP LOSS</span>
+            <span class="price-val mono-nums sl">
+              ${formatPrice(plan.stopLoss)}
+            </span>
+          </div>
+
+          {#if plan.reasons.stopLoss}
+            <div class="reason-text">
+              {@html formatEpistemicText(plan.reasons.stopLoss)}
+            </div>
+          {/if}
+
+          {#if plan.conclusion?.invalidationScenario}
+            <div class="invalidation-box">
+              <span class="inv-badge">SKENARIO BATAL</span>
+              <span class="inv-content">
+                {@html formatEpistemicText(plan.conclusion.invalidationScenario)}
+              </span>
+            </div>
+          {/if}
+        </div>
+
+        <!-- Section: Target Likuiditas (Take Profit) -->
+        <div class="thesis-section tp-section">
+          <div class="section-title-row">
+            <span class="section-icon tp"><Target size={11} /></span>
+            <span class="section-label">TARGET LIKUIDITAS ({plan.targets.length})</span>
+          </div>
+
+          <div class="targets-list">
+            {#each plan.targets as tgt, idx}
+              {@const targetKey = `tp${idx + 1}`}
+              {@const reason = plan.reasons[targetKey]}
+              <div class="target-item">
+                <div class="target-item-header">
+                  <span class="target-badge mono-nums">TP{idx + 1}</span>
+                  <span class="target-price mono-nums">${formatPrice(tgt.price)}</span>
+                  {#if tgt.rMultiple}
+                    <span class="r-badge mono-nums">+{tgt.rMultiple.toFixed(2)}R</span>
+                  {/if}
+                </div>
+                {#if reason}
+                  <div class="target-reason">
+                    {@html formatEpistemicText(reason)}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+
+        <!-- Section: Ringkasan Probabilitas & Risiko -->
+        {#if plan.riskAmount || plan.conclusion?.probabilityNotes}
+          <div class="thesis-section risk-summary-section">
+            {#if plan.riskAmount}
+              <div class="risk-meta-row mono-nums">
+                <span class="meta-lbl">Unit Risiko (R):</span>
+                <span class="meta-val">${formatPrice(plan.riskAmount)}</span>
+              </div>
+            {/if}
+            {#if plan.conclusion?.probabilityNotes}
+              <div class="prob-notes">
+                {@html formatEpistemicText(plan.conclusion.probabilityNotes)}
+              </div>
+            {/if}
+          </div>
+        {/if}
       {/if}
+    </div>
+
+    <!-- Drag Resize Handle di sudut kanan-bawah -->
+    <div
+      class="resize-handle"
+      title="Tarik untuk mengubah ukuran jendela tesis"
+      onmousedown={handleStartResize}
+      role="separator"
+      aria-label="Ubah ukuran jendela tesis"
+    >
+      <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+        <path d="M7 1L1 7M7 4L4 7M7 7L7 7" stroke="rgba(255,255,255,0.4)" stroke-width="1.2" stroke-linecap="round" />
+      </svg>
     </div>
   </div>
 {/if}
@@ -357,6 +581,11 @@
     color: #f1f5f9;
   }
 
+  .pill-btn.hide:hover {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+  }
+
   .pill-btn.close:hover {
     background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
@@ -366,9 +595,9 @@
   .floating-thesis-card {
     position: absolute;
     z-index: 26;
-    width: 320px;
+    min-width: 300px;
     max-width: calc(100% - 32px);
-    background: rgba(13, 20, 36, 0.90);
+    background: rgba(13, 20, 36, 0.92);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -378,6 +607,7 @@
     flex-direction: column;
     overflow: hidden;
     user-select: text;
+    transition: width 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   /* Header */
@@ -389,6 +619,7 @@
     background: rgba(255, 255, 255, 0.03);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     cursor: grab;
+    flex-shrink: 0;
   }
 
   .thesis-header:active {
@@ -461,6 +692,11 @@
     color: #f1f5f9;
   }
 
+  .card-btn.active-wide {
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.15);
+  }
+
   .card-btn.close:hover {
     background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
@@ -469,8 +705,22 @@
   /* Body Content */
   .thesis-body {
     padding: 10px 12px;
-    max-height: 420px;
+    max-height: 480px;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+  }
+
+  /* Wide Multi-Column Layout */
+  .thesis-body.columns-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .thesis-col {
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -728,5 +978,25 @@
     margin-top: 4px;
     line-height: 1.4;
     color: #cbd5e1;
+  }
+
+  /* Drag Resize Corner Handle */
+  .resize-handle {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 14px;
+    height: 14px;
+    cursor: se-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
+    user-select: none;
+  }
+
+  .resize-handle:hover {
+    opacity: 1;
   }
 </style>

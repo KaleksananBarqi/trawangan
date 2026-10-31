@@ -1675,6 +1675,8 @@ export class ChartSessionController {
       barSpacing: this.getBarSpacing(),
       showVolume: this.showVolume,
       syncConfig: { ...this.syncConfig },
+      activePlans: chartDrawingController.getActivePlans(),
+      showThesisCards: chartDrawingController.isThesisCardsVisible(),
     };
   }
 
@@ -1739,6 +1741,10 @@ export class ChartSessionController {
           this.toggleIndicatorVisibility(ind.title);
         }
       }
+    }
+
+    if (Array.isArray(snapshot.activePlans) && snapshot.activePlans.length > 0) {
+      chartDrawingController.restorePlans(snapshot.activePlans, snapshot.showThesisCards ?? true);
     }
 
     this.notify();

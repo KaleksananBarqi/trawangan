@@ -326,6 +326,8 @@ export interface SavedWorkspace {
   showVolume?: boolean;
   activeRightDockPanel?: string | null;
   syncConfig?: MultiChartSyncConfig;
+  activePlans?: any[];
+  showThesisCards?: boolean;
   indicators: {
     title: string;
     source?: string;

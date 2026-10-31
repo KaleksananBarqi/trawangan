@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import './chart.css';
-  import { Scissors, Bell, X, WifiOff, Edit3 } from '@lucide/svelte';
+  import { Scissors, Bell, X, WifiOff, Edit3, Eye } from '@lucide/svelte';
   import { ChartSessionController } from '../services/chartSessionController';
   import { chartDrawingController, type GestureCreationState } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
@@ -11,6 +11,7 @@
   import { findNearestOhlcPoint } from '../services/priceSnapService';
   import { isEditableElement } from '../services/commandDispatcher';
   import { isTradingPlanText } from '../services/planParserService';
+  import { renderScreenshotCanvasWithOverlay } from '../services/chartSnapshotOverlayService';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
   import type {
@@ -308,7 +309,21 @@
   export function applyWorkspaceTimezone(tz: string): void { controller.setTimezone(tz); }
   export function getActiveIndicators(): ActiveIndicatorInfo[] { return controller.getActiveIndicators(); }
   export function getChartScreenshotCanvas(scope: 'active' | 'all' = 'active'): HTMLCanvasElement | null {
-    return controller.getScreenshotCanvas(scope);
+    const baseCanvas = controller.getScreenshotCanvas(scope);
+    if (!baseCanvas) return null;
+    if (!chartContainer) return baseCanvas;
+
+    return renderScreenshotCanvasWithOverlay({
+      baseCanvas,
+      containerWidth: chartContainer.clientWidth || baseCanvas.width,
+      containerHeight: chartContainer.clientHeight || baseCanvas.height,
+      drawingPriceBadges,
+      showDrawingPriceLabels,
+      activePlans,
+      showThesisCards,
+      getPriceY: (p) => getPriceY(p),
+      formatPrice: (p) => formatPrice(p)
+    });
   }
   export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
     return controller.addPineIndicator(src, t, i, p);
@@ -718,8 +733,20 @@
         initialX={16 + idx * 24}
         initialY={56 + idx * 24}
         onClose={(id) => chartDrawingController.removePlan(id)}
+        onHide={() => chartDrawingController.setThesisCardsVisible(false)}
       />
     {/each}
+  {:else if activePlans.length > 0}
+    <!-- Floating Restore Pill saat Tesis Disembunyikan (#116) -->
+    <button
+      type="button"
+      class="restore-thesis-pill obsidian-card mono-nums"
+      title="Tampilkan Kembali Tesis Rencana Perdagangan"
+      onclick={() => chartDrawingController.setThesisCardsVisible(true)}
+    >
+      <Eye size={12} class="restore-icon" />
+      <span>TAMPILKAN TESIS ({activePlans.length})</span>
+    </button>
   {/if}
 
   <ChartContextMenu

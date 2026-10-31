@@ -1307,8 +1307,9 @@ export class ChartDrawingController {
    * Menghasilkan visualisasi kotak risiko/imbalan per target stage dengan transaksi undo atomik.
    */
   createMultiTargetPosition(
-    plan: ParsedTradingPlan,
+    plan: ParsedTradingPlan & { id?: string },
     options?: {
+      planId?: string;
       anchorTime?: number;
       barSpanPerTarget?: number;
       paneId?: string;
@@ -1334,7 +1335,7 @@ export class ChartDrawingController {
     const span = options?.barSpanPerTarget && options.barSpanPerTarget > 0 ? options.barSpanPerTarget : 25;
     const paneId = options?.paneId || 'price';
 
-    const planId = `plan_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const planId = options?.planId || plan.id || `plan_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const createdDrawings: any[] = [];
     const createdDrawingIds: string[] = [];
 
@@ -1499,6 +1500,35 @@ export class ChartDrawingController {
     const toDelete = this.activeDrawings.filter((d) => d.metadata?.planId === planId);
     if (toDelete.length > 0) {
       this.removeDrawingsFromChart(toDelete.map((d) => d.id));
+    }
+    this.notify();
+  }
+
+  /**
+   * Bersihkan seluruh rencana perdagangan aktif beserta gambarnya dari kanvas
+   */
+  clearAllPlans(): void {
+    const planIds = Array.from(this.activePlans.keys());
+    for (const pid of planIds) {
+      this.removePlan(pid);
+    }
+    this.activePlans.clear();
+    this.notify();
+  }
+
+  /**
+   * Pulihkan koleksi rencana perdagangan aktif ke kanvas (Workspace Persistence)
+   */
+  restorePlans(plans: Array<ParsedTradingPlan & { id: string }>, showCards: boolean = true): void {
+    if (!Array.isArray(plans) || plans.length === 0) return;
+    this.showThesisCards = showCards;
+    for (const plan of plans) {
+      if (!this.activePlans.has(plan.id)) {
+        this.createMultiTargetPosition(plan, {
+          planId: plan.id,
+          drawContextZones: true
+        });
+      }
     }
     this.notify();
   }
