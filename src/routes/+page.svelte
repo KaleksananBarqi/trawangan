@@ -19,6 +19,9 @@
   import RightDockRail from '../lib/components/RightDockRail.svelte';
   import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
   import DrawByHoldingModal from '../lib/components/DrawByHoldingModal.svelte';
+  import ImportPlanModal from '../lib/components/ImportPlanModal.svelte';
+  import type { ParsedTradingPlan } from '../lib/services/planParserService';
+  import { getAdaptiveTickSize } from '../lib/services/priceSnapService';
   import {
     compositeSnapshot,
     copySnapshotToClipboard,
@@ -136,6 +139,8 @@
   let timeframeQuickBarInitialInput = $state('');
   let isShortcutCheatsheetOpen = $state(false);
   let isDrawByHoldingModalOpen = $state(false);
+  let isImportPlanModalOpen = $state(false);
+  let importPlanInitialText = $state('');
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
 
@@ -168,6 +173,19 @@
 
   function handleDismissAlertToast(id: string) {
     triggeredAlertsToasts = triggeredAlertsToasts.filter((a) => a.id !== id);
+  }
+
+  function handleOpenImportPlanModal(initialText = '') {
+    importPlanInitialText = initialText;
+    isImportPlanModalOpen = true;
+  }
+
+  function handleApplyImportPlan(plan: ParsedTradingPlan) {
+    const result = chartDrawingController.createMultiTargetPosition(plan);
+    if (result) {
+      addSystemLog('Trading Plan ' + plan.bias.toUpperCase() + ' berhasil diterapkan ke chart', 'success');
+      isImportPlanModalOpen = false;
+    }
   }
 
   // Deep Replay Session Reactive State
@@ -449,6 +467,10 @@
       commandDispatcher.bindHandler('draw-position', () => {
         handleSelectTool('position');
         addSystemLog('Shortcut: Tool Posisi Long/Short Risk/Reward dipilih (Alt+R)', 'info');
+      }),
+      commandDispatcher.bindHandler('open-import-plan', () => {
+        handleOpenImportPlanModal();
+        addSystemLog('Shortcut: Buka modal Import Trading Plan (Ctrl+Shift+P)', 'info');
       }),
       commandDispatcher.bindHandler('fit-chart-z', () => {
         if (chartComponent?.fitChart) chartComponent.fitChart();
@@ -1403,6 +1425,7 @@
           onRedo={handleRedo}
           onClear={handleClear}
           onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
+          onOpenImportPlan={() => handleOpenImportPlanModal()}
         />
       {/if}
 
@@ -1460,6 +1483,7 @@
           onStrategyUpdate={handleStrategyUpdate}
           onRequestCreateAlert={handleRequestCreateAlert}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
+          onOpenImportPlan={(text) => handleOpenImportPlanModal(text || '')}
         />
       </div>
 
@@ -1767,6 +1791,15 @@
   <DrawByHoldingModal
     isOpen={isDrawByHoldingModalOpen}
     onClose={() => (isDrawByHoldingModalOpen = false)}
+  />
+
+  <!-- Modal Import Trading Plan Deterministik (#112) -->
+  <ImportPlanModal
+    isOpen={isImportPlanModalOpen}
+    initialText={importPlanInitialText}
+    tickSize={ticker?.price ? getAdaptiveTickSize(ticker.price) : undefined}
+    onApply={handleApplyImportPlan}
+    onClose={() => (isImportPlanModalOpen = false)}
   />
 </div>
 

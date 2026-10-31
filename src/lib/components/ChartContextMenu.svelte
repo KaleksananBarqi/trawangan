@@ -14,6 +14,7 @@
     onDrawHorizontalLine?: (price: number) => void;
     onResetChartScale?: () => void;
     onOpenSettings?: () => void;
+    onOpenImportPlan?: () => void;
     onClose: () => void;
   }
 
@@ -28,6 +29,7 @@
     onDrawHorizontalLine,
     onResetChartScale,
     onOpenSettings,
+    onOpenImportPlan,
     onClose,
   }: Props = $props();
 
@@ -125,6 +127,12 @@
     setTimeout(() => {
       onOpenSettings?.();
     }, 16);
+  }
+
+  function handleOpenImportPlanClick(e?: MouseEvent) {
+    e?.stopPropagation();
+    onClose();
+    onOpenImportPlan?.();
   }
 
 
@@ -236,6 +244,19 @@
             <span class="item-label">Salin Harga</span>
           {/if}
         </div>
+      </button>
+
+      <!-- Pilihan 4: Import Trading Plan -->
+      <button
+        type="button"
+        class="menu-item"
+        onclick={handleOpenImportPlanClick}
+      >
+        <div class="item-left">
+          <span class="icon-wrap text-cyan"><Sparkles size={13} /></span>
+          <span class="item-label">Import Trading Plan...</span>
+        </div>
+        <span class="shortcut-tag mono-nums">Ctrl+Shift+P</span>
       </button>
 
       <div class="menu-divider"></div>

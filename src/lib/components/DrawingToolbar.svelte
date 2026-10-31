@@ -87,6 +87,7 @@
     isCollapsed?: boolean;
     onToggleCollapse?: () => void;
     onOpenGestureGuide?: () => void;
+    onOpenImportPlan?: () => void;
   }
 
   let {
@@ -108,6 +109,7 @@
     isCollapsed = false,
     onToggleCollapse,
     onOpenGestureGuide,
+    onOpenImportPlan,
   }: Props = $props();
 
   // State flyout menu
@@ -571,6 +573,27 @@
                   <X size={10} />
                 </button>
               {/if}
+            </div>
+          {/if}
+
+          {#if group.id === 'measure_volume' && onOpenImportPlan}
+            <!-- Quick Action Import Plan pada kelompok alat ukur/posisi -->
+            <div class="import-plan-quick-action">
+              <button
+                type="button"
+                class="import-plan-flyout-btn"
+                title="Buka modal Import Trading Plan (Ctrl+Shift+P)"
+                onclick={() => {
+                  openFlyout = null;
+                  onOpenImportPlan();
+                }}
+              >
+                <span class="flyout-item-icon text-cyan">
+                  <Sparkles size={13} />
+                </span>
+                <span class="flyout-item-label font-semibold">Import Trading Plan...</span>
+                <span class="flyout-item-shortcut mono-nums">Ctrl+Shift+P</span>
+              </button>
             </div>
           {/if}
 
@@ -1167,6 +1190,34 @@
   .toolbar-gesture-help-cue:hover {
     transform: scale(1.2);
     background-color: #7dd3fc;
+  }
+
+  .import-plan-quick-action {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .import-plan-flyout-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(0, 229, 255, 0.08);
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    border-radius: 4px;
+    color: var(--text-main, #e8e9ed);
+    cursor: pointer;
+    transition: all 0.12s ease;
+    text-align: left;
+    font-size: 11px;
+  }
+
+  .import-plan-flyout-btn:hover {
+    background: rgba(0, 229, 255, 0.16);
+    border-color: rgba(0, 229, 255, 0.45);
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.2);
   }
 
   .stamp-quick-palette {

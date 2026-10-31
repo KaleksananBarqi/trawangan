@@ -5,6 +5,7 @@
 export type CommandCategory =
   | 'Navigasi & Simbol'
   | 'Alat Gambar (Drawing Tools)'
+  | 'Alat Gambar & Anotasi'
   | 'Bar Replay (Simulasi)'
   | 'Analisis & Indikator'
   | 'Skala & Tampilan Grafik'
@@ -437,6 +438,14 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       keys: ['Alt', 'R'],
       desc: 'Aktifkan alat Kalkulasi Posisi Long / Short (Risk / Reward)',
       match: { alt: true, ctrlOrMeta: false, key: 'r', code: 'KeyR' },
+    },
+    {
+      id: 'open-import-plan',
+      category: 'Alat Gambar & Anotasi',
+      keys: ['Ctrl', 'Shift', 'P'],
+      desc: 'Buka modal Import Trading Plan (Long/Short bertingkat)',
+      allowInInput: false,
+      match: { ctrlOrMeta: true, shift: true, key: 'p', code: 'KeyP' },
     },
     {
       id: 'draw-fibonacci',

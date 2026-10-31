@@ -10,6 +10,7 @@
   import { replaySession } from '../services/replay';
   import { findNearestOhlcPoint } from '../services/priceSnapService';
   import { isEditableElement } from '../services/commandDispatcher';
+  import { isTradingPlanText } from '../services/planParserService';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
@@ -34,6 +35,7 @@
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
     onRequestCreateAlert?: (symbol: string, price: number) => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
+    onOpenImportPlan?: (initialText?: string) => void;
     themePreset?: ThemePresetId; fontSize?: number; timezone?: string;
     customBullColor?: string; customBearColor?: string;
   }
@@ -45,7 +47,7 @@
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
-    onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert,
+    onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenImportPlan,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -153,10 +155,12 @@
     unsubFeedConnection = marketFeed.onConnectionChange((st: FeedConnectionStatus) => {
       feedConnectionStatus = st; if (st.state === 'connected') isDismissedConnectionWarning = false;
     });
+    window.addEventListener('paste', handleCanvasPaste);
   });
 
   onDestroy(() => {
     isMounted = false; unsubAlerts?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
+    window.removeEventListener('paste', handleCanvasPaste);
     replaySession.bindDriver(null); controller.destroy();
   });
 
@@ -514,6 +518,17 @@
     }
   }
 
+  function handleCanvasPaste(e: ClipboardEvent) {
+    if (isEditableElement(e.target)) return;
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+    const text = clipboardData.getData('text/plain') || clipboardData.getData('text');
+    if (text && isTradingPlanText(text)) {
+      e.preventDefault();
+      onOpenImportPlan?.(text);
+    }
+  }
+
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
 </script>
 
@@ -524,6 +539,7 @@
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}
   onpointerdown={scheduleBadgePositionUpdate}
+  onpaste={handleCanvasPaste}
   role="region"
   aria-label="Area Grafik Utama"
 >
@@ -693,6 +709,7 @@
     onDrawHorizontalLine={() => { chartDrawingController.setTool('hline'); isContextMenuOpen = false; }}
     onResetChartScale={fitChart}
     onOpenSettings={() => { openChartSettings(); isContextMenuOpen = false; }}
+    onOpenImportPlan={() => { isContextMenuOpen = false; onOpenImportPlan?.(); }}
     onClose={() => (isContextMenuOpen = false)}
   />
 </div>

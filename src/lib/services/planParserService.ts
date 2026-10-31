@@ -494,3 +494,28 @@ export function parseTradingPlan(
     validation,
   };
 }
+
+/**
+ * Memeriksa secara heuristik apakah sebuah string teks kemungkinan besar adalah rencana trading
+ * yang dapat diurai oleh parseTradingPlan (misal memuat kata kunci Bias, Entry, Stop Loss/SL, TP/Target).
+ */
+export function isTradingPlanText(text: string): boolean {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 15) return false;
+
+  // Harus memuat indikator Bias / Arah
+  const hasBias = /\b(?:bias|direction|arah|posisi|long|short)\b/i.test(trimmed);
+
+  // Harus memuat indikator Entry
+  const hasEntry = /\b(?:entry|harga\s*masuk|in|open)\b/i.test(trimmed);
+
+  // Harus memuat indikator Stop Loss (SL)
+  const hasSL = /(?:\bstop\s*loss\b|\bsl\b|\brisk\b)/i.test(trimmed);
+
+  // Harus memuat indikator Target / TP
+  const hasTP = /(?:\btarget\b|\btp\d*\b|\btake\s*profit\b)/i.test(trimmed);
+
+  return hasBias && hasEntry && hasSL && hasTP;
+}
+
