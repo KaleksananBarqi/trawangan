@@ -423,10 +423,10 @@
     align-items: center;
     gap: 6px;
     padding: 5px 8px;
-    background: rgba(15, 23, 42, 0.88);
+    background: var(--bg-secondary, rgba(20, 24, 35, 0.92));
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
     border-radius: 20px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     cursor: grab;
@@ -435,7 +435,7 @@
   }
 
   .thesis-collapsed-pill:hover {
-    border-color: rgba(255, 255, 255, 0.25);
+    border-color: var(--border-bright, rgba(255, 255, 255, 0.25));
   }
 
   .pill-drag-handle {
@@ -453,15 +453,15 @@
   }
 
   .pill-badge.bearish {
-    background: rgba(255, 105, 180, 0.15);
-    color: #ff69b4;
-    border: 1px solid rgba(255, 105, 180, 0.35);
+    background: var(--bear-glow, rgba(255, 105, 180, 0.15));
+    color: var(--bear-color, #ff69b4);
+    border: 1px solid var(--bear-color, rgba(255, 105, 180, 0.35));
   }
 
   .pill-badge.bullish {
-    background: rgba(0, 255, 136, 0.15);
-    color: #00ff88;
-    border: 1px solid rgba(0, 255, 136, 0.35);
+    background: var(--bull-glow, rgba(0, 255, 136, 0.15));
+    color: var(--bull-color, #00ff88);
+    border: 1px solid var(--bull-color, rgba(0, 255, 136, 0.35));
   }
 
   .pill-title {
@@ -504,12 +504,12 @@
     z-index: 26;
     min-width: 300px;
     max-width: calc(100% - 32px);
-    background: rgba(13, 20, 36, 0.92);
+    background: var(--bg-secondary, rgba(20, 24, 35, 0.92));
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
     border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.2) inset;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 1px var(--border-hairline, rgba(255, 255, 255, 0.2)) inset;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -524,7 +524,7 @@
     justify-content: space-between;
     padding: 8px 10px;
     background: rgba(255, 255, 255, 0.03);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     cursor: grab;
     flex-shrink: 0;
   }
@@ -542,7 +542,7 @@
   .drag-icon {
     display: flex;
     align-items: center;
-    color: #64748b;
+    color: var(--text-muted, #64748b);
   }
 
   .bias-tag {
@@ -554,15 +554,15 @@
   }
 
   .bias-tag.bearish {
-    background: rgba(255, 105, 180, 0.16);
-    color: #ff69b4;
-    border: 1px solid rgba(255, 105, 180, 0.4);
+    background: var(--bear-glow, rgba(255, 105, 180, 0.16));
+    color: var(--bear-color, #ff69b4);
+    border: 1px solid var(--bear-color, rgba(255, 105, 180, 0.4));
   }
 
   .bias-tag.bullish {
-    background: rgba(0, 255, 136, 0.16);
-    color: #00ff88;
-    border: 1px solid rgba(0, 255, 136, 0.4);
+    background: var(--bull-glow, rgba(0, 255, 136, 0.16));
+    color: var(--bull-color, #00ff88);
+    border: 1px solid var(--bull-color, rgba(0, 255, 136, 0.4));
   }
 
   .prob-tag {
@@ -690,7 +690,7 @@
     flex-direction: column;
     gap: 5px;
     padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
   }
 
   .thesis-section:last-child {
@@ -704,7 +704,7 @@
     gap: 6px;
     font-size: 10px;
     font-weight: 700;
-    color: #64748b;
+    color: var(--text-muted, #64748b);
     letter-spacing: 0.06em;
   }
 
@@ -732,11 +732,11 @@
   }
 
   .price-val.bearish {
-    color: #ff69b4;
+    color: var(--bear-color, #ff69b4);
   }
 
   .price-val.bullish {
-    color: #00ff88;
+    color: var(--bull-color, #00ff88);
   }
 
   .price-val.sl {
@@ -760,21 +760,21 @@
   }
 
   .zone-pill.bearish {
-    background: rgba(255, 105, 180, 0.1);
-    color: #ff69b4;
-    border: 1px solid rgba(255, 105, 180, 0.25);
+    background: var(--bear-glow, rgba(255, 105, 180, 0.1));
+    color: var(--bear-color, #ff69b4);
+    border: 1px solid var(--bear-color, rgba(255, 105, 180, 0.25));
   }
 
   .zone-pill.bullish {
-    background: rgba(0, 255, 136, 0.1);
-    color: #00ff88;
-    border: 1px solid rgba(0, 255, 136, 0.25);
+    background: var(--bull-glow, rgba(0, 255, 136, 0.1));
+    color: var(--bull-color, #00ff88);
+    border: 1px solid var(--bull-color, rgba(0, 255, 136, 0.25));
   }
 
   .reason-text {
     font-size: 11px;
     line-height: 1.45;
-    color: #cbd5e1;
+    color: var(--text-primary, var(--text-main, #cbd5e1));
   }
 
   /* Invalidation Callout */
@@ -836,7 +836,7 @@
   .target-price {
     font-size: 11px;
     font-weight: 600;
-    color: #f1f5f9;
+    color: var(--text-primary, var(--text-main, #f1f5f9));
   }
 
   .r-badge {
@@ -850,7 +850,7 @@
 
   .target-reason {
     font-size: 10.5px;
-    color: #94a3b8;
+    color: var(--text-muted, #94a3b8);
     line-height: 1.35;
   }
 
@@ -884,7 +884,7 @@
   /* Risk Summary Section */
   .risk-summary-section {
     font-size: 10.5px;
-    color: #94a3b8;
+    color: var(--text-muted, #94a3b8);
   }
 
   .risk-meta-row {
@@ -895,18 +895,18 @@
   }
 
   .meta-lbl {
-    color: #64748b;
+    color: var(--text-muted, #64748b);
   }
 
   .meta-val {
-    color: #cbd5e1;
+    color: var(--text-primary, var(--text-main, #cbd5e1));
     font-weight: 600;
   }
 
   .prob-notes {
     margin-top: 4px;
     line-height: 1.4;
-    color: #cbd5e1;
+    color: var(--text-primary, var(--text-main, #cbd5e1));
   }
 
   /* Drag Resize Corner Handle */

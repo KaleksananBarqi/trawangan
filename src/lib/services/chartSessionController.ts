@@ -18,7 +18,8 @@ import type {
   MultiChartSyncConfig,
   ThemePresetId,
   ActiveIndicatorInfo,
-  SavedWorkspace
+  SavedWorkspace,
+  CustomChartBackgroundConfig
 } from '../types/market';
 import { THEME_PRESETS, resolveEffectiveVolumeColors } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
@@ -41,6 +42,7 @@ export interface ChartSessionOptions {
   timezone?: string;
   customBullColor?: string;
   customBearColor?: string;
+  customChartBackground?: CustomChartBackgroundConfig;
   showCurrentPriceLine?: boolean;
   showVolume?: boolean;
   syncConfig?: MultiChartSyncConfig;
@@ -379,6 +381,7 @@ export class ChartSessionController {
   private activeChartDefaultConfig: any = null;
   private isApplyingLayout = false;
   private customCandleColors: { bullColor?: string; bearColor?: string } | null = null;
+  private customChartBackground?: CustomChartBackgroundConfig;
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -391,6 +394,7 @@ export class ChartSessionController {
     this.timezone = options.timezone || 'Asia/Jakarta';
     this.showCurrentPriceLine = options.showCurrentPriceLine ?? true;
     this.showVolume = options.showVolume ?? true;
+    this.customChartBackground = options.customChartBackground;
     if (options.customBullColor || options.customBearColor) {
       this.customCandleColors = {
         bullColor: options.customBullColor,
@@ -471,14 +475,17 @@ export class ChartSessionController {
     if (options.fontSize) this.fontSize = options.fontSize;
     if (options.syncConfig) this.syncConfig = options.syncConfig;
     if (options.showVolume !== undefined) this.showVolume = options.showVolume;
+    if (options.customChartBackground !== undefined) this.customChartBackground = options.customChartBackground;
     if (options.workspaceFactory) this.workspaceFactory = options.workspaceFactory;
 
     this.container = container;
+    this.applyBackground();
     ensurePineEngine();
 
+    const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
     const themeConfig = THEME_PRESETS[this.themePreset] || THEME_PRESETS.signature;
     const velaTheme = {
-      background: themeConfig.chart.background,
+      background: isCustomBg ? 'transparent' : themeConfig.chart.background,
       textColor: themeConfig.chart.textColor,
       gridColor: themeConfig.chart.gridColor,
       borderColor: themeConfig.chart.borderColor,
@@ -1099,13 +1106,18 @@ export class ChartSessionController {
   public setTheme(
     preset: ThemePresetId,
     fontSize?: number,
-    customCandleColors?: { bullColor?: string; bearColor?: string }
+    customCandleColors?: { bullColor?: string; bearColor?: string },
+    customBackground?: CustomChartBackgroundConfig
   ): void {
     this.themePreset = preset;
     if (fontSize) this.fontSize = fontSize;
     if (customCandleColors !== undefined) {
       this.customCandleColors = customCandleColors;
     }
+    if (customBackground !== undefined) {
+      this.customChartBackground = customBackground;
+    }
+    this.applyBackground();
 
     if (this.workspace) {
       const cfg = THEME_PRESETS[preset] || THEME_PRESETS.signature;
@@ -1122,8 +1134,9 @@ export class ChartSessionController {
         ? deriveBorderColor(this.customCandleColors.bearColor, 0.15)
         : cfg.chart.borderDownColor || cfg.chart.downColor;
 
+      const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
       const themeObj = {
-        background: cfg.chart.background,
+        background: isCustomBg ? 'transparent' : cfg.chart.background,
         textColor: cfg.chart.textColor,
         gridColor: cfg.chart.gridColor,
         borderColor: cfg.chart.borderColor,
@@ -1185,6 +1198,63 @@ export class ChartSessionController {
       }
     }
 
+    this.notify();
+  }
+
+  /**
+   * Menerapkan latar belakang kanvas kustom ke elemen container/wrapper grafik (#128)
+   */
+  public applyBackground(): void {
+    if (!this.container) return;
+    const cfg = THEME_PRESETS[this.themePreset] || THEME_PRESETS.signature;
+    const custom = this.customChartBackground;
+    const isCustom = custom?.mode === 'solid' || custom?.mode === 'gradient';
+
+    let backgroundValue = cfg.chart.background;
+    if (custom?.mode === 'gradient') {
+      const top = custom.gradientTop || '#0F0F0F';
+      const bottom = custom.gradientBottom || '#181A20';
+      backgroundValue = `linear-gradient(180deg, ${top}, ${bottom})`;
+    } else if (custom?.mode === 'solid') {
+      backgroundValue = custom.solidColor || '#0F0F0F';
+    } else {
+      backgroundValue = cfg.chart.background;
+    }
+
+    // Setel latar belakang pada container grafik
+    if (this.container.style) {
+      this.container.style.background = backgroundValue;
+    }
+
+    // Paksa seluruh elemen wrapper internal Vela menjadi transparan saat mode kustom aktif
+    try {
+      const internalWrappers = this.container.querySelectorAll('.vela-container, .vela-container > div, [data-vela-wrapper], .vela-plot');
+      internalWrappers.forEach((el) => {
+        if (isCustom) {
+          (el as HTMLElement).style.setProperty('background', 'transparent', 'important');
+        } else {
+          (el as HTMLElement).style.removeProperty('background');
+        }
+      });
+      for (const child of Array.from(this.container.children)) {
+        if (isCustom) {
+          (child as HTMLElement).style.setProperty('background', 'transparent', 'important');
+        } else {
+          (child as HTMLElement).style.removeProperty('background');
+        }
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * Mengatur konfigurasi latar belakang kustom kanvas grafik secara dinamis (#128)
+   */
+  public setCustomChartBackground(bg?: CustomChartBackgroundConfig): void {
+    this.customChartBackground = bg;
+    this.applyBackground();
+    if (this.workspace) {
+      this.setTheme(this.themePreset, this.fontSize, this.customCandleColors ?? undefined, bg);
+    }
     this.notify();
   }
 
@@ -1830,6 +1900,7 @@ export class ChartSessionController {
         }
       }
       // Pulihkan lilin & elemen kanvas ke Theme Preset aktif yang sedang dipilih pengguna
+      this.customChartBackground = { mode: 'theme' };
       this.setTheme(this.themePreset, this.fontSize, this.customCandleColors || undefined);
     } catch (err) {
       console.warn('[ChartSessionController] Gagal reset chart settings ke pabrik:', err);

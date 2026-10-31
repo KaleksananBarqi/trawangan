@@ -12,6 +12,7 @@ export interface ThemeConfig {
     bgPanel: string;
     bgElevated: string;
     bgHover: string;
+    bgSecondary?: string;
     borderHairline: string;
     borderSubtle: string;
     brandPrimary: string;
@@ -22,6 +23,7 @@ export interface ThemeConfig {
     bearGlow: string;
     textMain: string;
     textMuted: string;
+    textPrimary?: string;
   };
   chart: {
     background: string;
@@ -50,6 +52,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bgPanel: '#171717',
       bgElevated: '#1E1E1E',
       bgHover: '#262626',
+      bgSecondary: '#171717',
       borderHairline: '#242424',
       borderSubtle: '#222222',
       brandPrimary: '#FF69B4',
@@ -60,6 +63,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bearGlow: 'rgba(255, 105, 180, 0.25)',
       textMain: '#F7F7F7',
       textMuted: '#A3A3A3',
+      textPrimary: '#F7F7F7',
     },
     chart: {
       background: '#0F0F0F',
@@ -86,6 +90,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bgPanel: '#2B313A',
       bgElevated: '#2B313A',
       bgHover: '#333A44',
+      bgSecondary: '#1E2329',
       borderHairline: '#2B313A',
       borderSubtle: '#252930',
       brandPrimary: '#F0B90B',
@@ -96,6 +101,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bearGlow: 'rgba(246, 70, 93, 0.22)',
       textMain: '#EAECEF',
       textMuted: '#848E9C',
+      textPrimary: '#EAECEF',
     },
     chart: {
       background: '#181A20',
@@ -122,6 +128,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bgPanel: '#19222E',
       bgElevated: '#1F2A38',
       bgHover: '#263345',
+      bgSecondary: '#131922',
       borderHairline: '#202B3C',
       borderSubtle: '#1C2533',
       brandPrimary: '#38BDF8',
@@ -132,6 +139,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bearGlow: 'rgba(255, 59, 105, 0.22)',
       textMain: '#F1F5F9',
       textMuted: '#94A3B8',
+      textPrimary: '#F1F5F9',
     },
     chart: {
       background: '#0D1117',
@@ -158,6 +166,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bgPanel: '#242835',
       bgElevated: '#2A2E39',
       bgHover: '#363C4E',
+      bgSecondary: '#1E222D',
       borderHairline: '#2A2E39',
       borderSubtle: '#242835',
       brandPrimary: '#2962FF',
@@ -168,6 +177,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bearGlow: 'rgba(242, 54, 69, 0.22)',
       textMain: '#D1D4DC',
       textMuted: '#787B86',
+      textPrimary: '#D1D4DC',
     },
     chart: {
       background: '#131722',
@@ -194,6 +204,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bgPanel: '#181E24',
       bgElevated: '#1F2730',
       bgHover: '#28323E',
+      bgSecondary: '#12161A',
       borderHairline: '#1E252D',
       borderSubtle: '#181F26',
       brandPrimary: '#26A69A',
@@ -204,6 +215,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       bearGlow: 'rgba(239, 83, 80, 0.22)',
       textMain: '#E0E6ED',
       textMuted: '#8492A6',
+      textPrimary: '#E0E6ED',
     },
     chart: {
       background: '#0B0E11',

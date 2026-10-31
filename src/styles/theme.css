@@ -23,6 +23,7 @@
   --bg-surface: #0F0F0F;        /* Primary Working Panel & Chart Surface */
   --bg-container: #141414;      /* Surface Container Low */
   --bg-panel: #171717;          /* Structural Cards & Menus */
+  --bg-secondary: #171717;      /* Secondary Container / Floating Card Surface */
   --bg-elevated: #1E1E1E;       /* Hover / Floating Action Strips */
   --bg-hover: #262626;          /* Interactive Item Hover */
   --bg-active: #2E2E2E;         /* Selected Tab / Depressed Element */
@@ -36,6 +37,7 @@
   
   /* Typography Text Colors */
   --text-main: #F7F7F7;         /* High-contrast Pure White */
+  --text-primary: #F7F7F7;      /* Primary Typography */
   --text-muted: #A3A3A3;        /* Standard Labels & Inactive Tabs */
   --text-dim: #737373;          /* Muted Telemetry / Units / Captions */
   --text-disabled: #525252;     /* Disabled / Comments */
@@ -69,6 +71,7 @@
   --bg-surface: #181A20;
   --bg-container: #1E2329;
   --bg-panel: #2B313A;
+  --bg-secondary: #1E2329;
   --bg-elevated: #2B313A;
   --bg-hover: #333A44;
   --bg-active: #3C4450;
@@ -77,6 +80,7 @@
   --border-bright: #39424E;
   --border-focus: #F0B90B;
   --text-main: #EAECEF;
+  --text-primary: #EAECEF;
   --text-muted: #848E9C;
   --text-dim: #5E6673;
   --bull-color: #0ECB81;
@@ -92,6 +96,7 @@
   --bg-surface: #0D1117;
   --bg-container: #131922;
   --bg-panel: #19222E;
+  --bg-secondary: #131922;
   --bg-elevated: #1F2A38;
   --bg-hover: #263345;
   --bg-active: #2C3A4E;
@@ -100,6 +105,7 @@
   --border-bright: #2B3A50;
   --border-focus: #38BDF8;
   --text-main: #F1F5F9;
+  --text-primary: #F1F5F9;
   --text-muted: #94A3B8;
   --text-dim: #64748B;
   --bull-color: #00F090;
@@ -115,6 +121,7 @@
   --bg-surface: #131722;
   --bg-container: #1E222D;
   --bg-panel: #242835;
+  --bg-secondary: #1E222D;
   --bg-elevated: #2A2E39;
   --bg-hover: #363C4E;
   --bg-active: #40465A;
@@ -123,6 +130,7 @@
   --border-bright: #3B4150;
   --border-focus: #2962FF;
   --text-main: #D1D4DC;
+  --text-primary: #D1D4DC;
   --text-muted: #787B86;
   --text-dim: #5A5D66;
   --bull-color: #089981;
@@ -138,6 +146,7 @@
   --bg-surface: #0B0E11;
   --bg-container: #12161A;
   --bg-panel: #181E24;
+  --bg-secondary: #12161A;
   --bg-elevated: #1F2730;
   --bg-hover: #28323E;
   --bg-active: #313D4B;
@@ -146,6 +155,7 @@
   --border-bright: #2B343F;
   --border-focus: #26A69A;
   --text-main: #E0E6ED;
+  --text-primary: #E0E6ED;
   --text-muted: #8492A6;
   --text-dim: #606C7E;
   --bull-color: #26A69A;

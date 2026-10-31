@@ -137,6 +137,7 @@
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 1;
 }
 
 /* Garis panduan vertikal pemotong lilin presisi */
@@ -609,5 +610,47 @@
   font-size: 9px;
   letter-spacing: 0.02em;
 }
+
+/* Live Security Watermark Overlay (#127) - Diletakkan melayang di atas kanvas grafik (z-index: 10, di bawah tooltip/alert) */
+.live-security-watermark-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+  z-index: 10;
+  transition: opacity 0.15s ease;
+}
+
+.vela-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+}
+
+/* Transparansi Vela Container saat Custom Background Aktif (#128) */
+.chart-wrapper[data-custom-bg="true"] .vela-container,
+.chart-wrapper[data-custom-bg="true"] .vela-container > div,
+.chart-wrapper[data-custom-bg="true"] .vela-container [data-vela-wrapper],
+.chart-wrapper[data-custom-bg="true"] .vela-container .vela-plot {
+  background: transparent !important;
+}
+
+.live-diagonal-watermark-text {
+  transform: rotate(-32deg);
+  font-size: clamp(24px, 4vw, 54px);
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  user-select: none;
+}
+
 
 

@@ -1,4 +1,4 @@
-import type { AppSettings, MultiChartSyncConfig } from '../types/market';
+import type { AppSettings, MultiChartSyncConfig, UserProfileConfig, CustomChartBackgroundConfig, SecurityWatermarkConfig } from '../types/market';
 import { DEFAULT_WORLD_CLOCK_CITIES } from '../services/worldClockService';
 
 /**
@@ -41,12 +41,33 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   clipboardAutoOpen: false,
   showWorldClocks: true,
   worldClockCities: [...DEFAULT_WORLD_CLOCK_CITIES],
-  // Snapshot Preferences (#95 & Save Directory Setting)
+  // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting)
   snapshotIncludeFrame: true,
   snapshotIncludePrice: true,
   snapshotIncludeTimestamp: true,
   snapshotScope: 'active',
   snapshotDirectory: '',
+  snapshotScaleMultiplier: 2,
+  // Trader Profile & Attribution Settings (#126)
+  userProfile: {
+    username: '',
+    handle: '',
+    avatarDataUrl: undefined,
+  },
+  // Kustomisasi latar belakang grafik (solid & vertikal gradient) (#128)
+  customChartBackground: {
+    mode: 'theme',
+    solidColor: '#0F0F0F',
+    gradientTop: '#0F0F0F',
+    gradientBottom: '#181A20',
+  },
+  // Security Watermark Anti-Theft Settings (#127)
+  securityWatermark: {
+    enabled: false,
+    text: '',
+    opacity: 0.10,
+    showOnLiveCanvas: false,
+  },
   syncConfig: { ...DEFAULT_SYNC_CONFIG },
 };
 
@@ -65,6 +86,34 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
   const mergedSyncConfig: MultiChartSyncConfig = {
     ...DEFAULT_SYNC_CONFIG,
     ...(saved.syncConfig || {}),
+  };
+
+  const rawProfile = saved.userProfile;
+  const userProfile: UserProfileConfig = {
+    username: typeof rawProfile?.username === 'string' ? rawProfile.username : (DEFAULT_APP_SETTINGS.userProfile?.username ?? ''),
+    handle: typeof rawProfile?.handle === 'string' ? rawProfile.handle : (DEFAULT_APP_SETTINGS.userProfile?.handle ?? ''),
+    avatarDataUrl: typeof rawProfile?.avatarDataUrl === 'string' ? rawProfile.avatarDataUrl : (DEFAULT_APP_SETTINGS.userProfile?.avatarDataUrl ?? undefined),
+    ...(typeof rawProfile?.bio === 'string' ? { bio: rawProfile.bio } : {}),
+  };
+
+  const rawWatermark = saved.securityWatermark;
+  let watermarkOpacity = typeof rawWatermark?.opacity === 'number' && !Number.isNaN(rawWatermark.opacity)
+    ? rawWatermark.opacity
+    : (DEFAULT_APP_SETTINGS.securityWatermark?.opacity ?? 0.10);
+  if (watermarkOpacity < 0.05) watermarkOpacity = 0.05;
+  if (watermarkOpacity > 0.30) watermarkOpacity = 0.30;
+
+  const securityWatermark: SecurityWatermarkConfig = {
+    enabled: typeof rawWatermark?.enabled === 'boolean'
+      ? rawWatermark.enabled
+      : (DEFAULT_APP_SETTINGS.securityWatermark?.enabled ?? false),
+    text: typeof rawWatermark?.text === 'string'
+      ? rawWatermark.text
+      : (DEFAULT_APP_SETTINGS.securityWatermark?.text ?? ''),
+    opacity: watermarkOpacity,
+    showOnLiveCanvas: typeof rawWatermark?.showOnLiveCanvas === 'boolean'
+      ? rawWatermark.showOnLiveCanvas
+      : (DEFAULT_APP_SETTINGS.securityWatermark?.showOnLiveCanvas ?? false),
   };
 
   return {
@@ -91,6 +140,35 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
         ? saved.snapshotScope
         : (DEFAULT_APP_SETTINGS.snapshotScope ?? 'active'),
     snapshotDirectory: saved.snapshotDirectory ?? DEFAULT_APP_SETTINGS.snapshotDirectory ?? '',
+    snapshotScaleMultiplier:
+      saved.snapshotScaleMultiplier === 1 ||
+      saved.snapshotScaleMultiplier === 2 ||
+      saved.snapshotScaleMultiplier === 4 ||
+      saved.snapshotScaleMultiplier === 6
+        ? saved.snapshotScaleMultiplier
+        : (DEFAULT_APP_SETTINGS.snapshotScaleMultiplier ?? 2),
+    userProfile,
+    customChartBackground: {
+      mode:
+        saved.customChartBackground?.mode === 'solid' ||
+        saved.customChartBackground?.mode === 'gradient' ||
+        saved.customChartBackground?.mode === 'theme'
+          ? saved.customChartBackground.mode
+          : 'theme',
+      solidColor:
+        saved.customChartBackground?.solidColor ||
+        DEFAULT_APP_SETTINGS.customChartBackground?.solidColor ||
+        '#0F0F0F',
+      gradientTop:
+        saved.customChartBackground?.gradientTop ||
+        DEFAULT_APP_SETTINGS.customChartBackground?.gradientTop ||
+        '#0F0F0F',
+      gradientBottom:
+        saved.customChartBackground?.gradientBottom ||
+        DEFAULT_APP_SETTINGS.customChartBackground?.gradientBottom ||
+        '#181A20',
+    },
+    securityWatermark,
     syncConfig: mergedSyncConfig,
   };
 }

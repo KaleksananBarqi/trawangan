@@ -24,12 +24,14 @@
   import { getAdaptiveTickSize } from '../lib/services/priceSnapService';
   import {
     compositeSnapshot,
+    captureSnapshot,
     copySnapshotToClipboard,
     downloadSnapshot,
     saveSnapshotToFile,
     generateSnapshotFilename,
     createSnapshotThumbnail,
-    type SnapshotMetadata
+    type SnapshotMetadata,
+    type SnapshotOptions
   } from '../lib/services/chartSnapshotService';
   import { alertService } from '../lib/services/alertService';
   import { rightDockService, type RightDockState } from '../lib/services/rightDockService';
@@ -160,9 +162,10 @@
   let editingAlert = $state<PriceAlert | null>(null);
   let triggeredAlertsToasts = $state<PriceAlert[]>([]);
 
-  // Snapshot State (#94)
+  // Snapshot State (#94, #125)
   let snapshotToast = $state<SnapshotToastData | null>(null);
   let isSnapshotPreviewOpen = $state(false);
+  let isSnapshotProcessing = $state(false);
 
   function handleRequestCreateAlert(sym?: string, price?: number, alertToEdit?: PriceAlert | null) {
     editingAlert = alertToEdit || null;
@@ -1245,7 +1248,30 @@
     };
   }
 
+  /**
+   * Merangkum opsi snapshot lengkap untuk aksi cepat (quick copy & quick download) (#124, #125, #126, #127, #128)
+   */
+  function getQuickSnapshotOptions(scope: 'active' | 'all' = 'active'): SnapshotOptions {
+    const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
+    const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
+    const metadata = getActiveSnapshotMetadata(scope);
+    const scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
+
+    return {
+      mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
+      scaleMultiplier,
+      backgroundColor,
+      customBackground: appSettings.customChartBackground,
+      includePrice: appSettings.snapshotIncludePrice ?? true,
+      includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
+      metadata,
+      userProfile: appSettings.userProfile,
+      watermark: appSettings.securityWatermark,
+    };
+  }
+
   async function handleQuickCopySnapshot() {
+    isSnapshotProcessing = true;
     try {
       const scope = appSettings.snapshotScope ?? 'active';
       const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
@@ -1259,17 +1285,9 @@
         return;
       }
 
-      const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
-      const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
-      const metadata = getActiveSnapshotMetadata(scope);
-      const composite = compositeSnapshot(canvas, {
-        mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
-        scale: 2,
-        backgroundColor,
-        includePrice: appSettings.snapshotIncludePrice ?? true,
-        includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
-        metadata,
-      });
+      const options = getQuickSnapshotOptions(scope);
+      const composite = await captureSnapshot(canvas, options);
+      const scaleMultiplier = options.scaleMultiplier ?? 2;
 
       const copyResult = await copySnapshotToClipboard(composite);
       const thumbUrl = createSnapshotThumbnail(composite);
@@ -1278,14 +1296,14 @@
         snapshotToast = {
           visible: true,
           type: 'copied',
-          message: 'Snapshot disalin ke clipboard! (PNG, 2x HiDPI)',
+          message: `Snapshot disalin ke clipboard! (PNG, ${scaleMultiplier}x)`,
           thumbnailUrl: thumbUrl,
           timestamp: Date.now(),
         };
-        addSystemLog(`Snapshot ${activeSymbol} disalin ke clipboard (PNG 2x HiDPI)`, 'success');
+        addSystemLog(`Snapshot ${options.metadata.symbol} disalin ke clipboard (PNG ${scaleMultiplier}x)`, 'success');
       } else {
         // Fallback jika Clipboard API diblokir oleh browser/OS: simpan ke berkas
-        const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
+        const filename = generateSnapshotFilename(options.metadata.symbol, options.metadata.timeframe, options.metadata.timestamp);
         const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
         notifySnapshotSaved(saveRes, filename, thumbUrl, true);
       }
@@ -1297,6 +1315,8 @@
         message: err?.message || 'Gagal memproses snapshot grafik.',
         timestamp: Date.now(),
       };
+    } finally {
+      isSnapshotProcessing = false;
     }
   }
 
@@ -1332,6 +1352,7 @@
   }
 
   async function handleQuickDownloadSnapshot() {
+    isSnapshotProcessing = true;
     try {
       const scope = appSettings.snapshotScope ?? 'active';
       const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
@@ -1345,19 +1366,10 @@
         return;
       }
 
-      const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
-      const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
-      const metadata = getActiveSnapshotMetadata(scope);
-      const composite = compositeSnapshot(canvas, {
-        mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
-        scale: 2,
-        backgroundColor,
-        includePrice: appSettings.snapshotIncludePrice ?? true,
-        includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
-        metadata,
-      });
+      const options = getQuickSnapshotOptions(scope);
+      const composite = await captureSnapshot(canvas, options);
 
-      const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
+      const filename = generateSnapshotFilename(options.metadata.symbol, options.metadata.timeframe, options.metadata.timestamp);
       const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
       const thumbUrl = createSnapshotThumbnail(composite);
       notifySnapshotSaved(saveRes, filename, thumbUrl, false);
@@ -1369,6 +1381,8 @@
         message: err?.message || 'Gagal mengunduh snapshot grafik.',
         timestamp: Date.now(),
       };
+    } finally {
+      isSnapshotProcessing = false;
     }
   }
 
@@ -1431,6 +1445,9 @@
     onRequestQuickCopySnapshot={handleQuickCopySnapshot}
     onRequestQuickDownloadSnapshot={handleQuickDownloadSnapshot}
     onOpenSnapshotPreview={handleOpenSnapshotPreview}
+    snapshotScaleMultiplier={appSettings.snapshotScaleMultiplier ?? 2}
+    onSnapshotScaleMultiplierChange={(multiplier) => handleUpdateSettings({ snapshotScaleMultiplier: multiplier })}
+    {isSnapshotProcessing}
   />
 
   <!-- Main Viewport Area -->
@@ -1518,6 +1535,7 @@
           themePreset={appSettings.themePreset || 'signature'}
           customBullColor={appSettings.customBullColor}
           customBearColor={appSettings.customBearColor}
+          customChartBackground={appSettings.customChartBackground}
           fontSize={appSettings.fontSize || 12}
           timezone={appSettings.timezone || 'Asia/Jakarta'}
           {syncConfig}
@@ -1526,6 +1544,8 @@
           showVolume={appSettings.showVolume ?? true}
           showIndicatorPriceLabels={appSettings.showIndicatorPriceLabels ?? true}
           showDrawingPriceLabels={appSettings.showDrawingPriceLabels ?? true}
+          securityWatermark={appSettings.securityWatermark}
+          userProfile={appSettings.userProfile}
           onActiveIndicatorsChange={(list) => (activeIndicators = list)}
           onActiveCellChange={handleActiveCellChange}
           onStrategyUpdate={handleStrategyUpdate}

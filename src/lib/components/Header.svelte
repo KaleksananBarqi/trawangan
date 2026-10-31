@@ -74,6 +74,10 @@
     onRequestQuickCopySnapshot?: () => void;
     onRequestQuickDownloadSnapshot?: () => void;
     onOpenSnapshotPreview?: () => void;
+    snapshotScaleMultiplier?: import('../types/market').SnapshotScaleMultiplier;
+    onSnapshotScaleMultiplierChange?: (scale: import('../types/market').SnapshotScaleMultiplier) => void;
+    isSnapshotProcessing?: boolean;
+    chartDimensions?: { width: number; height: number };
     // Props opsional lama agar backward-compatible
     ticker?: any;
     watchlistSymbols?: string[];
@@ -122,7 +126,11 @@
     onOpenSymbolSearch,
     onRequestQuickCopySnapshot,
     onRequestQuickDownloadSnapshot,
-    onOpenSnapshotPreview
+    onOpenSnapshotPreview,
+    snapshotScaleMultiplier,
+    onSnapshotScaleMultiplierChange,
+    isSnapshotProcessing = false,
+    chartDimensions
   }: Props = $props();
 
   let updateState = $state<UpdateState>(updateService.getSnapshot());
@@ -342,11 +350,15 @@
       {/if}
     </button>
 
-    <!-- Snapshot Camera Action & Popover Menu -->
+    <!-- Snapshot Camera Action & Popover Menu (#125) -->
     <SnapshotMenu
       {onRequestQuickCopySnapshot}
       {onRequestQuickDownloadSnapshot}
       {onOpenSnapshotPreview}
+      currentScaleMultiplier={snapshotScaleMultiplier}
+      onScaleMultiplierChange={onSnapshotScaleMultiplierChange}
+      isProcessing={isSnapshotProcessing}
+      {chartDimensions}
     />
 
 

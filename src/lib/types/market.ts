@@ -220,6 +220,37 @@ export interface ObjectTreeItem {
 export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass';
 export type UiDensity = 'compact' | 'regular' | 'comfortable';
 
+/**
+ * Konfigurasi profil personal trader untuk atribusi snapshot frame (#126)
+ */
+export interface UserProfileConfig {
+  username: string;
+  handle: string;
+  bio?: string;
+  avatarDataUrl?: string;
+}
+
+/**
+ * Konfigurasi kustom latar belakang kanvas grafik (#128)
+ * Mendukung mode tema bawaan ('theme'), warna tunggal ('solid'), dan gradien vertikal ('gradient').
+ */
+export interface CustomChartBackgroundConfig {
+  mode: 'theme' | 'solid' | 'gradient';
+  solidColor?: string;
+  gradientTop?: string;
+  gradientBottom?: string;
+}
+
+/**
+ * Konfigurasi tanda air keamanan anti-pencurian semi-transparan pada kanvas (#127)
+ */
+export interface SecurityWatermarkConfig {
+  enabled: boolean;
+  text?: string;
+  opacity: number; // 0.05 - 0.30, default: 0.10
+  showOnLiveCanvas: boolean; // default: false
+}
+
 export interface AppSettings {
   timezone: string;
   soundEnabled: boolean;
@@ -235,6 +266,7 @@ export interface AppSettings {
   themePreset?: ThemePresetId;
   customBullColor?: string;
   customBearColor?: string;
+  customChartBackground?: CustomChartBackgroundConfig;
   fontFamilyUi?: string;
   fontFamilyMono?: string;
   uiDensity?: UiDensity;
@@ -249,13 +281,24 @@ export interface AppSettings {
   clipboardAutoOpen?: boolean;
   showWorldClocks?: boolean;
   worldClockCities?: string[];
-  // Snapshot Preferences (#95 & Save Directory Setting)
+  // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting)
   snapshotIncludeFrame?: boolean;
   snapshotIncludePrice?: boolean;
   snapshotIncludeTimestamp?: boolean;
   snapshotScope?: 'active' | 'all';
   snapshotDirectory?: string;
+  snapshotScaleMultiplier?: SnapshotScaleMultiplier;
+  // Trader Profile & Attribution Settings (#126)
+  userProfile?: UserProfileConfig;
+  // Security Watermark Anti-Theft Settings (#127)
+  securityWatermark?: SecurityWatermarkConfig;
 }
+
+/**
+ * Pilihan faktor pengali resolusi untuk ekspor snapshot grafik (#125)
+ * Mendukung 1x (Web Standar), 2x (HiDPI Retina), 4x (Ultra HD 4K), dan 6x (Super HD 6K).
+ */
+export type SnapshotScaleMultiplier = 1 | 2 | 4 | 6;
 
 
 export interface StrategyTradeRecord {

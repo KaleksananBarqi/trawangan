@@ -14,10 +14,11 @@
     Image as ImageIcon,
     Plus,
     Minus,
-    Folder
+    Folder,
+    ShieldCheck
   } from '@lucide/svelte';
-  import type { AppSettings } from '../types/market';
   import { THEME_PRESETS } from '../constants/themes';
+  import type { AppSettings, SnapshotScaleMultiplier } from '../types/market';
   import {
     compositeSnapshot,
     generateSnapshotFilename,
@@ -26,6 +27,9 @@
     saveSnapshotToFile,
     openSnapshotFolder,
     calculateCompositeDimensions,
+    preloadAvatarImage,
+    loadOfficialLogo,
+    resolveSecurityWatermarkText,
     type SnapshotOptions,
     type SnapshotMetadata
   } from '../services/chartSnapshotService';
@@ -62,7 +66,9 @@
   let includeFrame = $state(true);
   let includePrice = $state(true);
   let includeTimestamp = $state(true);
+  let includeWatermark = $state(false);
   let snapshotScope = $state<'active' | 'all'>('active');
+  let scaleMultiplier = $state<SnapshotScaleMultiplier>(2);
 
   // State Zoom & Snapshot Frozen Data (Mencegah re-render dari WebSocket ticker)
   let zoomLevel = $state(1);
@@ -77,6 +83,7 @@
   let previewBlobUrl: string | null = null;
   let previewDimensions = $state<{ width: number; height: number }>({ width: 0, height: 0 });
   let isRendering = $state(false);
+  let isExporting = $state(false);
   let renderError = $state<string | null>(null);
 
   // Status visual aksi
@@ -108,7 +115,9 @@
         includeFrame = appSettings.snapshotIncludeFrame ?? true;
         includePrice = appSettings.snapshotIncludePrice ?? true;
         includeTimestamp = appSettings.snapshotIncludeTimestamp ?? true;
+        includeWatermark = appSettings.securityWatermark?.enabled ?? false;
         snapshotScope = appSettings.snapshotScope ?? 'active';
+        scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
 
         // Tangkap kanvas sumber sekali saja saat modal dibuka
         cachedSourceCanvas = getScreenshotCanvas(snapshotScope);
@@ -170,6 +179,11 @@
       snapshotIncludePrice: includePrice,
       snapshotIncludeTimestamp: includeTimestamp,
       snapshotScope: snapshotScope,
+      snapshotScaleMultiplier: scaleMultiplier,
+      securityWatermark: {
+        ...(appSettings.securityWatermark || { text: '', opacity: 0.10, showOnLiveCanvas: false }),
+        enabled: includeWatermark,
+      },
     });
   }
 
@@ -214,22 +228,36 @@
 
     const options: SnapshotOptions = {
       mode: includeFrame ? 'branded' : 'clean',
-      scale: 2,
+      scaleMultiplier: scaleMultiplier,
       backgroundColor,
+      customBackground: appSettings.customChartBackground,
       includePrice,
       includeTimestamp,
       metadata,
+      userProfile: appSettings.userProfile,
+      watermark: {
+        ...(appSettings.securityWatermark || { text: '', opacity: 0.10, showOnLiveCanvas: false }),
+        enabled: includeWatermark,
+      },
     };
 
     return compositeSnapshot(sourceCanvas, options);
   }
 
   /**
-   * Me-render ulang gambar pratinjau snapshot secara reaktif
+   * Me-render ulang gambar pratinjau snapshot secara reaktif dan asinkron
    */
-  function renderPreview() {
+  async function renderPreview() {
     isRendering = true;
     renderError = null;
+
+    if (appSettings.userProfile?.avatarDataUrl) {
+      await preloadAvatarImage(appSettings.userProfile.avatarDataUrl).catch(() => {});
+    }
+    await loadOfficialLogo().catch(() => {});
+
+    // Beri jeda tick mikro agar loader spinner ter-render responsif di thread UI
+    await new Promise((resolve) => setTimeout(resolve, 16));
 
     try {
       const composite = generateCurrentComposite();
@@ -269,6 +297,30 @@
     }
   }
 
+  // Ganti Multiplier Resolusi Snapshot (#125)
+  async function handleScaleMultiplierChange(mult: SnapshotScaleMultiplier) {
+    if (scaleMultiplier === mult || isRendering) return;
+    scaleMultiplier = mult;
+    persistChanges();
+    await renderPreview();
+  }
+
+  // Menghitung estimasi dimensi piksel riil berdasarkan ukuran chart aktual (#125)
+  function getEstimatedPixelDimensions(mult: SnapshotScaleMultiplier): string {
+    const sourceW = cachedSourceCanvas?.width || (typeof window !== 'undefined' ? window.innerWidth : 1920);
+    const sourceH = cachedSourceCanvas?.height || (typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.75) : 1080);
+    const dim = calculateCompositeDimensions(sourceW, sourceH, {
+      mode: includeFrame ? 'branded' : 'clean',
+      scaleMultiplier: mult,
+      metadata: {
+        symbol: activeSymbol,
+        timeframe: activeTimeframe,
+        providerId: activeProviderId,
+      },
+    });
+    return `${mult}x · ${dim.width} × ${dim.height} px`;
+  }
+
   // Toggle Opsi Mode Bingkai
   function toggleFrameMode(frame: boolean) {
     if (includeFrame === frame) return;
@@ -291,6 +343,13 @@
     renderPreview();
   }
 
+  // Toggle Sertakan Watermark Keamanan
+  function toggleWatermark(e: Event) {
+    includeWatermark = (e.target as HTMLInputElement).checked;
+    persistChanges();
+    renderPreview();
+  }
+
   // Ganti Cakupan Snapshot (Chart Aktif vs Grid Layout)
   function handleScopeChange(scope: 'active' | 'all') {
     if (snapshotScope === scope) return;
@@ -303,6 +362,8 @@
 
   // Eksekusi Salin Gambar ke Clipboard
   async function handleCopyToClipboard() {
+    if (isExporting || isRendering) return;
+    isExporting = true;
     try {
       const composite = generateCurrentComposite();
       if (!composite) {
@@ -317,7 +378,7 @@
         copyTimer = setTimeout(() => {
           copied = false;
         }, 2200);
-        onLog?.('Snapshot grafik disalin ke clipboard! (PNG 2x HiDPI)', 'success');
+        onLog?.(`Snapshot grafik disalin ke clipboard! (PNG ${scaleMultiplier}x)`, 'success');
       } else {
         // Fallback jika Clipboard API diblokir oleh browser / OS: simpan ke berkas
         const isMulti = snapshotScope === 'all';
@@ -331,11 +392,15 @@
       }
     } catch (err: any) {
       onLog?.(err?.message || 'Gagal menyalin gambar ke clipboard.', 'warn');
+    } finally {
+      isExporting = false;
     }
   }
 
   // Eksekusi Simpan / Unduh Berkas PNG ke Direktori
   async function handleDownloadImage() {
+    if (isExporting || isRendering) return;
+    isExporting = true;
     try {
       const composite = generateCurrentComposite();
       if (!composite) {
@@ -351,12 +416,14 @@
       );
       const res = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);
       if (res.success) {
-        onLog?.(`Snapshot berhasil disimpan di: ${res.filePath || filename}`, 'success');
+        onLog?.(`Snapshot berhasil disimpan di: ${res.filePath || filename} (${scaleMultiplier}x)`, 'success');
       } else {
         onLog?.(res.error || 'Gagal menyimpan gambar snapshot.', 'warn');
       }
     } catch (err: any) {
       onLog?.(err?.message || 'Gagal mengunduh gambar snapshot.', 'warn');
+    } finally {
+      isExporting = false;
     }
   }
 </script>
@@ -440,7 +507,8 @@
           {#if isRendering}
             <div class="preview-loading">
               <span class="loading-spinner"></span>
-              <span>Membuat komposit grafik...</span>
+              <span class="loading-text">Memproses komposit resolusi tinggi ({scaleMultiplier}x)...</span>
+              <span class="loading-subtext mono-nums">{getEstimatedPixelDimensions(scaleMultiplier)}</span>
             </div>
           {:else if renderError}
             <div class="preview-error">
@@ -465,7 +533,7 @@
           <!-- Metadata Status Bar di bawah pratinjau -->
           <div class="preview-infobar">
             <span class="info-tag mono-nums">
-              Dimensi: {previewDimensions.width} × {previewDimensions.height} px (2x HiDPI)
+              Dimensi: {previewDimensions.width} × {previewDimensions.height} px ({scaleMultiplier}x · {scaleMultiplier === 1 ? 'Standar' : scaleMultiplier === 2 ? 'HiDPI' : scaleMultiplier === 4 ? 'Ultra HD' : 'Super HD'})
             </span>
             <span class="info-tag format-badge">PNG 100% Client-Side</span>
           </div>
@@ -473,6 +541,31 @@
 
         <!-- Sidebar Kontrol Opsi (Kanan) -->
         <div class="controls-sidebar">
+          <!-- Pilihan Multiplier Skala Resolusi (#125) -->
+          <div class="sidebar-section">
+            <span class="section-title">RESOLUSI EKSPOR (SCALE MULTIPLIER)</span>
+            <div class="scale-multiplier-grid">
+              {#each ([1, 2, 4, 6] as const) as mult}
+                <button
+                  type="button"
+                  class="scale-multiplier-card {scaleMultiplier === mult ? 'active' : ''}"
+                  onclick={() => handleScaleMultiplierChange(mult)}
+                  disabled={isRendering || isExporting}
+                >
+                  <div class="scale-card-header">
+                    <span class="scale-badge-tag">{mult}x</span>
+                    <span class="scale-label-name">
+                      {mult === 1 ? 'Standar' : mult === 2 ? 'HiDPI Retina' : mult === 4 ? 'Ultra HD 4K' : 'Super HD 6K'}
+                    </span>
+                  </div>
+                  <span class="scale-pixel-dim mono-nums">
+                    {getEstimatedPixelDimensions(mult)}
+                  </span>
+                </button>
+              {/each}
+            </div>
+          </div>
+
           <div class="sidebar-section">
             <span class="section-title">GAYA EKSPOR (EXPORT MODE)</span>
             <div class="mode-toggle-group">
@@ -561,6 +654,30 @@
             </div>
           {/if}
 
+          <!-- Pilihan Tanda Air Keamanan Anti-Maling (#127) -->
+          <div class="sidebar-section">
+            <span class="section-title">KEAMANAN & WATERMARK</span>
+            <div class="toggles-list">
+              <label class="toggle-row">
+                <div class="toggle-label-wrap">
+                  <ShieldCheck size={13} class="toggle-icon text-brand-cyan" />
+                  <div class="toggle-text-col">
+                    <span class="toggle-label">Watermark Profil</span>
+                    <span class="toggle-hint" title={resolveSecurityWatermarkText(appSettings.securityWatermark, appSettings.userProfile)}>
+                      {resolveSecurityWatermarkText(appSettings.securityWatermark, appSettings.userProfile)}
+                    </span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  class="custom-switch"
+                  checked={includeWatermark}
+                  onchange={toggleWatermark}
+                />
+              </label>
+            </div>
+          </div>
+
           <!-- Lokasi Folder Penyimpanan Aktif -->
           <div class="sidebar-section">
             <div class="section-title-row">
@@ -609,9 +726,13 @@
             type="button"
             class="btn btn-copy {copied ? 'btn-copied' : ''}"
             onclick={handleCopyToClipboard}
+            disabled={isRendering || isExporting}
             title="Salin gambar PNG ke clipboard"
           >
-            {#if copied}
+            {#if isExporting}
+              <span class="mini-spinner"></span>
+              <span>Memproses...</span>
+            {:else if copied}
               <Check size={14} class="btn-icon" />
               <span>Tersalin ke Clipboard!</span>
             {:else}
@@ -625,10 +746,16 @@
             type="button"
             class="btn btn-download"
             onclick={handleDownloadImage}
+            disabled={isRendering || isExporting}
             title="Unduh berkas PNG ke penyimpanan komputer"
           >
-            <Download size={14} class="btn-icon" />
-            <span>Unduh PNG</span>
+            {#if isExporting}
+              <span class="mini-spinner"></span>
+              <span>Menyimpan...</span>
+            {:else}
+              <Download size={14} class="btn-icon" />
+              <span>Unduh PNG</span>
+            {/if}
           </button>
         </div>
       </div>
@@ -951,6 +1078,109 @@
     text-overflow: ellipsis;
   }
 
+  .loading-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary, #ffffff);
+  }
+
+  .loading-subtext {
+    font-size: 11px;
+    color: var(--text-muted, #7c828d);
+    letter-spacing: 0.02em;
+  }
+
+  .mini-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+
+  /* Scale Multiplier Grid (#125) */
+  .scale-multiplier-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .scale-multiplier-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.06));
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+    gap: 4px;
+  }
+
+  .scale-multiplier-card:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+
+  .scale-multiplier-card.active {
+    background: rgba(255, 105, 180, 0.1);
+    border-color: #ff69b4;
+    box-shadow: 0 0 10px rgba(255, 105, 180, 0.15);
+  }
+
+  .scale-multiplier-card:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .scale-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .scale-badge-tag {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    color: #ff69b4;
+    background: rgba(255, 105, 180, 0.12);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .scale-multiplier-card.active .scale-badge-tag {
+    background: #ff69b4;
+    color: #0f0f0f;
+  }
+
+  .scale-label-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary, #ffffff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .scale-pixel-dim {
+    font-size: 9.5px;
+    color: var(--text-muted, #7c828d);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+  }
+
+  .scale-multiplier-card.active .scale-pixel-dim {
+    color: #ff80bf;
+  }
+
   /* Mode Toggle */
   .mode-toggle-group {
     display: grid;
@@ -1069,6 +1299,21 @@
   .toggle-label {
     font-size: 12px;
     color: var(--text-primary, #ffffff);
+  }
+
+  .toggle-text-col {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .toggle-hint {
+    font-size: 10px;
+    color: var(--text-muted, #7c828d);
+    max-width: 170px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .text-brand-cyan {

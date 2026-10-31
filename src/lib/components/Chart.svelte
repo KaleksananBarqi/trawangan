@@ -12,11 +12,14 @@
   import { isEditableElement } from '../services/commandDispatcher';
   import { isTradingPlanText } from '../services/planParserService';
   import { renderScreenshotCanvasWithOverlay } from '../services/chartSnapshotOverlayService';
+  import { THEME_PRESETS } from '../constants/themes';
+  import { resolveSecurityWatermarkText } from '../services/chartSnapshotService';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
-    Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace
+    Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
+    CustomChartBackgroundConfig, UserProfileConfig, SecurityWatermarkConfig
   } from '../types/market';
   import type { PriceScaleBadge } from '../services/priceScaleLabelService';
   import type { FeedConnectionStatus } from '../services/market/types';
@@ -40,16 +43,20 @@
     onOpenImportPlan?: (initialText?: string) => void;
     themePreset?: ThemePresetId; fontSize?: number; timezone?: string;
     customBullColor?: string; customBearColor?: string;
+    customChartBackground?: CustomChartBackgroundConfig;
+    securityWatermark?: SecurityWatermarkConfig;
+    userProfile?: UserProfileConfig;
   }
 
   let {
     symbol, timeframe, defaultTimeframe = '15m', layout, providerId = 'binance',
     themePreset = 'signature', fontSize = 12, timezone = 'Asia/Jakarta',
-    customBullColor, customBearColor,
+    customBullColor, customBearColor, customChartBackground,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenImportPlan,
+    securityWatermark, userProfile,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -57,7 +64,7 @@
 
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
-    fontSize, timezone, customBullColor, customBearColor,
+    fontSize, timezone, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange
   });
 
@@ -108,6 +115,10 @@
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
   $effect(() => { const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor; if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }); });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
+  $effect(() => {
+    const bg = customChartBackground;
+    if (isMounted) controller.setCustomChartBackground(bg);
+  });
   $effect(() => {
     const show = showDrawingPriceLabels;
     if (isMounted) {
@@ -329,6 +340,8 @@
     if (!baseCanvas) return null;
     if (!chartContainer) return baseCanvas;
 
+    const currentTheme = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+
     return renderScreenshotCanvasWithOverlay({
       baseCanvas,
       containerWidth: chartContainer.clientWidth || baseCanvas.width,
@@ -339,7 +352,8 @@
       showThesisCards,
       cardGeometries: thesisCardGeometries,
       getPriceY: (p) => getPriceY(p),
-      formatPrice: (p) => formatPrice(p)
+      formatPrice: (p) => formatPrice(p),
+      themeConfig: currentTheme
     });
   }
   export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
@@ -575,12 +589,27 @@
   }
 
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
+
+  const chartBackgroundStyle = $derived.by(() => {
+    const cfg = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+    if (customChartBackground?.mode === 'gradient') {
+      const top = customChartBackground.gradientTop || '#0F0F0F';
+      const bottom = customChartBackground.gradientBottom || '#181A20';
+      return `background: linear-gradient(180deg, ${top}, ${bottom});`;
+    }
+    if (customChartBackground?.mode === 'solid' && customChartBackground.solidColor) {
+      return `background: ${customChartBackground.solidColor};`;
+    }
+    return `background: ${cfg.chart.background};`;
+  });
 </script>
 
 <svelte:window onkeydown={handleWindowKeyDown} onkeyup={handleWindowKeyUp} />
 
 <div 
   class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''} {isHandpullActive ? 'handpull-mode' : ''} {isGestureActive ? 'gesture-mode' : ''}"
+  data-custom-bg={customChartBackground?.mode === 'solid' || customChartBackground?.mode === 'gradient' ? 'true' : 'false'}
+  style={chartBackgroundStyle}
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}
   onpointerdown={scheduleBadgePositionUpdate}
@@ -588,6 +617,20 @@
   role="region"
   aria-label="Area Grafik Utama"
 >
+  <!-- Lapisan Watermark Keamanan Live Canvas (Diletakkan di lapisan belakang candlestick / z-index 0) -->
+  {#if securityWatermark?.enabled && securityWatermark?.showOnLiveCanvas}
+    {@const watermarkText = resolveSecurityWatermarkText(securityWatermark, userProfile)}
+    <div
+      class="live-security-watermark-overlay"
+      style="opacity: {securityWatermark.opacity ?? 0.10}; pointer-events: none;"
+      aria-hidden="true"
+    >
+      <span class="live-diagonal-watermark-text mono-nums">
+        {watermarkText}
+      </span>
+    </div>
+  {/if}
+
   <div bind:this={chartContainer} class="vela-container"></div>
   <canvas
     bind:this={gestureInkCanvas}

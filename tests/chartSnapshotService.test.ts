@@ -11,9 +11,18 @@ import {
   getSnapshotBlob,
   copySnapshotToClipboard,
   downloadSnapshot,
+  loadOfficialLogo,
+  setCachedOfficialLogo,
+  clearCachedOfficialLogo,
   type SnapshotOptions,
-  type SnapshotMetadata
+  type SnapshotMetadata,
+  type SnapshotScaleMultiplier
 } from '../src/lib/services/chartSnapshotService';
+import {
+  DEFAULT_APP_SETTINGS,
+  resolveAppSettings
+} from '../src/lib/constants/defaults';
+import type { AppSettings } from '../src/lib/types/market';
 
 // Helper mock untuk 2D Canvas Context dalam lingkungan Node.js
 function createMockCanvas(width = 800, height = 600) {
@@ -252,8 +261,8 @@ describe('Chart Snapshot Service Seam Suite (#93)', () => {
       const fillTextOps = targetCanvas.operations.filter((op) => op.method === 'fillText');
       const drawnTexts = fillTextOps.map((op) => op.args[0]);
 
-      // Monogram 'tr'
-      assert.ok(drawnTexts.includes('tr'), 'Attribution bar harus memuat monogram "tr"');
+      // Sesuai Tiket #125 & ADR-0015: Monogram manual 'tr' dihapus dan digantikan oleh logo resmi
+      assert.ok(!drawnTexts.includes('tr'), 'Attribution bar tidak boleh lagi memuat teks monogram manual "tr"');
       // Brand 'trawangan'
       assert.ok(drawnTexts.includes('trawangan'), 'Attribution bar harus memuat teks brand "trawangan"');
       // Badge instrumen
@@ -449,6 +458,211 @@ describe('Chart Snapshot Service Seam Suite (#93)', () => {
       } finally {
         (globalThis as any).document = originalDocument;
       }
+    });
+  });
+
+  describe('8. Tiket #125: Official Logo Integration & Loader', () => {
+    test('loadOfficialLogo memuat citra dari /static/logo.png dan menyimpannya di cache', async () => {
+      clearCachedOfficialLogo();
+
+      const originalImage = (globalThis as any).Image;
+      let loadedSrc = '';
+      (globalThis as any).Image = class MockImage {
+        crossOrigin = '';
+        _src = '';
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(val: string) {
+          this._src = val;
+          loadedSrc = val;
+          setTimeout(() => {
+            this.onload?.();
+          }, 5);
+        }
+        get src() {
+          return this._src;
+        }
+      };
+
+      try {
+        const logo = await loadOfficialLogo('/static/logo.png');
+        assert.ok(logo, 'loadOfficialLogo harus mengembalikan objek citra');
+        assert.equal(loadedSrc, '/static/logo.png');
+
+        // Panggilan kedua harus mengembalikan instance dari cache tanpa membuat Image baru
+        const cached = await loadOfficialLogo('/static/logo.png');
+        assert.equal(cached, logo, 'Harus mengembalikan citra dari cache');
+      } finally {
+        (globalThis as any).Image = originalImage;
+        clearCachedOfficialLogo();
+      }
+    });
+
+    test('Attribution Bar: Citra logo resmi digambar via drawImage menggantikan monogram "tr"', () => {
+      const sourceCanvas = createMockCanvas(500, 300);
+      const targetCanvas = createMockCanvas(1, 1);
+      const mockLogoImage = { name: 'official-logo-png', width: 48, height: 48 };
+
+      const options: SnapshotOptions = {
+        mode: 'branded',
+        scale: 2,
+        logoImage: mockLogoImage,
+        metadata: baseMetadata,
+      };
+
+      compositeSnapshot(sourceCanvas, options, targetCanvas);
+
+      // Verifikasi monogram 'tr' TIDAK digambar sama sekali
+      const fillTextOps = targetCanvas.operations.filter((op) => op.method === 'fillText');
+      const drawnTexts = fillTextOps.map((op) => op.args[0]);
+      assert.ok(!drawnTexts.includes('tr'), 'Teks monogram manual "tr" tidak boleh digambar');
+
+      // Verifikasi drawImage dipanggil dengan mockLogoImage
+      const drawImageOps = targetCanvas.operations.filter((op) => op.method === 'drawImage');
+      const logoDrawOp = drawImageOps.find((op) => op.args[0] === mockLogoImage);
+      assert.ok(logoDrawOp, 'drawImage harus dipanggil untuk menggambar logo citra resmi');
+
+      // Periksa koordinat dan dimensi rendering logo (24px * scale 2 = 48px)
+      const [img, x, y, w, h] = logoDrawOp.args;
+      assert.equal(w, 48);
+      assert.equal(h, 48);
+      assert.equal(x, 48); // padding (24 * 2)
+    });
+
+    test('Attribution Bar: Fallback elegan tanpa teks monogram "tr" jika citra belum siap', () => {
+      clearCachedOfficialLogo();
+      const sourceCanvas = createMockCanvas(500, 300);
+      const targetCanvas = createMockCanvas(1, 1);
+
+      const options: SnapshotOptions = {
+        mode: 'branded',
+        scale: 2,
+        metadata: baseMetadata,
+      };
+
+      compositeSnapshot(sourceCanvas, options, targetCanvas);
+
+      const fillTextOps = targetCanvas.operations.filter((op) => op.method === 'fillText');
+      const drawnTexts = fillTextOps.map((op) => op.args[0]);
+      assert.ok(!drawnTexts.includes('tr'), 'Fallback tidak boleh memunculkan monogram manual "tr"');
+    });
+  });
+
+  describe('9. Tiket #125: Multi-Scale Compositing (1x, 2x, 4x, 6x)', () => {
+    test('calculateCompositeDimensions menghitung presisi pada scaleMultiplier 1x, 2x, 4x, 6x (Branded)', () => {
+      const sourceW = 1000;
+      const sourceH = 600;
+      const padding = 24;
+      const attributionH = 60;
+      const logicalW = sourceW + padding * 2; // 1048
+      const logicalH = sourceH + padding * 2 + attributionH; // 708
+
+      const multipliers: SnapshotScaleMultiplier[] = [1, 2, 4, 6];
+
+      for (const mult of multipliers) {
+        const dim = calculateCompositeDimensions(sourceW, sourceH, {
+          mode: 'branded',
+          scaleMultiplier: mult,
+          padding,
+          metadata: baseMetadata,
+        });
+
+        assert.equal(dim.width, logicalW * mult, `Lebar harus cocok untuk multiplier ${mult}x`);
+        assert.equal(dim.height, logicalH * mult, `Tinggi harus cocok untuk multiplier ${mult}x`);
+        assert.equal(dim.chartWidth, sourceW * mult, `Lebar chart harus cocok untuk multiplier ${mult}x`);
+        assert.equal(dim.chartHeight, sourceH * mult, `Tinggi chart harus cocok untuk multiplier ${mult}x`);
+        assert.equal(dim.chartX, padding * mult);
+        assert.equal(dim.chartY, padding * mult);
+        assert.equal(dim.attributionHeight, attributionH * mult);
+      }
+    });
+
+    test('calculateCompositeDimensions menghitung presisi pada scaleMultiplier 1x, 2x, 4x, 6x (Clean Mode)', () => {
+      const sourceW = 1920;
+      const sourceH = 1080;
+
+      const dim1x = calculateCompositeDimensions(sourceW, sourceH, {
+        mode: 'clean',
+        scaleMultiplier: 1,
+        metadata: baseMetadata,
+      });
+      assert.equal(dim1x.width, 1920);
+      assert.equal(dim1x.height, 1080);
+
+      const dim2x = calculateCompositeDimensions(sourceW, sourceH, {
+        mode: 'clean',
+        scaleMultiplier: 2,
+        metadata: baseMetadata,
+      });
+      assert.equal(dim2x.width, 3840);
+      assert.equal(dim2x.height, 2160);
+
+      const dim4x = calculateCompositeDimensions(sourceW, sourceH, {
+        mode: 'clean',
+        scaleMultiplier: 4,
+        metadata: baseMetadata,
+      });
+      assert.equal(dim4x.width, 7680);
+      assert.equal(dim4x.height, 4320);
+
+      const dim6x = calculateCompositeDimensions(sourceW, sourceH, {
+        mode: 'clean',
+        scaleMultiplier: 6,
+        metadata: baseMetadata,
+      });
+      assert.equal(dim6x.width, 11520);
+      assert.equal(dim6x.height, 6480);
+    });
+
+    test('compositeSnapshot merender kanvas dengan totalScale = dpr * scaleMultiplier', () => {
+      const sourceCanvas = createMockCanvas(400, 200);
+      const targetCanvas = createMockCanvas(1, 1);
+      const mockLogo = { name: 'logo-6x' };
+
+      const options: SnapshotOptions = {
+        mode: 'branded',
+        scale: 1, // dpr = 1
+        scaleMultiplier: 6,
+        logoImage: mockLogo,
+        metadata: baseMetadata,
+      };
+
+      compositeSnapshot(sourceCanvas, options, targetCanvas);
+
+      // (400 + 48) * 6 = 2688
+      // (200 + 48 + 60) * 6 = 1848
+      assert.equal(targetCanvas.width, 2688);
+      assert.equal(targetCanvas.height, 1848);
+
+      const logoOp = targetCanvas.operations.find(
+        (op) => op.method === 'drawImage' && op.args[0] === mockLogo
+      );
+      assert.ok(logoOp, 'Logo harus digambar pada skala 6x');
+      assert.equal(logoOp.args[3], 24 * 6, 'Ukuran lebar logo harus diskalakan 6x (144px)');
+      assert.equal(logoOp.args[4], 24 * 6, 'Ukuran tinggi logo harus diskalakan 6x (144px)');
+    });
+  });
+
+  describe('10. Tiket #125: snapshotScaleMultiplier AppSettings Persistence', () => {
+    test('DEFAULT_APP_SETTINGS menyertakan snapshotScaleMultiplier default bernilai 2', () => {
+      assert.equal(DEFAULT_APP_SETTINGS.snapshotScaleMultiplier, 2);
+    });
+
+    test('resolveAppSettings mempertahankan nilai multiplier 1, 2, 4, 6 dan memulihkan nilai default jika tidak valid', () => {
+      // Nilai null / undefined
+      const resolvedEmpty = resolveAppSettings(null);
+      assert.equal(resolvedEmpty.snapshotScaleMultiplier, 2);
+
+      // Nilai sah
+      assert.equal(resolveAppSettings({ snapshotScaleMultiplier: 1 }).snapshotScaleMultiplier, 1);
+      assert.equal(resolveAppSettings({ snapshotScaleMultiplier: 2 }).snapshotScaleMultiplier, 2);
+      assert.equal(resolveAppSettings({ snapshotScaleMultiplier: 4 }).snapshotScaleMultiplier, 4);
+      assert.equal(resolveAppSettings({ snapshotScaleMultiplier: 6 }).snapshotScaleMultiplier, 6);
+
+      // Nilai tidak sah (fallback ke default 2)
+      assert.equal(resolveAppSettings({ snapshotScaleMultiplier: 3 as any }).snapshotScaleMultiplier, 2);
+      assert.equal(resolveAppSettings({ snapshotScaleMultiplier: 8 as any }).snapshotScaleMultiplier, 2);
+      assert.equal(resolveAppSettings({ snapshotScaleMultiplier: 'invalid' as any }).snapshotScaleMultiplier, 2);
     });
   });
 });

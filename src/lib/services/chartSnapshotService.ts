@@ -4,7 +4,9 @@
  */
 
 import { formatPriceLabel } from './priceScaleLabelService';
+import type { SnapshotScaleMultiplier, UserProfileConfig, CustomChartBackgroundConfig, SecurityWatermarkConfig } from '../types/market';
 
+export type { SnapshotScaleMultiplier, UserProfileConfig, CustomChartBackgroundConfig, SecurityWatermarkConfig } from '../types/market';
 export type SnapshotScope = 'active' | 'all';
 export type SnapshotMode = 'branded' | 'clean';
 
@@ -22,11 +24,17 @@ export interface SnapshotMetadata {
 export interface SnapshotOptions {
   mode?: SnapshotMode;
   scale?: number;
+  scaleMultiplier?: SnapshotScaleMultiplier;
   padding?: number;
   backgroundColor?: string;
+  customBackground?: CustomChartBackgroundConfig;
   includePrice?: boolean;
   includeTimestamp?: boolean;
   includeBrandUrl?: boolean;
+  logoImage?: any;
+  avatarImage?: any;
+  userProfile?: UserProfileConfig;
+  watermark?: Partial<SecurityWatermarkConfig>;
   metadata: SnapshotMetadata;
 }
 
@@ -42,6 +50,192 @@ export interface CompositeDimensions {
 }
 
 /**
+ * Cache memori lokal untuk citra logo resmi aplikasi
+ */
+let cachedLogoImage: any = null;
+
+/**
+ * Cache memori lokal untuk citra avatar trader
+ */
+let cachedAvatarDataUrl: string | null = null;
+let cachedAvatarImage: any = null;
+
+/**
+ * Menyimpan referensi citra avatar ke dalam cache memori.
+ */
+export function setCachedAvatar(dataUrl: string | null, image: any): void {
+  cachedAvatarDataUrl = dataUrl;
+  cachedAvatarImage = image;
+}
+
+/**
+ * Membersihkan citra avatar dari cache memori.
+ */
+export function clearCachedAvatar(): void {
+  cachedAvatarDataUrl = null;
+  cachedAvatarImage = null;
+}
+
+/**
+ * Mengambil citra avatar yang telah dimuat dari cache memori secara sinkron.
+ */
+export function getCachedAvatar(dataUrl?: string): any {
+  if (!dataUrl) return null;
+  if (dataUrl === cachedAvatarDataUrl && cachedAvatarImage) {
+    return cachedAvatarImage;
+  }
+  return null;
+}
+
+/**
+ * Menyimpan referensi citra logo resmi aplikasi ke dalam cache memori.
+ */
+export function setCachedOfficialLogo(image: any): void {
+  cachedLogoImage = image;
+}
+
+/**
+ * Membersihkan citra logo resmi aplikasi dari cache memori.
+ */
+export function clearCachedOfficialLogo(): void {
+  cachedLogoImage = null;
+}
+
+/**
+ * Memuat citra logo resmi aplikasi (/static/logo.png) dengan mekanisme cache in-memory.
+ * Menyediakan penanganan fallback yang elegan saat berjalan di lingkungan headless/non-browser.
+ */
+export async function loadOfficialLogo(src = '/static/logo.png'): Promise<any> {
+  if (cachedLogoImage) {
+    return cachedLogoImage;
+  }
+  if (typeof Image === 'undefined') {
+    return null;
+  }
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        cachedLogoImage = img;
+        resolve(img);
+      };
+      img.onerror = () => {
+        // Coba path alternatif /logo.png jika /static/logo.png tidak ditemukan pada root web server
+        if (src === '/static/logo.png') {
+          const fallbackImg = new Image();
+          fallbackImg.crossOrigin = 'anonymous';
+          fallbackImg.onload = () => {
+            cachedLogoImage = fallbackImg;
+            resolve(fallbackImg);
+          };
+          fallbackImg.onerror = () => resolve(null);
+          fallbackImg.src = '/logo.png';
+        } else {
+          resolve(null);
+        }
+      };
+      img.src = src;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Menggambar placeholder kotak logo resmi jika berkas gambar belum atau gagal dimuat.
+ * Menghilangkan monogram manual 'tr' sesuai ADR-0015 & Tiket #125.
+ */
+function drawLogoFallbackBadge(
+  ctx: any,
+  x: number,
+  y: number,
+  size: number,
+  scale: number
+): void {
+  const radius = Math.round(6 * scale);
+  drawRoundedRect(ctx, x, y, size, size, radius);
+  ctx.fillStyle = '#FF69B4';
+  ctx.fill();
+}
+
+/**
+ * Memuat citra avatar pengguna dari data URL (base64) secara asinkron dengan caching otomatis (#126).
+ */
+export async function loadAvatarImage(dataUrl: string): Promise<any> {
+  if (typeof Image === 'undefined' || !dataUrl) {
+    return null;
+  }
+  if (dataUrl === cachedAvatarDataUrl && cachedAvatarImage) {
+    return cachedAvatarImage;
+  }
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        cachedAvatarDataUrl = dataUrl;
+        cachedAvatarImage = img;
+        resolve(img);
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Preload citra avatar ke memori cache untuk digunakan sinkron oleh compositeSnapshot.
+ */
+export async function preloadAvatarImage(dataUrl?: string): Promise<any> {
+  if (!dataUrl) {
+    clearCachedAvatar();
+    return null;
+  }
+  return loadAvatarImage(dataUrl);
+}
+
+/**
+ * Menggambar badge avatar bulat dengan warna aksen brand (#FF69B4) dan inisial huruf pertama username (#126).
+ */
+function renderAvatarInitialBadge(
+  ctx: any,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  username: string,
+  scale: number
+): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.fillStyle = '#FF69B4';
+  ctx.fill();
+
+  const initial = (username.trim().charAt(0) || 'T').toUpperCase();
+  ctx.font = `bold ${Math.round(11 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
+  ctx.fillStyle = '#0F0F0F';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(initial, centerX, centerY);
+  ctx.restore();
+}
+
+/**
+ * Menghitung skala efektif komposit tangkapan layar berdasarkan faktor multiplier dan DPR.
+ * Rumus totalScale = dpr * scaleMultiplier (#125).
+ */
+export function resolveEffectiveScale(options: SnapshotOptions): number {
+  if (options.scaleMultiplier != null) {
+    const dpr = options.scale !== undefined && options.scale !== 2 ? options.scale : 1;
+    return dpr * options.scaleMultiplier;
+  }
+  return options.scale ?? 2;
+}
+
+/**
  * Menghitung dimensi presisi untuk komposit snapshot kartu maupun ekspor clean
  */
 export function calculateCompositeDimensions(
@@ -50,7 +244,7 @@ export function calculateCompositeDimensions(
   options: SnapshotOptions
 ): CompositeDimensions {
   const mode = options.mode ?? 'branded';
-  const scale = options.scale ?? 2;
+  const scale = resolveEffectiveScale(options);
   const padding = options.padding ?? 24;
 
   if (mode === 'clean') {
@@ -257,6 +451,97 @@ function createFallbackCanvas(width: number, height: number): FallbackCanvas {
 }
 
 /**
+ * Menyelesaikan teks yang akan ditampilkan pada tanda air keamanan kanvas (#127).
+ * Memprioritaskan teks kustom pengguna, dan beralih ke nama/handle profil trader
+ * atau fallback default sistem jika tidak diisi.
+ */
+export function resolveSecurityWatermarkText(
+  watermark?: Partial<SecurityWatermarkConfig> | null,
+  profile?: UserProfileConfig | null
+): string {
+  const customText = watermark?.text?.trim();
+  if (customText) {
+    return customText;
+  }
+  const username = profile?.username?.trim();
+  const handle = profile?.handle?.trim();
+  const bio = profile?.bio?.trim();
+
+  const parts: string[] = [];
+  if (username) parts.push(username);
+  if (handle) parts.push(handle.startsWith('@') ? handle : `@${handle}`);
+  if (bio && parts.length === 0) parts.push(bio);
+
+  if (parts.length > 0) {
+    return parts.join(' · ');
+  }
+  return 'TRAWANGAN';
+}
+
+/**
+ * Merender tanda air keamanan semi-transparan diagonal pada kanvas grafik (#127)
+ * Memosisikan teks di tengah area grafik dengan sudut rotasi diagonal -30° s.d. -35°
+ * serta opasitas yang dikontrol oleh pengaturan pengguna.
+ */
+function drawSecurityWatermark(
+  ctx: any,
+  dim: CompositeDimensions,
+  watermark?: Partial<SecurityWatermarkConfig>,
+  profile?: UserProfileConfig,
+  scale = 1
+): void {
+  if (!watermark || !watermark.enabled) {
+    return;
+  }
+
+  const text = resolveSecurityWatermarkText(watermark, profile);
+  if (!text) {
+    return;
+  }
+
+  // Sanitasi dan batasi nilai opasitas ke rentang 0.05 s.d. 0.30
+  let opacity = typeof watermark.opacity === 'number' && !Number.isNaN(watermark.opacity)
+    ? watermark.opacity
+    : 0.10;
+  if (opacity < 0.05) opacity = 0.05;
+  if (opacity > 0.30) opacity = 0.30;
+
+  const centerX = dim.chartX + dim.chartWidth / 2;
+  const centerY = dim.chartY + dim.chartHeight / 2;
+
+  // Ukuran font proporsional terhadap dimensi grafik dan skala komposit
+  const baseFontSize = Math.max(22 * scale, Math.min(dim.chartWidth * 0.05, 54 * scale));
+  const fontSize = Math.round(baseFontSize);
+
+  // Sudut diagonal -32° (-0.5585 radian)
+  const ROTATION_ANGLE = -32 * (Math.PI / 180);
+
+  ctx.save();
+  // Kliping ke batas area grafik agar tanda air tidak meluber ke Attribution Bar atau batas luar
+  ctx.beginPath();
+  ctx.rect(dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
+  ctx.clip();
+
+  ctx.translate(centerX, centerY);
+  ctx.rotate(ROTATION_ANGLE);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = opacity;
+
+  // Render teks utama dengan font tebal
+  ctx.font = `800 ${fontSize}px "JetBrains Mono", "Plus Jakarta Sans", monospace, sans-serif`;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(text, 0, 0);
+
+  // Garis tepi tipis agar tanda air tetap kontras pada ragam tema dan latar belakang
+  ctx.lineWidth = Math.max(1, Math.round(1.5 * scale));
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.strokeText(text, 0, 0);
+
+  ctx.restore();
+}
+
+/**
  * Merender grafik sumber ke dalam kanvas komposit dengan bingkai kartu dan Attribution Bar
  */
 export function compositeSnapshot(
@@ -266,7 +551,7 @@ export function compositeSnapshot(
 ): any {
   const sourceWidth = Number(sourceCanvasOrImage?.width) || 1280;
   const sourceHeight = Number(sourceCanvasOrImage?.height) || 720;
-  const scale = options.scale ?? 2;
+  const scale = resolveEffectiveScale(options);
   const mode = options.mode ?? 'branded';
 
   const dim = calculateCompositeDimensions(sourceWidth, sourceHeight, options);
@@ -288,8 +573,24 @@ export function compositeSnapshot(
   if (!ctx) return canvas;
 
   // Jika mode clean, render murni raster grafik tanpa bingkai luar
+  const customBg = options.customBackground;
+  const isCustomSolid = customBg?.mode === 'solid' && Boolean(customBg.solidColor);
+  const isCustomGradient =
+    customBg?.mode === 'gradient' && Boolean(customBg.gradientTop || customBg.gradientBottom);
+
   if (mode === 'clean') {
+    if (isCustomSolid) {
+      ctx.fillStyle = customBg!.solidColor!;
+      ctx.fillRect(0, 0, dim.width, dim.height);
+    } else if (isCustomGradient) {
+      const grad = ctx.createLinearGradient(0, 0, 0, dim.height);
+      grad.addColorStop(0, customBg!.gradientTop || '#0F0F0F');
+      grad.addColorStop(1, customBg!.gradientBottom || '#181A20');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, dim.width, dim.height);
+    }
     ctx.drawImage(sourceCanvasOrImage, 0, 0, dim.width, dim.height);
+    drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
     return canvas;
   }
 
@@ -307,8 +608,25 @@ export function compositeSnapshot(
   // --- 2. Chart Rendering dengan Rounded Corners & Inner Border ---
   ctx.save();
   drawRoundedRect(ctx, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight, 8 * scale);
+  if (isCustomSolid) {
+    ctx.fillStyle = customBg!.solidColor!;
+  } else if (isCustomGradient) {
+    const chartGrad = ctx.createLinearGradient(0, dim.chartY, 0, dim.chartY + dim.chartHeight);
+    chartGrad.addColorStop(0, customBg!.gradientTop || '#0F0F0F');
+    chartGrad.addColorStop(1, customBg!.gradientBottom || '#181A20');
+    ctx.fillStyle = chartGrad;
+  } else {
+    ctx.fillStyle = options.backgroundColor || '#0F0F0F';
+  }
+  ctx.fill();
   ctx.clip();
+
+  // 2a. Gambar Candlestick & Grid Grafik terlebih dahulu
   ctx.drawImage(sourceCanvasOrImage, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
+
+  // 2b. Tanda Air Keamanan Anti-Pencurian semi-transparan DI ATAS grafik (#127)
+  // Menjaga agar watermark profil tidak tertutup/terhapus oleh kanvas grafik Vela yang opaque
+  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
   ctx.restore();
 
   // Garis batas redup di sekeliling area chart
@@ -323,40 +641,130 @@ export function compositeSnapshot(
   const centerY = dim.attributionY + dim.attributionHeight / 2;
   const paddingX = dim.chartX;
 
-  // SISI KIRI: Monogram 'tr', Brand 'trawangan', & Badge Instrumen
+  // SISI KIRI: Logo Resmi Citra, Brand 'trawangan', & Badge Instrumen
   ctx.save();
   ctx.textBaseline = 'middle';
 
-  // 3a. Monogram 'tr' Badge (Hot Pink #FF69B4)
-  const badgeSize = Math.round(24 * scale);
-  const badgeRadius = Math.round(6 * scale);
-  const badgeX = paddingX;
-  const badgeY = Math.round(centerY - badgeSize / 2);
+  // 3a. Rendering Logo Citra Resmi (/static/logo.png) menggantikan monogram manual 'tr' (#125)
+  const logoSize = Math.round(24 * scale);
+  const logoX = paddingX;
+  const logoY = Math.round(centerY - logoSize / 2);
 
-  drawRoundedRect(ctx, badgeX, badgeY, badgeSize, badgeSize, badgeRadius);
-  ctx.fillStyle = '#FF69B4';
-  ctx.fill();
+  const logoImg = options.logoImage || cachedLogoImage;
+  if (logoImg) {
+    try {
+      ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
+    } catch {
+      drawLogoFallbackBadge(ctx, logoX, logoY, logoSize, scale);
+    }
+  } else {
+    drawLogoFallbackBadge(ctx, logoX, logoY, logoSize, scale);
+    if (typeof Image !== 'undefined' && !cachedLogoImage) {
+      loadOfficialLogo().catch(() => {});
+    }
+  }
 
-  ctx.font = `bold ${Math.round(13 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-  ctx.fillStyle = '#0F0F0F';
-  ctx.textAlign = 'center';
-  ctx.fillText('tr', badgeX + badgeSize / 2, centerY);
+  // 3b. Identitas Brand / Personal Attribution (#126)
+  let currentX = logoX + logoSize + Math.round(10 * scale);
+  const profile = options.userProfile;
+  const username = profile?.username?.trim() || '';
+  const rawHandle = profile?.handle?.trim() || '';
+  const bio = profile?.bio?.trim() || '';
+  const avatarDataUrl = profile?.avatarDataUrl;
+  const hasPersonalIdentity = Boolean(username || rawHandle || bio || avatarDataUrl);
 
-  // 3b. Teks Brand 'trawangan'
-  let currentX = badgeX + badgeSize + Math.round(10 * scale);
-  ctx.font = `bold ${Math.round(15 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-  ctx.fillStyle = '#FFFFFF';
-  ctx.textAlign = 'left';
-  ctx.fillText('trawangan', currentX, centerY);
+  if (hasPersonalIdentity) {
+    // 3b-1. Avatar Pengguna (Citra Bulat dengan Kliping Lingkaran atau Lingkaran Aksen Inisial Huruf Pertama)
+    const avatarSize = Math.round(22 * scale);
+    const avatarRadius = avatarSize / 2;
+    const avatarCenterX = currentX + avatarRadius;
+    const avatarCenterY = centerY;
 
-  const brandWidth = ctx.measureText ? ctx.measureText('trawangan').width : 70 * scale;
-  currentX += brandWidth + Math.round(12 * scale);
+    const avatarImg = options.avatarImage || getCachedAvatar(avatarDataUrl);
+    if (avatarImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      try {
+        ctx.drawImage(
+          avatarImg,
+          currentX,
+          Math.round(centerY - avatarRadius),
+          avatarSize,
+          avatarSize
+        );
+      } catch {
+        renderAvatarInitialBadge(ctx, avatarCenterX, avatarCenterY, avatarRadius, username || rawHandle || 'T', scale);
+      }
+      ctx.restore();
+    } else {
+      renderAvatarInitialBadge(ctx, avatarCenterX, avatarCenterY, avatarRadius, username || rawHandle || 'T', scale);
+      if (avatarDataUrl && typeof Image !== 'undefined') {
+        preloadAvatarImage(avatarDataUrl).catch(() => {});
+      }
+    }
 
-  // 3c. Pemisah Titik Redup
-  ctx.font = `${Math.round(12 * scale)}px sans-serif`;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-  ctx.fillText('·', currentX, centerY);
-  currentX += Math.round(12 * scale);
+    currentX += avatarSize + Math.round(8 * scale);
+
+    // 3b-2. Teks Nama Pengguna (Username)
+    const displayName = username || (rawHandle ? (rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`) : 'Trader');
+    ctx.font = `bold ${Math.round(14 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'left';
+    ctx.fillText(displayName, currentX, centerY);
+
+    const usernameWidth = ctx.measureText ? ctx.measureText(displayName).width : displayName.length * 8 * scale;
+    currentX += usernameWidth;
+
+    // 3b-3. Social Handle (@handle) jika terisi
+    if (username && rawHandle) {
+      const formattedHandle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
+      currentX += Math.round(6 * scale);
+      ctx.font = `400 ${Math.round(12 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+      ctx.fillStyle = '#9E9E9E';
+      ctx.textAlign = 'left';
+      ctx.fillText(formattedHandle, currentX, centerY);
+
+      const handleWidth = ctx.measureText ? ctx.measureText(formattedHandle).width : formattedHandle.length * 7 * scale;
+      currentX += handleWidth;
+    }
+
+    // 3b-4. Bio / Deskripsi Singkat jika terisi (#126)
+    if (bio) {
+      currentX += Math.round(8 * scale);
+      ctx.font = `italic 400 ${Math.round(11 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
+      ctx.fillStyle = '#7E8B9B';
+      ctx.textAlign = 'left';
+      const bioText = `(${bio})`;
+      ctx.fillText(bioText, currentX, centerY);
+      const bioWidth = ctx.measureText ? ctx.measureText(bioText).width : bioText.length * 6 * scale;
+      currentX += bioWidth;
+    }
+
+    // 3c. Pemisah Titik Redup
+    currentX += Math.round(12 * scale);
+    ctx.font = `${Math.round(12 * scale)}px sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.fillText('·', currentX, centerY);
+    currentX += Math.round(12 * scale);
+  } else {
+    // 3b-alt. Teks Brand 'trawangan' Bawaan
+    ctx.font = `bold ${Math.round(15 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'left';
+    ctx.fillText('trawangan', currentX, centerY);
+
+    const brandWidth = ctx.measureText ? ctx.measureText('trawangan').width : 70 * scale;
+    currentX += brandWidth + Math.round(12 * scale);
+
+    // 3c. Pemisah Titik Redup
+    ctx.font = `${Math.round(12 * scale)}px sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.fillText('·', currentX, centerY);
+    currentX += Math.round(12 * scale);
+  }
 
   // 3d. Badge Instrumen ([SYMBOL] · [TF] · [PROVIDER] atau MULTI-CHART GRID · [LAYOUT] · [PROVIDER])
   const meta = options.metadata;
@@ -427,6 +835,20 @@ export async function captureSnapshot(
   options: SnapshotOptions,
   targetCanvas?: any
 ): Promise<any> {
+  if (!options.logoImage && !cachedLogoImage && typeof Image !== 'undefined') {
+    try {
+      options.logoImage = await loadOfficialLogo();
+    } catch {
+      // Abaikan jika pemuatan citra gagal, fallback badge akan digunakan
+    }
+  }
+  if (options.userProfile?.avatarDataUrl && !options.avatarImage && typeof Image !== 'undefined') {
+    try {
+      options.avatarImage = await preloadAvatarImage(options.userProfile.avatarDataUrl);
+    } catch {
+      // Abaikan jika pemuatan citra avatar gagal, fallback inisial akan digunakan
+    }
+  }
   return compositeSnapshot(sourceCanvasOrImage, options, targetCanvas);
 }
 
@@ -438,7 +860,7 @@ export async function getSnapshotDataUrl(
   options: SnapshotOptions,
   targetCanvas?: any
 ): Promise<string> {
-  const canvas = compositeSnapshot(sourceCanvasOrImage, options, targetCanvas);
+  const canvas = await captureSnapshot(sourceCanvasOrImage, options, targetCanvas);
   if (typeof canvas.toDataURL === 'function') {
     return canvas.toDataURL('image/png');
   }
@@ -453,7 +875,7 @@ export async function getSnapshotBlob(
   options: SnapshotOptions,
   targetCanvas?: any
 ): Promise<Blob> {
-  const canvas = compositeSnapshot(sourceCanvasOrImage, options, targetCanvas);
+  const canvas = await captureSnapshot(sourceCanvasOrImage, options, targetCanvas);
 
   if (typeof canvas.toBlob === 'function') {
     return new Promise<Blob>((resolve, reject) => {
