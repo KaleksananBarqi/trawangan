@@ -1272,6 +1272,8 @@
         includePrice: appSettings.snapshotIncludePrice ?? true,
         includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
         metadata,
+        userProfile: appSettings.userProfile,
+        watermark: appSettings.securityWatermark,
       });
 
       const copyResult = await copySnapshotToClipboard(composite);
@@ -1362,6 +1364,8 @@
         includePrice: appSettings.snapshotIncludePrice ?? true,
         includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
         metadata,
+        userProfile: appSettings.userProfile,
+        watermark: appSettings.securityWatermark,
       });
 
       const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
@@ -1538,6 +1542,8 @@
           showVolume={appSettings.showVolume ?? true}
           showIndicatorPriceLabels={appSettings.showIndicatorPriceLabels ?? true}
           showDrawingPriceLabels={appSettings.showDrawingPriceLabels ?? true}
+          securityWatermark={appSettings.securityWatermark}
+          userProfile={appSettings.userProfile}
           onActiveIndicatorsChange={(list) => (activeIndicators = list)}
           onActiveCellChange={handleActiveCellChange}
           onStrategyUpdate={handleStrategyUpdate}

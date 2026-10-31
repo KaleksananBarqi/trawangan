@@ -13,11 +13,13 @@
   import { isTradingPlanText } from '../services/planParserService';
   import { renderScreenshotCanvasWithOverlay } from '../services/chartSnapshotOverlayService';
   import { THEME_PRESETS } from '../constants/themes';
+  import { resolveSecurityWatermarkText } from '../services/chartSnapshotService';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
-    Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace
+    Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
+    UserProfileConfig, SecurityWatermarkConfig
   } from '../types/market';
   import type { PriceScaleBadge } from '../services/priceScaleLabelService';
   import type { FeedConnectionStatus } from '../services/market/types';
@@ -41,6 +43,8 @@
     onOpenImportPlan?: (initialText?: string) => void;
     themePreset?: ThemePresetId; fontSize?: number; timezone?: string;
     customBullColor?: string; customBearColor?: string;
+    securityWatermark?: SecurityWatermarkConfig;
+    userProfile?: UserProfileConfig;
   }
 
   let {
@@ -51,6 +55,7 @@
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenImportPlan,
+    securityWatermark, userProfile,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -601,6 +606,19 @@
     onpointerup={handleGesturePointerUp}
     onpointercancel={handleGesturePointerCancel}
   ></canvas>
+
+  {#if securityWatermark?.enabled && securityWatermark?.showOnLiveCanvas}
+    {@const watermarkText = resolveSecurityWatermarkText(securityWatermark, userProfile)}
+    <div
+      class="live-security-watermark-overlay"
+      style="opacity: {securityWatermark.opacity ?? 0.10}; pointer-events: none;"
+      aria-hidden="true"
+    >
+      <span class="live-diagonal-watermark-text mono-nums">
+        {watermarkText}
+      </span>
+    </div>
+  {/if}
 
   {#if isGestureActive}
     <div class="gesture-mode-hud mono-nums">

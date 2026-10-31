@@ -4,9 +4,9 @@
  */
 
 import { formatPriceLabel } from './priceScaleLabelService';
-import type { SnapshotScaleMultiplier, UserProfileConfig } from '../types/market';
+import type { SnapshotScaleMultiplier, UserProfileConfig, SecurityWatermarkConfig } from '../types/market';
 
-export type { SnapshotScaleMultiplier, UserProfileConfig } from '../types/market';
+export type { SnapshotScaleMultiplier, UserProfileConfig, SecurityWatermarkConfig } from '../types/market';
 export type SnapshotScope = 'active' | 'all';
 export type SnapshotMode = 'branded' | 'clean';
 
@@ -33,6 +33,7 @@ export interface SnapshotOptions {
   logoImage?: any;
   avatarImage?: any;
   userProfile?: UserProfileConfig;
+  watermark?: SecurityWatermarkConfig;
   metadata: SnapshotMetadata;
 }
 
@@ -398,6 +399,97 @@ function createFallbackCanvas(width: number, height: number): FallbackCanvas {
 }
 
 /**
+ * Menyelesaikan teks yang akan ditampilkan pada tanda air keamanan kanvas (#127).
+ * Memprioritaskan teks kustom pengguna, dan beralih ke nama/handle profil trader
+ * atau fallback default sistem jika tidak diisi.
+ */
+export function resolveSecurityWatermarkText(
+  watermark?: SecurityWatermarkConfig | null,
+  profile?: UserProfileConfig | null
+): string {
+  const customText = watermark?.text?.trim();
+  if (customText) {
+    return customText;
+  }
+  const username = profile?.username?.trim();
+  const handle = profile?.handle?.trim();
+  if (username && handle) {
+    const formattedHandle = handle.startsWith('@') ? handle : `@${handle}`;
+    return `${username} (${formattedHandle})`;
+  }
+  if (username) {
+    return username;
+  }
+  if (handle) {
+    return handle.startsWith('@') ? handle : `@${handle}`;
+  }
+  return 'TRAWANGAN';
+}
+
+/**
+ * Merender tanda air keamanan semi-transparan diagonal pada kanvas grafik (#127)
+ * Memosisikan teks di tengah area grafik dengan sudut rotasi diagonal -30° s.d. -35°
+ * serta opasitas yang dikontrol oleh pengaturan pengguna.
+ */
+function drawSecurityWatermark(
+  ctx: any,
+  dim: CompositeDimensions,
+  watermark?: SecurityWatermarkConfig,
+  profile?: UserProfileConfig,
+  scale = 1
+): void {
+  if (!watermark || !watermark.enabled) {
+    return;
+  }
+
+  const text = resolveSecurityWatermarkText(watermark, profile);
+  if (!text) {
+    return;
+  }
+
+  // Sanitasi dan batasi nilai opasitas ke rentang 0.05 s.d. 0.30
+  let opacity = typeof watermark.opacity === 'number' && !Number.isNaN(watermark.opacity)
+    ? watermark.opacity
+    : 0.10;
+  if (opacity < 0.05) opacity = 0.05;
+  if (opacity > 0.30) opacity = 0.30;
+
+  const centerX = dim.chartX + dim.chartWidth / 2;
+  const centerY = dim.chartY + dim.chartHeight / 2;
+
+  // Ukuran font proporsional terhadap dimensi grafik dan skala komposit
+  const baseFontSize = Math.max(22 * scale, Math.min(dim.chartWidth * 0.05, 54 * scale));
+  const fontSize = Math.round(baseFontSize);
+
+  // Sudut diagonal -32° (-0.5585 radian)
+  const ROTATION_ANGLE = -32 * (Math.PI / 180);
+
+  ctx.save();
+  // Kliping ke batas area grafik agar tanda air tidak meluber ke Attribution Bar atau batas luar
+  ctx.beginPath();
+  ctx.rect(dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
+  ctx.clip();
+
+  ctx.translate(centerX, centerY);
+  ctx.rotate(ROTATION_ANGLE);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = opacity;
+
+  // Render teks utama dengan font tebal
+  ctx.font = `800 ${fontSize}px "JetBrains Mono", "Plus Jakarta Sans", monospace, sans-serif`;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(text, 0, 0);
+
+  // Garis tepi tipis agar tanda air tetap kontras pada ragam tema dan latar belakang
+  ctx.lineWidth = Math.max(1, Math.round(1.5 * scale));
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.strokeText(text, 0, 0);
+
+  ctx.restore();
+}
+
+/**
  * Merender grafik sumber ke dalam kanvas komposit dengan bingkai kartu dan Attribution Bar
  */
 export function compositeSnapshot(
@@ -431,6 +523,7 @@ export function compositeSnapshot(
   // Jika mode clean, render murni raster grafik tanpa bingkai luar
   if (mode === 'clean') {
     ctx.drawImage(sourceCanvasOrImage, 0, 0, dim.width, dim.height);
+    drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
     return canvas;
   }
 
@@ -451,6 +544,9 @@ export function compositeSnapshot(
   ctx.clip();
   ctx.drawImage(sourceCanvasOrImage, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
   ctx.restore();
+
+  // 2b. Tanda Air Keamanan Anti-Pencurian (#127)
+  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
 
   // Garis batas redup di sekeliling area chart
   ctx.save();

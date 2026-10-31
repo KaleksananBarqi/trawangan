@@ -8,7 +8,8 @@
     Sparkles,
     Image as ImageIcon
   } from '@lucide/svelte';
-  import type { AppSettings, UserProfileConfig } from '../../types/market';
+  import type { AppSettings, UserProfileConfig, SecurityWatermarkConfig } from '../../types/market';
+  import { resolveSecurityWatermarkText } from '../../services/chartSnapshotService';
 
   interface Props {
     settings: AppSettings;
@@ -38,6 +39,44 @@
     const h = currentProfile.handle?.trim();
     if (!h) return '';
     return h.startsWith('@') ? h : `@${h}`;
+  });
+
+  // Akses konfigurasi tanda air keamanan dengan fallback aman (#127)
+  const currentWatermark = $derived<SecurityWatermarkConfig>(
+    settings.securityWatermark || {
+      enabled: false,
+      text: '',
+      opacity: 0.10,
+      showOnLiveCanvas: false,
+    }
+  );
+
+  function updateWatermark(patch: Partial<SecurityWatermarkConfig>) {
+    const updated: SecurityWatermarkConfig = {
+      enabled: currentWatermark.enabled,
+      text: currentWatermark.text ?? '',
+      opacity: currentWatermark.opacity ?? 0.10,
+      showOnLiveCanvas: currentWatermark.showOnLiveCanvas ?? false,
+      ...patch,
+    };
+    onUpdateSettings({ securityWatermark: updated });
+  }
+
+  // Teks watermark yang efektif untuk pratinjau langsung
+  const effectiveWatermarkText = $derived.by(() => {
+    return resolveSecurityWatermarkText(currentWatermark, currentProfile);
+  });
+
+  // Placeholder informatif dinamis berdasarkan identitas profil saat ini
+  const watermarkPlaceholder = $derived.by(() => {
+    const u = currentProfile.username?.trim();
+    const h = currentProfile.handle?.trim();
+    if (u && h) {
+      return `${u} (${h.startsWith('@') ? h : '@' + h})`;
+    }
+    if (u) return u;
+    if (h) return h.startsWith('@') ? h : `@${h}`;
+    return 'misal: Satoshi Nakamoto (@nakamoto)';
   });
 
   function updateProfile(patch: Partial<UserProfileConfig>) {
@@ -274,6 +313,144 @@
         <span class="bar-price mono-nums">$67,420.50</span>
         <span class="bar-time mono-nums">31 Okt 2026, 12:00 WIB</span>
         <span class="bar-url mono-nums">kaleksananbarqi.github.io/trawangan</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- Seksi Watermark Keamanan Anti-Pencurian (#127) -->
+  <div class="watermark-header-group">
+    <div class="header-with-badge">
+      <h4 class="section-title">Watermark Keamanan (Anti-Theft)</h4>
+      <span class="anti-theft-tag mono-nums">
+        <ShieldCheck size={11} />
+        ANTI-THEFT
+      </span>
+    </div>
+    <p class="section-subtitle">
+      Sematkan tanda air diagonal semi-transparan pada kanvas snapshot untuk melindungi karya analisis teknis Anda dari pembajakan tanpa atribusi.
+    </p>
+  </div>
+
+  <!-- 1. Toggle Switch Aktifkan Watermark Keamanan -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Aktifkan Watermark Keamanan</span>
+      <span class="setting-desc">Sematkan tanda air diagonal pada snapshot dan tangkapan layar grafik</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {currentWatermark.enabled ? 'active' : ''}"
+      onclick={() => updateWatermark({ enabled: !currentWatermark.enabled })}
+      aria-pressed={currentWatermark.enabled}
+    >
+      <span class="toggle-dot"></span>
+      <span>{currentWatermark.enabled ? 'Aktif' : 'Nonaktif'}</span>
+    </button>
+  </div>
+
+  <!-- 2. Input Field Teks Kustom -->
+  <div class="setting-row {currentWatermark.enabled ? '' : 'is-disabled'}">
+    <div class="setting-info">
+      <span class="setting-label">Teks Watermark Kustom</span>
+      <span class="setting-desc">Kosongkan untuk otomatis menggunakan nama pengguna & handle profil</span>
+    </div>
+    <div class="input-container">
+      <input
+        type="text"
+        class="text-input"
+        placeholder={watermarkPlaceholder}
+        value={currentWatermark.text ?? ''}
+        oninput={(e) => updateWatermark({ text: e.currentTarget.value })}
+        disabled={!currentWatermark.enabled}
+        maxlength={64}
+      />
+    </div>
+  </div>
+
+  <!-- 3. Slider Opasitas (5% - 30%, step 1%, default 10%) -->
+  <div class="setting-row {currentWatermark.enabled ? '' : 'is-disabled'}">
+    <div class="setting-info">
+      <div class="label-with-badge">
+        <span class="setting-label">Opasitas Tanda Air</span>
+        <span class="opacity-pill mono-nums">
+          {Math.round((currentWatermark.opacity ?? 0.10) * 100)}%
+        </span>
+      </div>
+      <span class="setting-desc">Atur tingkat transparansi (5% sangat samar hingga 30% tegas)</span>
+    </div>
+    <div class="slider-container">
+      <input
+        type="range"
+        class="opacity-range-slider"
+        min="0.05"
+        max="0.30"
+        step="0.01"
+        value={currentWatermark.opacity ?? 0.10}
+        disabled={!currentWatermark.enabled}
+        oninput={(e) => updateWatermark({ opacity: parseFloat(e.currentTarget.value) })}
+      />
+      <div class="slider-ticks mono-nums">
+        <span>5% (Samar)</span>
+        <span>10% (Bawaan)</span>
+        <span>30% (Tegas)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Toggle Switch Tampilkan di Kanvas Kerja Aktif -->
+  <div class="setting-row {currentWatermark.enabled ? '' : 'is-disabled'}">
+    <div class="setting-info">
+      <span class="setting-label">Tampilkan di Kanvas Kerja Aktif</span>
+      <span class="setting-desc">Munculkan tanda air langsung di kanvas kerja grafik (cocok untuk live stream & presentasi)</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {currentWatermark.showOnLiveCanvas && currentWatermark.enabled ? 'active' : ''}"
+      disabled={!currentWatermark.enabled}
+      onclick={() => updateWatermark({ showOnLiveCanvas: !currentWatermark.showOnLiveCanvas })}
+      aria-pressed={currentWatermark.showOnLiveCanvas && currentWatermark.enabled}
+    >
+      <span class="toggle-dot"></span>
+      <span>{currentWatermark.showOnLiveCanvas && currentWatermark.enabled ? 'Tampil di Live' : 'Hanya Snapshot'}</span>
+    </button>
+  </div>
+
+  <!-- 5. Pratinjau Tampilan Teks Watermark Miring (Live Preview) -->
+  <div class="watermark-preview-card">
+    <div class="preview-section-header">
+      <div class="preview-title-group">
+        <Sparkles size={13} class="sparkle-icon" />
+        <span class="preview-header-label">Pratinjau Tanda Air Diagonal</span>
+      </div>
+      <span class="preview-badge-status {currentWatermark.enabled ? 'active' : 'inactive'}">
+        {currentWatermark.enabled ? `Aktif (${Math.round((currentWatermark.opacity ?? 0.10) * 100)}%)` : 'Nonaktif'}
+      </span>
+    </div>
+
+    <div class="watermark-stage-box">
+      <!-- Mock Grid Background Kanvas -->
+      <div class="mock-grid-bg" aria-hidden="true"></div>
+
+      <!-- Tanda Air Diagonal Miring -->
+      <div
+        class="preview-watermark-overlay"
+        style="opacity: {currentWatermark.enabled ? (currentWatermark.opacity ?? 0.10) : 0.04};"
+      >
+        <span class="diagonal-watermark-text mono-nums">
+          {effectiveWatermarkText}
+        </span>
+      </div>
+
+      <!-- Mock Mini Candlestick Decorator -->
+      <div class="mock-candles-decor" aria-hidden="true">
+        <span class="mock-candle green" style="height: 28px;"></span>
+        <span class="mock-candle green" style="height: 42px;"></span>
+        <span class="mock-candle red" style="height: 35px;"></span>
+        <span class="mock-candle green" style="height: 50px;"></span>
+        <span class="mock-candle red" style="height: 30px;"></span>
+        <span class="mock-candle green" style="height: 60px;"></span>
       </div>
     </div>
   </div>
@@ -688,5 +865,219 @@
 
   .mono-nums {
     font-family: var(--font-mono, monospace);
+  }
+
+  /* Seksi Watermark Keamanan (#127) */
+  .section-divider {
+    height: 1px;
+    background-color: var(--border-hairline, rgba(255, 255, 255, 0.08));
+    margin: 4px 0;
+  }
+
+  .watermark-header-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .header-with-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .anti-theft-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #ff69b4;
+    background-color: rgba(255, 105, 180, 0.12);
+    border: 1px solid rgba(255, 105, 180, 0.3);
+    padding: 1px 6px;
+    border-radius: var(--radius-xs, 4px);
+    letter-spacing: 0.05em;
+  }
+
+  .setting-row.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  /* Toggle Button */
+  .toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: var(--radius-xs, 4px);
+    border: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.1));
+    background-color: var(--bg-darkest, #0c0c0c);
+    color: var(--text-dim, #777777);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .toggle-btn:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.25);
+    color: var(--text-main, #ffffff);
+  }
+
+  .toggle-btn.active {
+    background-color: rgba(255, 105, 180, 0.12);
+    border-color: #ff69b4;
+    color: #ff69b4;
+  }
+
+  .toggle-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--text-dim, #666666);
+    transition: all 0.15s ease;
+  }
+
+  .toggle-btn.active .toggle-dot {
+    background-color: #ff69b4;
+    box-shadow: 0 0 6px rgba(255, 105, 180, 0.7);
+  }
+
+  /* Slider Opasitas */
+  .label-with-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .opacity-pill {
+    font-size: 11px;
+    font-weight: 700;
+    color: #ff69b4;
+    background-color: rgba(255, 105, 180, 0.15);
+    padding: 1px 6px;
+    border-radius: var(--radius-xs, 4px);
+  }
+
+  .slider-container {
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .opacity-range-slider {
+    width: 100%;
+    height: 4px;
+    appearance: none;
+    -webkit-appearance: none;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    accent-color: #ff69b4;
+  }
+
+  .opacity-range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #ff69b4;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(255, 105, 180, 0.5);
+  }
+
+  .slider-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--text-dim, #666666);
+  }
+
+  /* Pratinjau Watermark Miring */
+  .watermark-preview-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background-color: var(--bg-darkest, #0c0c0c);
+    border: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.08));
+    border-radius: var(--radius-sm, 6px);
+    padding: 12px 14px;
+  }
+
+  .preview-badge-status.inactive {
+    color: var(--text-dim, #777777);
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .watermark-stage-box {
+    position: relative;
+    height: 110px;
+    background-color: #0d0d0d;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-xs, 4px);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mock-grid-bg {
+    position: absolute;
+    inset: 0;
+    background-image: 
+      linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
+    pointer-events: none;
+  }
+
+  .preview-watermark-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .diagonal-watermark-text {
+    transform: rotate(-32deg);
+    font-size: 20px;
+    font-weight: 800;
+    color: #ffffff;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+    white-space: nowrap;
+    user-select: none;
+    letter-spacing: 0.06em;
+  }
+
+  .mock-candles-decor {
+    position: absolute;
+    bottom: 8px;
+    right: 18px;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  .mock-candle {
+    width: 6px;
+    border-radius: 1px;
+  }
+
+  .mock-candle.green {
+    background-color: #089981;
+  }
+
+  .mock-candle.red {
+    background-color: #f23645;
   }
 </style>

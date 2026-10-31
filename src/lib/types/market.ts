@@ -229,6 +229,16 @@ export interface UserProfileConfig {
   avatarDataUrl?: string;
 }
 
+/**
+ * Konfigurasi tanda air keamanan anti-pencurian semi-transparan pada kanvas (#127)
+ */
+export interface SecurityWatermarkConfig {
+  enabled: boolean;
+  text?: string;
+  opacity: number; // 0.05 - 0.30, default: 0.10
+  showOnLiveCanvas: boolean; // default: false
+}
+
 export interface AppSettings {
   timezone: string;
   soundEnabled: boolean;
@@ -267,6 +277,8 @@ export interface AppSettings {
   snapshotScaleMultiplier?: SnapshotScaleMultiplier;
   // Trader Profile & Attribution Settings (#126)
   userProfile?: UserProfileConfig;
+  // Security Watermark Anti-Theft Settings (#127)
+  securityWatermark?: SecurityWatermarkConfig;
 }
 
 /**
