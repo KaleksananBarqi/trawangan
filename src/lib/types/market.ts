@@ -249,13 +249,20 @@ export interface AppSettings {
   clipboardAutoOpen?: boolean;
   showWorldClocks?: boolean;
   worldClockCities?: string[];
-  // Snapshot Preferences (#95 & Save Directory Setting)
+  // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting)
   snapshotIncludeFrame?: boolean;
   snapshotIncludePrice?: boolean;
   snapshotIncludeTimestamp?: boolean;
   snapshotScope?: 'active' | 'all';
   snapshotDirectory?: string;
+  snapshotScaleMultiplier?: SnapshotScaleMultiplier;
 }
+
+/**
+ * Pilihan faktor pengali resolusi untuk ekspor snapshot grafik (#125)
+ * Mendukung 1x (Web Standar), 2x (HiDPI Retina), 4x (Ultra HD 4K), dan 6x (Super HD 6K).
+ */
+export type SnapshotScaleMultiplier = 1 | 2 | 4 | 6;
 
 
 export interface StrategyTradeRecord {
