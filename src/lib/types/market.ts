@@ -251,7 +251,6 @@ export interface SecurityWatermarkConfig {
   opacity: number; // 0.05 - 0.30, default: 0.10
   showOnLiveCanvas: boolean; // default: false
 }
-}
 
 export interface AppSettings {
   timezone: string;
