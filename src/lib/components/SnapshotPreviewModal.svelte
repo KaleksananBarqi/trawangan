@@ -14,7 +14,8 @@
     Image as ImageIcon,
     Plus,
     Minus,
-    Folder
+    Folder,
+    ShieldCheck
   } from '@lucide/svelte';
   import { THEME_PRESETS } from '../constants/themes';
   import type { AppSettings, SnapshotScaleMultiplier } from '../types/market';
@@ -28,6 +29,7 @@
     calculateCompositeDimensions,
     preloadAvatarImage,
     loadOfficialLogo,
+    resolveSecurityWatermarkText,
     type SnapshotOptions,
     type SnapshotMetadata
   } from '../services/chartSnapshotService';
@@ -64,6 +66,7 @@
   let includeFrame = $state(true);
   let includePrice = $state(true);
   let includeTimestamp = $state(true);
+  let includeWatermark = $state(false);
   let snapshotScope = $state<'active' | 'all'>('active');
   let scaleMultiplier = $state<SnapshotScaleMultiplier>(2);
 
@@ -112,6 +115,7 @@
         includeFrame = appSettings.snapshotIncludeFrame ?? true;
         includePrice = appSettings.snapshotIncludePrice ?? true;
         includeTimestamp = appSettings.snapshotIncludeTimestamp ?? true;
+        includeWatermark = appSettings.securityWatermark?.enabled ?? false;
         snapshotScope = appSettings.snapshotScope ?? 'active';
         scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
 
@@ -176,6 +180,10 @@
       snapshotIncludeTimestamp: includeTimestamp,
       snapshotScope: snapshotScope,
       snapshotScaleMultiplier: scaleMultiplier,
+      securityWatermark: {
+        ...(appSettings.securityWatermark || { text: '', opacity: 0.10, showOnLiveCanvas: false }),
+        enabled: includeWatermark,
+      },
     });
   }
 
@@ -227,7 +235,10 @@
       includeTimestamp,
       metadata,
       userProfile: appSettings.userProfile,
-      watermark: appSettings.securityWatermark,
+      watermark: {
+        ...(appSettings.securityWatermark || { text: '', opacity: 0.10, showOnLiveCanvas: false }),
+        enabled: includeWatermark,
+      },
     };
 
     return compositeSnapshot(sourceCanvas, options);
@@ -328,6 +339,13 @@
   // Toggle Sertakan Waktu Analisis
   function toggleTimestamp(e: Event) {
     includeTimestamp = (e.target as HTMLInputElement).checked;
+    persistChanges();
+    renderPreview();
+  }
+
+  // Toggle Sertakan Watermark Keamanan
+  function toggleWatermark(e: Event) {
+    includeWatermark = (e.target as HTMLInputElement).checked;
     persistChanges();
     renderPreview();
   }
@@ -635,6 +653,30 @@
               </div>
             </div>
           {/if}
+
+          <!-- Pilihan Tanda Air Keamanan Anti-Maling (#127) -->
+          <div class="sidebar-section">
+            <span class="section-title">KEAMANAN & WATERMARK</span>
+            <div class="toggles-list">
+              <label class="toggle-row">
+                <div class="toggle-label-wrap">
+                  <ShieldCheck size={13} class="toggle-icon text-brand-cyan" />
+                  <div class="toggle-text-col">
+                    <span class="toggle-label">Watermark Profil</span>
+                    <span class="toggle-hint" title={resolveSecurityWatermarkText(appSettings.securityWatermark, appSettings.userProfile)}>
+                      {resolveSecurityWatermarkText(appSettings.securityWatermark, appSettings.userProfile)}
+                    </span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  class="custom-switch"
+                  checked={includeWatermark}
+                  onchange={toggleWatermark}
+                />
+              </label>
+            </div>
+          </div>
 
           <!-- Lokasi Folder Penyimpanan Aktif -->
           <div class="sidebar-section">
@@ -1257,6 +1299,21 @@
   .toggle-label {
     font-size: 12px;
     color: var(--text-primary, #ffffff);
+  }
+
+  .toggle-text-col {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .toggle-hint {
+    font-size: 10px;
+    color: var(--text-muted, #7c828d);
+    max-width: 170px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .text-brand-cyan {

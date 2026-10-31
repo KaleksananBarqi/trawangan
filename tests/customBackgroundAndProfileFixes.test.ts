@@ -200,7 +200,7 @@ describe('Evaluasi Fix: Custom Background, Frame Margin, & Profile Attribution',
     assert.equal(textFallback, 'TRAWANGAN');
   });
 
-  test('5. Watermark di belakang lilin: drawSecurityWatermark dipanggil sebelum drawImage candlestick', () => {
+  test('5. Watermark Proteksi Anti-Maling: drawSecurityWatermark dipanggil setelah drawImage candlestick agar tidak tertimpa latar grafik opaque', () => {
     const sourceCanvas = createMockCanvas(800, 500);
     const targetCanvas = createMockCanvas(1, 1);
 
@@ -230,8 +230,8 @@ describe('Evaluasi Fix: Custom Background, Frame Margin, & Profile Attribution',
     assert.ok(watermarkTextIdx !== -1, 'Watermark text harus dirender di canvas');
     assert.ok(drawImageCandleIdx !== -1, 'Candlestick canvas harus dirender di canvas');
     assert.ok(
-      watermarkTextIdx < drawImageCandleIdx,
-      'Watermark harus digambar SEBELUM (di belakang) candlestick canvas!'
+      drawImageCandleIdx < watermarkTextIdx,
+      'Watermark harus digambar SETELAH (di atas) candlestick canvas agar tidak tertimpa latar pekat grafik!'
     );
   });
 });

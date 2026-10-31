@@ -621,11 +621,12 @@ export function compositeSnapshot(
   ctx.fill();
   ctx.clip();
 
-  // 2a. Tanda Air Keamanan Anti-Pencurian di BELAKANG candlestick (#127)
-  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
-
-  // 2b. Gambar Candlestick & Grid Grafik di atas tanda air & latar kanvas
+  // 2a. Gambar Candlestick & Grid Grafik terlebih dahulu
   ctx.drawImage(sourceCanvasOrImage, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
+
+  // 2b. Tanda Air Keamanan Anti-Pencurian semi-transparan DI ATAS grafik (#127)
+  // Menjaga agar watermark profil tidak tertutup/terhapus oleh kanvas grafik Vela yang opaque
+  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
   ctx.restore();
 
   // Garis batas redup di sekeliling area chart

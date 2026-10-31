@@ -611,7 +611,7 @@
   letter-spacing: 0.02em;
 }
 
-/* Live Security Watermark Overlay (#127) - Diletakkan di lapisan belakang candlestick (z-index: 1) */
+/* Live Security Watermark Overlay (#127) - Diletakkan melayang di atas kanvas grafik (z-index: 10, di bawah tooltip/alert) */
 .live-security-watermark-overlay {
   position: absolute;
   inset: 0;
@@ -621,7 +621,7 @@
   pointer-events: none;
   user-select: none;
   overflow: hidden;
-  z-index: 1;
+  z-index: 10;
   transition: opacity 0.15s ease;
 }
 
