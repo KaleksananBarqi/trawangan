@@ -24,6 +24,7 @@
   import { getAdaptiveTickSize } from '../lib/services/priceSnapService';
   import {
     compositeSnapshot,
+    captureSnapshot,
     copySnapshotToClipboard,
     downloadSnapshot,
     saveSnapshotToFile,
@@ -1285,7 +1286,7 @@
       }
 
       const options = getQuickSnapshotOptions(scope);
-      const composite = compositeSnapshot(canvas, options);
+      const composite = await captureSnapshot(canvas, options);
       const scaleMultiplier = options.scaleMultiplier ?? 2;
 
       const copyResult = await copySnapshotToClipboard(composite);
@@ -1366,7 +1367,7 @@
       }
 
       const options = getQuickSnapshotOptions(scope);
-      const composite = compositeSnapshot(canvas, options);
+      const composite = await captureSnapshot(canvas, options);
 
       const filename = generateSnapshotFilename(options.metadata.symbol, options.metadata.timeframe, options.metadata.timestamp);
       const saveRes = await saveSnapshotToFile(composite, filename, appSettings.snapshotDirectory);

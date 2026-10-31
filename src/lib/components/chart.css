@@ -611,7 +611,7 @@
   letter-spacing: 0.02em;
 }
 
-/* Live Security Watermark Overlay (#127) - Diletakkan di lapisan belakang candlestick (z-index: 0) */
+/* Live Security Watermark Overlay (#127) - Diletakkan di lapisan belakang candlestick (z-index: 1) */
 .live-security-watermark-overlay {
   position: absolute;
   inset: 0;
@@ -621,8 +621,23 @@
   pointer-events: none;
   user-select: none;
   overflow: hidden;
-  z-index: 0;
+  z-index: 1;
   transition: opacity 0.15s ease;
+}
+
+.vela-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+}
+
+/* Transparansi Vela Container saat Custom Background Aktif (#128) */
+.chart-wrapper[data-custom-bg="true"] .vela-container,
+.chart-wrapper[data-custom-bg="true"] .vela-container > div,
+.chart-wrapper[data-custom-bg="true"] .vela-container [data-vela-wrapper],
+.chart-wrapper[data-custom-bg="true"] .vela-container .vela-plot {
+  background: transparent !important;
 }
 
 .live-diagonal-watermark-text {

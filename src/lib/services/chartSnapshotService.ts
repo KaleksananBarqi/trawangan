@@ -34,7 +34,7 @@ export interface SnapshotOptions {
   logoImage?: any;
   avatarImage?: any;
   userProfile?: UserProfileConfig;
-  watermark?: SecurityWatermarkConfig;
+  watermark?: Partial<SecurityWatermarkConfig>;
   metadata: SnapshotMetadata;
 }
 
@@ -53,6 +53,39 @@ export interface CompositeDimensions {
  * Cache memori lokal untuk citra logo resmi aplikasi
  */
 let cachedLogoImage: any = null;
+
+/**
+ * Cache memori lokal untuk citra avatar trader
+ */
+let cachedAvatarDataUrl: string | null = null;
+let cachedAvatarImage: any = null;
+
+/**
+ * Menyimpan referensi citra avatar ke dalam cache memori.
+ */
+export function setCachedAvatar(dataUrl: string | null, image: any): void {
+  cachedAvatarDataUrl = dataUrl;
+  cachedAvatarImage = image;
+}
+
+/**
+ * Membersihkan citra avatar dari cache memori.
+ */
+export function clearCachedAvatar(): void {
+  cachedAvatarDataUrl = null;
+  cachedAvatarImage = null;
+}
+
+/**
+ * Mengambil citra avatar yang telah dimuat dari cache memori secara sinkron.
+ */
+export function getCachedAvatar(dataUrl?: string): any {
+  if (!dataUrl) return null;
+  if (dataUrl === cachedAvatarDataUrl && cachedAvatarImage) {
+    return cachedAvatarImage;
+  }
+  return null;
+}
 
 /**
  * Menyimpan referensi citra logo resmi aplikasi ke dalam cache memori.
@@ -127,22 +160,40 @@ function drawLogoFallbackBadge(
 }
 
 /**
- * Memuat citra avatar pengguna dari data URL (base64) secara asinkron (#126).
+ * Memuat citra avatar pengguna dari data URL (base64) secara asinkron dengan caching otomatis (#126).
  */
 export async function loadAvatarImage(dataUrl: string): Promise<any> {
   if (typeof Image === 'undefined' || !dataUrl) {
     return null;
   }
+  if (dataUrl === cachedAvatarDataUrl && cachedAvatarImage) {
+    return cachedAvatarImage;
+  }
   return new Promise((resolve) => {
     try {
       const img = new Image();
-      img.onload = () => resolve(img);
+      img.onload = () => {
+        cachedAvatarDataUrl = dataUrl;
+        cachedAvatarImage = img;
+        resolve(img);
+      };
       img.onerror = () => resolve(null);
       img.src = dataUrl;
     } catch {
       resolve(null);
     }
   });
+}
+
+/**
+ * Preload citra avatar ke memori cache untuk digunakan sinkron oleh compositeSnapshot.
+ */
+export async function preloadAvatarImage(dataUrl?: string): Promise<any> {
+  if (!dataUrl) {
+    clearCachedAvatar();
+    return null;
+  }
+  return loadAvatarImage(dataUrl);
 }
 
 /**
@@ -405,7 +456,7 @@ function createFallbackCanvas(width: number, height: number): FallbackCanvas {
  * atau fallback default sistem jika tidak diisi.
  */
 export function resolveSecurityWatermarkText(
-  watermark?: SecurityWatermarkConfig | null,
+  watermark?: Partial<SecurityWatermarkConfig> | null,
   profile?: UserProfileConfig | null
 ): string {
   const customText = watermark?.text?.trim();
@@ -414,15 +465,15 @@ export function resolveSecurityWatermarkText(
   }
   const username = profile?.username?.trim();
   const handle = profile?.handle?.trim();
-  if (username && handle) {
-    const formattedHandle = handle.startsWith('@') ? handle : `@${handle}`;
-    return formattedHandle ? `${username} · ${formattedHandle}` : username;
-  }
-  if (username) {
-    return username;
-  }
-  if (handle) {
-    return handle.startsWith('@') ? handle : `@${handle}`;
+  const bio = profile?.bio?.trim();
+
+  const parts: string[] = [];
+  if (username) parts.push(username);
+  if (handle) parts.push(handle.startsWith('@') ? handle : `@${handle}`);
+  if (bio && parts.length === 0) parts.push(bio);
+
+  if (parts.length > 0) {
+    return parts.join(' · ');
   }
   return 'TRAWANGAN';
 }
@@ -435,7 +486,7 @@ export function resolveSecurityWatermarkText(
 function drawSecurityWatermark(
   ctx: any,
   dim: CompositeDimensions,
-  watermark?: SecurityWatermarkConfig,
+  watermark?: Partial<SecurityWatermarkConfig>,
   profile?: UserProfileConfig,
   scale = 1
 ): void {
@@ -546,16 +597,7 @@ export function compositeSnapshot(
   // --- 1. Container Background & Outer Border ---
   ctx.save();
   drawRoundedRect(ctx, 0, 0, dim.width, dim.height, 12 * scale);
-  if (isCustomSolid) {
-    ctx.fillStyle = customBg!.solidColor!;
-  } else if (isCustomGradient) {
-    const outerGrad = ctx.createLinearGradient(0, 0, 0, dim.height);
-    outerGrad.addColorStop(0, customBg!.gradientTop || '#0F0F0F');
-    outerGrad.addColorStop(1, customBg!.gradientBottom || '#181A20');
-    ctx.fillStyle = outerGrad;
-  } else {
-    ctx.fillStyle = options.backgroundColor || '#0F0F0F';
-  }
+  ctx.fillStyle = options.backgroundColor || '#0F0F0F';
   ctx.fill();
 
   ctx.lineWidth = Math.max(1, Math.round(1 * scale));
@@ -566,25 +608,25 @@ export function compositeSnapshot(
   // --- 2. Chart Rendering dengan Rounded Corners & Inner Border ---
   ctx.save();
   drawRoundedRect(ctx, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight, 8 * scale);
-  ctx.clip();
-
-  // Render latar belakang kustom area chart jika aktif (#128)
   if (isCustomSolid) {
     ctx.fillStyle = customBg!.solidColor!;
-    ctx.fillRect(dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
   } else if (isCustomGradient) {
     const chartGrad = ctx.createLinearGradient(0, dim.chartY, 0, dim.chartY + dim.chartHeight);
     chartGrad.addColorStop(0, customBg!.gradientTop || '#0F0F0F');
     chartGrad.addColorStop(1, customBg!.gradientBottom || '#181A20');
     ctx.fillStyle = chartGrad;
-    ctx.fillRect(dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
+  } else {
+    ctx.fillStyle = options.backgroundColor || '#0F0F0F';
   }
+  ctx.fill();
+  ctx.clip();
 
+  // 2a. Tanda Air Keamanan Anti-Pencurian di BELAKANG candlestick (#127)
+  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
+
+  // 2b. Gambar Candlestick & Grid Grafik di atas tanda air & latar kanvas
   ctx.drawImage(sourceCanvasOrImage, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
   ctx.restore();
-
-  // 2b. Tanda Air Keamanan Anti-Pencurian (#127)
-  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
 
   // Garis batas redup di sekeliling area chart
   ctx.save();
@@ -625,16 +667,19 @@ export function compositeSnapshot(
   let currentX = logoX + logoSize + Math.round(10 * scale);
   const profile = options.userProfile;
   const username = profile?.username?.trim() || '';
-  const hasUsername = username.length > 0;
+  const rawHandle = profile?.handle?.trim() || '';
+  const bio = profile?.bio?.trim() || '';
+  const avatarDataUrl = profile?.avatarDataUrl;
+  const hasPersonalIdentity = Boolean(username || rawHandle || bio || avatarDataUrl);
 
-  if (hasUsername) {
+  if (hasPersonalIdentity) {
     // 3b-1. Avatar Pengguna (Citra Bulat dengan Kliping Lingkaran atau Lingkaran Aksen Inisial Huruf Pertama)
     const avatarSize = Math.round(22 * scale);
     const avatarRadius = avatarSize / 2;
     const avatarCenterX = currentX + avatarRadius;
     const avatarCenterY = centerY;
 
-    const avatarImg = options.avatarImage;
+    const avatarImg = options.avatarImage || getCachedAvatar(avatarDataUrl);
     if (avatarImg) {
       ctx.save();
       ctx.beginPath();
@@ -650,27 +695,30 @@ export function compositeSnapshot(
           avatarSize
         );
       } catch {
-        renderAvatarInitialBadge(ctx, avatarCenterX, avatarCenterY, avatarRadius, username, scale);
+        renderAvatarInitialBadge(ctx, avatarCenterX, avatarCenterY, avatarRadius, username || rawHandle || 'T', scale);
       }
       ctx.restore();
     } else {
-      renderAvatarInitialBadge(ctx, avatarCenterX, avatarCenterY, avatarRadius, username, scale);
+      renderAvatarInitialBadge(ctx, avatarCenterX, avatarCenterY, avatarRadius, username || rawHandle || 'T', scale);
+      if (avatarDataUrl && typeof Image !== 'undefined') {
+        preloadAvatarImage(avatarDataUrl).catch(() => {});
+      }
     }
 
     currentX += avatarSize + Math.round(8 * scale);
 
     // 3b-2. Teks Nama Pengguna (Username)
+    const displayName = username || (rawHandle ? (rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`) : 'Trader');
     ctx.font = `bold ${Math.round(14 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'left';
-    ctx.fillText(username, currentX, centerY);
+    ctx.fillText(displayName, currentX, centerY);
 
-    const usernameWidth = ctx.measureText ? ctx.measureText(username).width : username.length * 8 * scale;
+    const usernameWidth = ctx.measureText ? ctx.measureText(displayName).width : displayName.length * 8 * scale;
     currentX += usernameWidth;
 
     // 3b-3. Social Handle (@handle) jika terisi
-    const rawHandle = profile?.handle?.trim() || '';
-    if (rawHandle) {
+    if (username && rawHandle) {
       const formattedHandle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
       currentX += Math.round(6 * scale);
       ctx.font = `400 ${Math.round(12 * scale)}px "JetBrains Mono", monospace, sans-serif`;
@@ -680,6 +728,18 @@ export function compositeSnapshot(
 
       const handleWidth = ctx.measureText ? ctx.measureText(formattedHandle).width : formattedHandle.length * 7 * scale;
       currentX += handleWidth;
+    }
+
+    // 3b-4. Bio / Deskripsi Singkat jika terisi (#126)
+    if (bio) {
+      currentX += Math.round(8 * scale);
+      ctx.font = `italic 400 ${Math.round(11 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
+      ctx.fillStyle = '#7E8B9B';
+      ctx.textAlign = 'left';
+      const bioText = `(${bio})`;
+      ctx.fillText(bioText, currentX, centerY);
+      const bioWidth = ctx.measureText ? ctx.measureText(bioText).width : bioText.length * 6 * scale;
+      currentX += bioWidth;
     }
 
     // 3c. Pemisah Titik Redup
@@ -776,14 +836,14 @@ export async function captureSnapshot(
 ): Promise<any> {
   if (!options.logoImage && !cachedLogoImage && typeof Image !== 'undefined') {
     try {
-      await loadOfficialLogo();
+      options.logoImage = await loadOfficialLogo();
     } catch {
       // Abaikan jika pemuatan citra gagal, fallback badge akan digunakan
     }
   }
   if (options.userProfile?.avatarDataUrl && !options.avatarImage && typeof Image !== 'undefined') {
     try {
-      options.avatarImage = await loadAvatarImage(options.userProfile.avatarDataUrl);
+      options.avatarImage = await preloadAvatarImage(options.userProfile.avatarDataUrl);
     } catch {
       // Abaikan jika pemuatan citra avatar gagal, fallback inisial akan digunakan
     }

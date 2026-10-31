@@ -608,6 +608,7 @@
 
 <div 
   class="chart-wrapper {isSelectingCutoff ? 'selecting-cutoff' : ''} {isHandpullActive ? 'handpull-mode' : ''} {isGestureActive ? 'gesture-mode' : ''}"
+  data-custom-bg={customChartBackground?.mode === 'solid' || customChartBackground?.mode === 'gradient' ? 'true' : 'false'}
   style={chartBackgroundStyle}
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}

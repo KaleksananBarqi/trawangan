@@ -93,6 +93,7 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
     username: typeof rawProfile?.username === 'string' ? rawProfile.username : (DEFAULT_APP_SETTINGS.userProfile?.username ?? ''),
     handle: typeof rawProfile?.handle === 'string' ? rawProfile.handle : (DEFAULT_APP_SETTINGS.userProfile?.handle ?? ''),
     avatarDataUrl: typeof rawProfile?.avatarDataUrl === 'string' ? rawProfile.avatarDataUrl : (DEFAULT_APP_SETTINGS.userProfile?.avatarDataUrl ?? undefined),
+    ...(typeof rawProfile?.bio === 'string' ? { bio: rawProfile.bio } : {}),
   };
 
   const rawWatermark = saved.securityWatermark;

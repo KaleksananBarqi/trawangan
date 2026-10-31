@@ -27,6 +27,7 @@
     settings.userProfile || {
       username: '',
       handle: '',
+      bio: '',
       avatarDataUrl: undefined,
     }
   );
@@ -99,6 +100,7 @@
     const updated: UserProfileConfig = {
       username: currentProfile.username ?? '',
       handle: currentProfile.handle ?? '',
+      bio: currentProfile.bio ?? '',
       avatarDataUrl: currentProfile.avatarDataUrl,
       ...patch,
     };
@@ -265,6 +267,23 @@
     </div>
   </div>
 
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Deskripsi Singkat / Bio Trader</span>
+      <span class="setting-desc">Status, keahlian, atau deskripsi singkat profil Anda</span>
+    </div>
+    <div class="input-container">
+      <input
+        type="text"
+        class="text-input"
+        placeholder="misal: Crypto Analyst & Swing Trader"
+        value={currentProfile.bio ?? ''}
+        oninput={(e) => updateProfile({ bio: e.currentTarget.value })}
+        maxlength={40}
+      />
+    </div>
+  </div>
+
   <!-- Pratinjau Tampilan Atribusi Snapshot (Live Preview) -->
   <div class="preview-card-section">
     <div class="preview-section-header">
@@ -273,7 +292,7 @@
         <span class="preview-header-label">Pratinjau Attribution Bar Snapshot</span>
       </div>
       <span class="preview-badge-status">
-        {currentProfile.username ? 'Personal Attribution Aktif' : 'Default trawangan Branding'}
+        {currentProfile.username || currentProfile.handle || currentProfile.avatarDataUrl ? 'Personal Attribution Aktif' : 'Default trawangan Branding'}
       </span>
     </div>
 
@@ -289,28 +308,33 @@
           <span class="app-logo-fallback"></span>
         </div>
 
-        {#if currentProfile.username}
+        {#if currentProfile.username || currentProfile.handle || currentProfile.avatarDataUrl}
           <!-- Avatar Pengguna -->
           <div class="bar-avatar-wrap">
             {#if currentProfile.avatarDataUrl}
               <img
                 src={currentProfile.avatarDataUrl}
-                alt={currentProfile.username}
+                alt={currentProfile.username || 'Avatar'}
                 class="bar-avatar-img"
               />
             {:else}
               <div class="bar-avatar-initial">
-                <span>{initialLetter}</span>
+                <span>{initialLetter || 'T'}</span>
               </div>
             {/if}
           </div>
 
           <!-- Nama Pengguna -->
-          <span class="bar-username">{currentProfile.username}</span>
+          <span class="bar-username">{currentProfile.username || (formattedHandlePreview ? formattedHandlePreview : 'Trader')}</span>
 
           <!-- Handle -->
-          {#if formattedHandlePreview}
+          {#if currentProfile.username && formattedHandlePreview}
             <span class="bar-handle mono-nums">{formattedHandlePreview}</span>
+          {/if}
+
+          <!-- Bio / Deskripsi -->
+          {#if currentProfile.bio}
+            <span class="bar-bio italic">({currentProfile.bio})</span>
           {/if}
         {:else}
           <!-- Fallback Brand Bawaan trawangan -->

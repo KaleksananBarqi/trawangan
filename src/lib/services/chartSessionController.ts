@@ -482,9 +482,10 @@ export class ChartSessionController {
     this.applyBackground();
     ensurePineEngine();
 
+    const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
     const themeConfig = THEME_PRESETS[this.themePreset] || THEME_PRESETS.signature;
     const velaTheme = {
-      background: themeConfig.chart.background,
+      background: isCustomBg ? 'transparent' : themeConfig.chart.background,
       textColor: themeConfig.chart.textColor,
       gridColor: themeConfig.chart.gridColor,
       borderColor: themeConfig.chart.borderColor,
@@ -1133,8 +1134,9 @@ export class ChartSessionController {
         ? deriveBorderColor(this.customCandleColors.bearColor, 0.15)
         : cfg.chart.borderDownColor || cfg.chart.downColor;
 
+      const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
       const themeObj = {
-        background: cfg.chart.background,
+        background: isCustomBg ? 'transparent' : cfg.chart.background,
         textColor: cfg.chart.textColor,
         gridColor: cfg.chart.gridColor,
         borderColor: cfg.chart.borderColor,
@@ -1206,6 +1208,7 @@ export class ChartSessionController {
     if (!this.container) return;
     const cfg = THEME_PRESETS[this.themePreset] || THEME_PRESETS.signature;
     const custom = this.customChartBackground;
+    const isCustom = custom?.mode === 'solid' || custom?.mode === 'gradient';
 
     let backgroundValue = cfg.chart.background;
     if (custom?.mode === 'gradient') {
@@ -1218,9 +1221,29 @@ export class ChartSessionController {
       backgroundValue = cfg.chart.background;
     }
 
+    // Setel latar belakang pada container grafik
     if (this.container.style) {
       this.container.style.background = backgroundValue;
     }
+
+    // Paksa seluruh elemen wrapper internal Vela menjadi transparan saat mode kustom aktif
+    try {
+      const internalWrappers = this.container.querySelectorAll('.vela-container, .vela-container > div, [data-vela-wrapper], .vela-plot');
+      internalWrappers.forEach((el) => {
+        if (isCustom) {
+          (el as HTMLElement).style.setProperty('background', 'transparent', 'important');
+        } else {
+          (el as HTMLElement).style.removeProperty('background');
+        }
+      });
+      for (const child of Array.from(this.container.children)) {
+        if (isCustom) {
+          (child as HTMLElement).style.setProperty('background', 'transparent', 'important');
+        } else {
+          (child as HTMLElement).style.removeProperty('background');
+        }
+      }
+    } catch (_) {}
   }
 
   /**
@@ -1229,6 +1252,9 @@ export class ChartSessionController {
   public setCustomChartBackground(bg?: CustomChartBackgroundConfig): void {
     this.customChartBackground = bg;
     this.applyBackground();
+    if (this.workspace) {
+      this.setTheme(this.themePreset, this.fontSize, this.customCandleColors ?? undefined, bg);
+    }
     this.notify();
   }
 

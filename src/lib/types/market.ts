@@ -226,6 +226,7 @@ export type UiDensity = 'compact' | 'regular' | 'comfortable';
 export interface UserProfileConfig {
   username: string;
   handle: string;
+  bio?: string;
   avatarDataUrl?: string;
 }
 

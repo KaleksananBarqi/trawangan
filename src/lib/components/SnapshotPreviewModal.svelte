@@ -26,6 +26,8 @@
     saveSnapshotToFile,
     openSnapshotFolder,
     calculateCompositeDimensions,
+    preloadAvatarImage,
+    loadOfficialLogo,
     type SnapshotOptions,
     type SnapshotMetadata
   } from '../services/chartSnapshotService';
@@ -237,6 +239,11 @@
   async function renderPreview() {
     isRendering = true;
     renderError = null;
+
+    if (appSettings.userProfile?.avatarDataUrl) {
+      await preloadAvatarImage(appSettings.userProfile.avatarDataUrl).catch(() => {});
+    }
+    await loadOfficialLogo().catch(() => {});
 
     // Beri jeda tick mikro agar loader spinner ter-render responsif di thread UI
     await new Promise((resolve) => setTimeout(resolve, 16));
