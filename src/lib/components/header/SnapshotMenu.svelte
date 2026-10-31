@@ -1,26 +1,65 @@
 <script lang="ts">
   import { Camera, Copy, Download, SlidersHorizontal, ChevronDown, Check } from '@lucide/svelte';
+  import type { SnapshotScaleMultiplier } from '../../types/market';
+  import { calculateCompositeDimensions } from '../../services/chartSnapshotService';
 
   interface Props {
     onRequestQuickCopySnapshot?: () => void;
     onRequestQuickDownloadSnapshot?: () => void;
     onOpenSnapshotPreview?: () => void;
+    currentScaleMultiplier?: SnapshotScaleMultiplier;
+    onScaleMultiplierChange?: (scale: SnapshotScaleMultiplier) => void;
+    chartDimensions?: { width: number; height: number };
+    isProcessing?: boolean;
   }
 
   let {
     onRequestQuickCopySnapshot,
     onRequestQuickDownloadSnapshot,
     onOpenSnapshotPreview,
+    currentScaleMultiplier = 2,
+    onScaleMultiplierChange,
+    chartDimensions,
+    isProcessing = false,
   }: Props = $props();
 
   let showMenu = $state(false);
   let copyFeedback = $state(false);
+  let selectedScale = $state<SnapshotScaleMultiplier>(currentScaleMultiplier);
+
+  $effect(() => {
+    if (currentScaleMultiplier !== undefined) {
+      selectedScale = currentScaleMultiplier;
+    }
+  });
+
+  const MULTIPLIERS: SnapshotScaleMultiplier[] = [1, 2, 4, 6];
 
   function handleGlobalClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
     if (showMenu && !target.closest('.snapshot-menu-group')) {
       showMenu = false;
     }
+  }
+
+  function handleSelectScale(mult: SnapshotScaleMultiplier) {
+    selectedScale = mult;
+    onScaleMultiplierChange?.(mult);
+  }
+
+  function getDimensionText(mult: SnapshotScaleMultiplier): string {
+    const baseW = chartDimensions?.width || (typeof window !== 'undefined' ? window.innerWidth : 1920);
+    const baseH = chartDimensions?.height || (typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.75) : 1080);
+    const dim = calculateCompositeDimensions(baseW, baseH, {
+      mode: 'branded',
+      scaleMultiplier: mult,
+      metadata: {
+        symbol: 'BTCUSDT',
+        timeframe: '15m',
+        providerId: 'binance',
+      },
+    });
+    return `${mult}x · ${dim.width} × ${dim.height} px`;
   }
 
   function handleQuickCopy() {
@@ -53,12 +92,14 @@
     aria-label="Ambil Tangkapan Layar"
     onclick={() => (showMenu = !showMenu)}
   >
-    {#if copyFeedback}
+    {#if isProcessing}
+      <span class="trigger-mini-spinner"></span>
+    {:else if copyFeedback}
       <Check size={13} class="camera-icon text-brand" />
     {:else}
       <Camera size={13} class="camera-icon" />
     {/if}
-    <span class="btn-text">Snapshot</span>
+    <span class="btn-text">{isProcessing ? 'Rendering...' : 'Snapshot'}</span>
     <ChevronDown size={10} class="dropdown-chevron {showMenu ? 'open' : ''}" />
   </button>
 
@@ -74,12 +115,13 @@
           type="button"
           class="menu-item-btn"
           onclick={handleQuickCopy}
-          title="Salin gambar PNG 2x HiDPI langsung ke clipboard sistem"
+          disabled={isProcessing}
+          title="Salin gambar PNG {selectedScale}x langsung ke clipboard sistem"
         >
           <div class="item-left">
             <Copy size={13} class="item-icon text-cyan" />
             <div class="item-text">
-              <span class="item-title">Salin Gambar ke Clipboard</span>
+              <span class="item-title">Salin Gambar ({selectedScale}x)</span>
             </div>
           </div>
           <span class="shortcut-badge mono-nums">Ctrl+Shift+S</span>
@@ -90,23 +132,53 @@
           type="button"
           class="menu-item-btn"
           onclick={handleQuickDownload}
+          disabled={isProcessing}
           title="Unduh file gambar PNG dengan format terstruktur"
         >
           <div class="item-left">
             <Download size={13} class="item-icon text-muted" />
             <div class="item-text">
-              <span class="item-title">Simpan Gambar (PNG)</span>
+              <span class="item-title">Simpan Gambar ({selectedScale}x)</span>
             </div>
           </div>
         </button>
 
+        <!-- 3. Resolusi Multiplier (1x, 2x, 4x, 6x) (#125) -->
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-section-header">
+          <span class="dropdown-title">RESOLUSI MULTIPLIER</span>
+          <span class="scale-est-label mono-nums">{getDimensionText(selectedScale)}</span>
+        </div>
+        <div class="scale-chips-row">
+          {#each MULTIPLIERS as mult}
+            <button
+              type="button"
+              class="scale-chip-btn {selectedScale === mult ? 'active' : ''}"
+              onclick={() => handleSelectScale(mult)}
+              disabled={isProcessing}
+              title="Pilih skala {getDimensionText(mult)}"
+            >
+              <span class="scale-chip-num">{mult}x</span>
+            </button>
+          {/each}
+        </div>
+
+        <!-- Indikator Status Pemrosesan Asinkron (#125) -->
+        {#if isProcessing}
+          <div class="processing-status-bar">
+            <span class="processing-spinner"></span>
+            <span class="processing-msg">Memproses snapshot {selectedScale}x...</span>
+          </div>
+        {/if}
+
         <div class="dropdown-divider"></div>
 
-        <!-- 3. Pratinjau & Kustomisasi -->
+        <!-- 4. Pratinjau & Kustomisasi -->
         <button
           type="button"
           class="menu-item-btn preview-btn"
           onclick={handleOpenPreview}
+          disabled={isProcessing}
           title="Buka dialog pratinjau snapshot interaktif"
         >
           <div class="item-left">
@@ -157,6 +229,19 @@
     border-color: var(--brand-primary);
   }
 
+  .trigger-mini-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 105, 180, 0.2);
+    border-top-color: #ff69b4;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
   .camera-icon {
     color: var(--brand-primary);
     flex-shrink: 0;
@@ -180,7 +265,7 @@
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
-    width: 275px;
+    width: 285px;
     background-color: var(--bg-surface);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-sm);
@@ -199,12 +284,98 @@
     margin-bottom: 2px;
   }
 
+  .dropdown-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 6px 2px;
+  }
+
   .dropdown-title {
     font-size: 9.5px;
     font-weight: 700;
     color: var(--text-dim);
     letter-spacing: 0.05em;
     text-transform: uppercase;
+  }
+
+  .scale-est-label {
+    font-size: 9.5px;
+    color: #ff69b4;
+    font-weight: 500;
+  }
+
+  .scale-chips-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 2px 4px;
+  }
+
+  .scale-chip-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 0;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.08));
+    border-radius: var(--radius-xs, 4px);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .scale-chip-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .scale-chip-btn.active {
+    background: rgba(255, 105, 180, 0.15);
+    border-color: #ff69b4;
+  }
+
+  .scale-chip-num {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .scale-chip-btn.active .scale-chip-num {
+    color: #ff69b4;
+    font-weight: 700;
+  }
+
+  .scale-chip-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .processing-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    background: rgba(255, 105, 180, 0.08);
+    border: 1px solid rgba(255, 105, 180, 0.2);
+    border-radius: var(--radius-xs, 4px);
+    margin: 2px 4px;
+  }
+
+  .processing-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 105, 180, 0.25);
+    border-top-color: #ff69b4;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  .processing-msg {
+    font-size: 10px;
+    color: #ff80bf;
+    font-weight: 500;
   }
 
   .menu-items {
@@ -227,9 +398,14 @@
     width: 100%;
   }
 
-  .menu-item-btn:hover {
+  .menu-item-btn:hover:not(:disabled) {
     background-color: var(--bg-hover);
     border-color: var(--border-hairline);
+  }
+
+  .menu-item-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .item-left {

@@ -160,9 +160,10 @@
   let editingAlert = $state<PriceAlert | null>(null);
   let triggeredAlertsToasts = $state<PriceAlert[]>([]);
 
-  // Snapshot State (#94)
+  // Snapshot State (#94, #125)
   let snapshotToast = $state<SnapshotToastData | null>(null);
   let isSnapshotPreviewOpen = $state(false);
+  let isSnapshotProcessing = $state(false);
 
   function handleRequestCreateAlert(sym?: string, price?: number, alertToEdit?: PriceAlert | null) {
     editingAlert = alertToEdit || null;
@@ -1246,6 +1247,7 @@
   }
 
   async function handleQuickCopySnapshot() {
+    isSnapshotProcessing = true;
     try {
       const scope = appSettings.snapshotScope ?? 'active';
       const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
@@ -1262,9 +1264,10 @@
       const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
       const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
       const metadata = getActiveSnapshotMetadata(scope);
+      const scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
       const composite = compositeSnapshot(canvas, {
         mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
-        scale: 2,
+        scaleMultiplier,
         backgroundColor,
         includePrice: appSettings.snapshotIncludePrice ?? true,
         includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
@@ -1278,11 +1281,11 @@
         snapshotToast = {
           visible: true,
           type: 'copied',
-          message: 'Snapshot disalin ke clipboard! (PNG, 2x HiDPI)',
+          message: `Snapshot disalin ke clipboard! (PNG, ${scaleMultiplier}x)`,
           thumbnailUrl: thumbUrl,
           timestamp: Date.now(),
         };
-        addSystemLog(`Snapshot ${activeSymbol} disalin ke clipboard (PNG 2x HiDPI)`, 'success');
+        addSystemLog(`Snapshot ${activeSymbol} disalin ke clipboard (PNG ${scaleMultiplier}x)`, 'success');
       } else {
         // Fallback jika Clipboard API diblokir oleh browser/OS: simpan ke berkas
         const filename = generateSnapshotFilename(metadata.symbol, metadata.timeframe, metadata.timestamp);
@@ -1297,6 +1300,8 @@
         message: err?.message || 'Gagal memproses snapshot grafik.',
         timestamp: Date.now(),
       };
+    } finally {
+      isSnapshotProcessing = false;
     }
   }
 
@@ -1332,6 +1337,7 @@
   }
 
   async function handleQuickDownloadSnapshot() {
+    isSnapshotProcessing = true;
     try {
       const scope = appSettings.snapshotScope ?? 'active';
       const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
@@ -1348,9 +1354,10 @@
       const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
       const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
       const metadata = getActiveSnapshotMetadata(scope);
+      const scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
       const composite = compositeSnapshot(canvas, {
         mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
-        scale: 2,
+        scaleMultiplier,
         backgroundColor,
         includePrice: appSettings.snapshotIncludePrice ?? true,
         includeTimestamp: appSettings.snapshotIncludeTimestamp ?? true,
@@ -1369,6 +1376,8 @@
         message: err?.message || 'Gagal mengunduh snapshot grafik.',
         timestamp: Date.now(),
       };
+    } finally {
+      isSnapshotProcessing = false;
     }
   }
 
@@ -1431,6 +1440,9 @@
     onRequestQuickCopySnapshot={handleQuickCopySnapshot}
     onRequestQuickDownloadSnapshot={handleQuickDownloadSnapshot}
     onOpenSnapshotPreview={handleOpenSnapshotPreview}
+    snapshotScaleMultiplier={appSettings.snapshotScaleMultiplier ?? 2}
+    onSnapshotScaleMultiplierChange={(multiplier) => handleUpdateSettings({ snapshotScaleMultiplier: multiplier })}
+    {isSnapshotProcessing}
   />
 
   <!-- Main Viewport Area -->

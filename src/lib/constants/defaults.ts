@@ -41,12 +41,13 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   clipboardAutoOpen: false,
   showWorldClocks: true,
   worldClockCities: [...DEFAULT_WORLD_CLOCK_CITIES],
-  // Snapshot Preferences (#95 & Save Directory Setting)
+  // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting)
   snapshotIncludeFrame: true,
   snapshotIncludePrice: true,
   snapshotIncludeTimestamp: true,
   snapshotScope: 'active',
   snapshotDirectory: '',
+  snapshotScaleMultiplier: 2,
   syncConfig: { ...DEFAULT_SYNC_CONFIG },
 };
 
@@ -91,6 +92,13 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
         ? saved.snapshotScope
         : (DEFAULT_APP_SETTINGS.snapshotScope ?? 'active'),
     snapshotDirectory: saved.snapshotDirectory ?? DEFAULT_APP_SETTINGS.snapshotDirectory ?? '',
+    snapshotScaleMultiplier:
+      saved.snapshotScaleMultiplier === 1 ||
+      saved.snapshotScaleMultiplier === 2 ||
+      saved.snapshotScaleMultiplier === 4 ||
+      saved.snapshotScaleMultiplier === 6
+        ? saved.snapshotScaleMultiplier
+        : (DEFAULT_APP_SETTINGS.snapshotScaleMultiplier ?? 2),
     syncConfig: mergedSyncConfig,
   };
 }

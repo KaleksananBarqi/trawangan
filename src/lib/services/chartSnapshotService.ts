@@ -4,7 +4,9 @@
  */
 
 import { formatPriceLabel } from './priceScaleLabelService';
+import type { SnapshotScaleMultiplier } from '../types/market';
 
+export type { SnapshotScaleMultiplier } from '../types/market';
 export type SnapshotScope = 'active' | 'all';
 export type SnapshotMode = 'branded' | 'clean';
 
@@ -22,11 +24,13 @@ export interface SnapshotMetadata {
 export interface SnapshotOptions {
   mode?: SnapshotMode;
   scale?: number;
+  scaleMultiplier?: SnapshotScaleMultiplier;
   padding?: number;
   backgroundColor?: string;
   includePrice?: boolean;
   includeTimestamp?: boolean;
   includeBrandUrl?: boolean;
+  logoImage?: any;
   metadata: SnapshotMetadata;
 }
 
@@ -42,6 +46,95 @@ export interface CompositeDimensions {
 }
 
 /**
+ * Cache memori lokal untuk citra logo resmi aplikasi
+ */
+let cachedLogoImage: any = null;
+
+/**
+ * Menyimpan referensi citra logo resmi aplikasi ke dalam cache memori.
+ */
+export function setCachedOfficialLogo(image: any): void {
+  cachedLogoImage = image;
+}
+
+/**
+ * Membersihkan citra logo resmi aplikasi dari cache memori.
+ */
+export function clearCachedOfficialLogo(): void {
+  cachedLogoImage = null;
+}
+
+/**
+ * Memuat citra logo resmi aplikasi (/static/logo.png) dengan mekanisme cache in-memory.
+ * Menyediakan penanganan fallback yang elegan saat berjalan di lingkungan headless/non-browser.
+ */
+export async function loadOfficialLogo(src = '/static/logo.png'): Promise<any> {
+  if (cachedLogoImage) {
+    return cachedLogoImage;
+  }
+  if (typeof Image === 'undefined') {
+    return null;
+  }
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        cachedLogoImage = img;
+        resolve(img);
+      };
+      img.onerror = () => {
+        // Coba path alternatif /logo.png jika /static/logo.png tidak ditemukan pada root web server
+        if (src === '/static/logo.png') {
+          const fallbackImg = new Image();
+          fallbackImg.crossOrigin = 'anonymous';
+          fallbackImg.onload = () => {
+            cachedLogoImage = fallbackImg;
+            resolve(fallbackImg);
+          };
+          fallbackImg.onerror = () => resolve(null);
+          fallbackImg.src = '/logo.png';
+        } else {
+          resolve(null);
+        }
+      };
+      img.src = src;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Menggambar placeholder kotak logo resmi jika berkas gambar belum atau gagal dimuat.
+ * Menghilangkan monogram manual 'tr' sesuai ADR-0015 & Tiket #125.
+ */
+function drawLogoFallbackBadge(
+  ctx: any,
+  x: number,
+  y: number,
+  size: number,
+  scale: number
+): void {
+  const radius = Math.round(6 * scale);
+  drawRoundedRect(ctx, x, y, size, size, radius);
+  ctx.fillStyle = '#FF69B4';
+  ctx.fill();
+}
+
+/**
+ * Menghitung skala efektif komposit tangkapan layar berdasarkan faktor multiplier dan DPR.
+ * Rumus totalScale = dpr * scaleMultiplier (#125).
+ */
+export function resolveEffectiveScale(options: SnapshotOptions): number {
+  if (options.scaleMultiplier != null) {
+    const dpr = options.scale !== undefined && options.scale !== 2 ? options.scale : 1;
+    return dpr * options.scaleMultiplier;
+  }
+  return options.scale ?? 2;
+}
+
+/**
  * Menghitung dimensi presisi untuk komposit snapshot kartu maupun ekspor clean
  */
 export function calculateCompositeDimensions(
@@ -50,7 +143,7 @@ export function calculateCompositeDimensions(
   options: SnapshotOptions
 ): CompositeDimensions {
   const mode = options.mode ?? 'branded';
-  const scale = options.scale ?? 2;
+  const scale = resolveEffectiveScale(options);
   const padding = options.padding ?? 24;
 
   if (mode === 'clean') {
@@ -266,7 +359,7 @@ export function compositeSnapshot(
 ): any {
   const sourceWidth = Number(sourceCanvasOrImage?.width) || 1280;
   const sourceHeight = Number(sourceCanvasOrImage?.height) || 720;
-  const scale = options.scale ?? 2;
+  const scale = resolveEffectiveScale(options);
   const mode = options.mode ?? 'branded';
 
   const dim = calculateCompositeDimensions(sourceWidth, sourceHeight, options);
@@ -323,27 +416,31 @@ export function compositeSnapshot(
   const centerY = dim.attributionY + dim.attributionHeight / 2;
   const paddingX = dim.chartX;
 
-  // SISI KIRI: Monogram 'tr', Brand 'trawangan', & Badge Instrumen
+  // SISI KIRI: Logo Resmi Citra, Brand 'trawangan', & Badge Instrumen
   ctx.save();
   ctx.textBaseline = 'middle';
 
-  // 3a. Monogram 'tr' Badge (Hot Pink #FF69B4)
-  const badgeSize = Math.round(24 * scale);
-  const badgeRadius = Math.round(6 * scale);
-  const badgeX = paddingX;
-  const badgeY = Math.round(centerY - badgeSize / 2);
+  // 3a. Rendering Logo Citra Resmi (/static/logo.png) menggantikan monogram manual 'tr' (#125)
+  const logoSize = Math.round(24 * scale);
+  const logoX = paddingX;
+  const logoY = Math.round(centerY - logoSize / 2);
 
-  drawRoundedRect(ctx, badgeX, badgeY, badgeSize, badgeSize, badgeRadius);
-  ctx.fillStyle = '#FF69B4';
-  ctx.fill();
-
-  ctx.font = `bold ${Math.round(13 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-  ctx.fillStyle = '#0F0F0F';
-  ctx.textAlign = 'center';
-  ctx.fillText('tr', badgeX + badgeSize / 2, centerY);
+  const logoImg = options.logoImage || cachedLogoImage;
+  if (logoImg) {
+    try {
+      ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
+    } catch {
+      drawLogoFallbackBadge(ctx, logoX, logoY, logoSize, scale);
+    }
+  } else {
+    drawLogoFallbackBadge(ctx, logoX, logoY, logoSize, scale);
+    if (typeof Image !== 'undefined' && !cachedLogoImage) {
+      loadOfficialLogo().catch(() => {});
+    }
+  }
 
   // 3b. Teks Brand 'trawangan'
-  let currentX = badgeX + badgeSize + Math.round(10 * scale);
+  let currentX = logoX + logoSize + Math.round(10 * scale);
   ctx.font = `bold ${Math.round(15 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'left';
@@ -427,6 +524,13 @@ export async function captureSnapshot(
   options: SnapshotOptions,
   targetCanvas?: any
 ): Promise<any> {
+  if (!options.logoImage && !cachedLogoImage && typeof Image !== 'undefined') {
+    try {
+      await loadOfficialLogo();
+    } catch {
+      // Abaikan jika pemuatan citra gagal, fallback badge akan digunakan
+    }
+  }
   return compositeSnapshot(sourceCanvasOrImage, options, targetCanvas);
 }
 
@@ -438,7 +542,7 @@ export async function getSnapshotDataUrl(
   options: SnapshotOptions,
   targetCanvas?: any
 ): Promise<string> {
-  const canvas = compositeSnapshot(sourceCanvasOrImage, options, targetCanvas);
+  const canvas = await captureSnapshot(sourceCanvasOrImage, options, targetCanvas);
   if (typeof canvas.toDataURL === 'function') {
     return canvas.toDataURL('image/png');
   }
@@ -453,7 +557,7 @@ export async function getSnapshotBlob(
   options: SnapshotOptions,
   targetCanvas?: any
 ): Promise<Blob> {
-  const canvas = compositeSnapshot(sourceCanvasOrImage, options, targetCanvas);
+  const canvas = await captureSnapshot(sourceCanvasOrImage, options, targetCanvas);
 
   if (typeof canvas.toBlob === 'function') {
     return new Promise<Blob>((resolve, reject) => {
