@@ -9,7 +9,7 @@ import {
 import { THEME_PRESETS } from '../src/lib/constants/themes';
 
 test('Settings Modal & Tab Submodules Seam Suite', async (t) => {
-  await t.test('1. Validasi Kontrak AppSettings untuk seluruh 7 tab domain', () => {
+  await t.test('1. Validasi Kontrak AppSettings untuk seluruh 8 tab domain', () => {
     const defaultSettings = resolveAppSettings(null);
 
     // Tab General
@@ -37,11 +37,16 @@ test('Settings Modal & Tab Submodules Seam Suite', async (t) => {
     assert.ok(defaultSettings.syncConfig);
     assert.equal(typeof defaultSettings.syncConfig.crosshair, 'boolean');
     assert.equal(typeof defaultSettings.syncConfig.viewport, 'boolean');
+
+    // Tab Profile & Watermark (#126)
+    assert.ok(defaultSettings.userProfile);
+    assert.equal(typeof defaultSettings.userProfile.username, 'string');
+    assert.equal(typeof defaultSettings.userProfile.handle, 'string');
   });
 
-  await t.test('2. Integritas Tab Identifiers: Seluruh 7 tab terdefinisi secara konsisten', () => {
-    const validTabs = ['general', 'appearance', 'chart', 'feed', 'system', 'about', 'help'];
-    assert.equal(validTabs.length, 7);
+  await t.test('2. Integritas Tab Identifiers: Seluruh 8 tab terdefinisi secara konsisten', () => {
+    const validTabs = ['general', 'appearance', 'chart', 'profile', 'feed', 'system', 'about', 'help'];
+    assert.equal(validTabs.length, 8);
     for (const tab of validTabs) {
       assert.ok(tab.length > 0);
     }

@@ -220,6 +220,15 @@ export interface ObjectTreeItem {
 export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass';
 export type UiDensity = 'compact' | 'regular' | 'comfortable';
 
+/**
+ * Konfigurasi profil personal trader untuk atribusi snapshot frame (#126)
+ */
+export interface UserProfileConfig {
+  username: string;
+  handle: string;
+  avatarDataUrl?: string;
+}
+
 export interface AppSettings {
   timezone: string;
   soundEnabled: boolean;
@@ -256,6 +265,8 @@ export interface AppSettings {
   snapshotScope?: 'active' | 'all';
   snapshotDirectory?: string;
   snapshotScaleMultiplier?: SnapshotScaleMultiplier;
+  // Trader Profile & Attribution Settings (#126)
+  userProfile?: UserProfileConfig;
 }
 
 /**

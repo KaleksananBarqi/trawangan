@@ -4,9 +4,9 @@
  */
 
 import { formatPriceLabel } from './priceScaleLabelService';
-import type { SnapshotScaleMultiplier } from '../types/market';
+import type { SnapshotScaleMultiplier, UserProfileConfig } from '../types/market';
 
-export type { SnapshotScaleMultiplier } from '../types/market';
+export type { SnapshotScaleMultiplier, UserProfileConfig } from '../types/market';
 export type SnapshotScope = 'active' | 'all';
 export type SnapshotMode = 'branded' | 'clean';
 
@@ -31,6 +31,8 @@ export interface SnapshotOptions {
   includeTimestamp?: boolean;
   includeBrandUrl?: boolean;
   logoImage?: any;
+  avatarImage?: any;
+  userProfile?: UserProfileConfig;
   metadata: SnapshotMetadata;
 }
 
@@ -120,6 +122,52 @@ function drawLogoFallbackBadge(
   drawRoundedRect(ctx, x, y, size, size, radius);
   ctx.fillStyle = '#FF69B4';
   ctx.fill();
+}
+
+/**
+ * Memuat citra avatar pengguna dari data URL (base64) secara asinkron (#126).
+ */
+export async function loadAvatarImage(dataUrl: string): Promise<any> {
+  if (typeof Image === 'undefined' || !dataUrl) {
+    return null;
+  }
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Menggambar badge avatar bulat dengan warna aksen brand (#FF69B4) dan inisial huruf pertama username (#126).
+ */
+function renderAvatarInitialBadge(
+  ctx: any,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  username: string,
+  scale: number
+): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.fillStyle = '#FF69B4';
+  ctx.fill();
+
+  const initial = (username.trim().charAt(0) || 'T').toUpperCase();
+  ctx.font = `bold ${Math.round(11 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
+  ctx.fillStyle = '#0F0F0F';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(initial, centerX, centerY);
+  ctx.restore();
 }
 
 /**
@@ -439,21 +487,89 @@ export function compositeSnapshot(
     }
   }
 
-  // 3b. Teks Brand 'trawangan'
+  // 3b. Identitas Brand / Personal Attribution (#126)
   let currentX = logoX + logoSize + Math.round(10 * scale);
-  ctx.font = `bold ${Math.round(15 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-  ctx.fillStyle = '#FFFFFF';
-  ctx.textAlign = 'left';
-  ctx.fillText('trawangan', currentX, centerY);
+  const profile = options.userProfile;
+  const username = profile?.username?.trim() || '';
+  const hasUsername = username.length > 0;
 
-  const brandWidth = ctx.measureText ? ctx.measureText('trawangan').width : 70 * scale;
-  currentX += brandWidth + Math.round(12 * scale);
+  if (hasUsername) {
+    // 3b-1. Avatar Pengguna (Citra Bulat dengan Kliping Lingkaran atau Lingkaran Aksen Inisial Huruf Pertama)
+    const avatarSize = Math.round(22 * scale);
+    const avatarRadius = avatarSize / 2;
+    const avatarCenterX = currentX + avatarRadius;
+    const avatarCenterY = centerY;
 
-  // 3c. Pemisah Titik Redup
-  ctx.font = `${Math.round(12 * scale)}px sans-serif`;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-  ctx.fillText('·', currentX, centerY);
-  currentX += Math.round(12 * scale);
+    const avatarImg = options.avatarImage;
+    if (avatarImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      try {
+        ctx.drawImage(
+          avatarImg,
+          currentX,
+          Math.round(centerY - avatarRadius),
+          avatarSize,
+          avatarSize
+        );
+      } catch {
+        renderAvatarInitialBadge(ctx, avatarCenterX, avatarCenterY, avatarRadius, username, scale);
+      }
+      ctx.restore();
+    } else {
+      renderAvatarInitialBadge(ctx, avatarCenterX, avatarCenterY, avatarRadius, username, scale);
+    }
+
+    currentX += avatarSize + Math.round(8 * scale);
+
+    // 3b-2. Teks Nama Pengguna (Username)
+    ctx.font = `bold ${Math.round(14 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'left';
+    ctx.fillText(username, currentX, centerY);
+
+    const usernameWidth = ctx.measureText ? ctx.measureText(username).width : username.length * 8 * scale;
+    currentX += usernameWidth;
+
+    // 3b-3. Social Handle (@handle) jika terisi
+    const rawHandle = profile?.handle?.trim() || '';
+    if (rawHandle) {
+      const formattedHandle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
+      currentX += Math.round(6 * scale);
+      ctx.font = `400 ${Math.round(12 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+      ctx.fillStyle = '#9E9E9E';
+      ctx.textAlign = 'left';
+      ctx.fillText(formattedHandle, currentX, centerY);
+
+      const handleWidth = ctx.measureText ? ctx.measureText(formattedHandle).width : formattedHandle.length * 7 * scale;
+      currentX += handleWidth;
+    }
+
+    // 3c. Pemisah Titik Redup
+    currentX += Math.round(12 * scale);
+    ctx.font = `${Math.round(12 * scale)}px sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.fillText('·', currentX, centerY);
+    currentX += Math.round(12 * scale);
+  } else {
+    // 3b-alt. Teks Brand 'trawangan' Bawaan
+    ctx.font = `bold ${Math.round(15 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'left';
+    ctx.fillText('trawangan', currentX, centerY);
+
+    const brandWidth = ctx.measureText ? ctx.measureText('trawangan').width : 70 * scale;
+    currentX += brandWidth + Math.round(12 * scale);
+
+    // 3c. Pemisah Titik Redup
+    ctx.font = `${Math.round(12 * scale)}px sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.fillText('·', currentX, centerY);
+    currentX += Math.round(12 * scale);
+  }
 
   // 3d. Badge Instrumen ([SYMBOL] · [TF] · [PROVIDER] atau MULTI-CHART GRID · [LAYOUT] · [PROVIDER])
   const meta = options.metadata;
@@ -529,6 +645,13 @@ export async function captureSnapshot(
       await loadOfficialLogo();
     } catch {
       // Abaikan jika pemuatan citra gagal, fallback badge akan digunakan
+    }
+  }
+  if (options.userProfile?.avatarDataUrl && !options.avatarImage && typeof Image !== 'undefined') {
+    try {
+      options.avatarImage = await loadAvatarImage(options.userProfile.avatarDataUrl);
+    } catch {
+      // Abaikan jika pemuatan citra avatar gagal, fallback inisial akan digunakan
     }
   }
   return compositeSnapshot(sourceCanvasOrImage, options, targetCanvas);
