@@ -12,6 +12,7 @@
   import { isEditableElement } from '../services/commandDispatcher';
   import { isTradingPlanText } from '../services/planParserService';
   import { renderScreenshotCanvasWithOverlay } from '../services/chartSnapshotOverlayService';
+  import { THEME_PRESETS } from '../constants/themes';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
   import type {
@@ -329,6 +330,8 @@
     if (!baseCanvas) return null;
     if (!chartContainer) return baseCanvas;
 
+    const currentTheme = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+
     return renderScreenshotCanvasWithOverlay({
       baseCanvas,
       containerWidth: chartContainer.clientWidth || baseCanvas.width,
@@ -339,7 +342,8 @@
       showThesisCards,
       cardGeometries: thesisCardGeometries,
       getPriceY: (p) => getPriceY(p),
-      formatPrice: (p) => formatPrice(p)
+      formatPrice: (p) => formatPrice(p),
+      themeConfig: currentTheme
     });
   }
   export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
