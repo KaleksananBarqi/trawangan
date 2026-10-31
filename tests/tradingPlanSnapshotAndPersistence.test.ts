@@ -39,6 +39,8 @@ describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence 
       moveTo: (x: number, y: number) => drawOps.push({ op: 'moveTo', args: [x, y] }),
       lineTo: (x: number, y: number) => drawOps.push({ op: 'lineTo', args: [x, y] }),
       quadraticCurveTo: (...args: any[]) => drawOps.push({ op: 'quadraticCurveTo', args }),
+      arc: (...args: any[]) => drawOps.push({ op: 'arc', args }),
+      setLineDash: (...args: any[]) => drawOps.push({ op: 'setLineDash', args }),
       fill: () => drawOps.push({ op: 'fill', args: [] }),
       stroke: () => drawOps.push({ op: 'stroke', args: [] }),
       clip: () => drawOps.push({ op: 'clip', args: [] }),
@@ -143,6 +145,40 @@ describe('Ticket 6 (#116): Snapshot Overlay Compositing & Workspace Persistence 
       assert.ok(textRendered.some((t) => t.includes('78900.0')), 'Harus memuat harga stop loss');
       assert.ok(textRendered.some((t) => t.includes('TP1:')), 'Harus memuat TP1');
       assert.ok(textRendered.some((t) => t.includes('TP2:')), 'Harus memuat TP2');
+    });
+
+    it('Ticket 4 (#123): Merender kartu tesis berfidelitas penuh (judul seksi, zone pills, skenario batal, reasons, dan sinkronisasi geometri)', () => {
+      const { ctx, drawOps } = createMock2DContext();
+      const plan = parseTradingPlan(sampleMarkdown);
+      const planWithId = { ...plan, id: 'plan_hf_1' };
+      const formatPrice = (p: number | null) => (p ? p.toFixed(1) : '--');
+
+      // Gambar dengan koordinat dan dimensi kustom dari layar kerja
+      drawThesisCardOnCanvas(ctx, planWithId, 2, 2, formatPrice, 120, 80, 400, 500, false);
+
+      const textRendered = drawOps
+        .filter((op) => op.op === 'fillText')
+        .map((op) => String(op.args[0]));
+
+      // 1. Verifikasi Judul Seksi Terstruktur
+      assert.ok(textRendered.some((t) => t.includes('KATALIS ENTRY')), 'Harus memuat judul KATALIS ENTRY');
+      assert.ok(textRendered.some((t) => t.includes('INVALIDASI & STOP LOSS')), 'Harus memuat judul INVALIDASI & STOP LOSS');
+      assert.ok(textRendered.some((t) => t.includes('TARGET LIKUIDITAS')), 'Harus memuat judul TARGET LIKUIDITAS');
+
+      // 2. Verifikasi Skenario Batal Box
+      assert.ok(textRendered.includes('SKENARIO BATAL'), 'Harus memuat badge SKENARIO BATAL');
+
+      // 3. Verifikasi R-Multiple Badges
+      assert.ok(textRendered.some((t) => t.includes('+1.66R')), 'Harus memuat badge +1.66R');
+      assert.ok(textRendered.some((t) => t.includes('+3.38R')), 'Harus memuat badge +3.38R');
+
+      // 4. Verifikasi Tombol Interaktif Window TIDAK dirender
+      assert.ok(!textRendered.includes('X'), 'Tidak boleh ada tombol close X');
+      assert.ok(!textRendered.includes('−'), 'Tidak boleh ada tombol minimize');
+
+      // 5. Verifikasi Koordinat X yang Digunakan (scaledX = 120 * 2 = 240)
+      const fillOps = drawOps.filter((op) => op.op === 'moveTo' || op.op === 'fillText');
+      assert.ok(fillOps.some((op) => typeof op.args[1] === 'number' && op.args[1] >= 240));
     });
   });
 
