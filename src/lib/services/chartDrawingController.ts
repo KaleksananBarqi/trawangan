@@ -295,6 +295,9 @@ export class ChartDrawingController {
   private gestureHudTimeout: any = null;
 
   private activePlans = new Map<string, ParsedTradingPlan & { id: string }>();
+  private planDrawingIds = new Map<string, Set<string>>();
+  private drawingMetadata = new Map<string, any>();
+  private drawingPlanMap = new Map<string, string>();
   private showThesisCards = true;
 
   private workspace: any = null;
@@ -1055,6 +1058,7 @@ export class ChartDrawingController {
         this.removeDrawingsFromChart(ids);
         if (lastAction.plan) {
           this.activePlans.delete(lastAction.plan.id);
+          this.planDrawingIds.delete(lastAction.plan.id);
         }
         if (this.selectedDrawingId && ids.includes(this.selectedDrawingId)) {
           this.selectedDrawingId = null;
@@ -1109,6 +1113,8 @@ export class ChartDrawingController {
         }
         if (lastAction.plan) {
           this.activePlans.set(lastAction.plan.id, lastAction.plan);
+          const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
+          this.planDrawingIds.set(lastAction.plan.id, new Set(ids));
         }
         handledInternal = true;
       }
@@ -1151,6 +1157,10 @@ export class ChartDrawingController {
 
     this.activeDrawings = [];
     this.selectedDrawingId = null;
+    this.activePlans.clear();
+    this.planDrawingIds.clear();
+    this.drawingMetadata.clear();
+    this.drawingPlanMap.clear();
     this.notify();
   }
 
@@ -1387,6 +1397,8 @@ export class ChartDrawingController {
         createdDrawings.push(drawingRecord);
         if (id) {
           createdDrawingIds.push(id);
+          this.drawingMetadata.set(id, stageDrawingSpec.metadata);
+          this.drawingPlanMap.set(id, planId);
         }
       }
     }
@@ -1431,7 +1443,11 @@ export class ChartDrawingController {
           const boxId = createdBox.id || boxSpec.id;
           const boxRecord = { ...boxSpec, ...createdBox, id: boxId };
           createdDrawings.push(boxRecord);
-          if (boxId) createdDrawingIds.push(boxId);
+          if (boxId) {
+          createdDrawingIds.push(boxId);
+          this.drawingMetadata.set(boxId, boxSpec.metadata);
+          this.drawingPlanMap.set(boxId, planId);
+        }
         }
       }
     }
@@ -1443,6 +1459,7 @@ export class ChartDrawingController {
     // Simpan ke activePlans registry untuk konsumsi FloatingThesisCard
     const planRecord = { ...plan, id: planId };
     this.activePlans.set(planId, planRecord);
+    this.planDrawingIds.set(planId, new Set(createdDrawingIds));
 
     // Catat seluruh ID drawing yang dibuat ke undoHistory sebagai aksi atomik tunggal
     this.undoHistory.push({
@@ -1496,10 +1513,19 @@ export class ChartDrawingController {
    * Hapus rencana perdagangan tertentu beserta seluruh drawing terkait
    */
   removePlan(planId: string): void {
+    const drawingIdSet = this.planDrawingIds.get(planId) || new Set<string>();
+    const toDelete = this.activeDrawings.filter((d) => d.metadata?.planId === planId || drawingIdSet.has(d.id));
+    const idsToDelete = toDelete.map((d) => d.id).filter(Boolean);
+
     this.activePlans.delete(planId);
-    const toDelete = this.activeDrawings.filter((d) => d.metadata?.planId === planId);
-    if (toDelete.length > 0) {
-      this.removeDrawingsFromChart(toDelete.map((d) => d.id));
+    this.planDrawingIds.delete(planId);
+    for (const id of idsToDelete) {
+      this.drawingMetadata.delete(id);
+      this.drawingPlanMap.delete(id);
+    }
+
+    if (idsToDelete.length > 0) {
+      this.removeDrawingsFromChart(idsToDelete);
     }
     this.notify();
   }
@@ -1513,6 +1539,9 @@ export class ChartDrawingController {
       this.removePlan(pid);
     }
     this.activePlans.clear();
+    this.planDrawingIds.clear();
+    this.drawingMetadata.clear();
+    this.drawingPlanMap.clear();
     this.notify();
   }
 
@@ -1543,6 +1572,18 @@ export class ChartDrawingController {
       try {
         this.activeDrawings = [...(activeChart.drawings.all?.() || [])];
 
+        // Tempelkan kembali metadata ke activeDrawings jika tersedia di drawingMetadata
+        for (const d of this.activeDrawings) {
+          if (d && d.id) {
+            if (this.drawingMetadata.has(d.id) && !d.metadata) {
+              d.metadata = this.drawingMetadata.get(d.id);
+            }
+            if (this.drawingPlanMap.has(d.id) && (!d.metadata || !d.metadata.planId)) {
+              d.metadata = { ...(d.metadata || {}), planId: this.drawingPlanMap.get(d.id) };
+            }
+          }
+        }
+
         // Tick-Aligned Price Guard: Sanitasi anchors harga pada setiap gambar
         for (const d of this.activeDrawings) {
           if (Array.isArray(d.anchors)) {
@@ -1554,10 +1595,25 @@ export class ChartDrawingController {
           }
         }
 
-        // Sinkronisasi activePlans dengan activeDrawings: hapus plan yang gambarnya sudah tidak ada
+        // Sinkronisasi activePlans dengan activeDrawings:
+        // Himpun seluruh drawing ID yang saat ini masih ada di kanvas (baik visible maupun hidden)
+        const existingDrawingIds = new Set(this.activeDrawings.map((d: any) => d.id).filter(Boolean));
+
+        // Rencana hanya dihapus jika SEMUA drawing yang terkait dengannya sudah tidak ada di kanvas
+        for (const [pid, drawingIdSet] of Array.from(this.planDrawingIds.entries())) {
+          if (drawingIdSet && drawingIdSet.size > 0) {
+            const hasAnyDrawing = Array.from(drawingIdSet).some((did) => existingDrawingIds.has(did));
+            if (!hasAnyDrawing) {
+              this.activePlans.delete(pid);
+              this.planDrawingIds.delete(pid);
+            }
+          }
+        }
+
+        // Bersihkan plan lama yang tidak memiliki entri di planDrawingIds dan tidak ada di activeDrawings
         const activePlanIds = new Set(this.activeDrawings.map((d: any) => d.metadata?.planId).filter(Boolean));
         for (const pid of Array.from(this.activePlans.keys())) {
-          if (!activePlanIds.has(pid)) {
+          if (!this.planDrawingIds.has(pid) && !activePlanIds.has(pid)) {
             this.activePlans.delete(pid);
           }
         }

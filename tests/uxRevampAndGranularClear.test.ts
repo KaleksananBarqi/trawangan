@@ -151,4 +151,39 @@ describe('Ticket 7 (#117): UX Revamp - Plan Ingestion, Object Tree & Granular De
     await controller.clearAll();
     assert.equal(controller.getSnapshot().activeDrawings.length, 0);
   });
+
+  it('5. Ticket 2 (#121): toggleDrawingVisibility tidak menghapus Trading Plan meskipun drawing di-hide', () => {
+    const { controller, mockDrawings } = createMockChartWorkspace();
+
+    // Tambahkan method show pada mockDrawings jika belum ada
+    (mockDrawings as any).show = (id: string, visible: boolean) => {
+      const d = mockDrawings.all().find((x: any) => x.id === id);
+      if (d) d.visible = visible;
+    };
+
+    const plan = parseTradingPlan(sampleBearishMarkdown);
+    assert.ok(plan);
+    const created = controller.createMultiTargetPosition(plan, { anchorTime: 1700000000000 });
+    assert.ok(created && created.drawingIds.length > 0);
+
+    const firstDrawingId = created.drawingIds[0];
+    assert.equal(controller.getActivePlans().length, 1);
+
+    // Sembunyikan drawing pertama (simulasi klik tombol mata di tab Layer)
+    controller.toggleDrawingVisibility(firstDrawingId);
+
+    // Pastikan status drawing menjadi visible: false, tapi plan TIDAK terhapus
+    const activeDrawings = controller.getSnapshot().activeDrawings;
+    const targetDrawing = activeDrawings.find((d: any) => d.id === firstDrawingId);
+    assert.equal(targetDrawing?.visible, false);
+
+    // Verifikasi kritis: activePlans masih utuh 1 plan
+    const activePlansAfterHide = controller.getActivePlans();
+    assert.equal(activePlansAfterHide.length, 1);
+    assert.ok(activePlansAfterHide[0].id.startsWith('plan_'));
+
+    // Verifikasi metadata tetap tersambung kembali
+    assert.ok(targetDrawing?.metadata);
+    assert.equal(targetDrawing?.metadata?.planId, activePlansAfterHide[0].id);
+  });
 });
