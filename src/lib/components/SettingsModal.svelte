@@ -8,6 +8,7 @@
     Cpu,
     Info,
     HelpCircle,
+    UserShield,
     Check
   } from '@lucide/svelte';
   import { onDestroy } from 'svelte';
@@ -18,6 +19,7 @@
   import GeneralTab from './settings/GeneralTab.svelte';
   import AppearanceTab from './settings/AppearanceTab.svelte';
   import ChartTab from './settings/ChartTab.svelte';
+  import ProfileTab from './settings/ProfileTab.svelte';
   import FeedTab from './settings/FeedTab.svelte';
   import SystemTab from './settings/SystemTab.svelte';
   import AboutTab from './settings/AboutTab.svelte';
@@ -27,7 +29,7 @@
     isOpen: boolean;
     settings: AppSettings;
     activeProviderId?: string;
-    initialTab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help';
+    initialTab?: 'general' | 'appearance' | 'chart' | 'profile' | 'feed' | 'system' | 'about' | 'help';
     onClose: () => void;
     onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
     onProviderChange?: (providerId: string) => void;
@@ -49,7 +51,7 @@
     onOpenGestureGuide
   }: Props = $props();
 
-  let activeTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
+  let activeTab = $state<'general' | 'appearance' | 'chart' | 'profile' | 'feed' | 'system' | 'about' | 'help'>('general');
   let updateState = $state<UpdateState>(updateService.getSnapshot());
   let unsubUpdate: (() => void) | null = null;
 
@@ -125,6 +127,14 @@
           </button>
 
           <button
+            class="nav-tab {activeTab === 'profile' ? 'active' : ''}"
+            onclick={() => (activeTab = 'profile')}
+          >
+            <UserShield size={14} />
+            <span>Profil & Watermark</span>
+          </button>
+
+          <button
             class="nav-tab {activeTab === 'feed' ? 'active' : ''}"
             onclick={() => (activeTab = 'feed')}
           >
@@ -175,6 +185,8 @@
               {onOpenChartSettings}
               {onResetChartFactory}
             />
+          {:else if activeTab === 'profile'}
+            <ProfileTab {settings} {onUpdateSettings} />
           {:else if activeTab === 'feed'}
             <FeedTab {activeProviderId} {onProviderChange} />
           {:else if activeTab === 'system'}

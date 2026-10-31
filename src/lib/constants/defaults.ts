@@ -1,4 +1,4 @@
-import type { AppSettings, MultiChartSyncConfig } from '../types/market';
+import type { AppSettings, MultiChartSyncConfig, UserProfileConfig } from '../types/market';
 import { DEFAULT_WORLD_CLOCK_CITIES } from '../services/worldClockService';
 
 /**
@@ -48,6 +48,12 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   snapshotScope: 'active',
   snapshotDirectory: '',
   snapshotScaleMultiplier: 2,
+  // Trader Profile & Attribution Settings (#126)
+  userProfile: {
+    username: '',
+    handle: '',
+    avatarDataUrl: undefined,
+  },
   syncConfig: { ...DEFAULT_SYNC_CONFIG },
 };
 
@@ -66,6 +72,13 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
   const mergedSyncConfig: MultiChartSyncConfig = {
     ...DEFAULT_SYNC_CONFIG,
     ...(saved.syncConfig || {}),
+  };
+
+  const rawProfile = saved.userProfile;
+  const userProfile: UserProfileConfig = {
+    username: typeof rawProfile?.username === 'string' ? rawProfile.username : (DEFAULT_APP_SETTINGS.userProfile?.username ?? ''),
+    handle: typeof rawProfile?.handle === 'string' ? rawProfile.handle : (DEFAULT_APP_SETTINGS.userProfile?.handle ?? ''),
+    avatarDataUrl: typeof rawProfile?.avatarDataUrl === 'string' ? rawProfile.avatarDataUrl : (DEFAULT_APP_SETTINGS.userProfile?.avatarDataUrl ?? undefined),
   };
 
   return {
@@ -99,6 +112,7 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
       saved.snapshotScaleMultiplier === 6
         ? saved.snapshotScaleMultiplier
         : (DEFAULT_APP_SETTINGS.snapshotScaleMultiplier ?? 2),
+    userProfile,
     syncConfig: mergedSyncConfig,
   };
 }

@@ -223,6 +223,7 @@
       includePrice,
       includeTimestamp,
       metadata,
+      userProfile: appSettings.userProfile,
     };
 
     return compositeSnapshot(sourceCanvas, options);
