@@ -16,6 +16,16 @@
   } from '@lucide/svelte';
   import { formatPlanPrice, type ParsedTradingPlan } from '../services/planParserService';
 
+  export interface ThesisCardGeometry {
+    planId: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    isWideMode: boolean;
+    isMinimized: boolean;
+  }
+
   interface Props {
     plan: ParsedTradingPlan & { id: string };
     initialX?: number;
@@ -24,6 +34,7 @@
     initialHeight?: number;
     onClose?: (planId: string) => void;
     onHide?: (planId: string) => void;
+    onGeometryChange?: (geo: ThesisCardGeometry) => void;
   }
 
   let {
@@ -33,7 +44,8 @@
     initialWidth = 340,
     initialHeight,
     onClose,
-    onHide
+    onHide,
+    onGeometryChange
   }: Props = $props();
 
   let isMinimized = $state(false);
@@ -44,6 +56,20 @@
   let posY = $state(initialY);
 
   let cardEl = $state<HTMLDivElement | null>(null);
+
+  // Laporkan sinkronisasi geometri posisi dan dimensi kartu ke komponen induk
+  $effect(() => {
+    const currentH = cardHeight ?? (cardEl ? cardEl.offsetHeight : 420);
+    onGeometryChange?.({
+      planId: plan.id,
+      x: posX,
+      y: posY,
+      width: cardWidth,
+      height: currentH,
+      isWideMode,
+      isMinimized
+    });
+  });
 
   // State Penyeretan Kartu (Dragging)
   let isDragging = $state(false);
@@ -105,7 +131,7 @@
     const dx = e.clientX - resizeStartX;
     const dy = e.clientY - resizeStartY;
     cardWidth = Math.max(300, Math.min(840, initialResizeWidth + dx));
-    cardHeight = Math.max(220, Math.min(760, initialResizeHeight + dy));
+    cardHeight = Math.max(220, Math.min(960, initialResizeHeight + dy));
     isWideMode = cardWidth >= 520;
   }
 
@@ -193,7 +219,7 @@
   <!-- Full Glassmorphism Floating Card HUD -->
   <div
     bind:this={cardEl}
-    class="floating-thesis-card obsidian-card {isWideMode ? 'wide-layout' : ''}"
+    class="floating-thesis-card obsidian-card {isWideMode ? 'wide-layout' : ''} {cardHeight ? 'has-custom-height' : ''}"
     style="left: {posX}px; top: {posY}px; width: {cardWidth}px; {cardHeight ? `height: ${cardHeight}px;` : ''}"
     role="region"
     aria-label="Tesis Rencana Perdagangan"
@@ -586,12 +612,19 @@
   /* Body Content */
   .thesis-body {
     padding: 10px 12px;
-    max-height: 480px;
+    min-height: 0;
+    max-height: 520px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    flex: 1;
+    flex: 1 1 auto;
+  }
+
+  /* Saat kartu memiliki tinggi eksplisit kustom (cardHeight), hilangkan batas max-height agar mengisi penuh */
+  .floating-thesis-card.has-custom-height .thesis-body {
+    max-height: none;
+    height: 100%;
   }
 
   /* Wide Multi-Column Layout */

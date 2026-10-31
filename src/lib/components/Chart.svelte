@@ -214,6 +214,19 @@
     price: number;
   } | null>(null);
 
+  // Pelacakan geometri posisi & dimensi kartu tesis aktif untuk sinkronisasi snapshot
+  let thesisCardGeometries = $state<Record<string, { x: number; y: number; width: number; height: number; isWideMode: boolean }>>({});
+
+  function handleThesisCardGeometryChange(geo: { planId: string; x: number; y: number; width: number; height: number; isWideMode: boolean }) {
+    thesisCardGeometries[geo.planId] = {
+      x: geo.x,
+      y: geo.y,
+      width: geo.width,
+      height: geo.height,
+      isWideMode: geo.isWideMode
+    };
+  }
+
   async function refreshCachedCandles() {
     try {
       const bars = await marketFeed.getCandles(symbol, timeframe, 300);
@@ -321,6 +334,7 @@
       showDrawingPriceLabels,
       activePlans,
       showThesisCards,
+      cardGeometries: thesisCardGeometries,
       getPriceY: (p) => getPriceY(p),
       formatPrice: (p) => formatPrice(p)
     });
@@ -734,6 +748,7 @@
         initialY={56 + idx * 24}
         onClose={(id) => chartDrawingController.removePlan(id)}
         onHide={() => chartDrawingController.setThesisCardsVisible(false)}
+        onGeometryChange={handleThesisCardGeometryChange}
       />
     {/each}
   {:else if activePlans.length > 0}

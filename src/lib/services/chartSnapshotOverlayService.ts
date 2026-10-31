@@ -15,6 +15,7 @@ export interface OverlayRenderContext {
   showDrawingPriceLabels: boolean;
   activePlans: Array<ParsedTradingPlan & { id: string }>;
   showThesisCards: boolean;
+  cardGeometries?: Record<string, { x: number; y: number; width: number; height: number; isWideMode?: boolean }>;
   getPriceY: (price: number) => number | null;
   formatPrice: (price: number | null) => string;
 }
