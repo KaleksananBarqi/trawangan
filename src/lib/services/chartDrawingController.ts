@@ -7,6 +7,7 @@ import {
 } from './persistence';
 import type { CommandDispatcher } from './commandDispatcher';
 import { roundToTickSize } from './priceSnapService';
+import { attachPriceScaleInputGuard } from './chartPriceScaleInputGuard';
 import type { ParsedTradingPlan } from './planParserService';
 import {
   recognizeGesture,
@@ -350,6 +351,13 @@ export class ChartDrawingController {
     const activeChart = this.getActiveChart();
     if (activeChart) {
       this.attachChartListeners(activeChart);
+    }
+
+    // Pastikan seluruh sel kanvas terproteksi dari claim drawing saat berinteraksi dengan sumbu harga/waktu
+    for (const cell of this.getAllCells()) {
+      try {
+        attachPriceScaleInputGuard(cell);
+      } catch (_) {}
     }
 
     return () => {
@@ -777,6 +785,10 @@ export class ChartDrawingController {
    */
   attachChartListeners(chart: any): () => void {
     if (!chart || typeof chart.on !== 'function') return () => {};
+
+    try {
+      attachPriceScaleInputGuard(chart);
+    } catch (_) {}
 
     const onMutated = () => this.handleDrawingMutated();
     const onDraft = () => this.handleDrawingDraft();

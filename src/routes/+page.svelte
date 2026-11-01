@@ -488,6 +488,7 @@
       }),
       commandDispatcher.bindHandler('fit-chart-f', () => {
         if (chartComponent?.fitChart) chartComponent.fitChart();
+        addSystemLog('Shortcut: Fit grafik ke viewport (F)', 'info');
       }),
       commandDispatcher.bindHandler('create-alert-cursor', () => {
         const cursorPrice = chartComponent?.getLastHoveredPrice?.() || ticker?.price;
