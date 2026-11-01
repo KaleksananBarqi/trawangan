@@ -524,9 +524,9 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       id: 'duplicate-selected-drawing',
       category: 'Alat Gambar (Drawing Tools)',
       keys: ['Ctrl', 'D'],
-      desc: 'Duplikasi objek gambar yang sedang dipilih dengan offset spasial',
+      desc: 'Duplikasi objek gambar yang sedang dipilih (Clone / Duplicate)',
       allowInInput: false,
-      match: { ctrlOrMeta: true, alt: false, key: 'd', code: 'KeyD' },
+      match: { ctrlOrMeta: true, alt: false, shift: false, key: 'd', code: 'KeyD' },
     },
     {
       id: 'toggle-hide-drawings',

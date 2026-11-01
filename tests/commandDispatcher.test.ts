@@ -857,5 +857,117 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     assert.equal(snap.isOpen, true, 'Dock harus tetap terbuka');
     assert.equal(snap.activeTab, 'objects', 'Tab harus berpindah ke objects');
   });
+
+  await t.test('20. Tiket #141: Pintasan Ctrl+D untuk Duplikasi Objek Gambar (duplicate-selected-drawing) & Input Suppression', () => {
+    const dispatcher = createDefaultCommandDispatcher();
+
+    // 1. Verifikasi registrasi perintah bawaan
+    const cmd = dispatcher.getCommands().find((c) => c.id === 'duplicate-selected-drawing');
+    assert.ok(cmd, 'Perintah duplicate-selected-drawing harus terdaftar di dispatcher');
+    assert.equal(cmd.category, 'Alat Gambar (Drawing Tools)');
+    assert.deepEqual(cmd.keys, ['Ctrl', 'D']);
+    assert.equal(cmd.desc, 'Duplikasi objek gambar yang sedang dipilih (Clone / Duplicate)');
+    assert.equal(cmd.allowInInput, false, 'allowInInput harus false');
+    assert.deepEqual(cmd.match, { ctrlOrMeta: true, alt: false, shift: false, key: 'd', code: 'KeyD' });
+
+    // 2. Verifikasi eksekusi handler via Ctrl+D dan Meta+D
+    let duplicateTriggeredCount = 0;
+    const unbind = dispatcher.bindHandler('duplicate-selected-drawing', () => {
+      duplicateTriggeredCount++;
+    });
+
+    // Simulasi Ctrl+D di kanvas (Windows/Linux)
+    const ctrlDEvent = {
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      key: 'd',
+      code: 'KeyD',
+      target: { tagName: 'CANVAS', isContentEditable: false, closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as unknown as KeyboardEvent;
+
+    const handledCtrlD = dispatcher.dispatch(ctrlDEvent);
+    assert.equal(handledCtrlD, true, 'Ctrl+D di canvas harus di-dispatch');
+    assert.equal(duplicateTriggeredCount, 1);
+
+    // Simulasi Cmd+D di kanvas (macOS)
+    const metaDEvent = {
+      ctrlKey: false,
+      metaKey: true,
+      altKey: false,
+      shiftKey: false,
+      key: 'd',
+      code: 'KeyD',
+      target: { tagName: 'CANVAS', isContentEditable: false, closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as unknown as KeyboardEvent;
+
+    const handledMetaD = dispatcher.dispatch(metaDEvent);
+    assert.equal(handledMetaD, true, 'Cmd+D (Meta+D) di canvas harus di-dispatch');
+    assert.equal(duplicateTriggeredCount, 2);
+
+    // 3. Shift+Ctrl+D tidak boleh memicu duplikasi karena shift: false
+    const shiftCtrlDEvent = {
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: true,
+      key: 'd',
+      code: 'KeyD',
+      target: { tagName: 'CANVAS', isContentEditable: false, closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as unknown as KeyboardEvent;
+
+    const handledShiftCtrlD = dispatcher.dispatch(shiftCtrlDEvent);
+    assert.equal(handledShiftCtrlD, false, 'Shift+Ctrl+D tidak boleh memicu duplikasi');
+    assert.equal(duplicateTriggeredCount, 2);
+
+    // 4. Verifikasi Input Suppression (disupresi saat fokus di input dan textarea)
+    const inputEvent = {
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      key: 'd',
+      code: 'KeyD',
+      target: { tagName: 'INPUT', isContentEditable: false, closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as unknown as KeyboardEvent;
+
+    const handledInput = dispatcher.dispatch(inputEvent);
+    assert.equal(handledInput, false, 'Ctrl+D harus disupresi saat fokus di input teks');
+    assert.equal(duplicateTriggeredCount, 2);
+
+    const textareaEvent = {
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      key: 'd',
+      code: 'KeyD',
+      target: { tagName: 'TEXTAREA', isContentEditable: false, closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as unknown as KeyboardEvent;
+
+    const handledTextarea = dispatcher.dispatch(textareaEvent);
+    assert.equal(handledTextarea, false, 'Ctrl+D harus disupresi saat fokus di textarea');
+    assert.equal(duplicateTriggeredCount, 2);
+
+    // 5. Verifikasi terdaftar dan dapat dicari di filter / cheatsheet
+    const searchDuplicate = dispatcher.filterCommands('duplikasi');
+    assert.ok(searchDuplicate.some((c) => c.id === 'duplicate-selected-drawing'), 'Harus ditemukan saat query "duplikasi"');
+
+    const searchCtrlD = dispatcher.filterCommands('ctrl+d');
+    assert.ok(searchCtrlD.some((c) => c.id === 'duplicate-selected-drawing'), 'Harus ditemukan saat query "ctrl+d"');
+
+    unbind();
+  });
 });
 

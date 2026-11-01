@@ -1016,6 +1016,126 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
 
     unbind();
   });
+
+  await t.test('20. Tiket #141: Drawing Duplication Engine (duplicateSelectedDrawing) dan Undo/Redo Timeline', () => {
+    const controller = new ChartDrawingController();
+    let drawingsList: any[] = [];
+    const calls: string[] = [];
+
+    const mockDrawings = {
+      all: () => drawingsList,
+      create: (spec: any) => {
+        const item = { ...spec, id: spec.id || `draw_${drawingsList.length + 1}` };
+        drawingsList.push(item);
+        calls.push(`create:${item.id}`);
+        return item;
+      },
+      add: (type: string, spec: any) => {
+        const item = { ...spec, id: spec.id || `draw_${drawingsList.length + 1}`, type };
+        drawingsList.push(item);
+        calls.push(`add:${item.id}`);
+        return item;
+      },
+      remove: (id: string) => {
+        calls.push(`remove:${id}`);
+        drawingsList = drawingsList.filter((d) => d.id !== id);
+      },
+      removeMany: (ids: string[]) => {
+        calls.push(`removeMany:${ids.join(',')}`);
+        drawingsList = drawingsList.filter((d) => !ids.includes(d.id));
+      },
+      select: (id: string) => calls.push(`select:${id}`),
+      deselect: () => calls.push('deselect'),
+      undo: () => calls.push('undo'),
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockChart = {
+      drawings: mockDrawings,
+      data: () => [{ time: 1700000000000, close: 50000 }, { time: 1700000060000, close: 50100 }],
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: mockChart, symbol: 'BTCUSDT', timeframe: '1m' },
+      cells: () => [{ chart: mockChart }]
+    };
+
+    controller.attachWorkspace(
+      mockWorkspace as any,
+      () => 'BTCUSDT',
+      () => '1m',
+      () => 'binance'
+    );
+
+    // 1. Memanggil saat tidak ada drawing terpilih mengembalikan null tanpa error
+    assert.equal(controller.getSelectedDrawingId(), null);
+    const noopResult = controller.duplicateSelectedDrawing();
+    assert.equal(noopResult, null, 'Harus mengembalikan null saat tidak ada drawing terpilih');
+    assert.equal(drawingsList.length, 0);
+
+    // 2. Buat objek gambar awal
+    const originalDrawing = {
+      id: 'draw_orig_1',
+      type: 'trendline',
+      anchors: [
+        { time: 1700000000000, price: 50000 },
+        { time: 1700000060000, price: 50500 }
+      ],
+      style: { color: '#f59e0b', lineWidth: 2 },
+      text: { content: 'Breakout Line' },
+      metadata: { note: 'Key resistance' }
+    };
+    drawingsList.push(originalDrawing);
+
+    // Seleksi drawing awal
+    controller.selectDrawing('draw_orig_1');
+    assert.equal(controller.getSelectedDrawingId(), 'draw_orig_1');
+
+    // 3. Panggil duplicateSelectedDrawing
+    let notifiedNewSelection = false;
+    const unsub = controller.subscribe((state) => {
+      if (state.selectedDrawingId && state.selectedDrawingId !== 'draw_orig_1') {
+        notifiedNewSelection = true;
+      }
+    });
+
+    const newId = controller.duplicateSelectedDrawing();
+    assert.ok(newId, 'Harus mengembalikan ID drawing baru');
+    assert.notEqual(newId, 'draw_orig_1', 'ID baru tidak boleh sama dengan ID lama');
+    assert.equal(controller.getSelectedDrawingId(), newId, 'Drawing hasil klon harus otomatis menjadi selectedDrawingId');
+    assert.equal(drawingsList.length, 2, 'Jumlah drawing di kanvas harus bertambah');
+    assert.ok(notifiedNewSelection, 'Subscriber controller harus menerima notifikasi seleksi baru');
+
+    // Periksa objek hasil klon
+    const cloned = drawingsList.find((d) => d.id === newId);
+    assert.ok(cloned, 'Objek klon harus tersimpan di chart drawings');
+    assert.equal(cloned.type, 'trendline');
+    assert.deepEqual(cloned.style, originalDrawing.style);
+    assert.deepEqual(cloned.text, originalDrawing.text);
+    assert.equal(cloned.metadata.note, 'Key resistance');
+
+    // Koordinat anchors harus memiliki offset spasial
+    assert.ok(cloned.anchors[0].price !== originalDrawing.anchors[0].price, 'Harga anchor 0 harus memiliki offset');
+    assert.ok(cloned.anchors[1].price !== originalDrawing.anchors[1].price, 'Harga anchor 1 harus memiliki offset');
+    assert.ok(cloned.anchors[0].time !== originalDrawing.anchors[0].time, 'Waktu anchor 0 harus memiliki offset');
+
+    // 4. Undo (Ctrl+Z) membatalkan duplikasi (menghapus hasil clone)
+    controller.undo();
+    assert.equal(drawingsList.some((d) => d.id === newId), false, 'Drawing hasil klon harus terhapus setelah undo');
+    assert.equal(drawingsList.length, 1, 'Hanya drawing asli yang tersisa');
+    assert.equal(drawingsList[0].id, 'draw_orig_1');
+    assert.equal(controller.getSelectedDrawingId(), null, 'selectedDrawingId harus direset saat clone di-undo');
+
+    // 5. Redo (Ctrl+Y) memulihkan kembali hasil clone
+    controller.redo();
+    assert.equal(drawingsList.length, 2, 'Drawing hasil klon harus kembali setelah redo');
+    assert.ok(drawingsList.some((d) => d.id === newId), 'Drawing hasil klon harus ada kembali');
+
+    unsub();
+  });
 });
 
 

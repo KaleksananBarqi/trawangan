@@ -535,9 +535,9 @@
         }
       }),
       commandDispatcher.bindHandler('duplicate-selected-drawing', () => {
-        const dupId = chartDrawingController.duplicateSelectedDrawing();
-        if (dupId) {
-          addSystemLog(`Objek gambar diduplikasi: ${dupId}`, 'info');
+        const newId = chartDrawingController.duplicateSelectedDrawing();
+        if (newId) {
+          addSystemLog(`Shortcut: Duplikasi objek gambar (${newId}) (Ctrl+D)`, 'info');
         }
       }),
       commandDispatcher.bindHandler('toggle-hide-drawings', () => {

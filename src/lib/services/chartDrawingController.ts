@@ -1049,6 +1049,14 @@ export class ChartDrawingController {
   }
 
   /**
+   * Menambahkan aksi ke riwayat pembatalan (undo timeline)
+   */
+  pushUndoAction(action: DrawingUndoAction): void {
+    this.undoHistory.push(action);
+    this.redoHistory = [];
+  }
+
+  /**
    * Batalkan aksi gambar terakhir (Undo)
    * Mendukung pemulihan drawing yang terhapus karena scribble serta pembatalan grup multi-target
    */
@@ -1334,23 +1342,45 @@ export class ChartDrawingController {
     const firstPrice = source.anchors?.[0]?.price ?? 100;
     const tick = getAdaptiveTickSize(firstPrice);
     const priceOffset = tick * 5;
+    const { deltaT } = resolveCandleMetrics(activeChart, this.getTimeframe());
+    const timeOffset = deltaT > 0 ? deltaT : 60000;
 
     const clonedAnchors = Array.isArray(source.anchors)
       ? source.anchors.map((a: any) => ({
-          time: typeof a.time === 'number' ? a.time + 60000 : a.time,
+          ...a,
+          time: typeof a.time === 'number' ? a.time + timeOffset : a.time,
           price: typeof a.price === 'number' ? a.price - priceOffset : a.price
         }))
       : [];
 
-    const newId = 'draw_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+    const clonedPoints = Array.isArray(source.points)
+      ? source.points.map((p: any) => ({
+          ...p,
+          x: typeof p.x === 'number' ? p.x + 20 : p.x,
+          y: typeof p.y === 'number' ? p.y + 20 : p.y
+        }))
+      : undefined;
+
+    const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+    const newId = `draw_${uuid}`;
+
     const clonedItem: any = {
       ...source,
       id: newId,
       anchors: clonedAnchors,
+      ...(clonedPoints ? { points: clonedPoints } : {}),
+      style: source.style ? JSON.parse(JSON.stringify(source.style)) : undefined,
+      text: source.text ? JSON.parse(JSON.stringify(source.text)) : undefined,
+      metadata: source.metadata ? { ...JSON.parse(JSON.stringify(source.metadata)), planId: undefined } : undefined,
     };
-    if (clonedItem.metadata) {
-      clonedItem.metadata = { ...clonedItem.metadata, planId: undefined };
-    }
+    if (typeof source.x1 === 'number') clonedItem.x1 = source.x1 + 20;
+    if (typeof source.y1 === 'number') clonedItem.y1 = source.y1 + 20;
+    if (typeof source.x2 === 'number') clonedItem.x2 = source.x2 + 20;
+    if (typeof source.y2 === 'number') clonedItem.y2 = source.y2 + 20;
+    if (typeof source.x === 'number') clonedItem.x = source.x + 20;
+    if (typeof source.y === 'number') clonedItem.y = source.y + 20;
 
     let created: any = null;
     try {
@@ -1372,15 +1402,16 @@ export class ChartDrawingController {
 
     const finalId = created?.id || newId;
 
-    // Catat ke undo stack
-    this.undoHistory.push({
+    // Tambahkan aksi ke undo timeline (pushUndoAction)
+    this.pushUndoAction({
       action: 'create',
       drawings: [{ ...clonedItem, id: finalId }]
     });
-    this.redoHistory = [];
 
-    // Otomatis seleksi klon baru
+    // Set ID gambar baru sebagai this.selectedDrawingId
+    this.selectedDrawingId = finalId;
     this.selectDrawing(finalId);
+    this.notify();
     this.handleDrawingMutated();
     return finalId;
   }
