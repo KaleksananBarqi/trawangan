@@ -5,6 +5,24 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.28.0] - 2026-11-01
+
+### 🚀 Ditambahkan (Added)
+- **Penguatan Parser Rencana Perdagangan Deterministik (Hardening Plan Ingestion - #131):**
+  - **Deteksi Tanggal Komprehensif (`isDateOrTimestampPattern`)**: Validator mandiri untuk mencegah format tanggal kalender lengkap (ISO `YYYY-MM-DD`, `DD-MM-YYYY`), format jam/menit (`10-30 06:00`), stempel waktu dalam kurung `(10-30)`, maupun tanggal berawalan kata kunci (`OB tanggal 10-30`) keliru diekstrak sebagai zona harga konteks fiktif.
+  - **Sanitasi Penekanan Markdown pada Label Institusional**: Penangkap label kini secara transparan membersihkan simbol pemformatan Markdown (`**`, `*`, `__`, `_`), sehingga zona seperti `**1H Bearish OB**` atau `*4H Bearish FVG*` diekstrak dengan nama institusional yang bersih dan presisi alih-alih label generik `Context Zone`.
+  - **Proteksi Skala Harga Aset Bernilai Rendah**: Memvalidasi rentang harga terhadap harga referensi instrumen aktif sehingga rentang harga bulat riil pada koin murah ($10–$25 pada koin seharga $15) tetap dipertahankan sebagai Context Zone valid.
+  - **Toleransi Sel Tabel Multiline & Karakter Pemformatan Internal**: Penggabungan sel tabel multiline yang kebal terhadap jeda baris kosong internal, penutup pipa terpisah (` |`), pembatas `---`, maupun penomoran `#1` di dalam narasi tesis.
+
+### 🔄 Diubah (Changed)
+- **Refactoring Arsitektur Parser & Pembersihan Code Smells**:
+  - Mengekstrak helper lokal `ensureTrailingPipe` untuk menstandarkan format baris tabel Markdown di seluruh cabang normalisasi.
+  - Mengubah variabel singkatan ambigu `lm` menjadi `labelMatch` untuk meningkatkan keterbacaan kode domain.
+
+### 🐛 Diperbaiki (Fixed)
+- **Pencatatan Lengkap Tesis/Alasan pada Tabel Multiline**: Memperbaiki anomali di mana sel narasi alasan (`reasons.entry`, `reasons.stopLoss`, `reasons.tp1`, `reasons.tp2`) bernilai kosong akibat syarat kaku `trimmed.endsWith('|')`.
+- **Eliminasi False Context Zone Tanggal `10.00 - 30.00`**: Mengeliminasi kotak dan lencana zona konteks fiktif berharga ekstrem $10–$30 pada grafik aset bernilai besar (BTC) yang dipicu oleh kemunculan tanggal kalender di dekat singkatan institusional.
+
 ## [0.27.0] - 2026-11-01
 
 ### 🚀 Ditambahkan (Added)
