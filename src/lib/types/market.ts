@@ -281,18 +281,27 @@ export interface AppSettings {
   clipboardAutoOpen?: boolean;
   showWorldClocks?: boolean;
   worldClockCities?: string[];
-  // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting)
+  // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting, #132 Side-by-Side Thesis Layout)
   snapshotIncludeFrame?: boolean;
   snapshotIncludePrice?: boolean;
   snapshotIncludeTimestamp?: boolean;
   snapshotScope?: 'active' | 'all';
   snapshotDirectory?: string;
   snapshotScaleMultiplier?: SnapshotScaleMultiplier;
+  snapshotThesisLayout?: SnapshotThesisLayout;
   // Trader Profile & Attribution Settings (#126)
   userProfile?: UserProfileConfig;
   // Security Watermark Anti-Theft Settings (#127)
   securityWatermark?: SecurityWatermarkConfig;
 }
+
+/**
+ * Tata letak tampilan rencana trading (Trading Plan Thesis) pada hasil ekspor tangkapan layar (#132, #133)
+ * - 'side-panel': Panel tesis khusus di sisi kanan grafik dengan kanvas candlestick bersih
+ * - 'overlay': Kartu tesis mengambang langsung di atas grafik lilin (legacy mode)
+ * - 'hidden': Tesis disembunyikan seluruhnya dari hasil tangkapan layar
+ */
+export type SnapshotThesisLayout = 'side-panel' | 'overlay' | 'hidden';
 
 /**
  * Pilihan faktor pengali resolusi untuk ekspor snapshot grafik (#125)

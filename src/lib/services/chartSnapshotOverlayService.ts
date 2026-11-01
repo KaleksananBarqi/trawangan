@@ -7,15 +7,18 @@
 import type { PriceScaleBadge } from './priceScaleLabelService';
 import type { ParsedTradingPlan } from './planParserService';
 import { THEME_PRESETS, type ThemeConfig } from '../constants/themes';
+import type { SnapshotThesisLayout } from '../types/market';
 
 export interface OverlayRenderContext {
   baseCanvas: HTMLCanvasElement;
+  targetCanvas?: HTMLCanvasElement;
   containerWidth: number;
   containerHeight: number;
   drawingPriceBadges: PriceScaleBadge[];
   showDrawingPriceLabels: boolean;
   activePlans: Array<ParsedTradingPlan & { id: string }>;
   showThesisCards: boolean;
+  thesisLayout?: SnapshotThesisLayout;
   cardGeometries?: Record<string, { x: number; y: number; width: number; height: number; isWideMode?: boolean }>;
   getPriceY: (price: number) => number | null;
   formatPrice: (price: number | null) => string;
@@ -630,21 +633,27 @@ export const drawSnapshotThesisCard = drawThesisCardOnCanvas;
 export function renderScreenshotCanvasWithOverlay(context: OverlayRenderContext): HTMLCanvasElement {
   const {
     baseCanvas,
+    targetCanvas,
     containerWidth,
     containerHeight,
     drawingPriceBadges,
     showDrawingPriceLabels,
     activePlans,
     showThesisCards,
+    thesisLayout = 'overlay',
     getPriceY,
     formatPrice
   } = context;
 
-  if (typeof document === 'undefined') {
-    return baseCanvas;
+  let finalCanvas = targetCanvas;
+  if (!finalCanvas) {
+    if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      finalCanvas = document.createElement('canvas');
+    } else {
+      return baseCanvas;
+    }
   }
 
-  const finalCanvas = document.createElement('canvas');
   finalCanvas.width = baseCanvas.width;
   finalCanvas.height = baseCanvas.height;
 
@@ -662,8 +671,16 @@ export function renderScreenshotCanvasWithOverlay(context: OverlayRenderContext)
     drawPriceScaleBadgesOnCanvas(ctx, drawingPriceBadges, scaleX, scaleY, finalCanvas.width, getPriceY, formatPrice);
   }
 
-  // 3. Gambar Floating Thesis Card jika aktif dan tidak tersembunyi
-  if (showThesisCards && Array.isArray(activePlans) && activePlans.length > 0) {
+  // 3. Gambar Floating Thesis Card jika aktif dan bukan tata letak side-panel atau hidden (#132, #133)
+  // Bila thesisLayout === 'side-panel', lewati rendering kartu tesis mengambang agar candlestick tetap 100% bersih
+  const shouldDrawThesisCard =
+    thesisLayout !== 'side-panel' &&
+    thesisLayout !== 'hidden' &&
+    showThesisCards &&
+    Array.isArray(activePlans) &&
+    activePlans.length > 0;
+
+  if (shouldDrawThesisCard) {
     for (let i = 0; i < activePlans.length; i++) {
       const plan = activePlans[i];
       const geo = context.cardGeometries?.[plan.id];

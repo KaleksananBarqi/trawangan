@@ -48,6 +48,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   snapshotScope: 'active',
   snapshotDirectory: '',
   snapshotScaleMultiplier: 2,
+  snapshotThesisLayout: 'side-panel',
   // Trader Profile & Attribution Settings (#126)
   userProfile: {
     username: '',
@@ -147,6 +148,12 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
       saved.snapshotScaleMultiplier === 6
         ? saved.snapshotScaleMultiplier
         : (DEFAULT_APP_SETTINGS.snapshotScaleMultiplier ?? 2),
+    snapshotThesisLayout:
+      saved.snapshotThesisLayout === 'side-panel' ||
+      saved.snapshotThesisLayout === 'overlay' ||
+      saved.snapshotThesisLayout === 'hidden'
+        ? saved.snapshotThesisLayout
+        : (DEFAULT_APP_SETTINGS.snapshotThesisLayout ?? 'side-panel'),
     userProfile,
     customChartBackground: {
       mode:
