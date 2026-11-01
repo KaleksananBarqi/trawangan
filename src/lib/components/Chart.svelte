@@ -19,7 +19,8 @@
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
     Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
-    CustomChartBackgroundConfig, UserProfileConfig, SecurityWatermarkConfig
+    CustomChartBackgroundConfig, UserProfileConfig, SecurityWatermarkConfig,
+    SnapshotThesisLayout
   } from '../types/market';
   import type { PriceScaleBadge } from '../services/priceScaleLabelService';
   import type { FeedConnectionStatus } from '../services/market/types';
@@ -335,7 +336,7 @@
   export function enforceCurrentPriceLineOnCell(cell: any): void { controller.enforceCurrentPriceLine(cell); }
   export function applyWorkspaceTimezone(tz: string): void { controller.setTimezone(tz); }
   export function getActiveIndicators(): ActiveIndicatorInfo[] { return controller.getActiveIndicators(); }
-  export function getChartScreenshotCanvas(scope: 'active' | 'all' = 'active'): HTMLCanvasElement | null {
+  export function getChartScreenshotCanvas(scope: 'active' | 'all' = 'active', thesisLayout?: SnapshotThesisLayout): HTMLCanvasElement | null {
     const baseCanvas = controller.getScreenshotCanvas(scope);
     if (!baseCanvas) return null;
     if (!chartContainer) return baseCanvas;
@@ -350,6 +351,7 @@
       showDrawingPriceLabels,
       activePlans: scopedActivePlans,
       showThesisCards,
+      thesisLayout,
       cardGeometries: thesisCardGeometries,
       getPriceY: (p) => getPriceY(p),
       formatPrice: (p) => formatPrice(p),
