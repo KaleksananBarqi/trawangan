@@ -25,6 +25,17 @@ export interface GestureCreationState {
   expiresAt: number;
 }
 
+export interface ChartDrawingItem {
+  id?: string;
+  type?: string;
+  paneId?: string;
+  anchors?: Array<{ time?: number; price?: number }>;
+  style?: Record<string, unknown>;
+  text?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export interface DrawingState {
   activeTool: DrawingToolType | null;
   snapMode: SnapMode;
@@ -1581,6 +1592,157 @@ export class ChartDrawingController {
   }
 
   /**
+   * Menautkan kembali gambar-gambar posisi dan context zone yang sudah ada pada kanvas
+   * (misal setelah dimuat dari storage via fromJSON) ke entitas plan aktif,
+   * sekaligus membersihkan duplikat gambar kembar jika terdeteksi.
+   * Mengembalikan true jika gambar yang cocok ditemukan dan ditautkan (sehingga tidak perlu create baru).
+   */
+  private tryRelinkPlanDrawings(
+    plan: ParsedTradingPlan & { id: string; symbol?: string },
+    curSym: string
+  ): boolean {
+    // Validasi isolasi instrumen: lewati jika rencana bukan milik simbol aktif saat ini
+    if (plan.symbol && !isSameSymbol(plan.symbol, curSym)) {
+      return false;
+    }
+
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return false;
+
+    // Pastikan activeDrawings sinkron dengan kanvas
+    const currentDrawings: ChartDrawingItem[] = (activeChart.drawings.all?.() || this.activeDrawings || []) as ChartDrawingItem[];
+    if (!Array.isArray(currentDrawings) || currentDrawings.length === 0) return false;
+
+    // Helper perbandingan harga adaptif: mendukung nominal besar (BTC) maupun koin sub-dollar/micin (PEPE/SHIB)
+    const isPriceMatch = (actual: number, expected: number): boolean => {
+      const diff = Math.abs(actual - expected);
+      if (diff < 1e-8) return true;
+      const ref = Math.max(Math.abs(actual), Math.abs(expected));
+      return ref > 0 ? (diff / ref) <= 0.0005 : diff < 1e-4;
+    };
+
+    const planId = plan.id;
+    const targetPrices = (plan.targets || []).map((t) => t.price).filter((p): p is number => typeof p === 'number');
+    const matchedDrawingIds: string[] = [];
+    const duplicatesToRemove: string[] = [];
+
+    // Lacak target index yang sudah memiliki drawing terpasang agar tidak ada stage kembar
+    const matchedTargetIndices = new Set<number>();
+
+    // 1. Cari drawing position yang cocok dengan Entry & Stop Loss
+    for (const d of currentDrawings) {
+      if (!d || d.type !== 'position' || !Array.isArray(d.anchors) || d.anchors.length < 3) continue;
+
+      const entryPrice = d.anchors[0]?.price;
+      const stopLossPrice = d.anchors[1]?.price;
+      const targetPrice = d.anchors[2]?.price;
+      if (typeof entryPrice !== 'number' || typeof stopLossPrice !== 'number' || typeof targetPrice !== 'number') continue;
+
+      const isEntryMatch = isPriceMatch(entryPrice, plan.entry);
+      const isStopMatch = isPriceMatch(stopLossPrice, plan.stopLoss);
+
+      if (isEntryMatch && isStopMatch) {
+        let matchedIdx = -1;
+        for (let i = 0; i < targetPrices.length; i++) {
+          if (isPriceMatch(targetPrice, targetPrices[i])) {
+            matchedIdx = i;
+            break;
+          }
+        }
+
+        if (matchedIdx !== -1) {
+          if (matchedTargetIndices.has(matchedIdx)) {
+            // Duplikat terdeteksi pada target stage yang sama! Bersihkan duplikat
+            if (d.id) duplicatesToRemove.push(d.id);
+          } else {
+            matchedTargetIndices.add(matchedIdx);
+            if (d.id) matchedDrawingIds.push(d.id);
+
+            const stageTarget = plan.targets[matchedIdx];
+            const meta = {
+              planId,
+              stageIndex: matchedIdx + 1,
+              targetLabel: stageTarget?.label || `TP${matchedIdx + 1}`,
+              rMultiple: stageTarget?.rMultiple,
+              bias: plan.bias,
+              reasons: plan.reasons,
+              contextZones: plan.contextZones,
+              rawPlanText: plan.rawText,
+              lastEntry: plan.entry,
+              lastStop: plan.stopLoss,
+              lastTarget: stageTarget?.price
+            };
+            d.metadata = meta;
+            if (d.id) {
+              this.drawingMetadata.set(d.id, meta);
+              this.drawingPlanMap.set(d.id, planId);
+            }
+          }
+        }
+      }
+    }
+
+    // Jika tidak ada stage posisi yang cocok, berarti gambar belum ada di kanvas
+    if (matchedDrawingIds.length === 0) return false;
+
+    // 2. Cari drawing context zones (box) yang cocok
+    if (Array.isArray(plan.contextZones) && plan.contextZones.length > 0) {
+      const matchedZoneIndices = new Set<number>();
+      for (const d of currentDrawings) {
+        if (!d || d.type !== 'box' || !Array.isArray(d.anchors) || d.anchors.length < 2) continue;
+        const anchorPriceA = d.anchors[0]?.price;
+        const anchorPriceB = d.anchors[1]?.price;
+        if (typeof anchorPriceA !== 'number' || typeof anchorPriceB !== 'number') continue;
+
+        const boxHigh = Math.max(anchorPriceA, anchorPriceB);
+        const boxLow = Math.min(anchorPriceA, anchorPriceB);
+
+        for (let i = 0; i < plan.contextZones.length; i++) {
+          const zone = plan.contextZones[i];
+          if (typeof zone.high !== 'number' || typeof zone.low !== 'number') continue;
+          if (isPriceMatch(boxHigh, zone.high) && isPriceMatch(boxLow, zone.low)) {
+            if (matchedZoneIndices.has(i)) {
+              if (d.id) duplicatesToRemove.push(d.id);
+            } else {
+              matchedZoneIndices.add(i);
+              if (d.id) matchedDrawingIds.push(d.id);
+              const meta = {
+                planId,
+                role: 'context_zone',
+                zoneLabel: zone.label,
+                low: zone.low,
+                high: zone.high
+              };
+              d.metadata = meta;
+              if (d.id) {
+                this.drawingMetadata.set(d.id, meta);
+                this.drawingPlanMap.set(d.id, planId);
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    // Bersihkan artefak gambar duplikat yang terdeteksi
+    if (duplicatesToRemove.length > 0) {
+      this.removeDrawingsFromChart(duplicatesToRemove);
+      this.activeDrawings = ((activeChart.drawings.all?.() || []) as ChartDrawingItem[]).filter(
+        (d) => Boolean(d?.id) && !duplicatesToRemove.includes(d.id as string)
+      );
+    }
+
+    // Simpan ke activePlans registry
+    const targetSymbol = plan.symbol || curSym;
+    const planRecord = { ...plan, id: planId, symbol: targetSymbol };
+    this.activePlans.set(planId, planRecord);
+    this.planDrawingIds.set(planId, new Set(matchedDrawingIds));
+
+    return true;
+  }
+
+  /**
    * Pulihkan koleksi rencana perdagangan aktif ke kanvas (Workspace Persistence)
    */
   restorePlans(plans: Array<ParsedTradingPlan & { id: string; symbol?: string }>, showCards: boolean = true): void {
@@ -1589,16 +1751,20 @@ export class ChartDrawingController {
     const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
     for (const plan of plans) {
       if (!this.activePlans.has(plan.id)) {
-        this.createMultiTargetPosition(
-          {
-            ...plan,
-            symbol: plan.symbol || curSym
-          },
-          {
-            planId: plan.id,
-            drawContextZones: true
-          }
-        );
+        // Cek terlebih dahulu apakah gambar posisi/zona sudah ada di kanvas (misal dimuat via restoreDrawings)
+        const relinked = this.tryRelinkPlanDrawings(plan, curSym);
+        if (!relinked) {
+          this.createMultiTargetPosition(
+            {
+              ...plan,
+              symbol: plan.symbol || curSym
+            },
+            {
+              planId: plan.id,
+              drawContextZones: true
+            }
+          );
+        }
       }
     }
     this.notify();
