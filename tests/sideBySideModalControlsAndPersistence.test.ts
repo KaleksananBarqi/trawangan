@@ -182,8 +182,13 @@ test('Ticket #135: Snapshot Preview Modal Controls, Persistence & Quick Shortcut
     );
     assert.match(
       modalSource,
-      /Overlay \(Mengambang\)|Overlay di Atas Grafik/,
-      'Harus menyertakan pilihan "Overlay (Mengambang)" atau "Overlay di Atas Grafik"'
+      /Overlay di Atas Grafik/,
+      'Harus menyertakan pilihan judul "Overlay di Atas Grafik"'
+    );
+    assert.match(
+      modalSource,
+      /Mengambang di atas lilin grafik/,
+      'Harus menyertakan deskripsi "Mengambang di atas lilin grafik"'
     );
     assert.match(
       modalSource,

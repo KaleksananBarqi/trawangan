@@ -13,6 +13,9 @@ import type {
   SnapshotThesisLayout
 } from '../types/market';
 import { formatPlanPrice, type ParsedTradingPlan } from './planParserService';
+import { colorToRgba, wrapCanvasText } from './chartSnapshotOverlayService';
+
+export { colorToRgba, wrapCanvasText };
 
 export type {
   SnapshotScaleMultiplier,
@@ -59,7 +62,9 @@ export interface SnapshotOptions {
   metadata: SnapshotMetadata;
   // Opsi Tata Letak & Data Rencana Trading (#132, #133, #134)
   thesisLayout?: SnapshotThesisLayout;
+  /** Properti kanonikal untuk rencana trading aktif (#132, #133) */
   tradingPlan?: (ParsedTradingPlan & { id?: string }) | null;
+  /** @deprecated Gunakan `tradingPlan` sebagai properti kanonikal */
   plan?: (ParsedTradingPlan & { id?: string }) | null;
   activePlans?: Array<ParsedTradingPlan & { id?: string }>;
   sidePanelWidth?: number;
@@ -375,7 +380,9 @@ export function calculateCompositeDimensions(
   const scale = resolveEffectiveScale(options);
   const padding = options.padding ?? 24;
 
-  // Evaluasi apakah tata letak side-panel aktif dan memiliki rencana trading aktif
+  // Evaluasi apakah tata letak side-panel aktif dan memiliki rencana trading aktif.
+  // Sesuai kesepakatan Spec #132 / Q10, activePlans[0] berfungsi sebagai rencana trading aktif utama
+  // (primary active trading plan) untuk panel samping jika terdapat beberapa rencana aktif.
   const isSidePanel = options.thesisLayout === 'side-panel';
   const activePlan =
     options.tradingPlan ??
@@ -568,70 +575,6 @@ export function formatSnapshotPrice(price: number | null | undefined, quote?: st
     return '-';
   }
   return formatPriceLabel(price, quote);
-}
-
-/**
- * Mengonversi warna format hex (#RGB, #RRGGBB) atau rgb/rgba ke string rgba(r, g, b, a)
- */
-export function colorToRgba(color: string, alpha: number): string {
-  if (!color) return `rgba(23, 23, 23, ${alpha})`;
-  if (color.startsWith('rgba(')) {
-    return color.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, `rgba($1,$2,$3, ${alpha})`);
-  }
-  if (color.startsWith('rgb(')) {
-    return color.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
-  }
-  if (color.startsWith('#')) {
-    const hex = color.replace('#', '').trim();
-    let r = 0, g = 0, b = 0;
-    if (hex.length === 3) {
-      r = parseInt(hex[0] + hex[0], 16);
-      g = parseInt(hex[1] + hex[1], 16);
-      b = parseInt(hex[2] + hex[2], 16);
-    } else if (hex.length >= 6) {
-      r = parseInt(hex.substring(0, 2), 16);
-      g = parseInt(hex.substring(2, 4), 16);
-      b = parseInt(hex.substring(4, 6), 16);
-    }
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-  return color;
-}
-
-/**
- * Memecah teks menjadi baris-baris sesuai batas lebar maksimum kanvas (Text Wrapping)
- */
-export function wrapCanvasText(ctx: any, text: string, maxWidth: number): string[] {
-  if (!text) return [];
-  const clean = text.replace(/<[^>]+>/g, '').replace(/\*\*/g, '').replace(/_/g, '').trim();
-  if (!clean) return [];
-
-  const paragraphs = clean.split('\n');
-  const lines: string[] = [];
-
-  for (const para of paragraphs) {
-    const trimmedPara = para.trim();
-    if (!trimmedPara) continue;
-
-    const words = trimmedPara.split(/\s+/);
-    let currentLine = '';
-
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const testWidth = ctx.measureText ? ctx.measureText(testLine).width : testLine.length * 7;
-      if (testWidth > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    }
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-  }
-  return lines;
 }
 
 /**
@@ -1393,7 +1336,9 @@ export function compositeSnapshot(
   const ctx = canvas.getContext('2d');
   if (!ctx) return canvas;
 
-  // Evaluasi side panel & active plan (#132, #133, #134)
+  // Evaluasi side panel & active plan (#132, #133, #134).
+  // Sesuai kesepakatan Spec #132 / Q10, activePlans[0] berfungsi sebagai rencana trading aktif utama
+  // (primary active trading plan) untuk panel samping jika terdapat beberapa rencana aktif.
   const isSidePanel = options.thesisLayout === 'side-panel';
   const activePlan =
     options.tradingPlan ??

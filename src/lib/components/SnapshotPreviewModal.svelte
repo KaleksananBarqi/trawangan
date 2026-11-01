@@ -272,7 +272,6 @@
       thesisLayout: hasActivePlans ? thesisLayout : 'hidden',
       activePlans: hasActivePlans ? effectivePlans : [],
       tradingPlan: activePlan,
-      plan: activePlan,
       themeConfig: activeTheme,
     };
 
@@ -358,7 +357,6 @@
       thesisLayout: hasActivePlans ? thesisLayout : 'hidden',
       activePlans: hasActivePlans ? effectivePlans : [],
       tradingPlan: activePlan,
-      plan: activePlan,
       themeConfig: activeTheme,
     });
     return `${mult}x · ${dim.width} × ${dim.height} px`;
@@ -673,9 +671,9 @@
                 >
                   <div class="mode-btn-content">
                     <Layers size={13} />
-                    <span class="btn-title">Overlay (Mengambang)</span>
+                    <span class="btn-title">Overlay di Atas Grafik</span>
                   </div>
-                  <span class="btn-desc">Overlay di Atas Grafik (Mengambang)</span>
+                  <span class="btn-desc">Mengambang di atas lilin grafik</span>
                 </button>
 
                 <button

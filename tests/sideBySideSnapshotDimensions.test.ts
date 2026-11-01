@@ -5,12 +5,16 @@ import {
   calculateThesisPanelHeight,
   SNAPSHOT_SIDE_PANEL_WIDTH,
   SNAPSHOT_SIDE_PANEL_GAP,
+  colorToRgba as colorToRgbaSnapshot,
+  wrapCanvasText as wrapCanvasTextSnapshot,
   type SnapshotOptions,
   type SnapshotMetadata,
   type SnapshotThesisLayout
 } from '../src/lib/services/chartSnapshotService';
 import {
   renderScreenshotCanvasWithOverlay,
+  colorToRgba as colorToRgbaOverlay,
+  wrapCanvasText as wrapCanvasTextOverlay,
   type OverlayRenderContext
 } from '../src/lib/services/chartSnapshotOverlayService';
 import {
@@ -274,6 +278,66 @@ describe('Ticket #133: Core Side-by-Side Dimension Engine & Clean Canvas Separat
       assert.equal(dim.width, 1000 + 16 + 380 + 48);
       assert.ok(dim.panelWidth && dim.panelWidth > 0);
     });
+
+    it('mendukung options.plan sebagai fallback terdepresiasi jika tradingPlan tidak disediakan', () => {
+      const sourceW = 1000;
+      const sourceH = 600;
+      const parsedPlan = parseTradingPlan(sampleShortPlanMarkdown);
+
+      const options: SnapshotOptions = {
+        mode: 'branded',
+        scale: 1,
+        padding: 24,
+        metadata: baseMetadata,
+        thesisLayout: 'side-panel',
+        plan: { ...parsedPlan, id: 'plan_fallback_deprecated' }
+      };
+
+      const dim = calculateCompositeDimensions(sourceW, sourceH, options);
+      assert.equal(dim.width, 1000 + 16 + 380 + 48);
+      assert.ok(dim.panelWidth && dim.panelWidth > 0);
+    });
+
+    it('multi-plan: activePlans[0] berfungsi sebagai primary active trading plan (Spec #132 / Q10)', () => {
+      const sourceW = 1000;
+      const sourceH = 400; // Pilih sourceHeight lebih rendah agar perbedaan tinggi panel terlihat jelas
+      const parsedPlan1 = parseTradingPlan(sampleShortPlanMarkdown);
+      const parsedPlan2 = parseTradingPlan(sampleLongPlanMarkdown);
+
+      const h1 = calculateThesisPanelHeight(parsedPlan1, SNAPSHOT_SIDE_PANEL_WIDTH);
+      const h2 = calculateThesisPanelHeight(parsedPlan2, SNAPSHOT_SIDE_PANEL_WIDTH);
+      assert.notEqual(h1, h2, 'Kedua plan harus memiliki tinggi kalkulasi yang berbeda');
+
+      const optionsWithPlan1First: SnapshotOptions = {
+        mode: 'clean',
+        scale: 1,
+        padding: 24,
+        metadata: baseMetadata,
+        thesisLayout: 'side-panel',
+        activePlans: [
+          { ...parsedPlan1, id: 'primary_plan' },
+          { ...parsedPlan2, id: 'secondary_plan' }
+        ]
+      };
+
+      const dim1 = calculateCompositeDimensions(sourceW, sourceH, optionsWithPlan1First);
+      assert.equal(dim1.panelHeight, Math.max(sourceH, h1));
+
+      const optionsWithPlan2First: SnapshotOptions = {
+        mode: 'clean',
+        scale: 1,
+        padding: 24,
+        metadata: baseMetadata,
+        thesisLayout: 'side-panel',
+        activePlans: [
+          { ...parsedPlan2, id: 'secondary_plan' },
+          { ...parsedPlan1, id: 'primary_plan' }
+        ]
+      };
+
+      const dim2 = calculateCompositeDimensions(sourceW, sourceH, optionsWithPlan2First);
+      assert.equal(dim2.panelHeight, Math.max(sourceH, h2));
+    });
   });
 
   describe('3. calculateCompositeDimensions: Fallback Anggun ke Single-Chart', () => {
@@ -449,6 +513,20 @@ describe('Ticket #133: Core Side-by-Side Dimension Engine & Clean Canvas Separat
 
       const fillTexts = drawOps.filter((op) => op.op === 'fillText').map((op) => String(op.args[0]));
       assert.equal(fillTexts.some((t) => t.includes('BEARISH')), false, 'Tesis tidak boleh digambar pada mode hidden');
+    });
+  });
+
+  describe('5. Canvas Helper Deduplication & Re-export (Standards Review finding A)', () => {
+    it('colorToRgba & wrapCanvasText diekspor dari chartSnapshotOverlayService dan dire-ekspor dari chartSnapshotService', () => {
+      assert.strictEqual(colorToRgbaOverlay, colorToRgbaSnapshot, 'colorToRgba harus identik');
+      assert.strictEqual(wrapCanvasTextOverlay, wrapCanvasTextSnapshot, 'wrapCanvasText harus identik');
+
+      assert.equal(colorToRgbaOverlay('#ff0000', 0.5), 'rgba(255, 0, 0, 0.5)');
+      assert.equal(colorToRgbaOverlay('rgb(10, 20, 30)', 0.8), 'rgba(10, 20, 30, 0.8)');
+
+      const mockCtx = { measureText: (t: string) => ({ width: t.length * 10 }) };
+      const lines = wrapCanvasTextOverlay(mockCtx, 'Satu Dua Tiga Empat Lima', 100);
+      assert.ok(lines.length > 1);
     });
   });
 });

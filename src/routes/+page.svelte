@@ -1273,7 +1273,6 @@
       thesisLayout,
       activePlans,
       tradingPlan: activePlan,
-      plan: activePlan,
       themeConfig: activeTheme,
     };
   }
