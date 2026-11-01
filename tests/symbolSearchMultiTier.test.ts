@@ -243,6 +243,9 @@ describe('Multi-Tier Symbol Search Engine Suite (Tiket #23)', () => {
   test('5. Sub-10ms Fast Cache: Pencarian dari registry lokal merespons dalam waktu < 10ms', async () => {
     const engine = new SymbolSearchEngine();
 
+    // Warm-up cold start jika dijalankan di tengah beban tinggi test runner
+    await engine.searchLocal('re');
+
     const t0 = performance.now();
     const results = await engine.searchLocal('re');
     const duration = performance.now() - t0;

@@ -38,6 +38,14 @@ test('Shortcut Service & Kamus Glosarium Seam Suite', async (t) => {
     );
     assert.ok(watchlistShortcut, 'Shortcut Alt + W untuk Watchlist harus terdaftar');
 
+    // Tiket #140: Alt + O untuk Object Tree & Indikator
+    const objectsTreeShortcut = SHORTCUT_GLOSSARY.find(
+      (s) => s.id === 'toggle-objects-tree' && s.keys.includes('Alt') && s.keys.includes('O')
+    );
+    assert.ok(objectsTreeShortcut, 'Shortcut Alt + O (toggle-objects-tree) harus terdaftar');
+    assert.equal(objectsTreeShortcut.category, 'Navigasi & Simbol');
+    assert.equal(objectsTreeShortcut.desc, 'Buka atau sembunyikan panel Object Tree & Lapisan Indikator');
+
     // ArrowLeft untuk Replay Mundur 1 Bar
     const replayBackShortcut = SHORTCUT_GLOSSARY.find(
       (s) => s.category === 'Bar Replay (Simulasi)' && s.keys.includes('←')

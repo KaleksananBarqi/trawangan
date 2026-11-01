@@ -7,6 +7,7 @@ import {
   isEditableElement,
   type CommandDefinition
 } from '../src/lib/services/commandDispatcher';
+import { rightDockService } from '../src/lib/services/rightDockService';
 
 test('Deep Command Dispatcher Seam Suite', async (t) => {
   await t.test('1. Registry: Mendaftarkan perintah dan mengembalikan katalog terstruktur', () => {
@@ -704,6 +705,157 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
       stopPropagation: () => {},
     });
     assert.equal(deleteTriggered, 2, 'Tombol Backspace di dalam textarea tidak boleh memicu draw-delete');
+  });
+
+  await t.test('18. Tiket #140: Shortcut Alt+O (toggle-objects-tree) untuk Object Tree & Indikator dan supresi di input', () => {
+    const dispatcher = createDefaultCommandDispatcher();
+
+    // 1. Verifikasi registrasi perintah
+    const cmd = dispatcher.getCommands().find((c) => c.id === 'toggle-objects-tree');
+    assert.ok(cmd, 'Perintah toggle-objects-tree harus terdaftar di default commands');
+    assert.equal(cmd.category, 'Navigasi & Simbol');
+    assert.deepEqual(cmd.keys, ['Alt', 'O']);
+    assert.equal(cmd.desc, 'Buka atau sembunyikan panel Object Tree & Lapisan Indikator');
+    assert.equal(cmd.allowInInput, false, 'allowInInput harus bernilai false');
+    assert.deepEqual(cmd.match, { alt: true, ctrlOrMeta: false, key: 'o', code: 'KeyO' });
+
+    // 2. Eksekusi handler saat Alt+O ditekan di kanvas
+    let toggleCount = 0;
+    dispatcher.bindHandler('toggle-objects-tree', () => {
+      toggleCount++;
+    });
+
+    let prevented = false;
+    let stopped = false;
+    const canvasEvent = {
+      altKey: true,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      key: 'o',
+      code: 'KeyO',
+      target: { tagName: 'CANVAS' },
+      preventDefault: () => { prevented = true; },
+      stopPropagation: () => { stopped = true; },
+    } as unknown as KeyboardEvent;
+
+    const handled = dispatcher.dispatch(canvasEvent);
+    assert.equal(handled, true, 'Alt+O harus berhasil di-dispatch');
+    assert.equal(toggleCount, 1, 'Handler toggle-objects-tree harus dipanggil');
+    assert.equal(prevented, true, 'preventDefault harus dipanggil');
+    assert.equal(stopped, true, 'stopPropagation harus dipanggil');
+
+    // 3. Supresi input: Alt+O tidak dieksekusi saat mengetik di elemen input atau textarea
+    const inputEvent = {
+      altKey: true,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      key: 'o',
+      code: 'KeyO',
+      target: { tagName: 'INPUT', isContentEditable: false, closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as unknown as KeyboardEvent;
+
+    const inputHandled = dispatcher.dispatch(inputEvent);
+    assert.equal(inputHandled, false, 'Alt+O harus diabaikan saat fokus di input element');
+    assert.equal(toggleCount, 1, 'toggleCount tidak boleh bertambah saat di input');
+
+    const textareaEvent = {
+      altKey: true,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      key: 'o',
+      code: 'KeyO',
+      target: { tagName: 'TEXTAREA', isContentEditable: false, closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as unknown as KeyboardEvent;
+
+    const textareaHandled = dispatcher.dispatch(textareaEvent);
+    assert.equal(textareaHandled, false, 'Alt+O harus diabaikan saat fokus di textarea');
+    assert.equal(toggleCount, 1, 'toggleCount tidak boleh bertambah saat di textarea');
+
+    // 4. Muncul di filter dan cheatsheet modal secara otomatis
+    const searchByName = dispatcher.filterCommands('object');
+    assert.ok(searchByName.some((c) => c.id === 'toggle-objects-tree'), 'Harus ditemukan saat query "object"');
+
+    const searchByKey = dispatcher.filterCommands('alt+o');
+    assert.ok(searchByKey.some((c) => c.id === 'toggle-objects-tree'), 'Harus ditemukan saat query "alt+o"');
+  });
+
+  await t.test('19. Tiket #140: Smart-Toggle Semantics RightDockRail untuk Tab Objects dan Transisi Pine Workspace', () => {
+    // Mock representasi state halaman +page.svelte
+    let currentWorkspaceMode: 'terminal' | 'pine' = 'pine';
+    const logs: string[] = [];
+
+    // Gunakan instance RightDockService nyata
+    rightDockService.resetState();
+
+    function handleWorkspaceModeChange(mode: 'terminal' | 'pine') {
+      currentWorkspaceMode = mode;
+      logs.push(`Workspace beralih ke mode: ${mode}`);
+    }
+
+    const dispatcher = createDefaultCommandDispatcher();
+
+    // Bind handler sesuai implementasi di +page.svelte
+    dispatcher.bindHandler('toggle-objects-tree', () => {
+      if (currentWorkspaceMode === 'pine') {
+        handleWorkspaceModeChange('terminal');
+      }
+      rightDockService.toggleTab('objects');
+      logs.push('Shortcut: Beralih panel Object Tree & Indikator (Alt+O)');
+    });
+
+    const triggerAltO = () => {
+      dispatcher.dispatch({
+        altKey: true,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        key: 'o',
+        code: 'KeyO',
+        target: { tagName: 'CANVAS' },
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      } as unknown as KeyboardEvent);
+    };
+
+    // Skenario A: Workspace di mode 'pine' dan dock di watchlist
+    assert.equal(currentWorkspaceMode, 'pine');
+    assert.equal(rightDockService.getSnapshot().activeTab, 'watchlist');
+
+    triggerAltO();
+
+    // Harus beralih dari 'pine' ke 'terminal' dan mengaktifkan tab 'objects'
+    assert.equal(currentWorkspaceMode, 'terminal', 'Workspace harus beralih ke terminal');
+    let snap = rightDockService.getSnapshot();
+    assert.equal(snap.isOpen, true, 'Right dock harus terbuka');
+    assert.equal(snap.activeTab, 'objects', 'Active tab harus beralih ke objects');
+
+    // Skenario B: Dock sedang terbuka pada tab 'objects' -> tekan Alt+O lagi harus melipat (close dock)
+    triggerAltO();
+    snap = rightDockService.getSnapshot();
+    assert.equal(snap.isOpen, false, 'Right dock harus tertutup saat tab yang sama di-toggle');
+    assert.equal(snap.activeTab, null);
+
+    // Skenario C: Dock sedang tertutup -> tekan Alt+O harus membuka dock langsung pada tab 'objects'
+    triggerAltO();
+    snap = rightDockService.getSnapshot();
+    assert.equal(snap.isOpen, true, 'Right dock harus terbuka kembali');
+    assert.equal(snap.activeTab, 'objects', 'Tab aktif harus objects');
+
+    // Skenario D: Dock sedang terbuka pada tab lain (misal 'alerts') -> tekan Alt+O harus beralih tab tanpa menutup
+    rightDockService.openTab('alerts');
+    assert.equal(rightDockService.getSnapshot().activeTab, 'alerts');
+
+    triggerAltO();
+    snap = rightDockService.getSnapshot();
+    assert.equal(snap.isOpen, true, 'Dock harus tetap terbuka');
+    assert.equal(snap.activeTab, 'objects', 'Tab harus berpindah ke objects');
   });
 });
 

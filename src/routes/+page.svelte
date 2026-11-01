@@ -534,6 +534,40 @@
           addSystemLog(`Objek gambar dihapus: ${selectedId}`, 'info');
         }
       }),
+      commandDispatcher.bindHandler('duplicate-selected-drawing', () => {
+        const dupId = chartDrawingController.duplicateSelectedDrawing();
+        if (dupId) {
+          addSystemLog(`Objek gambar diduplikasi: ${dupId}`, 'info');
+        }
+      }),
+      commandDispatcher.bindHandler('toggle-hide-drawings', () => {
+        const hidden = chartDrawingController.toggleHide();
+        addSystemLog(`Visibilitas objek gambar: ${hidden ? 'DISEMBUNYIKAN' : 'DITAMPILKAN'}`, 'info');
+      }),
+      commandDispatcher.bindHandler('toggle-lock-drawings', () => {
+        const locked = chartDrawingController.toggleLock();
+        addSystemLog(`Kunci objek gambar: ${locked ? 'TERKUNCI' : 'TERBUKA'}`, 'info');
+      }),
+      commandDispatcher.bindHandler('clear-all-drawings', () => {
+        chartDrawingController.clearAll().then(() => {
+          addSystemLog(`Seluruh objek gambar pada ${activeSymbol} dibersihkan`, 'info');
+        });
+      }),
+      commandDispatcher.bindHandler('toggle-objects-tree', () => {
+        if (workspaceMode === 'pine') {
+          handleWorkspaceModeChange('terminal');
+        }
+        rightDockService.toggleTab('objects');
+        addSystemLog('Shortcut: Beralih panel Object Tree & Indikator (Alt+O)', 'info');
+      }),
+      commandDispatcher.bindHandler('invert-price-scale', () => {
+        if (chartComponent?.getPriceScaleState && chartComponent?.applyPriceScaleState) {
+          const cur = chartComponent.getPriceScaleState();
+          const nextInvert = !cur?.invert;
+          chartComponent.applyPriceScaleState({ ...cur, invert: nextInvert });
+          addSystemLog(`Invert skala harga: ${nextInvert ? 'AKTIF' : 'NONAKTIF'} (Alt+I)`, 'info');
+        }
+      }),
       commandDispatcher.bindHandler('draw-undo', () => {
         handleUndo();
       }),
