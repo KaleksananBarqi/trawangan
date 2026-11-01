@@ -6,8 +6,7 @@ import {
   flushDrawings
 } from './persistence';
 import type { CommandDispatcher } from './commandDispatcher';
-import { roundToTickSize } from './priceSnapService';
-import { attachPriceScaleInputGuard } from './chartPriceScaleInputGuard';
+import { roundToTickSize, getAdaptiveTickSize } from './priceSnapService';
 import type { ParsedTradingPlan } from './planParserService';
 import {
   recognizeGesture,
@@ -170,6 +169,7 @@ export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBound
 
 export type DrawingUndoAction =
   | { action: 'erase'; drawings: any[] }
+  | { action: 'create'; drawings: any[] }
   | {
       action: 'create_multi_position';
       drawings: any[];
@@ -351,13 +351,6 @@ export class ChartDrawingController {
     const activeChart = this.getActiveChart();
     if (activeChart) {
       this.attachChartListeners(activeChart);
-    }
-
-    // Pastikan seluruh sel kanvas terproteksi dari claim drawing saat berinteraksi dengan sumbu harga/waktu
-    for (const cell of this.getAllCells()) {
-      try {
-        attachPriceScaleInputGuard(cell);
-      } catch (_) {}
     }
 
     return () => {
@@ -786,10 +779,6 @@ export class ChartDrawingController {
   attachChartListeners(chart: any): () => void {
     if (!chart || typeof chart.on !== 'function') return () => {};
 
-    try {
-      attachPriceScaleInputGuard(chart);
-    } catch (_) {}
-
     const onMutated = () => this.handleDrawingMutated();
     const onDraft = () => this.handleDrawingDraft();
     const onSelect = (d: any) => this.handleDrawingSelected(d?.id || (typeof d === 'string' ? d : null));
@@ -1088,6 +1077,13 @@ export class ChartDrawingController {
           }
         }
         handledInternal = true;
+      } else if (lastAction.action === 'create') {
+        const ids = lastAction.drawings.map((d: any) => d.id).filter(Boolean);
+        this.removeDrawingsFromChart(ids);
+        if (this.selectedDrawingId && ids.includes(this.selectedDrawingId)) {
+          this.selectedDrawingId = null;
+        }
+        handledInternal = true;
       } else if (lastAction.action === 'create_multi_position') {
         const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
         this.removeDrawingsFromChart(ids);
@@ -1102,8 +1098,10 @@ export class ChartDrawingController {
       }
     }
 
-    const isBatchCreate = this.redoHistory[this.redoHistory.length - 1]?.action === 'create_multi_position';
-    if (!isBatchCreate && activeChart?.drawings) {
+    const isInternalAction =
+      this.redoHistory[this.redoHistory.length - 1]?.action === 'create_multi_position' ||
+      this.redoHistory[this.redoHistory.length - 1]?.action === 'create';
+    if (!isInternalAction && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.undo === 'function') {
           activeChart.drawings.undo();
@@ -1131,6 +1129,22 @@ export class ChartDrawingController {
         const ids = lastAction.drawings.map((d) => d.id).filter(Boolean);
         this.removeDrawingsFromChart(ids);
         handledInternal = true;
+      } else if (lastAction.action === 'create') {
+        for (const d of lastAction.drawings) {
+          if (activeChart?.drawings) {
+            if (typeof activeChart.drawings.create === 'function') {
+              activeChart.drawings.create(d);
+            } else if (typeof activeChart.drawings.add === 'function') {
+              activeChart.drawings.add(d.type || 'trendline', d);
+            } else if (typeof activeChart.drawings.all === 'function') {
+              const currentAll = activeChart.drawings.all();
+              if (Array.isArray(currentAll) && !currentAll.some((x: any) => x.id === d.id)) {
+                currentAll.push(d);
+              }
+            }
+          }
+        }
+        handledInternal = true;
       } else if (lastAction.action === 'create_multi_position') {
         for (const d of lastAction.drawings) {
           if (activeChart?.drawings) {
@@ -1155,8 +1169,10 @@ export class ChartDrawingController {
       }
     }
 
-    const isBatchCreate = this.undoHistory[this.undoHistory.length - 1]?.action === 'create_multi_position';
-    if (!isBatchCreate && activeChart?.drawings) {
+    const isInternalAction =
+      this.undoHistory[this.undoHistory.length - 1]?.action === 'create_multi_position' ||
+      this.undoHistory[this.undoHistory.length - 1]?.action === 'create';
+    if (!isInternalAction && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.redo === 'function') {
           activeChart.drawings.redo();
@@ -1290,6 +1306,83 @@ export class ChartDrawingController {
       }
     }
     this.handleDrawingMutated();
+  }
+
+  /**
+   * Duplikasi objek gambar yang sedang dipilih (Ctrl+D) dengan pergeseran spasial lembut
+   */
+  duplicateSelectedDrawing(): string | null {
+    const selectedId = this.getSelectedDrawingId();
+    if (!selectedId) return null;
+    return this.duplicateDrawing(selectedId);
+  }
+
+  /**
+   * Duplikasi objek gambar tertentu berdasarkan ID
+   */
+  duplicateDrawing(id: string): string | null {
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return null;
+
+    const all = typeof activeChart.drawings.all === 'function'
+      ? activeChart.drawings.all()
+      : this.activeDrawings;
+    const source = all.find((d: any) => d && d.id === id);
+    if (!source) return null;
+
+    // Hitung offset spasial harga dan waktu adaptif
+    const firstPrice = source.anchors?.[0]?.price ?? 100;
+    const tick = getAdaptiveTickSize(firstPrice);
+    const priceOffset = tick * 5;
+
+    const clonedAnchors = Array.isArray(source.anchors)
+      ? source.anchors.map((a: any) => ({
+          time: typeof a.time === 'number' ? a.time + 60000 : a.time,
+          price: typeof a.price === 'number' ? a.price - priceOffset : a.price
+        }))
+      : [];
+
+    const newId = 'draw_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+    const clonedItem: any = {
+      ...source,
+      id: newId,
+      anchors: clonedAnchors,
+    };
+    if (clonedItem.metadata) {
+      clonedItem.metadata = { ...clonedItem.metadata, planId: undefined };
+    }
+
+    let created: any = null;
+    try {
+      if (typeof activeChart.drawings.create === 'function') {
+        created = activeChart.drawings.create(clonedItem);
+      } else if (typeof activeChart.drawings.add === 'function') {
+        created = activeChart.drawings.add(clonedItem.type || 'trendline', clonedItem);
+      } else if (typeof activeChart.drawings.all === 'function') {
+        const currentAll = activeChart.drawings.all();
+        if (Array.isArray(currentAll)) {
+          currentAll.push(clonedItem);
+          created = clonedItem;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal menduplikasi drawing:', e);
+      return null;
+    }
+
+    const finalId = created?.id || newId;
+
+    // Catat ke undo stack
+    this.undoHistory.push({
+      action: 'create',
+      drawings: [{ ...clonedItem, id: finalId }]
+    });
+    this.redoHistory = [];
+
+    // Otomatis seleksi klon baru
+    this.selectDrawing(finalId);
+    this.handleDrawingMutated();
+    return finalId;
   }
 
   /**
@@ -1634,12 +1727,11 @@ export class ChartDrawingController {
     const currentDrawings: ChartDrawingItem[] = (activeChart.drawings.all?.() || this.activeDrawings || []) as ChartDrawingItem[];
     if (!Array.isArray(currentDrawings) || currentDrawings.length === 0) return false;
 
-    // Helper perbandingan harga adaptif: mendukung nominal besar (BTC) maupun koin sub-dollar/micin (PEPE/SHIB)
+    // Helper perbandingan harga berbasis Tick-Aligned Price Guard (GLOSSARY.md)
     const isPriceMatch = (actual: number, expected: number): boolean => {
-      const diff = Math.abs(actual - expected);
-      if (diff < 1e-8) return true;
-      const ref = Math.max(Math.abs(actual), Math.abs(expected));
-      return ref > 0 ? (diff / ref) <= 0.0005 : diff < 1e-4;
+      if (actual === expected) return true;
+      const tick = getAdaptiveTickSize(expected);
+      return Math.abs(actual - expected) <= tick * 1.5;
     };
 
     const planId = plan.id;
@@ -2168,15 +2260,45 @@ export class ChartDrawingController {
       })
     );
 
-    // Hapus Objek Terseleksi (Del / Backspace)
+    // Duplikasi Objek Gambar (Ctrl+D)
     unbinders.push(
-      dispatcher.bindHandler('draw-delete', () => {
-        const selectedId = this.getSelectedDrawingId();
-        if (selectedId) {
-          this.deleteDrawing(selectedId);
-        }
+      dispatcher.bindHandler('duplicate-selected-drawing', () => {
+        this.duplicateSelectedDrawing();
       })
     );
+
+    // Toggle Sembunyikan Objek Gambar (Alt+K)
+    unbinders.push(
+      dispatcher.bindHandler('toggle-hide-drawings', () => {
+        this.toggleHide();
+      })
+    );
+
+    // Toggle Kunci Objek Gambar (Alt+L)
+    unbinders.push(
+      dispatcher.bindHandler('toggle-lock-drawings', () => {
+        this.toggleLock();
+      })
+    );
+
+    // Hapus Seluruh Objek Gambar (Ctrl+Del)
+    unbinders.push(
+      dispatcher.bindHandler('clear-all-drawings', () => {
+        this.clearAll();
+      })
+    );
+
+    // Hapus Objek Terseleksi (Del / Backspace)
+    if (!dispatcher.hasHandler('draw-delete')) {
+      unbinders.push(
+        dispatcher.bindHandler('draw-delete', () => {
+          const selectedId = this.getSelectedDrawingId();
+          if (selectedId) {
+            this.deleteDrawing(selectedId);
+          }
+        })
+      );
+    }
 
     // Cancel / Esc
     unbinders.push(
