@@ -4,9 +4,33 @@
  */
 
 import { formatPriceLabel } from './priceScaleLabelService';
-import type { SnapshotScaleMultiplier, UserProfileConfig, CustomChartBackgroundConfig, SecurityWatermarkConfig } from '../types/market';
+import { THEME_PRESETS, type ThemeConfig } from '../constants/themes';
+import type {
+  SnapshotScaleMultiplier,
+  UserProfileConfig,
+  CustomChartBackgroundConfig,
+  SecurityWatermarkConfig,
+  SnapshotThesisLayout
+} from '../types/market';
+import { formatPlanPrice, type ParsedTradingPlan } from './planParserService';
+import { colorToRgba, wrapCanvasText } from './chartSnapshotOverlayService';
 
-export type { SnapshotScaleMultiplier, UserProfileConfig, CustomChartBackgroundConfig, SecurityWatermarkConfig } from '../types/market';
+export { colorToRgba, wrapCanvasText };
+
+export type {
+  SnapshotScaleMultiplier,
+  UserProfileConfig,
+  CustomChartBackgroundConfig,
+  SecurityWatermarkConfig,
+  SnapshotThesisLayout
+} from '../types/market';
+
+/**
+ * Lebar logis default dan jarak pemisah untuk panel samping rencana trading (#132, #133)
+ */
+export const SNAPSHOT_SIDE_PANEL_WIDTH = 380;
+export const SNAPSHOT_SIDE_PANEL_GAP = 16;
+
 export type SnapshotScope = 'active' | 'all';
 export type SnapshotMode = 'branded' | 'clean';
 
@@ -36,6 +60,16 @@ export interface SnapshotOptions {
   userProfile?: UserProfileConfig;
   watermark?: Partial<SecurityWatermarkConfig>;
   metadata: SnapshotMetadata;
+  // Opsi Tata Letak & Data Rencana Trading (#132, #133, #134)
+  thesisLayout?: SnapshotThesisLayout;
+  /** Properti kanonikal untuk rencana trading aktif (#132, #133) */
+  tradingPlan?: (ParsedTradingPlan & { id?: string }) | null;
+  /** @deprecated Gunakan `tradingPlan` sebagai properti kanonikal */
+  plan?: (ParsedTradingPlan & { id?: string }) | null;
+  activePlans?: Array<ParsedTradingPlan & { id?: string }>;
+  sidePanelWidth?: number;
+  sidePanelGap?: number;
+  themeConfig?: ThemeConfig;
 }
 
 export interface CompositeDimensions {
@@ -47,6 +81,13 @@ export interface CompositeDimensions {
   chartHeight: number;
   attributionY: number;
   attributionHeight: number;
+  attributionWidth?: number;
+  // Dimensi panel samping tesis (jika thesisLayout === 'side-panel' dan rencana aktif ada)
+  panelX?: number;
+  panelY?: number;
+  panelWidth?: number;
+  panelHeight?: number;
+  panelGap?: number;
 }
 
 /**
@@ -236,7 +277,99 @@ export function resolveEffectiveScale(options: SnapshotOptions): number {
 }
 
 /**
- * Menghitung dimensi presisi untuk komposit snapshot kartu maupun ekspor clean
+ * Memperkirakan jumlah baris teks terbungkus berdasarkan batas karakter per baris
+ */
+function estimateWrappedLineCount(text: string | undefined, charsPerLine = 44): number {
+  if (!text) return 0;
+  const clean = text.replace(/<[^>]+>/g, '').replace(/\*\*/g, '').replace(/_/g, '').trim();
+  if (!clean) return 0;
+
+  const paragraphs = clean.split('\n');
+  let totalLines = 0;
+  for (const p of paragraphs) {
+    const trimmed = p.trim();
+    if (!trimmed) continue;
+    totalLines += Math.max(1, Math.ceil(trimmed.length / charsPerLine));
+  }
+  return totalLines;
+}
+
+/**
+ * Menghitung perkiraan tinggi logis yang dibutuhkan oleh panel samping narasi tesis (Side Panel).
+ * Memastikan teks narasi panjang (alasan entry, invalidasi, target, probabilitas) tidak terpotong (#132, #133).
+ */
+export function calculateThesisPanelHeight(
+  plan: ParsedTradingPlan | null | undefined,
+  panelWidth: number = SNAPSHOT_SIDE_PANEL_WIDTH
+): number {
+  if (!plan) return 0;
+
+  // Margin dan padding wadah kartu luar (atas & bawah)
+  let height = 36;
+
+  // Header kartu: Lencana bias, harga entry, ikon/grip
+  height += 56;
+
+  // Lebar konten efektif di dalam padding kartu (~348px untuk panel 380px)
+  const contentWidth = Math.max(200, panelWidth - 32);
+  const charsPerLine = Math.floor(contentWidth / 8);
+
+  // Definisi / Narasi Pengantar
+  if (plan.definition) {
+    const lines = estimateWrappedLineCount(plan.definition, charsPerLine);
+    height += lines * 18 + 14;
+  }
+
+  // Seksi Katalis & Alasan Entry
+  height += 28;
+  if (plan.contextZones && plan.contextZones.length > 0) {
+    height += 24;
+  }
+  if (plan.reasons?.entry) {
+    const lines = estimateWrappedLineCount(plan.reasons.entry, charsPerLine);
+    height += lines * 18 + 10;
+  }
+
+  // Seksi Batas Invalidasi & Stop Loss
+  height += 32;
+  if (plan.reasons?.stopLoss) {
+    const lines = estimateWrappedLineCount(plan.reasons.stopLoss, charsPerLine);
+    height += lines * 18 + 8;
+  }
+  if (plan.conclusion?.invalidationScenario) {
+    // Kotak skenario pembatalan berbingkai memiliki padding internal ekstra
+    const lines = estimateWrappedLineCount(plan.conclusion.invalidationScenario, charsPerLine - 4);
+    height += lines * 18 + 26;
+  }
+
+  // Seksi Target Likuiditas Bertingkat
+  if (Array.isArray(plan.targets) && plan.targets.length > 0) {
+    height += 28;
+    for (let i = 0; i < plan.targets.length; i++) {
+      height += 26;
+      const targetReason = plan.reasons?.[`tp${i + 1}`] || plan.targets[i]?.reason;
+      if (targetReason) {
+        const lines = estimateWrappedLineCount(targetReason, charsPerLine - 4);
+        height += lines * 18 + 8;
+      }
+    }
+  }
+
+  // Seksi Unit Risiko & Catatan Probabilitas
+  if (plan.riskAmount || plan.conclusion?.probabilityNotes) {
+    height += 24;
+    if (plan.conclusion?.probabilityNotes) {
+      const lines = estimateWrappedLineCount(plan.conclusion.probabilityNotes, charsPerLine);
+      height += lines * 18 + 8;
+    }
+  }
+
+  return Math.ceil(height);
+}
+
+/**
+ * Menghitung dimensi presisi untuk komposit snapshot kartu maupun ekspor clean.
+ * Mendukung tata letak berdampingan (Side-by-Side) dengan panel samping mandiri 380px (#132, #133).
  */
 export function calculateCompositeDimensions(
   sourceWidth: number,
@@ -247,6 +380,74 @@ export function calculateCompositeDimensions(
   const scale = resolveEffectiveScale(options);
   const padding = options.padding ?? 24;
 
+  // Evaluasi apakah tata letak side-panel aktif dan memiliki rencana trading aktif.
+  // Sesuai kesepakatan Spec #132 / Q10, activePlans[0] berfungsi sebagai rencana trading aktif utama
+  // (primary active trading plan) untuk panel samping jika terdapat beberapa rencana aktif.
+  const isSidePanel = options.thesisLayout === 'side-panel';
+  const activePlan =
+    options.tradingPlan ??
+    options.plan ??
+    (Array.isArray(options.activePlans) && options.activePlans.length > 0 ? options.activePlans[0] : null);
+  const hasActivePlan = Boolean(activePlan);
+
+  if (isSidePanel && hasActivePlan) {
+    const panelWidthLogical = options.sidePanelWidth ?? SNAPSHOT_SIDE_PANEL_WIDTH;
+    const panelGapLogical = options.sidePanelGap ?? SNAPSHOT_SIDE_PANEL_GAP;
+    const requiredPanelH = calculateThesisPanelHeight(activePlan, panelWidthLogical);
+    const contentHeightLogical = Math.max(sourceHeight, requiredPanelH);
+
+    const scaledPanelW = Math.round(panelWidthLogical * scale);
+    const scaledPanelGap = Math.round(panelGapLogical * scale);
+    const scaledChartW = Math.round(sourceWidth * scale);
+    const scaledChartH = Math.round(sourceHeight * scale);
+    const scaledPanelH = Math.round(contentHeightLogical * scale);
+
+    if (mode === 'clean') {
+      const totalLogicalWidth = sourceWidth + panelGapLogical + panelWidthLogical;
+      const totalLogicalHeight = contentHeightLogical;
+
+      return {
+        width: Math.round(totalLogicalWidth * scale),
+        height: Math.round(totalLogicalHeight * scale),
+        chartX: 0,
+        chartY: 0,
+        chartWidth: scaledChartW,
+        chartHeight: scaledChartH,
+        panelX: Math.round((sourceWidth + panelGapLogical) * scale),
+        panelY: 0,
+        panelWidth: scaledPanelW,
+        panelHeight: scaledPanelH,
+        panelGap: scaledPanelGap,
+        attributionY: 0,
+        attributionHeight: 0,
+        attributionWidth: 0,
+      };
+    }
+
+    // Mode branded dengan bingkai luar dan attribution bar terpadu
+    const attributionHeightLogical = 60;
+    const totalLogicalWidth = sourceWidth + panelGapLogical + panelWidthLogical + padding * 2;
+    const totalLogicalHeight = contentHeightLogical + padding * 2 + attributionHeightLogical;
+
+    return {
+      width: Math.round(totalLogicalWidth * scale),
+      height: Math.round(totalLogicalHeight * scale),
+      chartX: Math.round(padding * scale),
+      chartY: Math.round(padding * scale),
+      chartWidth: scaledChartW,
+      chartHeight: scaledChartH,
+      panelX: Math.round((padding + sourceWidth + panelGapLogical) * scale),
+      panelY: Math.round(padding * scale),
+      panelWidth: scaledPanelW,
+      panelHeight: scaledPanelH,
+      panelGap: scaledPanelGap,
+      attributionY: Math.round((padding + contentHeightLogical) * scale),
+      attributionHeight: Math.round(attributionHeightLogical * scale),
+      attributionWidth: Math.round((totalLogicalWidth - padding * 2) * scale),
+    };
+  }
+
+  // Fallback anggun ke dimensi standar grafik tunggal (single-chart)
   if (mode === 'clean') {
     const w = Math.round(sourceWidth * scale);
     const h = Math.round(sourceHeight * scale);
@@ -259,6 +460,7 @@ export function calculateCompositeDimensions(
       chartHeight: h,
       attributionY: 0,
       attributionHeight: 0,
+      attributionWidth: w,
     };
   }
 
@@ -276,6 +478,7 @@ export function calculateCompositeDimensions(
     chartHeight: Math.round(sourceHeight * scale),
     attributionY: Math.round((padding + sourceHeight) * scale),
     attributionHeight: Math.round(attributionHeightLogical * scale),
+    attributionWidth: Math.round(sourceWidth * scale),
   };
 }
 
@@ -375,6 +578,559 @@ export function formatSnapshotPrice(price: number | null | undefined, quote?: st
 }
 
 /**
+ * Helper untuk memecah teks dan merender kata atau badge epistemik ([FAKTA], [INFERENSI], [SPEKULASI])
+ * secara inline pada kanvas 2D dengan wrap otomatis.
+ */
+function renderEpistemicText(
+  ctx: any,
+  text: string | undefined,
+  startX: number,
+  startY: number,
+  maxWidth: number,
+  lineHeight: number,
+  scale: number,
+  textTokens: { textPrimary: string; textMuted: string; brandCyan: string }
+): number {
+  if (!text) return 0;
+  const clean = text.replace(/<[^>]+>/g, '').replace(/\*\*/g, '').replace(/_/g, '').trim();
+  if (!clean) return 0;
+
+  const paragraphs = clean.split('\n');
+  let currentX = startX;
+  let currentY = startY;
+  const initialY = startY;
+
+  const bodyFontSize = Math.max(9, Math.round(9 * scale));
+  const badgeFontSize = Math.max(8, Math.round(7.5 * scale));
+
+  for (const para of paragraphs) {
+    const trimmedPara = para.trim();
+    if (!trimmedPara) continue;
+
+    const words = trimmedPara.split(/\s+/);
+
+    for (const word of words) {
+      const isFakta = /\[?FAKTA\]?/i.test(word);
+      const isInferensi = /\[?INFERENSI\]?/i.test(word);
+      const isSpekulasi = /\[?SPEKULASI\]?/i.test(word);
+
+      if (isFakta || isInferensi || isSpekulasi) {
+        const badgeText = isFakta ? '[FAKTA]' : isInferensi ? '[INFERENSI]' : '[SPEKULASI]';
+        const badgeColor = isFakta ? '#38BDF8' : isInferensi ? '#FACC15' : '#FB923C';
+        const badgeBg = isFakta ? 'rgba(56, 189, 248, 0.16)' : isInferensi ? 'rgba(250, 204, 21, 0.16)' : 'rgba(251, 146, 60, 0.16)';
+        const badgeBorder = isFakta ? 'rgba(56, 189, 248, 0.35)' : isInferensi ? 'rgba(250, 204, 21, 0.35)' : 'rgba(251, 146, 60, 0.35)';
+
+        ctx.font = `bold ${badgeFontSize}px "JetBrains Mono", monospace, sans-serif`;
+        const badgeTextW = ctx.measureText ? ctx.measureText(badgeText).width : badgeText.length * 6 * scale;
+        const badgeW = badgeTextW + Math.round(8 * scale);
+        const badgeH = Math.round(14 * scale);
+
+        // Jika melebihi batas lebar baris, pindah ke baris berikutnya
+        if (currentX + badgeW > startX + maxWidth && currentX > startX) {
+          currentX = startX;
+          currentY += lineHeight;
+        }
+
+        ctx.save();
+        drawRoundedRect(ctx, currentX, currentY - badgeH / 2, badgeW, badgeH, 2 * scale);
+        ctx.fillStyle = badgeBg;
+        ctx.fill();
+        ctx.strokeStyle = badgeBorder;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = badgeColor;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeText, currentX + Math.round(4 * scale), currentY);
+        ctx.restore();
+
+        currentX += badgeW + Math.round(5 * scale);
+
+        // Jika word memiliki tanda baca trailing (misal [FAKTA]. atau [INFERENSI],)
+        const trailingPunct = word.replace(/^[[(]?(?:FAKTA|INFERENSI|SPEKULASI)[\])]?/i, '');
+        if (trailingPunct) {
+          ctx.save();
+          ctx.font = `400 ${bodyFontSize}px "Plus Jakarta Sans", sans-serif`;
+          ctx.fillStyle = textTokens.textPrimary;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(trailingPunct, currentX, currentY);
+          const punctW = ctx.measureText ? ctx.measureText(trailingPunct).width : trailingPunct.length * 5 * scale;
+          currentX += punctW + Math.round(4 * scale);
+          ctx.restore();
+        }
+      } else {
+        ctx.font = `400 ${bodyFontSize}px "Plus Jakarta Sans", sans-serif`;
+        const wordW = ctx.measureText ? ctx.measureText(word).width : word.length * 5.5 * scale;
+
+        if (currentX + wordW > startX + maxWidth && currentX > startX) {
+          currentX = startX;
+          currentY += lineHeight;
+        }
+
+        ctx.save();
+        ctx.fillStyle = textTokens.textPrimary;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(word, currentX, currentY);
+        ctx.restore();
+
+        currentX += wordW + Math.round(4 * scale);
+      }
+    }
+
+    currentX = startX;
+    currentY += lineHeight;
+  }
+
+  return (currentY - initialY);
+}
+
+/**
+ * Merender panel samping rencana trading (Dedicated Thesis Side Panel) ke dalam kanvas 2D (#132, #134).
+ * Menghasilkan panel terstruktur dengan standar grafis editorial finansial modern:
+ * - Header: Bias badge (Bullish/Bearish), Confidence level, dan harga Entry.
+ * - Katalis Entry: Multi-timeframe pills, zona konteks FVG, dan teks narasi terformat [FAKTA]/[INFERENSI]/[SPEKULASI].
+ * - Invalidasi & Stop Loss: SL price dengan lencana -1.00R dan kotak skenario pembatalan.
+ * - Target Likuiditas: Daftar jenjang target dengan harga, alasan, dan lencana +R.
+ * - Unit Risiko (R) dan Catatan Probabilitas.
+ * - Penataan gaya reaktif mengikuti token tema aktif.
+ */
+export function renderDedicatedThesisSidePanel(
+  ctx: any,
+  plan: ParsedTradingPlan & { id?: string },
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  scale = 1,
+  themeConfig?: ThemeConfig
+): void {
+  const activeTheme = themeConfig || THEME_PRESETS.signature;
+  const tokens = activeTheme.tokens;
+  const chartTokens = activeTheme.chart;
+
+  // Latar belakang dan border panel sesuai token tema aktif
+  const bgSecondary = tokens.bgSecondary || tokens.bgContainer || tokens.bgPanel || '#171717';
+  const panelBgColor = colorToRgba(bgSecondary, 0.96);
+  const borderSubtle = tokens.borderSubtle || '#222222';
+  const textPrimary = tokens.textPrimary || tokens.textMain || '#F7F7F7';
+  const textMuted = tokens.textMuted || '#A3A3A3';
+
+  const isBearish = plan.bias === 'bearish';
+  const bullColor = tokens.bullColor || chartTokens.upColor || '#F7F7F7';
+  const bearColor = tokens.bearColor || chartTokens.downColor || '#FF69B4';
+  const biasColor = isBearish ? bearColor : bullColor;
+  const brandCyan = tokens.brandCyan || '#38BDF8';
+
+  ctx.save();
+
+  // 1. Panel Container Background & Subtle Border
+  drawRoundedRect(ctx, x, y, width, height, 8 * scale);
+  ctx.fillStyle = panelBgColor;
+  ctx.fill();
+
+  ctx.lineWidth = Math.max(1, Math.round(1 * scale));
+  ctx.strokeStyle = colorToRgba(borderSubtle, 0.8);
+  ctx.stroke();
+
+  const padX = Math.round(14 * scale);
+  const padY = Math.round(14 * scale);
+  const contentX = x + padX;
+  const contentW = width - padX * 2;
+  let currentY = y + padY;
+
+  // 2. Header: Bias Badge, Confidence Level, dan Harga Entry
+  const headerH = Math.round(30 * scale);
+  const headerCenterY = currentY + headerH / 2;
+
+  // 2a. Bias Badge (BULLISH / BEARISH)
+  const biasLabel = isBearish ? 'BEARISH' : 'BULLISH';
+  ctx.font = `bold ${Math.round(10 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+  ctx.textBaseline = 'middle';
+  const biasTextW = ctx.measureText ? ctx.measureText(biasLabel).width : biasLabel.length * 7 * scale;
+  const biasW = biasTextW + Math.round(12 * scale);
+  drawRoundedRect(ctx, contentX, headerCenterY - Math.round(10 * scale), biasW, Math.round(20 * scale), 4 * scale);
+  ctx.fillStyle = colorToRgba(biasColor, 0.18);
+  ctx.fill();
+  ctx.strokeStyle = biasColor;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = biasColor;
+  ctx.textAlign = 'left';
+  ctx.fillText(biasLabel, contentX + Math.round(6 * scale), headerCenterY);
+
+  let cursorX = contentX + biasW + Math.round(8 * scale);
+
+  // 2b. Confidence Level (Probabilitas Setup)
+  if (plan.conclusion?.probability) {
+    const rawProb = String(plan.conclusion.probability);
+    const shortProbMatch = rawProb.match(/^(Sangat Tinggi(?:\s*\([A-Z0-9+-]+\))?|Tinggi|High|Medium|Low|A\+|A|B\+|B)/i);
+    const probText = shortProbMatch ? shortProbMatch[0] : (rawProb.length > 22 ? rawProb.substring(0, 20) + '…' : rawProb);
+    ctx.font = `600 ${Math.round(9.5 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+    const probTextW = ctx.measureText ? ctx.measureText(probText).width : probText.length * 6 * scale;
+    const probW = probTextW + Math.round(10 * scale);
+
+    drawRoundedRect(ctx, cursorX, headerCenterY - Math.round(10 * scale), probW, Math.round(20 * scale), 4 * scale);
+    ctx.fillStyle = colorToRgba(brandCyan, 0.16);
+    ctx.fill();
+    ctx.strokeStyle = colorToRgba(brandCyan, 0.35);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = brandCyan;
+    ctx.fillText(probText, cursorX + Math.round(5 * scale), headerCenterY);
+    cursorX += probW + Math.round(8 * scale);
+  }
+
+  // 2c. Entry Price di Header (Rata Kanan)
+  ctx.textAlign = 'right';
+  ctx.font = `bold ${Math.round(11 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+  ctx.fillStyle = biasColor;
+  const entryPriceStr = `${formatPlanPrice(plan.entry)}`;
+  ctx.fillText(entryPriceStr, contentX + contentW, headerCenterY);
+
+  ctx.font = `500 ${Math.round(9 * scale)}px "Plus Jakarta Sans", sans-serif`;
+  ctx.fillStyle = textMuted;
+  const entryPriceW = ctx.measureText ? ctx.measureText(entryPriceStr).width : entryPriceStr.length * 7 * scale;
+  ctx.fillText('Entry', contentX + contentW - entryPriceW - Math.round(6 * scale), headerCenterY);
+  ctx.textAlign = 'left';
+
+  currentY += headerH + Math.round(8 * scale);
+
+  // Garis Pemisah Halus Header
+  ctx.beginPath();
+  ctx.moveTo(contentX, currentY);
+  ctx.lineTo(contentX + contentW, currentY);
+  ctx.strokeStyle = colorToRgba(borderSubtle, 0.6);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  currentY += Math.round(10 * scale);
+
+  // 3. Definition Banner jika ada
+  if (plan.definition) {
+    const defLines = wrapCanvasText(ctx, plan.definition, contentW - Math.round(16 * scale));
+    const defLineH = Math.round(14 * scale);
+    const defBoxH = defLines.length * defLineH + Math.round(12 * scale);
+
+    drawRoundedRect(ctx, contentX, currentY, contentW, defBoxH, 4 * scale);
+    ctx.fillStyle = colorToRgba(borderSubtle, 0.25);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(contentX, currentY);
+    ctx.lineTo(contentX, currentY + defBoxH);
+    ctx.strokeStyle = brandCyan;
+    ctx.lineWidth = Math.round(2 * scale);
+    ctx.stroke();
+
+    ctx.font = `italic ${Math.round(9 * scale)}px "Plus Jakarta Sans", sans-serif`;
+    ctx.fillStyle = textMuted;
+    let defLineY = currentY + Math.round(10 * scale);
+    for (const dLine of defLines) {
+      ctx.fillText(dLine, contentX + Math.round(8 * scale), defLineY);
+      defLineY += defLineH;
+    }
+    currentY += defBoxH + Math.round(10 * scale);
+  }
+
+  // 4. Seksi KATALIS ENTRY
+  ctx.font = `bold ${Math.round(10 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+  ctx.fillStyle = textMuted;
+  ctx.fillText('⚡ KATALIS ENTRY', contentX, currentY);
+  currentY += Math.round(14 * scale);
+
+  // 4a. Multi-Timeframe Pills & Context Zone Pills
+  const tfMatches = Array.from(
+    new Set((plan.reasons?.entry || '').match(/\b(?:1m|3m|5m|15m|30m|45m|1h|2h|4h|1d|daily|weekly|m5|m15|h1|h4)\b/gi) || [])
+  );
+  const pills: Array<{ text: string; isZone?: boolean }> = [];
+  if (tfMatches.length > 0) {
+    for (const tf of tfMatches) {
+      pills.push({ text: `TF ${tf.toUpperCase()}` });
+    }
+  }
+  if (plan.contextZones && plan.contextZones.length > 0) {
+    for (const zone of plan.contextZones) {
+      pills.push({
+        text: `${zone.label || 'FVG'}: ${formatPlanPrice(zone.low)} - ${formatPlanPrice(zone.high)}`,
+        isZone: true,
+      });
+    }
+  }
+
+  if (pills.length > 0) {
+    let pillX = contentX;
+    for (const pill of pills) {
+      ctx.font = `600 ${Math.round(8.5 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+      const pillTextW = ctx.measureText ? ctx.measureText(pill.text).width : pill.text.length * 6 * scale;
+      const pillW = pillTextW + Math.round(10 * scale);
+      const pillH = Math.round(16 * scale);
+
+      if (pillX + pillW > contentX + contentW) {
+        pillX = contentX;
+        currentY += pillH + Math.round(4 * scale);
+      }
+
+      drawRoundedRect(ctx, pillX, currentY - pillH / 2, pillW, pillH, 3 * scale);
+      ctx.fillStyle = pill.isZone ? colorToRgba(biasColor, 0.12) : colorToRgba(brandCyan, 0.14);
+      ctx.fill();
+      ctx.strokeStyle = pill.isZone ? colorToRgba(biasColor, 0.3) : colorToRgba(brandCyan, 0.35);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = pill.isZone ? biasColor : brandCyan;
+      ctx.fillText(pill.text, pillX + Math.round(5 * scale), currentY);
+      pillX += pillW + Math.round(6 * scale);
+    }
+    currentY += Math.round(14 * scale);
+  }
+
+  // 4b. Formatted Fact / Inference / Speculation Text untuk Entry
+  if (plan.reasons?.entry) {
+    const entryH = renderEpistemicText(
+      ctx,
+      plan.reasons.entry,
+      contentX,
+      currentY + Math.round(6 * scale),
+      contentW,
+      Math.round(15 * scale),
+      scale,
+      { textPrimary, textMuted, brandCyan }
+    );
+    currentY += entryH + Math.round(6 * scale);
+  }
+
+  // Garis Pemisah Seksi
+  ctx.beginPath();
+  ctx.moveTo(contentX, currentY);
+  ctx.lineTo(contentX + contentW, currentY);
+  ctx.strokeStyle = colorToRgba(borderSubtle, 0.5);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  currentY += Math.round(10 * scale);
+
+  // 5. Seksi INVALIDASI & STOP LOSS
+  ctx.font = `bold ${Math.round(10 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+  ctx.fillStyle = textMuted;
+  ctx.fillText('🛡️ INVALIDASI & STOP LOSS', contentX, currentY);
+
+  // 5a. Lencana -1.00R di sisi kanan
+  const slRStr = '-1.00R';
+  ctx.font = `bold ${Math.round(8.5 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+  const slRW = (ctx.measureText ? ctx.measureText(slRStr).width : 34 * scale) + Math.round(8 * scale);
+  const slRX = contentX + contentW - slRW;
+  drawRoundedRect(ctx, slRX, currentY - Math.round(7 * scale), slRW, Math.round(15 * scale), 2 * scale);
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.16)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ef4444';
+  ctx.textAlign = 'left';
+  ctx.fillText(slRStr, slRX + Math.round(4 * scale), currentY);
+
+  // 5b. Harga SL di sebelah kiri lencana R
+  ctx.font = `bold ${Math.round(10.5 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+  ctx.fillStyle = '#ef4444';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${formatPlanPrice(plan.stopLoss)}`, slRX - Math.round(6 * scale), currentY);
+  ctx.textAlign = 'left';
+  currentY += Math.round(14 * scale);
+
+  // 5c. Alasan Stop Loss
+  if (plan.reasons?.stopLoss) {
+    const slH = renderEpistemicText(
+      ctx,
+      plan.reasons.stopLoss,
+      contentX,
+      currentY + Math.round(6 * scale),
+      contentW,
+      Math.round(15 * scale),
+      scale,
+      { textPrimary, textMuted, brandCyan }
+    );
+    currentY += slH + Math.round(6 * scale);
+  }
+
+  // 5d. Kotak Skenario Pembatalan (Invalidation Scenario)
+  if (plan.conclusion?.invalidationScenario) {
+    const invScenarioText = plan.conclusion.invalidationScenario;
+    const lines = wrapCanvasText(ctx, invScenarioText, contentW - Math.round(20 * scale));
+    const lineHeight = Math.round(14 * scale);
+    const invBoxH = lines.length * lineHeight + Math.round(24 * scale);
+
+    drawRoundedRect(ctx, contentX, currentY, contentW, invBoxH, 4 * scale);
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
+    ctx.fill();
+
+    ctx.save();
+    if (typeof ctx.setLineDash === 'function') {
+      ctx.setLineDash([3 * scale, 2 * scale]);
+    }
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+    ctx.stroke();
+    ctx.restore();
+
+    // Badge SKENARIO BATAL
+    ctx.font = `bold ${Math.round(8 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+    const invBadgeW = (ctx.measureText ? ctx.measureText('SKENARIO BATAL').width : 70 * scale) + Math.round(8 * scale);
+    drawRoundedRect(ctx, contentX + Math.round(6 * scale), currentY + Math.round(5 * scale), invBadgeW, Math.round(13 * scale), 2 * scale);
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+    ctx.fill();
+    ctx.fillStyle = '#ef4444';
+    ctx.fillText('SKENARIO BATAL', contentX + Math.round(10 * scale), currentY + Math.round(11 * scale));
+
+    // Isi Teks Skenario
+    renderEpistemicText(
+      ctx,
+      invScenarioText,
+      contentX + Math.round(8 * scale),
+      currentY + Math.round(25 * scale),
+      contentW - Math.round(16 * scale),
+      lineHeight,
+      scale,
+      { textPrimary: '#fca5a5', textMuted: '#f87171', brandCyan }
+    );
+
+    currentY += invBoxH + Math.round(8 * scale);
+  }
+
+  // Garis Pemisah Seksi
+  ctx.beginPath();
+  ctx.moveTo(contentX, currentY);
+  ctx.lineTo(contentX + contentW, currentY);
+  ctx.strokeStyle = colorToRgba(borderSubtle, 0.5);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  currentY += Math.round(10 * scale);
+
+  // 6. Seksi TARGET LIKUIDITAS
+  if (Array.isArray(plan.targets) && plan.targets.length > 0) {
+    ctx.font = `bold ${Math.round(10 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+    ctx.fillStyle = textMuted;
+    ctx.fillText(`🎯 TARGET LIKUIDITAS (${plan.targets.length})`, contentX, currentY);
+    currentY += Math.round(14 * scale);
+
+    for (let i = 0; i < plan.targets.length; i++) {
+      const tgt = plan.targets[i];
+      const targetKey = `tp${i + 1}`;
+      const reason = plan.reasons?.[targetKey] || tgt.reason;
+
+      const reasonLines = reason ? wrapCanvasText(ctx, reason, contentW - Math.round(16 * scale)) : [];
+      const reasonLineH = Math.round(14 * scale);
+      const itemH = Math.round(24 * scale) + (reasonLines.length > 0 ? reasonLines.length * reasonLineH + Math.round(8 * scale) : 0);
+
+      drawRoundedRect(ctx, contentX, currentY, contentW, itemH, 4 * scale);
+      ctx.fillStyle = colorToRgba(tokens.bgDarkest || '#0F0F0F', 0.45);
+      ctx.fill();
+      ctx.strokeStyle = colorToRgba(borderSubtle, 0.4);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const itemHeaderY = currentY + Math.round(12 * scale);
+
+      // TP Label Badge (e.g. TP1)
+      const tpLabel = `TP${i + 1}`;
+      ctx.font = `bold ${Math.round(9 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+      const tpW = (ctx.measureText ? ctx.measureText(tpLabel).width : 22 * scale) + Math.round(8 * scale);
+      drawRoundedRect(ctx, contentX + Math.round(6 * scale), itemHeaderY - Math.round(7 * scale), tpW, Math.round(14 * scale), 2 * scale);
+      ctx.fillStyle = colorToRgba(bullColor, 0.15);
+      ctx.fill();
+      ctx.fillStyle = bullColor;
+      ctx.fillText(tpLabel, contentX + Math.round(10 * scale), itemHeaderY);
+
+      // Target Price
+      ctx.font = `bold ${Math.round(10 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+      ctx.fillStyle = textPrimary;
+      const targetPriceStr = `${formatPlanPrice(tgt.price)}`;
+      ctx.fillText(targetPriceStr, contentX + tpW + Math.round(12 * scale), itemHeaderY);
+
+      // R-Multiple Badge (+R)
+      if (typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)) {
+        const sign = tgt.rMultiple >= 0 ? '+' : '';
+        const rStr = `${sign}${tgt.rMultiple.toFixed(2)}R`;
+        const isNegative = tgt.rMultiple < 0;
+        const rColor = isNegative ? '#ef4444' : brandCyan;
+
+        ctx.font = `bold ${Math.round(8.5 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+        const rW = (ctx.measureText ? ctx.measureText(rStr).width : 34 * scale) + Math.round(8 * scale);
+        const rX = contentX + contentW - rW - Math.round(6 * scale);
+
+        drawRoundedRect(ctx, rX, itemHeaderY - Math.round(7 * scale), rW, Math.round(14 * scale), 2 * scale);
+        ctx.fillStyle = colorToRgba(rColor, 0.15);
+        ctx.fill();
+        ctx.strokeStyle = colorToRgba(rColor, 0.35);
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = rColor;
+        ctx.fillText(rStr, rX + Math.round(4 * scale), itemHeaderY);
+      }
+
+      // Reason Text di dalam kartu target
+      if (reason) {
+        renderEpistemicText(
+          ctx,
+          reason,
+          contentX + Math.round(8 * scale),
+          itemHeaderY + Math.round(14 * scale),
+          contentW - Math.round(16 * scale),
+          reasonLineH,
+          scale,
+          { textPrimary: textMuted, textMuted, brandCyan }
+        );
+      }
+
+      currentY += itemH + Math.round(6 * scale);
+    }
+  }
+
+  // 7. Seksi Unit Risiko (R) & Catatan Probabilitas
+  if (plan.riskAmount || plan.conclusion?.probabilityNotes) {
+    ctx.beginPath();
+    ctx.moveTo(contentX, currentY);
+    ctx.lineTo(contentX + contentW, currentY);
+    ctx.strokeStyle = colorToRgba(borderSubtle, 0.5);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    currentY += Math.round(10 * scale);
+
+    if (plan.riskAmount) {
+      ctx.font = `500 ${Math.round(9 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+      ctx.fillStyle = textMuted;
+      ctx.fillText('Unit Risiko (R):', contentX, currentY);
+
+      ctx.font = `bold ${Math.round(9.5 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+      ctx.fillStyle = textPrimary;
+      ctx.textAlign = 'right';
+      ctx.fillText(`${formatPlanPrice(plan.riskAmount)}`, contentX + contentW, currentY);
+      ctx.textAlign = 'left';
+      currentY += Math.round(14 * scale);
+    }
+
+    if (plan.conclusion?.probabilityNotes) {
+      const probNotesLineH = Math.round(14 * scale);
+      renderEpistemicText(
+        ctx,
+        plan.conclusion.probabilityNotes,
+        contentX,
+        currentY + Math.round(6 * scale),
+        contentW,
+        probNotesLineH,
+        scale,
+        { textPrimary: textMuted, textMuted, brandCyan }
+      );
+    }
+  }
+
+  ctx.restore();
+}
+
+/**
  * Helper internal untuk menggambar rounded rectangle pada context kanvas 2D
  */
 function drawRoundedRect(
@@ -383,23 +1139,27 @@ function drawRoundedRect(
   y: number,
   w: number,
   h: number,
-  r: number
+  r: number | { tl?: number; tr?: number; br?: number; bl?: number }
 ): void {
-  if (typeof ctx.roundRect === 'function') {
+  const radius = typeof r === 'number'
+    ? { tl: r, tr: r, br: r, bl: r }
+    : { tl: r.tl || 0, tr: r.tr || 0, br: r.br || 0, bl: r.bl || 0 };
+
+  if (typeof ctx.roundRect === 'function' && typeof r === 'number') {
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, r);
     return;
   }
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arcTo(x + w, y, x + w, y + r, r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
-  ctx.lineTo(x, y + r);
-  ctx.arcTo(x, y, x + r, y, r);
+  ctx.moveTo(x + radius.tl, y);
+  ctx.lineTo(x + w - radius.tr, y);
+  ctx.arcTo(x + w, y, x + w, y + radius.tr, radius.tr);
+  ctx.lineTo(x + w, y + h - radius.br);
+  ctx.arcTo(x + w, y + h, x + w - radius.br, y + h, radius.br);
+  ctx.lineTo(x + radius.bl, y + h);
+  ctx.arcTo(x, y + h, x, y + h - radius.bl, radius.bl);
+  ctx.lineTo(x, y + radius.tl);
+  ctx.arcTo(x, y, x + radius.tl, y, radius.tl);
   ctx.closePath();
 }
 
@@ -436,8 +1196,12 @@ function createFallbackCanvas(width: number, height: number): FallbackCanvas {
       fillRect: () => {},
       strokeRect: () => {},
       fillText: () => {},
+      strokeText: () => {},
       drawImage: () => {},
       measureText: (text: string) => ({ width: text.length * 8 }),
+      translate: () => {},
+      rotate: () => {},
+      setLineDash: () => {},
     } as unknown as CanvasRenderingContext2D),
     toDataURL: (type = 'image/png') => `data:${type};base64,mockFallbackData`,
     toBlob: (cb: (blob: Blob | null) => void, type = 'image/png') => {
@@ -572,7 +1336,21 @@ export function compositeSnapshot(
   const ctx = canvas.getContext('2d');
   if (!ctx) return canvas;
 
-  // Jika mode clean, render murni raster grafik tanpa bingkai luar
+  // Evaluasi side panel & active plan (#132, #133, #134).
+  // Sesuai kesepakatan Spec #132 / Q10, activePlans[0] berfungsi sebagai rencana trading aktif utama
+  // (primary active trading plan) untuk panel samping jika terdapat beberapa rencana aktif.
+  const isSidePanel = options.thesisLayout === 'side-panel';
+  const activePlan =
+    options.tradingPlan ??
+    options.plan ??
+    (Array.isArray(options.activePlans) && options.activePlans.length > 0 ? options.activePlans[0] : null);
+  const hasActivePlan = Boolean(activePlan);
+  const isSidePanelActive = isSidePanel && hasActivePlan;
+
+  const activeTheme = options.themeConfig || THEME_PRESETS.signature;
+  const themeTokens = activeTheme.tokens;
+
+  // Jika mode clean, render murni raster grafik dan panel tesis berdampingan tanpa bingkai luar atau attribution bar
   const customBg = options.customBackground;
   const isCustomSolid = customBg?.mode === 'solid' && Boolean(customBg.solidColor);
   const isCustomGradient =
@@ -588,16 +1366,39 @@ export function compositeSnapshot(
       grad.addColorStop(1, customBg!.gradientBottom || '#181A20');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, dim.width, dim.height);
+    } else if (isSidePanelActive) {
+      ctx.fillStyle = options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F';
+      ctx.fillRect(0, 0, dim.width, dim.height);
     }
-    ctx.drawImage(sourceCanvasOrImage, 0, 0, dim.width, dim.height);
+
+    // Chart digambar di (dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight)
+    // Menjaga rasio 1:1 top-aligned tanpa distorsi vertikal
+    ctx.drawImage(sourceCanvasOrImage, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
+    
+    // Tanda air keamanan strictly bounded/clipped ke area kanvas grafik di sisi kiri
     drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
+
+    // Render panel samping tesis jika aktif berdampingan
+    if (isSidePanelActive && activePlan && dim.panelX !== undefined && dim.panelWidth !== undefined) {
+      renderDedicatedThesisSidePanel(
+        ctx,
+        activePlan,
+        dim.panelX,
+        dim.panelY ?? 0,
+        dim.panelWidth,
+        dim.panelHeight ?? dim.height,
+        scale,
+        options.themeConfig
+      );
+    }
+
     return canvas;
   }
 
   // --- 1. Container Background & Outer Border ---
   ctx.save();
   drawRoundedRect(ctx, 0, 0, dim.width, dim.height, 12 * scale);
-  ctx.fillStyle = options.backgroundColor || '#0F0F0F';
+  ctx.fillStyle = options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F';
   ctx.fill();
 
   ctx.lineWidth = Math.max(1, Math.round(1 * scale));
@@ -616,7 +1417,7 @@ export function compositeSnapshot(
     chartGrad.addColorStop(1, customBg!.gradientBottom || '#181A20');
     ctx.fillStyle = chartGrad;
   } else {
-    ctx.fillStyle = options.backgroundColor || '#0F0F0F';
+    ctx.fillStyle = options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F';
   }
   ctx.fill();
   ctx.clip();
@@ -636,6 +1437,20 @@ export function compositeSnapshot(
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
   ctx.stroke();
   ctx.restore();
+
+  // --- 2c. Dedicated Thesis Side Panel (jika side-panel aktif) (#132, #134) ---
+  if (isSidePanelActive && activePlan && dim.panelX !== undefined && dim.panelWidth !== undefined) {
+    renderDedicatedThesisSidePanel(
+      ctx,
+      activePlan,
+      dim.panelX,
+      dim.panelY ?? dim.chartY,
+      dim.panelWidth,
+      dim.panelHeight ?? dim.chartHeight,
+      scale,
+      options.themeConfig
+    );
+  }
 
   // --- 3. Attribution Bar di Bagian Bawah ---
   const centerY = dim.attributionY + dim.attributionHeight / 2;
@@ -788,7 +1603,8 @@ export function compositeSnapshot(
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'right';
 
-  let rightX = dim.chartX + dim.chartWidth;
+  // Attribution bar membentang selebar total komposit (chart + side panel)
+  let rightX = dim.panelX && dim.panelWidth ? dim.panelX + dim.panelWidth : dim.chartX + dim.chartWidth;
 
   // 3e. URL Terminal Website
   if (options.includeBrandUrl !== false) {

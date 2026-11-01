@@ -7,15 +7,18 @@
 import type { PriceScaleBadge } from './priceScaleLabelService';
 import type { ParsedTradingPlan } from './planParserService';
 import { THEME_PRESETS, type ThemeConfig } from '../constants/themes';
+import type { SnapshotThesisLayout } from '../types/market';
 
 export interface OverlayRenderContext {
   baseCanvas: HTMLCanvasElement;
+  targetCanvas?: HTMLCanvasElement;
   containerWidth: number;
   containerHeight: number;
   drawingPriceBadges: PriceScaleBadge[];
   showDrawingPriceLabels: boolean;
   activePlans: Array<ParsedTradingPlan & { id: string }>;
   showThesisCards: boolean;
+  thesisLayout?: SnapshotThesisLayout;
   cardGeometries?: Record<string, { x: number; y: number; width: number; height: number; isWideMode?: boolean }>;
   getPriceY: (price: number) => number | null;
   formatPrice: (price: number | null) => string;
@@ -25,7 +28,7 @@ export interface OverlayRenderContext {
 /**
  * Mengonversi warna format hex (#RGB, #RRGGBB) atau rgb/rgba ke string rgba(r, g, b, a)
  */
-function colorToRgba(color: string, alpha: number): string {
+export function colorToRgba(color: string, alpha: number): string {
   if (!color) return `rgba(23, 23, 23, ${alpha})`;
   if (color.startsWith('rgba(')) {
     return color.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, `rgba($1,$2,$3, ${alpha})`);
@@ -135,29 +138,36 @@ export function drawPriceScaleBadgesOnCanvas(
 /**
  * Helper untuk memecah teks menjadi baris-baris alami berdasarkan lebar maksimum kanvas (Text Wrapping)
  */
-function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+export function wrapCanvasText(ctx: CanvasRenderingContext2D | any, text: string, maxWidth: number): string[] {
   if (!text) return [];
   // Bersihkan tag HTML atau simbol markdown tebal/miring jika ada
   const clean = text.replace(/<[^>]+>/g, '').replace(/\*\*/g, '').replace(/_/g, '').trim();
   if (!clean) return [];
 
-  const words = clean.split(/\s+/);
+  const paragraphs = clean.split('\n');
   const lines: string[] = [];
-  let currentLine = '';
 
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const testWidth = ctx.measureText ? ctx.measureText(testLine).width : testLine.length * 7;
-    if (testWidth > maxWidth && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
+  for (const para of paragraphs) {
+    const trimmedPara = para.trim();
+    if (!trimmedPara) continue;
+
+    const words = trimmedPara.split(/\s+/);
+    let currentLine = '';
+
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const testWidth = ctx.measureText ? ctx.measureText(testLine).width : testLine.length * 7;
+      if (testWidth > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
     }
-  }
-  if (currentLine) {
-    lines.push(currentLine);
+    if (currentLine) {
+      lines.push(currentLine);
+    }
   }
   return lines;
 }
@@ -630,21 +640,27 @@ export const drawSnapshotThesisCard = drawThesisCardOnCanvas;
 export function renderScreenshotCanvasWithOverlay(context: OverlayRenderContext): HTMLCanvasElement {
   const {
     baseCanvas,
+    targetCanvas,
     containerWidth,
     containerHeight,
     drawingPriceBadges,
     showDrawingPriceLabels,
     activePlans,
     showThesisCards,
+    thesisLayout = 'overlay',
     getPriceY,
     formatPrice
   } = context;
 
-  if (typeof document === 'undefined') {
-    return baseCanvas;
+  let finalCanvas = targetCanvas;
+  if (!finalCanvas) {
+    if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      finalCanvas = document.createElement('canvas');
+    } else {
+      return baseCanvas;
+    }
   }
 
-  const finalCanvas = document.createElement('canvas');
   finalCanvas.width = baseCanvas.width;
   finalCanvas.height = baseCanvas.height;
 
@@ -662,8 +678,16 @@ export function renderScreenshotCanvasWithOverlay(context: OverlayRenderContext)
     drawPriceScaleBadgesOnCanvas(ctx, drawingPriceBadges, scaleX, scaleY, finalCanvas.width, getPriceY, formatPrice);
   }
 
-  // 3. Gambar Floating Thesis Card jika aktif dan tidak tersembunyi
-  if (showThesisCards && Array.isArray(activePlans) && activePlans.length > 0) {
+  // 3. Gambar Floating Thesis Card jika aktif dan bukan tata letak side-panel atau hidden (#132, #133)
+  // Bila thesisLayout === 'side-panel', lewati rendering kartu tesis mengambang agar candlestick tetap 100% bersih
+  const shouldDrawThesisCard =
+    thesisLayout !== 'side-panel' &&
+    thesisLayout !== 'hidden' &&
+    showThesisCards &&
+    Array.isArray(activePlans) &&
+    activePlans.length > 0;
+
+  if (shouldDrawThesisCard) {
     for (let i = 0; i < activePlans.length; i++) {
       const plan = activePlans[i];
       const geo = context.cardGeometries?.[plan.id];
