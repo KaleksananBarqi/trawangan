@@ -101,6 +101,13 @@ export class CommandDispatcher {
   }
 
   /**
+   * Memeriksa apakah handler untuk suatu command ID sudah terdaftar
+   */
+  hasHandler(id: string): boolean {
+    return this.handlers.has(id);
+  }
+
+  /**
    * Eksekusi event keyboard
    * Mengembalikan true jika event cocok dengan perintah dan berhasil ditangani
    */
@@ -340,6 +347,14 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       match: { alt: true, ctrlOrMeta: false, key: 'w', code: 'KeyW' },
     },
     {
+      id: 'toggle-objects-tree',
+      category: 'Navigasi & Simbol',
+      keys: ['Alt', 'O'],
+      desc: 'Buka atau sembunyikan panel Object Tree & Lapisan Indikator',
+      allowInInput: false,
+      match: { alt: true, ctrlOrMeta: false, key: 'o', code: 'KeyO' },
+    },
+    {
       id: 'next-symbol',
       category: 'Navigasi & Simbol',
       keys: ['Alt', '↓'],
@@ -497,12 +512,47 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
     {
       id: 'draw-delete',
       category: 'Alat Gambar (Drawing Tools)',
-      keys: ['Del'],
-      desc: 'Hapus objek gambar yang sedang dipilih atau urungkan aksi',
+      keys: ['Del', 'Backspace'],
+      desc: 'Hapus objek gambar yang sedang dipilih',
       allowInInput: false,
       match: {
         customMatch: (e) =>
           !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'Delete' || e.key === 'Backspace' || e.code === 'Delete'),
+      },
+    },
+    {
+      id: 'duplicate-selected-drawing',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Ctrl', 'D'],
+      desc: 'Duplikasi objek gambar yang sedang dipilih (Clone / Duplicate)',
+      allowInInput: false,
+      match: { ctrlOrMeta: true, alt: false, shift: false, key: 'd', code: 'KeyD' },
+    },
+    {
+      id: 'toggle-hide-drawings',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Alt', 'K'],
+      desc: 'Sembunyikan atau tampilkan seluruh objek gambar pada chart',
+      allowInInput: false,
+      match: { alt: true, ctrlOrMeta: false, key: 'k', code: 'KeyK' },
+    },
+    {
+      id: 'toggle-lock-drawings',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Alt', 'L'],
+      desc: 'Kunci atau buka kunci seluruh objek gambar untuk mencegah pergeseran tidak sengaja',
+      allowInInput: false,
+      match: { alt: true, ctrlOrMeta: false, key: 'l', code: 'KeyL' },
+    },
+    {
+      id: 'clear-all-drawings',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Ctrl', 'Del'],
+      desc: 'Hapus seluruh objek gambar pada simbol aktif',
+      allowInInput: false,
+      match: {
+        customMatch: (e) =>
+          Boolean((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'Delete' || e.code === 'Delete' || e.key === 'Backspace')),
       },
     },
 
@@ -574,6 +624,14 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       keys: ['F'],
       desc: 'Pintasan cepat fit grafik ke viewport',
       match: { ctrlOrMeta: false, alt: false, shift: false, key: 'f', code: 'KeyF' },
+    },
+    {
+      id: 'invert-price-scale',
+      category: 'Skala & Tampilan Grafik',
+      keys: ['Alt', 'I'],
+      desc: 'Balikkan orientasi skala harga vertikal (Invert Scale)',
+      allowInInput: false,
+      match: { alt: true, ctrlOrMeta: false, key: 'i', code: 'KeyI' },
     },
 
     // --- Timeframe Cepat ---

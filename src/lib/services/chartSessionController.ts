@@ -167,6 +167,9 @@ export function isDrawingSyncEligible(sourceCell: any, targetCell: any): boolean
   return src.providerId === tgt.providerId && src.symbol === tgt.symbol;
 }
 
+import { attachPriceScaleInputGuard } from './chartPriceScaleInputGuard';
+export { attachPriceScaleInputGuard };
+
 /**
  * Memasang boundary guard pada workspace untuk mencegah kebocoran drawing
  * antar cell yang memiliki bursa (providerId) atau pair berbeda.
@@ -613,6 +616,7 @@ export class ChartSessionController {
     this.interceptApplyConfig(cell);
     this.enforceCurrentPriceLine(cell);
     this.syncNativeVolumeColors(cell);
+    attachPriceScaleInputGuard(cell);
 
     const chart = cell.chart || cell.inner;
     if (chart && typeof chart.on === 'function') {
@@ -1926,6 +1930,33 @@ export class ChartSessionController {
       }
     } catch (_) {}
     return this.workspace.active ? [this.workspace.active] : [];
+  }
+
+  /**
+   * Reset skala & sesuaikan viewport grafik (Auto Fit) pada sel aktif.
+   * Target cell aktif di workspace (active cell || cells[0]).
+   * Memanggil cell.resetView(), dengan fallback ke renderer.resetView(),
+   * chart.fitContent(), atau chart.resetView().
+   */
+  public fitChart(): void {
+    const cell = this.workspace?.active || this.getAllCells()[0];
+    if (!cell) return;
+
+    if (typeof cell.resetView === 'function') {
+      cell.resetView();
+      return;
+    }
+
+    const chart = cell.chart || cell.inner || cell;
+    const renderer = chart?.renderer?.renderer || chart?.renderer;
+
+    if (typeof renderer?.resetView === 'function') {
+      renderer.resetView();
+    } else if (typeof chart?.fitContent === 'function') {
+      chart.fitContent();
+    } else if (typeof chart?.resetView === 'function') {
+      chart.resetView();
+    }
   }
 
   /**

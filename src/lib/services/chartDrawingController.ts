@@ -6,7 +6,7 @@ import {
   flushDrawings
 } from './persistence';
 import type { CommandDispatcher } from './commandDispatcher';
-import { roundToTickSize } from './priceSnapService';
+import { roundToTickSize, getAdaptiveTickSize } from './priceSnapService';
 import type { ParsedTradingPlan } from './planParserService';
 import {
   recognizeGesture,
@@ -23,6 +23,17 @@ export interface GestureCreationState {
   candidateIndex: number;
   points: Array<{ x: number; y: number }>;
   expiresAt: number;
+}
+
+export interface ChartDrawingItem {
+  id?: string;
+  type?: string;
+  paneId?: string;
+  anchors?: Array<{ time?: number; price?: number }>;
+  style?: Record<string, unknown>;
+  text?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface DrawingState {
@@ -158,6 +169,7 @@ export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBound
 
 export type DrawingUndoAction =
   | { action: 'erase'; drawings: any[] }
+  | { action: 'create'; drawings: any[] }
   | {
       action: 'create_multi_position';
       drawings: any[];
@@ -1037,6 +1049,14 @@ export class ChartDrawingController {
   }
 
   /**
+   * Menambahkan aksi ke riwayat pembatalan (undo timeline)
+   */
+  pushUndoAction(action: DrawingUndoAction): void {
+    this.undoHistory.push(action);
+    this.redoHistory = [];
+  }
+
+  /**
    * Batalkan aksi gambar terakhir (Undo)
    * Mendukung pemulihan drawing yang terhapus karena scribble serta pembatalan grup multi-target
    */
@@ -1065,6 +1085,13 @@ export class ChartDrawingController {
           }
         }
         handledInternal = true;
+      } else if (lastAction.action === 'create') {
+        const ids = lastAction.drawings.map((d: any) => d.id).filter(Boolean);
+        this.removeDrawingsFromChart(ids);
+        if (this.selectedDrawingId && ids.includes(this.selectedDrawingId)) {
+          this.selectedDrawingId = null;
+        }
+        handledInternal = true;
       } else if (lastAction.action === 'create_multi_position') {
         const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
         this.removeDrawingsFromChart(ids);
@@ -1079,8 +1106,10 @@ export class ChartDrawingController {
       }
     }
 
-    const isBatchCreate = this.redoHistory[this.redoHistory.length - 1]?.action === 'create_multi_position';
-    if (!isBatchCreate && activeChart?.drawings) {
+    const isInternalAction =
+      this.redoHistory[this.redoHistory.length - 1]?.action === 'create_multi_position' ||
+      this.redoHistory[this.redoHistory.length - 1]?.action === 'create';
+    if (!isInternalAction && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.undo === 'function') {
           activeChart.drawings.undo();
@@ -1108,6 +1137,22 @@ export class ChartDrawingController {
         const ids = lastAction.drawings.map((d) => d.id).filter(Boolean);
         this.removeDrawingsFromChart(ids);
         handledInternal = true;
+      } else if (lastAction.action === 'create') {
+        for (const d of lastAction.drawings) {
+          if (activeChart?.drawings) {
+            if (typeof activeChart.drawings.create === 'function') {
+              activeChart.drawings.create(d);
+            } else if (typeof activeChart.drawings.add === 'function') {
+              activeChart.drawings.add(d.type || 'trendline', d);
+            } else if (typeof activeChart.drawings.all === 'function') {
+              const currentAll = activeChart.drawings.all();
+              if (Array.isArray(currentAll) && !currentAll.some((x: any) => x.id === d.id)) {
+                currentAll.push(d);
+              }
+            }
+          }
+        }
+        handledInternal = true;
       } else if (lastAction.action === 'create_multi_position') {
         for (const d of lastAction.drawings) {
           if (activeChart?.drawings) {
@@ -1132,8 +1177,10 @@ export class ChartDrawingController {
       }
     }
 
-    const isBatchCreate = this.undoHistory[this.undoHistory.length - 1]?.action === 'create_multi_position';
-    if (!isBatchCreate && activeChart?.drawings) {
+    const isInternalAction =
+      this.undoHistory[this.undoHistory.length - 1]?.action === 'create_multi_position' ||
+      this.undoHistory[this.undoHistory.length - 1]?.action === 'create';
+    if (!isInternalAction && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.redo === 'function') {
           activeChart.drawings.redo();
@@ -1257,7 +1304,116 @@ export class ChartDrawingController {
     if (this.selectedDrawingId === id) {
       this.selectedDrawingId = null;
     }
+    this.drawingMetadata.delete(id);
+    const planId = this.drawingPlanMap.get(id);
+    if (planId) {
+      this.drawingPlanMap.delete(id);
+      const planDrawingSet = this.planDrawingIds.get(planId);
+      if (planDrawingSet) {
+        planDrawingSet.delete(id);
+      }
+    }
     this.handleDrawingMutated();
+  }
+
+  /**
+   * Duplikasi objek gambar yang sedang dipilih (Ctrl+D) dengan pergeseran spasial lembut
+   */
+  duplicateSelectedDrawing(): string | null {
+    const selectedId = this.getSelectedDrawingId();
+    if (!selectedId) return null;
+    return this.duplicateDrawing(selectedId);
+  }
+
+  /**
+   * Duplikasi objek gambar tertentu berdasarkan ID
+   */
+  duplicateDrawing(id: string): string | null {
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return null;
+
+    const all = typeof activeChart.drawings.all === 'function'
+      ? activeChart.drawings.all()
+      : this.activeDrawings;
+    const source = all.find((d: any) => d && d.id === id);
+    if (!source) return null;
+
+    // Hitung offset spasial harga dan waktu adaptif
+    const firstPrice = source.anchors?.[0]?.price ?? 100;
+    const tick = getAdaptiveTickSize(firstPrice);
+    const priceOffset = tick * 5;
+    const { deltaT } = resolveCandleMetrics(activeChart, this.getTimeframe());
+    const timeOffset = deltaT > 0 ? deltaT : 60000;
+
+    const clonedAnchors = Array.isArray(source.anchors)
+      ? source.anchors.map((a: any) => ({
+          ...a,
+          time: typeof a.time === 'number' ? a.time + timeOffset : a.time,
+          price: typeof a.price === 'number' ? a.price - priceOffset : a.price
+        }))
+      : [];
+
+    const clonedPoints = Array.isArray(source.points)
+      ? source.points.map((p: any) => ({
+          ...p,
+          x: typeof p.x === 'number' ? p.x + 20 : p.x,
+          y: typeof p.y === 'number' ? p.y + 20 : p.y
+        }))
+      : undefined;
+
+    const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+    const newId = `draw_${uuid}`;
+
+    const clonedItem: any = {
+      ...source,
+      id: newId,
+      anchors: clonedAnchors,
+      ...(clonedPoints ? { points: clonedPoints } : {}),
+      style: source.style ? JSON.parse(JSON.stringify(source.style)) : undefined,
+      text: source.text ? JSON.parse(JSON.stringify(source.text)) : undefined,
+      metadata: source.metadata ? { ...JSON.parse(JSON.stringify(source.metadata)), planId: undefined } : undefined,
+    };
+    if (typeof source.x1 === 'number') clonedItem.x1 = source.x1 + 20;
+    if (typeof source.y1 === 'number') clonedItem.y1 = source.y1 + 20;
+    if (typeof source.x2 === 'number') clonedItem.x2 = source.x2 + 20;
+    if (typeof source.y2 === 'number') clonedItem.y2 = source.y2 + 20;
+    if (typeof source.x === 'number') clonedItem.x = source.x + 20;
+    if (typeof source.y === 'number') clonedItem.y = source.y + 20;
+
+    let created: any = null;
+    try {
+      if (typeof activeChart.drawings.create === 'function') {
+        created = activeChart.drawings.create(clonedItem);
+      } else if (typeof activeChart.drawings.add === 'function') {
+        created = activeChart.drawings.add(clonedItem.type || 'trendline', clonedItem);
+      } else if (typeof activeChart.drawings.all === 'function') {
+        const currentAll = activeChart.drawings.all();
+        if (Array.isArray(currentAll)) {
+          currentAll.push(clonedItem);
+          created = clonedItem;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal menduplikasi drawing:', e);
+      return null;
+    }
+
+    const finalId = created?.id || newId;
+
+    // Tambahkan aksi ke undo timeline (pushUndoAction)
+    this.pushUndoAction({
+      action: 'create',
+      drawings: [{ ...clonedItem, id: finalId }]
+    });
+
+    // Set ID gambar baru sebagai this.selectedDrawingId
+    this.selectedDrawingId = finalId;
+    this.selectDrawing(finalId);
+    this.notify();
+    this.handleDrawingMutated();
+    return finalId;
   }
 
   /**
@@ -1581,6 +1737,156 @@ export class ChartDrawingController {
   }
 
   /**
+   * Menautkan kembali gambar-gambar posisi dan context zone yang sudah ada pada kanvas
+   * (misal setelah dimuat dari storage via fromJSON) ke entitas plan aktif,
+   * sekaligus membersihkan duplikat gambar kembar jika terdeteksi.
+   * Mengembalikan true jika gambar yang cocok ditemukan dan ditautkan (sehingga tidak perlu create baru).
+   */
+  private tryRelinkPlanDrawings(
+    plan: ParsedTradingPlan & { id: string; symbol?: string },
+    curSym: string
+  ): boolean {
+    // Validasi isolasi instrumen: lewati jika rencana bukan milik simbol aktif saat ini
+    if (plan.symbol && !isSameSymbol(plan.symbol, curSym)) {
+      return false;
+    }
+
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return false;
+
+    // Pastikan activeDrawings sinkron dengan kanvas
+    const currentDrawings: ChartDrawingItem[] = (activeChart.drawings.all?.() || this.activeDrawings || []) as ChartDrawingItem[];
+    if (!Array.isArray(currentDrawings) || currentDrawings.length === 0) return false;
+
+    // Helper perbandingan harga berbasis Tick-Aligned Price Guard (GLOSSARY.md)
+    const isPriceMatch = (actual: number, expected: number): boolean => {
+      if (actual === expected) return true;
+      const tick = getAdaptiveTickSize(expected);
+      return Math.abs(actual - expected) <= tick * 1.5;
+    };
+
+    const planId = plan.id;
+    const targetPrices = (plan.targets || []).map((t) => t.price).filter((p): p is number => typeof p === 'number');
+    const matchedDrawingIds: string[] = [];
+    const duplicatesToRemove: string[] = [];
+
+    // Lacak target index yang sudah memiliki drawing terpasang agar tidak ada stage kembar
+    const matchedTargetIndices = new Set<number>();
+
+    // 1. Cari drawing position yang cocok dengan Entry & Stop Loss
+    for (const d of currentDrawings) {
+      if (!d || d.type !== 'position' || !Array.isArray(d.anchors) || d.anchors.length < 3) continue;
+
+      const entryPrice = d.anchors[0]?.price;
+      const stopLossPrice = d.anchors[1]?.price;
+      const targetPrice = d.anchors[2]?.price;
+      if (typeof entryPrice !== 'number' || typeof stopLossPrice !== 'number' || typeof targetPrice !== 'number') continue;
+
+      const isEntryMatch = isPriceMatch(entryPrice, plan.entry);
+      const isStopMatch = isPriceMatch(stopLossPrice, plan.stopLoss);
+
+      if (isEntryMatch && isStopMatch) {
+        let matchedIdx = -1;
+        for (let i = 0; i < targetPrices.length; i++) {
+          if (isPriceMatch(targetPrice, targetPrices[i])) {
+            matchedIdx = i;
+            break;
+          }
+        }
+
+        if (matchedIdx !== -1) {
+          if (matchedTargetIndices.has(matchedIdx)) {
+            // Duplikat terdeteksi pada target stage yang sama! Bersihkan duplikat
+            if (d.id) duplicatesToRemove.push(d.id);
+          } else {
+            matchedTargetIndices.add(matchedIdx);
+            if (d.id) matchedDrawingIds.push(d.id);
+
+            const stageTarget = plan.targets[matchedIdx];
+            const meta = {
+              planId,
+              stageIndex: matchedIdx + 1,
+              targetLabel: stageTarget?.label || `TP${matchedIdx + 1}`,
+              rMultiple: stageTarget?.rMultiple,
+              bias: plan.bias,
+              reasons: plan.reasons,
+              contextZones: plan.contextZones,
+              rawPlanText: plan.rawText,
+              lastEntry: plan.entry,
+              lastStop: plan.stopLoss,
+              lastTarget: stageTarget?.price
+            };
+            d.metadata = meta;
+            if (d.id) {
+              this.drawingMetadata.set(d.id, meta);
+              this.drawingPlanMap.set(d.id, planId);
+            }
+          }
+        }
+      }
+    }
+
+    // Jika tidak ada stage posisi yang cocok, berarti gambar belum ada di kanvas
+    if (matchedDrawingIds.length === 0) return false;
+
+    // 2. Cari drawing context zones (box) yang cocok
+    if (Array.isArray(plan.contextZones) && plan.contextZones.length > 0) {
+      const matchedZoneIndices = new Set<number>();
+      for (const d of currentDrawings) {
+        if (!d || d.type !== 'box' || !Array.isArray(d.anchors) || d.anchors.length < 2) continue;
+        const anchorPriceA = d.anchors[0]?.price;
+        const anchorPriceB = d.anchors[1]?.price;
+        if (typeof anchorPriceA !== 'number' || typeof anchorPriceB !== 'number') continue;
+
+        const boxHigh = Math.max(anchorPriceA, anchorPriceB);
+        const boxLow = Math.min(anchorPriceA, anchorPriceB);
+
+        for (let i = 0; i < plan.contextZones.length; i++) {
+          const zone = plan.contextZones[i];
+          if (typeof zone.high !== 'number' || typeof zone.low !== 'number') continue;
+          if (isPriceMatch(boxHigh, zone.high) && isPriceMatch(boxLow, zone.low)) {
+            if (matchedZoneIndices.has(i)) {
+              if (d.id) duplicatesToRemove.push(d.id);
+            } else {
+              matchedZoneIndices.add(i);
+              if (d.id) matchedDrawingIds.push(d.id);
+              const meta = {
+                planId,
+                role: 'context_zone',
+                zoneLabel: zone.label,
+                low: zone.low,
+                high: zone.high
+              };
+              d.metadata = meta;
+              if (d.id) {
+                this.drawingMetadata.set(d.id, meta);
+                this.drawingPlanMap.set(d.id, planId);
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    // Bersihkan artefak gambar duplikat yang terdeteksi
+    if (duplicatesToRemove.length > 0) {
+      this.removeDrawingsFromChart(duplicatesToRemove);
+      this.activeDrawings = ((activeChart.drawings.all?.() || []) as ChartDrawingItem[]).filter(
+        (d) => Boolean(d?.id) && !duplicatesToRemove.includes(d.id as string)
+      );
+    }
+
+    // Simpan ke activePlans registry
+    const targetSymbol = plan.symbol || curSym;
+    const planRecord = { ...plan, id: planId, symbol: targetSymbol };
+    this.activePlans.set(planId, planRecord);
+    this.planDrawingIds.set(planId, new Set(matchedDrawingIds));
+
+    return true;
+  }
+
+  /**
    * Pulihkan koleksi rencana perdagangan aktif ke kanvas (Workspace Persistence)
    */
   restorePlans(plans: Array<ParsedTradingPlan & { id: string; symbol?: string }>, showCards: boolean = true): void {
@@ -1589,16 +1895,20 @@ export class ChartDrawingController {
     const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
     for (const plan of plans) {
       if (!this.activePlans.has(plan.id)) {
-        this.createMultiTargetPosition(
-          {
-            ...plan,
-            symbol: plan.symbol || curSym
-          },
-          {
-            planId: plan.id,
-            drawContextZones: true
-          }
-        );
+        // Cek terlebih dahulu apakah gambar posisi/zona sudah ada di kanvas (misal dimuat via restoreDrawings)
+        const relinked = this.tryRelinkPlanDrawings(plan, curSym);
+        if (!relinked) {
+          this.createMultiTargetPosition(
+            {
+              ...plan,
+              symbol: plan.symbol || curSym
+            },
+            {
+              planId: plan.id,
+              drawContextZones: true
+            }
+          );
+        }
       }
     }
     this.notify();
@@ -1761,7 +2071,10 @@ export class ChartDrawingController {
           if (plan && plan.symbol && !isSameSymbol(plan.symbol, curSym)) {
             continue; // Lindungi rencana milik koin lain agar tidak terhapus saat beralih koin
           }
-          if (drawingIdSet && drawingIdSet.size > 0) {
+          if (!drawingIdSet || drawingIdSet.size === 0) {
+            this.activePlans.delete(pid);
+            this.planDrawingIds.delete(pid);
+          } else {
             const hasAnyDrawing = Array.from(drawingIdSet).some((did) => existingDrawingIds.has(did));
             if (!hasAnyDrawing) {
               this.activePlans.delete(pid);
@@ -1977,6 +2290,46 @@ export class ChartDrawingController {
         this.redo();
       })
     );
+
+    // Duplikasi Objek Gambar (Ctrl+D)
+    unbinders.push(
+      dispatcher.bindHandler('duplicate-selected-drawing', () => {
+        this.duplicateSelectedDrawing();
+      })
+    );
+
+    // Toggle Sembunyikan Objek Gambar (Alt+K)
+    unbinders.push(
+      dispatcher.bindHandler('toggle-hide-drawings', () => {
+        this.toggleHide();
+      })
+    );
+
+    // Toggle Kunci Objek Gambar (Alt+L)
+    unbinders.push(
+      dispatcher.bindHandler('toggle-lock-drawings', () => {
+        this.toggleLock();
+      })
+    );
+
+    // Hapus Seluruh Objek Gambar (Ctrl+Del)
+    unbinders.push(
+      dispatcher.bindHandler('clear-all-drawings', () => {
+        this.clearAll();
+      })
+    );
+
+    // Hapus Objek Terseleksi (Del / Backspace)
+    if (!dispatcher.hasHandler('draw-delete')) {
+      unbinders.push(
+        dispatcher.bindHandler('draw-delete', () => {
+          const selectedId = this.getSelectedDrawingId();
+          if (selectedId) {
+            this.deleteDrawing(selectedId);
+          }
+        })
+      );
+    }
 
     // Cancel / Esc
     unbinders.push(

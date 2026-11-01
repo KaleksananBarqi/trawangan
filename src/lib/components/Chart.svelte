@@ -318,6 +318,43 @@
     contextMenuTime = Date.now(); isContextMenuOpen = true;
   }
 
+  function handleContainerDblClick(e: MouseEvent) {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button') || target?.closest('.alert-line-badge') || target?.closest('.floating-thesis-card')) {
+      return;
+    }
+
+    const rect = chartContainer?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const cell = controller.getWorkspace()?.active || controller.getAllCells()[0];
+    const native = cell?.chart?.renderer?.renderer || cell?.chart?.renderer;
+    const input = native?.input;
+    const coords = typeof input?.deps?.getCoords === 'function' ? input.deps.getCoords() : native?.coords;
+
+    let isAxis = false;
+    if (input && typeof input.regionAt === 'function') {
+      try {
+        const region = input.regionAt(x, y);
+        if (region === 'price' || region === 'time') {
+          isAxis = true;
+        }
+      } catch (_) {}
+    }
+
+    if (!isAxis && coords) {
+      if ((typeof coords.width === 'number' && x > coords.width) || (typeof coords.height === 'number' && y > coords.height)) {
+        isAxis = true;
+      }
+    }
+
+    if (isAxis) {
+      fitChart();
+    }
+  }
+
   // Delegasi tunggal ke ChartSessionController
   export function getPaneWeights(): number[] { return controller.getPaneWeights(); }
   export function applyPaneWeights(weights: number[]): boolean { return controller.applyPaneWeights(weights); }
@@ -368,8 +405,30 @@
   export function syncIndicatorsFromActiveCell(): void { controller.syncIndicatorsFromActiveCell(); }
   export async function getActiveCandles(limit = 1000): Promise<Candle[]> { return marketFeed.getCandles(symbol, timeframe, limit); }
   export function fitChart(): void {
-    const chart = (controller.getWorkspace()?.active || controller.getAllCells()[0])?.chart;
-    if (typeof chart?.fit === 'function') chart.fit();
+    const cell = controller.getWorkspace()?.active || controller.getAllCells()[0];
+    if (cell) {
+      if (typeof cell.resetView === 'function') {
+        cell.resetView();
+        return;
+      }
+      const chart = cell.chart || cell.inner || cell;
+      const renderer = chart?.renderer?.renderer || chart?.renderer;
+      if (typeof renderer?.resetView === 'function') {
+        renderer.resetView();
+        return;
+      }
+      if (typeof chart?.fitContent === 'function') {
+        chart.fitContent();
+        return;
+      }
+      if (typeof chart?.resetView === 'function') {
+        chart.resetView();
+        return;
+      }
+    }
+    if (typeof controller.fitChart === 'function') {
+      controller.fitChart();
+    }
   }
   export function getLastHoveredPrice(): number | null { return lastHoveredPrice; }
   export function openChartSettings(section: string = 'Symbol'): void {
@@ -616,6 +675,7 @@
   onwheel={scheduleBadgePositionUpdate}
   onpointerdown={scheduleBadgePositionUpdate}
   onpaste={handleCanvasPaste}
+  ondblclick={handleContainerDblClick}
   role="region"
   aria-label="Area Grafik Utama"
 >

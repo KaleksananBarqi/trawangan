@@ -786,16 +786,27 @@ export function renderDedicatedThesisSidePanel(
   }
 
   // 2c. Entry Price di Header (Rata Kanan)
-  ctx.textAlign = 'right';
-  ctx.font = `bold ${Math.round(11 * scale)}px "JetBrains Mono", monospace, sans-serif`;
-  ctx.fillStyle = biasColor;
   const entryPriceStr = `${formatPlanPrice(plan.entry)}`;
-  ctx.fillText(entryPriceStr, contentX + contentW, headerCenterY);
+  const priceFont = `bold ${Math.round(11 * scale)}px "JetBrains Mono", monospace, sans-serif`;
+  ctx.font = priceFont;
+  const rawPriceW = ctx.measureText ? ctx.measureText(entryPriceStr).width : 0;
+  const entryPriceW = Math.max(rawPriceW, entryPriceStr.length * Math.round(7.2 * scale));
 
-  ctx.font = `500 ${Math.round(9 * scale)}px "Plus Jakarta Sans", sans-serif`;
+  const labelFont = `500 ${Math.round(9 * scale)}px "Plus Jakarta Sans", sans-serif`;
+  const gapBetween = Math.round(8 * scale);
+  const rightMargin = Math.round(2 * scale);
+  const rightEdgeX = contentX + contentW - rightMargin;
+
+  // Render Angka Harga Entry (Rata Kanan di rightEdgeX)
+  ctx.textAlign = 'right';
+  ctx.font = priceFont;
+  ctx.fillStyle = biasColor;
+  ctx.fillText(entryPriceStr, rightEdgeX, headerCenterY);
+
+  // Render Label 'Entry' di sebelah kiri harga entry dengan jarak aman
+  ctx.font = labelFont;
   ctx.fillStyle = textMuted;
-  const entryPriceW = ctx.measureText ? ctx.measureText(entryPriceStr).width : entryPriceStr.length * 7 * scale;
-  ctx.fillText('Entry', contentX + contentW - entryPriceW - Math.round(6 * scale), headerCenterY);
+  ctx.fillText('Entry', rightEdgeX - entryPriceW - gapBetween, headerCenterY);
   ctx.textAlign = 'left';
 
   currentY += headerH + Math.round(8 * scale);

@@ -7,7 +7,7 @@ import {
   extractDrawingBounds,
   checkDrawingIntersectsBounds
 } from '../src/lib/services/chartDrawingController';
-import { CommandDispatcher } from '../src/lib/services/commandDispatcher';
+import { CommandDispatcher, createDefaultCommandDispatcher } from '../src/lib/services/commandDispatcher';
 
 test('ChartDrawingController Deep Module Suite', async (t) => {
   await t.test('1. Nilai default state controller valid', () => {
@@ -743,6 +743,400 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     assert.equal(isAABBOverlap(boxA, boxOverlap), true);
     assert.equal(isAABBOverlap(boxA, boxDisjoint), false);
   });
+
+  await t.test('17. Tiket #138: Deletion shortcut (draw-delete) menghapus objek yang sedang dipilih dan membersihkan seleksi', () => {
+    const controller = new ChartDrawingController();
+    let drawingsList: any[] = [
+      { id: 'd-1', type: 'trendline' },
+      { id: 'd-2', type: 'box' }
+    ];
+    const calls: string[] = [];
+
+    const mockDrawings = {
+      all: () => drawingsList,
+      remove: (id: string) => {
+        calls.push(`remove:${id}`);
+        drawingsList = drawingsList.filter((d) => d.id !== id);
+      },
+      removeMany: (ids: string[]) => {
+        calls.push(`removeMany:${ids.join(',')}`);
+        drawingsList = drawingsList.filter((d) => !ids.includes(d.id));
+      },
+      select: (id: string) => calls.push(`select:${id}`),
+      deselect: () => calls.push('deselect'),
+      undo: () => calls.push('undo'),
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    const dispatcher = createDefaultCommandDispatcher();
+    const unbind = controller.bindToDispatcher(dispatcher);
+
+    // Seleksi drawing d-1
+    controller.selectDrawing('d-1');
+    assert.equal(controller.getSelectedDrawingId(), 'd-1');
+
+    // Tekan tombol Delete
+    dispatcher.dispatch({
+      key: 'Delete',
+      code: 'Delete',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false
+    } as any);
+
+    // Objek d-1 harus terhapus, seleksi menjadi null, d-2 tetap ada, undo tidak boleh dipanggil
+    assert.ok(calls.includes('removeMany:d-1') || calls.includes('remove:d-1'), 'd-1 harus dihapus');
+    assert.equal(controller.getSelectedDrawingId(), null, 'Seleksi harus dibersihkan setelah dihapus');
+    assert.equal(drawingsList.length, 1, 'Hanya tersisa 1 drawing');
+    assert.equal(drawingsList[0].id, 'd-2', 'd-2 harus tetap ada');
+    assert.ok(!calls.includes('undo'), 'Global undo tidak boleh dipanggil saat menghapus drawing');
+
+    // Seleksi drawing d-2 dan tekan tombol Backspace
+    controller.selectDrawing('d-2');
+    assert.equal(controller.getSelectedDrawingId(), 'd-2');
+
+    dispatcher.dispatch({
+      key: 'Backspace',
+      code: 'Backspace',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false
+    } as any);
+
+    assert.ok(calls.includes('removeMany:d-2') || calls.includes('remove:d-2'), 'd-2 harus dihapus');
+    assert.equal(controller.getSelectedDrawingId(), null);
+    assert.equal(drawingsList.length, 0);
+    assert.ok(!calls.includes('undo'), 'Global undo tidak boleh dipanggil saat Backspace');
+
+    unbind();
+  });
+
+  await t.test('18. Tiket #138: Deletion shortcut (draw-delete) saat TIDAK ada objek yang dipilih melakukan safe no-op tanpa memanggil undo', () => {
+    const controller = new ChartDrawingController();
+    let drawingsList: any[] = [{ id: 'd-1', type: 'trendline' }];
+    const calls: string[] = [];
+
+    const mockDrawings = {
+      all: () => drawingsList,
+      remove: (id: string) => {
+        calls.push(`remove:${id}`);
+        drawingsList = drawingsList.filter((d) => d.id !== id);
+      },
+      removeMany: (ids: string[]) => {
+        calls.push(`removeMany:${ids.join(',')}`);
+        drawingsList = drawingsList.filter((d) => !ids.includes(d.id));
+      },
+      undo: () => calls.push('undo'),
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    const dispatcher = createDefaultCommandDispatcher();
+    const unbind = controller.bindToDispatcher(dispatcher);
+
+    assert.equal(controller.getSelectedDrawingId(), null, 'Awalnya tidak ada objek yang dipilih');
+
+    // Tekan tombol Delete saat tidak ada objek yang dipilih
+    dispatcher.dispatch({
+      key: 'Delete',
+      code: 'Delete',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false
+    } as any);
+
+    // Tekan tombol Backspace saat tidak ada objek yang dipilih
+    dispatcher.dispatch({
+      key: 'Backspace',
+      code: 'Backspace',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false
+    } as any);
+
+    // Tidak boleh ada pemanggilan remove, removeMany, atau undo
+    assert.equal(calls.length, 0, 'Tidak boleh ada aksi penghapusan atau undo yang dijalankan');
+    assert.equal(drawingsList.length, 1, 'Objek gambar yang ada tidak boleh terhapus');
+    assert.equal(drawingsList[0].id, 'd-1');
+
+    unbind();
+  });
+
+  await t.test('19. Tiket #138: Objek gambar dari trading plan (planId) hanya terhapus node spesifiknya saat dihapus', () => {
+    const controller = new ChartDrawingController();
+    let drawingsList: any[] = [];
+    const calls: string[] = [];
+
+    const mockDrawings = {
+      all: () => drawingsList,
+      create: (spec: any) => {
+        const item = { ...spec, id: spec.id || `draw_${drawingsList.length + 1}` };
+        drawingsList.push(item);
+        calls.push(`create:${item.id}`);
+        return item;
+      },
+      remove: (id: string) => {
+        calls.push(`remove:${id}`);
+        drawingsList = drawingsList.filter((d) => d.id !== id);
+      },
+      removeMany: (ids: string[]) => {
+        calls.push(`removeMany:${ids.join(',')}`);
+        drawingsList = drawingsList.filter((d) => !ids.includes(d.id));
+      },
+      select: (id: string) => calls.push(`select:${id}`),
+      deselect: () => calls.push('deselect'),
+      undo: () => calls.push('undo'),
+      on: () => {},
+      off: () => {}
+    };
+
+    const baseTime = 1700000000000;
+    const interval15m = 15 * 60 * 1000;
+    const mockChart = {
+      drawings: mockDrawings,
+      data: () => [
+        { time: baseTime - interval15m, close: 81000 },
+        { time: baseTime, close: 81200 }
+      ],
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: mockChart, symbol: 'BTCUSDT', timeframe: '15m' },
+      cells: () => [{ chart: mockChart }]
+    };
+
+    controller.attachWorkspace(
+      mockWorkspace as any,
+      () => 'BTCUSDT',
+      () => '15m',
+      () => 'binance'
+    );
+
+    const dispatcher = createDefaultCommandDispatcher();
+    const unbind = controller.bindToDispatcher(dispatcher);
+
+    // Buat trading plan dengan 2 TP dan 1 context zone
+    const mockPlan: any = {
+      id: 'plan_test_123',
+      symbol: 'BTCUSDT',
+      bias: 'bearish',
+      entry: 81200,
+      stopLoss: 81400,
+      targets: [
+        { price: 80355, label: 'TP1', rMultiple: 4.22 },
+        { price: 79429, label: 'TP2', rMultiple: 8.85 }
+      ],
+      contextZones: [
+        { low: 81180, high: 81240, label: 'FVG LTF' }
+      ]
+    };
+
+    const result = controller.createMultiTargetPosition(mockPlan, { barSpanPerTarget: 20 });
+    assert.ok(result);
+    assert.equal(result.drawingIds.length, 3, 'Plan harus menghasilkan 3 drawing (TP1, TP2, FVG box)');
+    assert.equal(drawingsList.length, 3);
+    assert.equal(controller.getActivePlans().length, 1, 'Harus ada 1 plan aktif');
+
+    const tp1Id = result.drawingIds[0];
+    const tp2Id = result.drawingIds[1];
+    const fvgBoxId = result.drawingIds[2];
+
+    // Seleksi hanya TP2
+    controller.selectDrawing(tp2Id);
+    assert.equal(controller.getSelectedDrawingId(), tp2Id);
+
+    // Hapus TP2 via Delete key
+    dispatcher.dispatch({
+      key: 'Delete',
+      code: 'Delete',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false
+    } as any);
+
+    // Verifikasi: Hanya TP2 yang terhapus!
+    assert.ok(calls.includes(`removeMany:${tp2Id}`) || calls.includes(`remove:${tp2Id}`));
+    assert.equal(drawingsList.some((d) => d.id === tp2Id), false, 'TP2 harus terhapus');
+    assert.equal(drawingsList.some((d) => d.id === tp1Id), true, 'TP1 harus tetap ada');
+    assert.equal(drawingsList.some((d) => d.id === fvgBoxId), true, 'FVG box harus tetap ada');
+    assert.equal(drawingsList.length, 2, 'Tersisa 2 drawing untuk plan ini');
+
+    // Rencana perdagangan masih ada di getActivePlans karena TP1 dan FVG box masih ada
+    assert.equal(controller.getActivePlans().length, 1, 'Plan harus tetap ada selama masih ada node yang tersisa');
+
+    // Sekarang hapus TP1
+    controller.selectDrawing(tp1Id);
+    dispatcher.dispatch({
+      key: 'Delete',
+      code: 'Delete',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false
+    } as any);
+
+    assert.equal(drawingsList.some((d) => d.id === tp1Id), false, 'TP1 harus terhapus');
+    assert.equal(drawingsList.length, 1);
+    assert.equal(controller.getActivePlans().length, 1, 'Plan masih ada karena FVG box tersisa');
+
+    // Terakhir hapus FVG box
+    controller.selectDrawing(fvgBoxId);
+    dispatcher.dispatch({
+      key: 'Delete',
+      code: 'Delete',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false
+    } as any);
+
+    assert.equal(drawingsList.length, 0, 'Semua drawing telah terhapus');
+    // Seluruh node drawing dari plan sudah terhapus, activePlans sekarang harus bersih
+    assert.equal(controller.getActivePlans().length, 0, 'Plan harus bersih ketika semua node gambar terhapus');
+
+    unbind();
+  });
+
+  await t.test('20. Tiket #141: Drawing Duplication Engine (duplicateSelectedDrawing) dan Undo/Redo Timeline', () => {
+    const controller = new ChartDrawingController();
+    let drawingsList: any[] = [];
+    const calls: string[] = [];
+
+    const mockDrawings = {
+      all: () => drawingsList,
+      create: (spec: any) => {
+        const item = { ...spec, id: spec.id || `draw_${drawingsList.length + 1}` };
+        drawingsList.push(item);
+        calls.push(`create:${item.id}`);
+        return item;
+      },
+      add: (type: string, spec: any) => {
+        const item = { ...spec, id: spec.id || `draw_${drawingsList.length + 1}`, type };
+        drawingsList.push(item);
+        calls.push(`add:${item.id}`);
+        return item;
+      },
+      remove: (id: string) => {
+        calls.push(`remove:${id}`);
+        drawingsList = drawingsList.filter((d) => d.id !== id);
+      },
+      removeMany: (ids: string[]) => {
+        calls.push(`removeMany:${ids.join(',')}`);
+        drawingsList = drawingsList.filter((d) => !ids.includes(d.id));
+      },
+      select: (id: string) => calls.push(`select:${id}`),
+      deselect: () => calls.push('deselect'),
+      undo: () => calls.push('undo'),
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockChart = {
+      drawings: mockDrawings,
+      data: () => [{ time: 1700000000000, close: 50000 }, { time: 1700000060000, close: 50100 }],
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: mockChart, symbol: 'BTCUSDT', timeframe: '1m' },
+      cells: () => [{ chart: mockChart }]
+    };
+
+    controller.attachWorkspace(
+      mockWorkspace as any,
+      () => 'BTCUSDT',
+      () => '1m',
+      () => 'binance'
+    );
+
+    // 1. Memanggil saat tidak ada drawing terpilih mengembalikan null tanpa error
+    assert.equal(controller.getSelectedDrawingId(), null);
+    const noopResult = controller.duplicateSelectedDrawing();
+    assert.equal(noopResult, null, 'Harus mengembalikan null saat tidak ada drawing terpilih');
+    assert.equal(drawingsList.length, 0);
+
+    // 2. Buat objek gambar awal
+    const originalDrawing = {
+      id: 'draw_orig_1',
+      type: 'trendline',
+      anchors: [
+        { time: 1700000000000, price: 50000 },
+        { time: 1700000060000, price: 50500 }
+      ],
+      style: { color: '#f59e0b', lineWidth: 2 },
+      text: { content: 'Breakout Line' },
+      metadata: { note: 'Key resistance' }
+    };
+    drawingsList.push(originalDrawing);
+
+    // Seleksi drawing awal
+    controller.selectDrawing('draw_orig_1');
+    assert.equal(controller.getSelectedDrawingId(), 'draw_orig_1');
+
+    // 3. Panggil duplicateSelectedDrawing
+    let notifiedNewSelection = false;
+    const unsub = controller.subscribe((state) => {
+      if (state.selectedDrawingId && state.selectedDrawingId !== 'draw_orig_1') {
+        notifiedNewSelection = true;
+      }
+    });
+
+    const newId = controller.duplicateSelectedDrawing();
+    assert.ok(newId, 'Harus mengembalikan ID drawing baru');
+    assert.notEqual(newId, 'draw_orig_1', 'ID baru tidak boleh sama dengan ID lama');
+    assert.equal(controller.getSelectedDrawingId(), newId, 'Drawing hasil klon harus otomatis menjadi selectedDrawingId');
+    assert.equal(drawingsList.length, 2, 'Jumlah drawing di kanvas harus bertambah');
+    assert.ok(notifiedNewSelection, 'Subscriber controller harus menerima notifikasi seleksi baru');
+
+    // Periksa objek hasil klon
+    const cloned = drawingsList.find((d) => d.id === newId);
+    assert.ok(cloned, 'Objek klon harus tersimpan di chart drawings');
+    assert.equal(cloned.type, 'trendline');
+    assert.deepEqual(cloned.style, originalDrawing.style);
+    assert.deepEqual(cloned.text, originalDrawing.text);
+    assert.equal(cloned.metadata.note, 'Key resistance');
+
+    // Koordinat anchors harus memiliki offset spasial
+    assert.ok(cloned.anchors[0].price !== originalDrawing.anchors[0].price, 'Harga anchor 0 harus memiliki offset');
+    assert.ok(cloned.anchors[1].price !== originalDrawing.anchors[1].price, 'Harga anchor 1 harus memiliki offset');
+    assert.ok(cloned.anchors[0].time !== originalDrawing.anchors[0].time, 'Waktu anchor 0 harus memiliki offset');
+
+    // 4. Undo (Ctrl+Z) membatalkan duplikasi (menghapus hasil clone)
+    controller.undo();
+    assert.equal(drawingsList.some((d) => d.id === newId), false, 'Drawing hasil klon harus terhapus setelah undo');
+    assert.equal(drawingsList.length, 1, 'Hanya drawing asli yang tersisa');
+    assert.equal(drawingsList[0].id, 'draw_orig_1');
+    assert.equal(controller.getSelectedDrawingId(), null, 'selectedDrawingId harus direset saat clone di-undo');
+
+    // 5. Redo (Ctrl+Y) memulihkan kembali hasil clone
+    controller.redo();
+    assert.equal(drawingsList.length, 2, 'Drawing hasil klon harus kembali setelah redo');
+    assert.ok(drawingsList.some((d) => d.id === newId), 'Drawing hasil klon harus ada kembali');
+
+    unsub();
+  });
 });
+
 
 
