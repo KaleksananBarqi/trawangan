@@ -5,6 +5,36 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.30.0] - 2026-11-01
+
+### 🚀 Ditambahkan (Added)
+- **Suite Pintasan Institusional & Produktivitas Gambar (#137, #140, #141, #142):**
+  - **Smart-Toggle Object Tree & Indikator (`Alt + O`) (#140)**: Pintasan cerdas untuk membuka panel samping daftar objek dan indikator (`rightDockService.toggleTab('objects')`), berpindah ke tab objek jika sedang berada di tab lain, atau menutup panel jika sudah aktif di tab tersebut. Otomatis mengalihkan `workspaceMode` dari Pine Script ke mode terminal standar saat dibuka, dengan tetap mempertahankan fokus keyboard pada kanvas grafik.
+  - **Mesin Duplikasi Objek Gambar (`Ctrl + D`) (#141)**: Mengimplementasikan method `duplicateDrawing(id)` dan `duplicateSelectedDrawing()` pada `ChartDrawingController` dengan pergeseran spasial adaptif (*gentle spatial offset*: 5 tick harga dan 60s waktu) berbasis ukuran tick harga aktual. Mendukung aksi undo/redo atomik (`DrawingUndoAction` berlabel `'create'`) serta otomatis menyeleksi klon baru.
+  - **Toggle Visibilitas & Kunci Seluruh Gambar (`Alt + K` & `Alt + L`) (#137)**: Pintasan produktivitas untuk menyembunyikan/menampilkan (`bulkHideDrawings`) atau mengunci/membuka kunci (`bulkLockDrawings`) seluruh objek gambar pada grafik aktif secara serentak disertai notifikasi umpan balik (*toast feedback*).
+  - **Hapus Seluruh Objek Gambar Sekaligus (`Ctrl + Delete`) (#142)**: Pintasan cepat untuk membersihkan seluruh objek gambar pada simbol aktif kanvas dengan konfirmasi dan notifikasi sistem yang aman.
+  - **Pembalikan Sumbu Skala Harga (`Alt + I`) (#137)**: Pintasan untuk membalik orientasi sumbu harga vertikal (*invert price scale*) pada sel aktif melalui command dispatcher.
+  - **Proteksi Pengetikan & Tampilan Cheatsheet**: Seluruh kombinasi pintasan baru dikonfigurasi dengan `allowInInput: false` guna mencegah eksekusi saat pengguna mengetik di input form, kotak pencarian, atau editor script, serta disajikan secara terstruktur di Cheatsheet Pintasan Keyboard (`F1` / `?`).
+- **Tick-Aligned Price Guard (GLOSSARY.md)**:
+  - Menggantikan batas toleransi harga mengambang arbitrer `0.0005` pada `isPriceMatch` di `chartDrawingController.ts` dengan ambang dinamis `getAdaptiveTickSize(expected) * 1.5`, menjamin akurasi identifikasi anchor harga di seluruh rentang harga instrumen kripto.
+
+### 🔄 Diubah (Changed)
+- **Pembaruan Deskripsi Perintah Terminal**:
+  - Memperbarui deskripsi perintah `draw-delete` pada `commandDispatcher.ts` dari *"Hapus objek gambar yang sedang dipilih atau urungkan aksi"* menjadi *"Hapus objek gambar yang sedang dipilih"* agar mencerminkan semantik penghapusan objek secara tepat.
+
+### 🐛 Diperbaiki (Fixed)
+- **Delegasi Auto-Fit Scaling Viewport Grafik (`Alt + Z` & `F`) (#139)**:
+  - Memperbaiki kegagalan diam-diam (*silent failure*) pada `fitChart()` yang sebelumnya memanggil method non-existent pada instans Vela. Kini mendelegasikan secara tepat ke `cell.resetView()` pada sel aktif, dengan fallback defensif berjenjang ke `renderer.resetView()`, `chart.fitContent()`, atau `chart.resetView()`.
+  - Mengaktifkan kembali pintasan keyboard `Alt + Z`, tombol tunggal `F`, serta event listener `ondblclick` pada sumbu harga dan sumbu waktu untuk auto-fit framing seluruh candle historis ke viewport secara instan.
+  - Memasang `chartPriceScaleInputGuard` saat sel dimount untuk mencegah objek gambar latar belakang mengklaim interaksi klik dan drag pada sumbu skala harga dan waktu.
+- **Isolasi Penghapusan Objek Gambar Tunggal pada Del & Backspace (#138)**:
+  - Menghubungkan perintah `draw-delete` langsung ke `chartDrawingController.deleteDrawing(selectedId)` untuk menghapus hanya objek gambar yang sedang dipilih.
+  - Mencegah eksekusi `handleUndo()` yang merusak riwayat anotasi saat tidak ada objek gambar terpilih (beralih ke *safe no-op*).
+  - Mengisolasi penghapusan node bertingkat pada rencana perdagangan: menghapus salah satu node (misal TP tertentu) tidak lagi menghapus seluruh rencana trading selama masih ada node aktif lain di kanvas.
+- **Pencegahan Duplikasi Objek Gambar Startup & Tabrakan Teks Entry Snapshot**:
+  - **Deduplikasi Gambar Pasca Startup**: Mengimplementasikan `tryRelinkPlanDrawings` untuk merekonsiliasi pemuatan database kanvas (`restoreDrawings`) dengan sinkronisasi workspace (`restorePlans`), mencegah penggandaan ganda objek gambar posisi dan kotak zona konteks (FVG) saat membuka kembali aplikasi, dilengkapi pembersihan mandiri (*self-healing*).
+  - **Pencegahan Teks Entry Bertabrakan**: Memperbaiki urutan pengukuran font kanvas pada panel samping tesis mandiri (`DedicatedThesisSidePanel`), menjamin jarak horizontal aman antara label "Entry" dan angka harga entry.
+
 ## [0.29.0] - 2026-11-01
 
 ### 🚀 Ditambahkan (Added)
