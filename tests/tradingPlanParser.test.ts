@@ -538,4 +538,111 @@ Struktur tren Bearish.
       assert.equal(ltfOb?.label, '15m unmitigated Bullish OB');
     });
   });
+
+  describe('7. Hardening Deterministic Plan Ingestion (#131)', () => {
+    it('Slice 1: mengabaikan format tanggal ISO (YYYY-MM-DD) dan tanggal dengan prefix kata kunci zona', () => {
+      const text = `
+Bias: Bearish
+Entry: 78200.0
+SL: 78600.0
+TP1: 77400.0
+
+Analisis:
+- Order block pada 2024-10-30 dan mitigasi FVG 2026-11-01 diuji kembali.
+- OB tanggal 10-30 berhasil menahan reli harga.
+- 4H Bearish FVG (78242.4 - 80549.9) tetap valid sebagai DOL.
+      `.trim();
+
+      const plan = parseTradingPlan(text);
+
+      const falseIsoZone = plan.contextZones.find(
+        (z) => (z.high >= 1900 && z.high <= 2100) || (z.low >= 1900 && z.low <= 2100)
+      );
+      assert.equal(falseIsoZone, undefined, 'Format tanggal ISO (YYYY-MM-DD) tidak boleh dijadikan Context Zone');
+
+      const falseObDate = plan.contextZones.find(
+        (z) => z.low === 10 && z.high === 30
+      );
+      assert.equal(falseObDate, undefined, 'OB tanggal 10-30 tidak boleh dijadikan Context Zone');
+
+      const fvg = plan.contextZones.find((z) => z.low === 78242.4 && z.high === 80549.9);
+      assert.ok(fvg, 'Zona 4H Bearish FVG harus tetap terdeteksi');
+    });
+
+    it('Slice 2: mengekstrak label institusional yang diformat Markdown tebal atau miring', () => {
+      const text = `
+Bias: Bearish
+Entry: 78200.0
+SL: 78600.0
+TP1: 77400.0
+
+Katalis zona:
+- Reaksi pada **1H Bearish OB** (78377.9 - 78776.5)
+- Penolakan di area *4H Bearish FVG* (78242.4 - 80549.9)
+- Demand terdekat di __15m Bullish OB__ (77462.2 - 77522.7)
+      `.trim();
+
+      const plan = parseTradingPlan(text);
+
+      const ob = plan.contextZones.find((z) => z.low === 78377.9 && z.high === 78776.5);
+      assert.ok(ob, 'Zona 1H Bearish OB berformat tebal harus terdeteksi');
+      assert.equal(ob?.label, '1H Bearish OB');
+
+      const fvg = plan.contextZones.find((z) => z.low === 78242.4 && z.high === 80549.9);
+      assert.ok(fvg, 'Zona 4H Bearish FVG berformat miring harus terdeteksi');
+      assert.equal(fvg?.label, '4H Bearish FVG');
+
+      const ltf = plan.contextZones.find((z) => z.low === 77462.2 && z.high === 77522.7);
+      assert.ok(ltf, 'Zona 15m Bullish OB berformat underscore harus terdeteksi');
+      assert.equal(ltf?.label, '15m Bullish OB');
+    });
+
+    it('Slice 3: mempertahankan rentang harga bulat valid pada aset bernilai rendah (< $100)', () => {
+      const text = `
+Bias: Bullish
+Entry: 15.0
+SL: 13.5
+TP1: 18.0
+
+Zona akumulasi:
+- Menunggu harga menyentuh Demand Zone 10 - 12 sebelum konfirmasi break.
+- Supply Zone 17 - 20 sebagai area profit taking.
+      `.trim();
+
+      const plan = parseTradingPlan(text);
+
+      const demandZone = plan.contextZones.find((z) => z.low === 10 && z.high === 12);
+      assert.ok(demandZone, 'Rentang harga bulat pada koin murah (10 - 12) harus dipertahankan sebagai Context Zone');
+      assert.equal(demandZone?.label, 'Demand Zone');
+
+      const supplyZone = plan.contextZones.find((z) => z.low === 17 && z.high === 20);
+      assert.ok(supplyZone, 'Rentang harga bulat pada koin murah (17 - 20) harus dipertahankan sebagai Context Zone');
+      assert.equal(supplyZone?.label, 'Supply Zone');
+    });
+
+    it('Slice 4: mempertahankan sel tabel multiline yang memuat divider --- atau penanda # di dalam narasi', () => {
+      const text = `
+| Parameter | Nilai |
+| --- | --- |
+| Bias | Bearish |
+| Entry | 78200.0 |
+| Alasan Entry | Alasan utama selaras dengan tren makro 4H.
+---
+Catatan Tambahan:
+#1 Konfirmasi penolakan FVG
+#2 Volume tipis mendukung pembalikan |
+| Stop Loss | 78600.0 |
+| TP1 | 77400.0 |
+      `.trim();
+
+      const plan = parseTradingPlan(text);
+
+      assert.ok(plan.reasons.entry, 'Alasan entry harus lengkap dan tidak terpotong divider internal');
+      assert.match(plan.reasons.entry, /Alasan utama selaras dengan tren makro 4H/);
+      assert.match(plan.reasons.entry, /#1 Konfirmasi penolakan FVG/);
+      assert.match(plan.reasons.entry, /#2 Volume tipis mendukung pembalikan/);
+      assert.equal(plan.stopLoss, 78600.0);
+      assert.equal(plan.targets[0].price, 77400.0);
+    });
+  });
 });

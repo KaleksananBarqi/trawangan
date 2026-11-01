@@ -122,6 +122,76 @@ function extractExplicitDistance(rawVal: string): number | null {
 }
 
 /**
+ * Memeriksa apakah rentang angka yang cocok merupakan pola tanggal kalender atau stempel waktu.
+ */
+function isDateOrTimestampPattern(
+  num1Str: string,
+  num2Str: string,
+  beforeMatch: string,
+  afterMatch: string,
+  rawLabel: string,
+  referencePrice?: number
+): boolean {
+  const num1 = parseFloat(num1Str.replace(/,/g, ''));
+  const num2 = parseFloat(num2Str.replace(/,/g, ''));
+  if (isNaN(num1) || isNaN(num2)) return false;
+
+  // 1. Format tanggal ISO lengkap dengan tahun (misal "2024-10-30" atau "2026-11-01")
+  if ((num1 >= 1900 && num1 <= 2100) || (num2 >= 1900 && num2 <= 2100)) {
+    if (
+      /^[-/]\d{1,2}\b/.test(afterMatch.trimStart()) ||
+      /[-/]\d{1,2}\s*$/.test(beforeMatch.trimEnd())
+    ) {
+      return true;
+    }
+  }
+
+  // 2. Diikuti pola format jam/menit (misal "10-30 06:00")
+  if (/^\s*(?:[Tt]\s*)?\d{1,2}:\d{2}\b/.test(afterMatch)) {
+    return true;
+  }
+
+  // 3. Didahului kata kunci penanggalan eksplisit (misal "OB tanggal 10-30", "pada 10-30", "Swing High 10-30")
+  if (
+    /(?:swing\s+(?:high|low)|candle|bar|pada\s+tanggal|tanggal|tgl|date|time|waktu|hl|ll|hh|lh)\s*[*_]*\s*$/i.test(
+      beforeMatch
+    )
+  ) {
+    return true;
+  }
+
+  // 4. Tanggal kalender dalam kurung (misal "(10-29)" atau "(10-30)")
+  const isEnclosedDate =
+    /[([]\s*$/.test(beforeMatch) &&
+    /^\s*[)\]]/.test(afterMatch) &&
+    !num1Str.includes('.') &&
+    !num2Str.includes('.') &&
+    num1 <= 31 &&
+    num2 <= 31;
+  if (isEnclosedDate) return true;
+
+  // 5. Tanggal kalender bulan-hari tanpa desimal
+  const isCalendarDayMonth =
+    !num1Str.includes('.') &&
+    !num2Str.includes('.') &&
+    ((num1 >= 1 && num1 <= 12 && num2 >= 1 && num2 <= 31) ||
+      (num1 >= 1 && num1 <= 31 && num2 >= 1 && num2 <= 12));
+
+  if (isCalendarDayMonth) {
+    // Jika tidak ada label zona institusional langsung
+    if (!rawLabel) return true;
+
+    // Jika ada referencePrice bernilai tinggi (misal BTC > 100) dan zona < 10% harga referensi
+    if (typeof referencePrice === 'number' && referencePrice > 100) {
+      const maxVal = Math.max(num1, num2);
+      if (maxVal < referencePrice * 0.1) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Mengekstrak area FVG atau zona rentang harga (misal "LTF FVG 81182.2 - 81236.7").
  */
 function extractContextZones(
@@ -134,8 +204,8 @@ function extractContextZones(
 
   // Pola rentang harga: angka - angka
   // Memeriksa konteks apakah memuat kata kunci seperti FVG, OB, Imbalance, Zona, Area, dll.
-  // Mendukung label dengan jeda kurung atau titik dua (misal "4H Bearish FVG (78242.4 - 80549.9)")
-  const regex = /(?:(?:di dalam|tunggu harga masuk|masuk|area|zona)?\s*([a-zA-Z0-9_\s]{0,35}?(?:FVG|OB|Order Block|Imbalance|Demand|Supply|Zone|Area|Rentang|Range)[a-zA-Z0-9_\s]{0,20}?)\s*(?:\(\s*|:\s*|\s+))?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|s\/d|to)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)/gi;
+  // Mendukung label dengan format Markdown tebal/miring atau jeda kurung/titik dua
+  const regex = /(?:(?:di dalam|tunggu harga masuk|masuk|area|zona)?\s*([a-zA-Z0-9_\s*`~]{0,45}?(?:FVG|OB|Order Block|Imbalance|Demand|Supply|Zone|Area|Rentang|Range)[a-zA-Z0-9_\s*`~]{0,25}?)\s*(?:\(\s*|:\s*|\s+))?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|s\/d|to)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)/gi;
 
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
@@ -158,34 +228,18 @@ function extractContextZones(
 
     if (isNaN(num1) || isNaN(num2)) continue;
 
-    // Abaikan format tanggal / timestamp kalender (misal "10-30 06:00", "(10-29)", "(10-30)")
-    const isFollowedByTime = /^\s*(?:[Tt]\s*)?\d{1,2}:\d{2}\b/.test(afterMatch);
-    const isPrecededBySwingOrDate = /(?:swing\s+(?:high|low)|candle|bar|pada|tanggal|tgl|date|time|waktu|hl|ll|hh|lh)\s*[*_]*\s*$/i.test(beforeMatch);
-    const isEnclosedDate =
-      /[([]\s*$/.test(beforeMatch) &&
-      /^\s*[)\]]/.test(afterMatch) &&
-      !num1Str.includes('.') &&
-      !num2Str.includes('.') &&
-      num1 <= 31 &&
-      num2 <= 31;
-    const isCalendarDate =
-      !rawLabel &&
-      !num1Str.includes('.') &&
-      !num2Str.includes('.') &&
-      ((num1 >= 1 && num1 <= 12 && num2 >= 1 && num2 <= 31) ||
-        (num1 >= 1 && num1 <= 31 && num2 >= 1 && num2 <= 12));
-
-    if (isFollowedByTime || isPrecededBySwingOrDate || isEnclosedDate || isCalendarDate) {
+    // Abaikan format tanggal / timestamp kalender via validator mandiri
+    if (
+      isDateOrTimestampPattern(
+        num1Str,
+        num2Str,
+        beforeMatch,
+        afterMatch,
+        rawLabel,
+        referencePrice
+      )
+    ) {
       continue;
-    }
-
-    // Jika referencePrice diketahui dan nilainya jauh lebih besar (misal aset > 100 seperti BTC),
-    // abaikan nilai sangat kecil yang jelas bukan level harga instrumen
-    if (typeof referencePrice === 'number' && referencePrice > 100) {
-      const maxVal = Math.max(num1, num2);
-      if (maxVal < referencePrice * 0.1 && num1 <= 31 && num2 <= 31) {
-        continue;
-      }
     }
 
     // Jika tidak ada kata kunci struktural di label atau sekitar, abaikan
@@ -204,17 +258,19 @@ function extractContextZones(
     // Bersihkan label zona (ekstrak frase institusional terdekat seperti "4H Bearish FVG" atau "1H Bearish OB")
     let cleanLabel = '';
     if (rawLabel) {
+      // Bersihkan karakter pemformatan Markdown (seperti bold **, italic *, underscore __)
+      const sanitizedLabel = rawLabel.replace(/[*_`~]/g, ' ').replace(/\s+/g, ' ').trim();
       const labelRegex =
         /\b((?:[0-9]{1,3}\s*[mhdHDwW]|daily|weekly|macro|htf|mtf|ltf)\s+)?(?:unmitigated\s+)?(?:(?:bullish|bearish)\s+)?(?:FVG|OB|Order\s*Block|Imbalance|Demand|Supply)(?:\s+(?:Zone|Area))?\b/gi;
       let lastMatch: string | null = null;
-      let lm: RegExpExecArray | null;
-      while ((lm = labelRegex.exec(rawLabel)) !== null) {
-        lastMatch = lm[0];
+      let labelMatch: RegExpExecArray | null;
+      while ((labelMatch = labelRegex.exec(sanitizedLabel)) !== null) {
+        lastMatch = labelMatch[0];
       }
       if (lastMatch) {
         cleanLabel = lastMatch.trim();
       } else {
-        cleanLabel = rawLabel
+        cleanLabel = sanitizedLabel
           .replace(
             /^(?:serta|dan|di\s+area|di\s+zona|zona\s+mitigasi|area\s+mitigasi|di\s+dalam|tunggu\s+harga\s+masuk|masuk|area|zona)\s+/i,
             ''
@@ -382,6 +438,13 @@ export function validatePlanSanity(
 }
 
 /**
+ * Memastikan baris tabel Markdown selalu ditutup dengan karakter pipa.
+ */
+function ensureTrailingPipe(row: string): string {
+  return row.endsWith('|') ? row : `${row} |`;
+}
+
+/**
  * Menggabungkan baris tabel Markdown yang terpotong menjadi beberapa baris (multiline)
  * atau memiliki baris kosong di dalam sel sebelum pipa penutup.
  */
@@ -403,7 +466,7 @@ function normalizePlanLines(rawLines: string[]): string[] {
     // 2. Baris yang hanya berisi karakter pipa penutup (misal "|" atau " |")
     if (/^\|+\s*$/.test(trimmed)) {
       if (currentTableRow !== null) {
-        currentTableRow = currentTableRow.trimEnd() + ' |';
+        currentTableRow = ensureTrailingPipe(currentTableRow.trimEnd());
         normalized.push(currentTableRow);
         currentTableRow = null;
       }
@@ -414,7 +477,7 @@ function normalizePlanLines(rawLines: string[]): string[] {
 
     if (isTableRowStart) {
       if (currentTableRow !== null) {
-        normalized.push(currentTableRow.endsWith('|') ? currentTableRow : `${currentTableRow} |`);
+        normalized.push(ensureTrailingPipe(currentTableRow));
         currentTableRow = null;
       }
 
@@ -430,12 +493,10 @@ function normalizePlanLines(rawLines: string[]): string[] {
           normalized.push(currentTableRow);
           currentTableRow = null;
         } else if (
-          trimmed.startsWith('#') ||
-          trimmed.startsWith('---') ||
-          trimmed.startsWith('===') ||
+          /^#{1,3}\s+[A-Z0-9]/i.test(trimmed) ||
           /^(?:entry|sl|stop\s*loss|tp\d*|target\d*|bias)\s*:/i.test(trimmed)
         ) {
-          normalized.push(currentTableRow.endsWith('|') ? currentTableRow : `${currentTableRow} |`);
+          normalized.push(ensureTrailingPipe(currentTableRow));
           currentTableRow = null;
           normalized.push(trimmed);
         } else {
@@ -448,7 +509,7 @@ function normalizePlanLines(rawLines: string[]): string[] {
   }
 
   if (currentTableRow !== null) {
-    normalized.push(currentTableRow.endsWith('|') ? currentTableRow : `${currentTableRow} |`);
+    normalized.push(ensureTrailingPipe(currentTableRow));
   }
 
   return normalized;
@@ -506,7 +567,7 @@ export function parseTradingPlan(
 
     // Cek apakah baris Markdown table
     if (trimmed.startsWith('|')) {
-      const row = trimmed.endsWith('|') ? trimmed : `${trimmed} |`;
+      const row = ensureTrailingPipe(trimmed);
       const parts = row
         .split('|')
         .map((p) => p.trim())
