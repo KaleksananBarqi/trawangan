@@ -5,6 +5,24 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.29.0] - 2026-11-01
+
+### 🚀 Ditambahkan (Added)
+- **Side-by-Side Snapshot Layout & Dedicated Thesis Side Panel (#132, #133, #134, #135, #136):**
+  - **Pemisahan Kanvas Bersih (Clean Chart Separation)**: Saat mengekspor tangkapan layar dalam mode *Side Panel*, kartu tesis mengambang (`FloatingThesisCard`) dilewati dari atas kanvas lilin sehingga *candlestick*, zona order block SMC, dan indikator teknikal tetap 100% terlihat tanpa terhalang elemen antarmuka, sementara lencana skala harga (Entry, SL, TP) tetap tampil utuh pada sumbu harga kanan.
+  - **Panel Samping Tesis Mandiri (Dedicated 2D Thesis Side Panel)**: Menghadirkan panel analisis samping kanan terstruktur (~380px) berstandar editorial finansial modern, lengkap dengan lencana bias (*Bullish/Bearish*) dan harga entry, pil katalis multi-timeframe, blok narasi berformat epistemik (*[FAKTA]*, *[INFERENSI]*, *[SPEKULASI]*), batas invalidasi SL dengan badge risiko (`-1.00R`), daftar target likuiditas bertingkat dengan proyeksi `+R`, serta unit risiko dan catatan probabilitas setup.
+  - **Adaptasi Tinggi Kanvas Dinamis & Preservasi Aspek Rasio 1:1**: Tinggi kanvas komposit snapshot beradaptasi secara dinamis mengikuti panjang teks tesis, dengan kanvas grafik lilin di sisi kiri tetap *top-aligned* mempertahankan rasio aspek 1:1 tanpa peregangan atau distorsi vertikal.
+  - **Bilah Atribusi Terpadu (Unified Attribution Bar)**: *Attribution Bar* di bagian bawah membentang menyatukan grafik candlestick dan panel samping tesis di dalam satu bingkai *Branded Snapshot Frame* yang harmonis.
+  - **Isolasi Watermark Keamanan**: *Security Watermark* dibatasi (*clipped*) secara ketat hanya pada area grafik di sisi kiri, menjaga keterbacaan teks dan angka pada panel tesis tetap optimal.
+  - **Kontrol Interaktif pada Modal Pratinjau Snapshot (`SnapshotPreviewModal`)**: Menyediakan selektor opsi tata letak tesis saat terdapat rencana trading aktif: *Side Panel (Samping Kanan)* (bawaan & rekomendasi), *Overlay di Atas Grafik*, dan *Sembunyikan*, yang memperbarui pratinjau kanvas dan estimasi dimensi secara reaktif.
+  - **Persistensi Preferensi & Integrasi Pintasan Cepat (`Ctrl+Shift+S`)**: Preferensi `snapshotThesisLayout` otomatis tersimpan ke `AppSettings` secara lokal dan diwarisi oleh pintasan salin instan ke papan klip (`Ctrl+Shift+S`), dengan *graceful fallback* ke ekspor grafik tunggal standar saat tidak ada rencana aktif atau tesis disembunyikan.
+  - **Dukungan Mode Ekspor Bersih (Clean Chart Export)**: Mode *Clean Export* mendukung tata letak berdampingan tanpa margin bingkai luar dan tanpa bilah atribusi.
+
+### 🔄 Diubah (Changed)
+- **Harmonisasi Helper Kanvas & Konsolidasi Kontrak Snapshot**:
+  - Mengekstrak dan menggunakan ulang fungsi helper kanvas `colorToRgba` dan `wrapCanvasText` antara `chartSnapshotOverlayService` dan `chartSnapshotService` untuk mengeliminasi duplikasi kode.
+  - Mengonsolidasikan properti `tradingPlan` sebagai properti kanonikal pada antarmuka `SnapshotOptions`.
+
 ## [0.28.0] - 2026-11-01
 
 ### 🚀 Ditambahkan (Added)
