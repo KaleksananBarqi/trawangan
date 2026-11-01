@@ -498,7 +498,7 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       id: 'draw-delete',
       category: 'Alat Gambar (Drawing Tools)',
       keys: ['Del'],
-      desc: 'Hapus objek gambar yang sedang dipilih atau urungkan aksi',
+      desc: 'Hapus objek gambar yang sedang dipilih',
       allowInInput: false,
       match: {
         customMatch: (e) =>

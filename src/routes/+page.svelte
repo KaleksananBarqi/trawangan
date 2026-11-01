@@ -527,7 +527,11 @@
         handleSelectTool('cursor');
       }),
       commandDispatcher.bindHandler('draw-delete', () => {
-        handleUndo();
+        const selectedId = chartDrawingController.getSelectedDrawingId();
+        if (selectedId) {
+          chartDrawingController.deleteDrawing(selectedId);
+          addSystemLog(`Objek gambar dihapus: ${selectedId}`, 'info');
+        }
       }),
       commandDispatcher.bindHandler('draw-undo', () => {
         handleUndo();

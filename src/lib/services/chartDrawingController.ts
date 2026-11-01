@@ -1268,6 +1268,15 @@ export class ChartDrawingController {
     if (this.selectedDrawingId === id) {
       this.selectedDrawingId = null;
     }
+    this.drawingMetadata.delete(id);
+    const planId = this.drawingPlanMap.get(id);
+    if (planId) {
+      this.drawingPlanMap.delete(id);
+      const planDrawingSet = this.planDrawingIds.get(planId);
+      if (planDrawingSet) {
+        planDrawingSet.delete(id);
+      }
+    }
     this.handleDrawingMutated();
   }
 
@@ -1927,7 +1936,10 @@ export class ChartDrawingController {
           if (plan && plan.symbol && !isSameSymbol(plan.symbol, curSym)) {
             continue; // Lindungi rencana milik koin lain agar tidak terhapus saat beralih koin
           }
-          if (drawingIdSet && drawingIdSet.size > 0) {
+          if (!drawingIdSet || drawingIdSet.size === 0) {
+            this.activePlans.delete(pid);
+            this.planDrawingIds.delete(pid);
+          } else {
             const hasAnyDrawing = Array.from(drawingIdSet).some((did) => existingDrawingIds.has(did));
             if (!hasAnyDrawing) {
               this.activePlans.delete(pid);
@@ -2141,6 +2153,16 @@ export class ChartDrawingController {
     unbinders.push(
       dispatcher.bindHandler('draw-redo', () => {
         this.redo();
+      })
+    );
+
+    // Hapus Objek Terseleksi (Del / Backspace)
+    unbinders.push(
+      dispatcher.bindHandler('draw-delete', () => {
+        const selectedId = this.getSelectedDrawingId();
+        if (selectedId) {
+          this.deleteDrawing(selectedId);
+        }
       })
     );
 

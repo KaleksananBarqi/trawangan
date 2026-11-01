@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CommandDispatcher,
+  createDefaultCommandDispatcher,
   isEditableElement,
   type CommandDefinition
 } from '../src/lib/services/commandDispatcher';
@@ -623,4 +624,86 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     assert.equal(gestureToggled, true, 'Shift+D harus memicu toggle-gesture-mode');
     assert.equal(symbolSearched, false, 'Shift+D tidak boleh membuka modal Symbol Search');
   });
+
+  await t.test('17. Tiket #138: Shortcut draw-delete cocok dengan tombol Delete dan Backspace, dan diabaikan pada input element', () => {
+    const dispatcher = createDefaultCommandDispatcher();
+
+    const cmd = dispatcher.getCommands().find((c) => c.id === 'draw-delete');
+    assert.ok(cmd, 'Perintah draw-delete harus terdaftar di default commands');
+    assert.equal(cmd.desc, 'Hapus objek gambar yang sedang dipilih');
+    assert.equal(cmd.allowInInput, false);
+
+    let deleteTriggered = 0;
+    dispatcher.bindHandler('draw-delete', () => {
+      deleteTriggered++;
+    });
+
+    let listenerHandler: ((e: any) => void) | null = null;
+    const mockWindow = {
+      addEventListener: (type: string, handler: any) => {
+        if (type === 'keydown') listenerHandler = handler;
+      },
+      removeEventListener: () => {},
+    } as unknown as Window;
+
+    dispatcher.attachGlobalListener(mockWindow);
+    assert.ok(listenerHandler, 'Global listener harus terpasang');
+
+    // 1. Tombol Delete pada kanvas memicu draw-delete
+    (listenerHandler as (e: any) => void)({
+      key: 'Delete',
+      code: 'Delete',
+      shiftKey: false,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      target: { tagName: 'DIV' },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+    assert.equal(deleteTriggered, 1, 'Tombol Delete harus memicu draw-delete');
+
+    // 2. Tombol Backspace pada kanvas memicu draw-delete
+    (listenerHandler as (e: any) => void)({
+      key: 'Backspace',
+      code: 'Backspace',
+      shiftKey: false,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      target: { tagName: 'CANVAS' },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+    assert.equal(deleteTriggered, 2, 'Tombol Backspace harus memicu draw-delete');
+
+    // 3. Tombol Delete pada input element diabaikan (suppressed)
+    (listenerHandler as (e: any) => void)({
+      key: 'Delete',
+      code: 'Delete',
+      shiftKey: false,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      target: { tagName: 'INPUT' },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+    assert.equal(deleteTriggered, 2, 'Tombol Delete di dalam input tidak boleh memicu draw-delete');
+
+    // 4. Tombol Backspace pada textarea diabaikan (suppressed)
+    (listenerHandler as (e: any) => void)({
+      key: 'Backspace',
+      code: 'Backspace',
+      shiftKey: false,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      target: { tagName: 'TEXTAREA' },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+    assert.equal(deleteTriggered, 2, 'Tombol Backspace di dalam textarea tidak boleh memicu draw-delete');
+  });
 });
+
