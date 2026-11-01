@@ -528,10 +528,9 @@
         handleSelectTool('cursor');
       }),
       commandDispatcher.bindHandler('draw-delete', () => {
-        const selectedId = chartDrawingController.getSelectedDrawingId();
-        if (selectedId) {
-          chartDrawingController.deleteDrawing(selectedId);
-          addSystemLog(`Objek gambar dihapus: ${selectedId}`, 'info');
+        const deletedIds = chartDrawingController.deleteSelectedDrawing();
+        if (deletedIds.length > 0) {
+          addSystemLog(`Objek gambar dihapus: ${deletedIds.join(', ')}`, 'info');
         }
       }),
       commandDispatcher.bindHandler('duplicate-selected-drawing', () => {

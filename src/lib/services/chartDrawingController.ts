@@ -347,10 +347,27 @@ export class ChartDrawingController {
       this.getProviderId = getProviderId;
     }
 
-    // Pasang listener pada chart aktif jika tersedia
-    const activeChart = this.getActiveChart();
-    if (activeChart) {
-      this.attachChartListeners(activeChart);
+    // Pasang listener pada seluruh cell yang ada
+    for (const cell of this.getAllCells()) {
+      const chart = cell?.chart || cell?.inner;
+      if (chart) {
+        this.attachChartListeners(chart);
+      }
+    }
+
+    // Dengarkan pergantian cell aktif atau cell baru jika workspace mendukung event bus
+    if (workspace && typeof workspace.on === 'function') {
+      try {
+        workspace.on('cell:created', ({ id }: { id: string }) => {
+          const cell = workspace?.cell?.(id);
+          const chart = cell?.chart || cell?.inner;
+          if (chart) this.attachChartListeners(chart);
+        });
+        workspace.on('cell:active', () => {
+          const activeChart = this.getActiveChart();
+          if (activeChart) this.attachChartListeners(activeChart);
+        });
+      } catch (_) {}
     }
 
     return () => {
@@ -778,10 +795,18 @@ export class ChartDrawingController {
    */
   attachChartListeners(chart: any): () => void {
     if (!chart || typeof chart.on !== 'function') return () => {};
+    if (chart.__trawanganDrawingListenersAttached) return () => {};
+    chart.__trawanganDrawingListenersAttached = true;
 
     const onMutated = () => this.handleDrawingMutated();
     const onDraft = () => this.handleDrawingDraft();
-    const onSelect = (d: any) => this.handleDrawingSelected(d?.id || (typeof d === 'string' ? d : null));
+    const onSelected = (payload: any) => {
+      const selectedId =
+        payload?.id ??
+        (Array.isArray(payload?.ids) && payload.ids.length > 0 ? payload.ids[0] : null) ??
+        (typeof payload === 'string' ? payload : null);
+      this.handleDrawingSelected(selectedId);
+    };
     const onDeselect = () => this.handleDrawingSelected(null);
 
     try {
@@ -790,13 +815,15 @@ export class ChartDrawingController {
       chart.on('drawing:draft', onDraft);
       chart.on('drawing:removed', onMutated);
       chart.on('drawing:settings', onMutated);
-      chart.on('drawing:select', onSelect);
+      chart.on('drawing:selected', onSelected);
+      chart.on('drawing:select', onSelected);
       chart.on('drawing:deselect', onDeselect);
     } catch (err) {
       console.warn('Gagal memasang drawing listeners ke chart:', err);
     }
 
     return () => {
+      chart.__trawanganDrawingListenersAttached = false;
       if (typeof chart.off === 'function') {
         try {
           chart.off('drawing:created', onMutated);
@@ -804,7 +831,8 @@ export class ChartDrawingController {
           chart.off('drawing:draft', onDraft);
           chart.off('drawing:removed', onMutated);
           chart.off('drawing:settings', onMutated);
-          chart.off('drawing:select', onSelect);
+          chart.off('drawing:selected', onSelected);
+          chart.off('drawing:select', onSelected);
           chart.off('drawing:deselect', onDeselect);
         } catch (_) {}
       }
@@ -1257,7 +1285,58 @@ export class ChartDrawingController {
    * Mengambil ID objek gambar yang sedang terseleksi
    */
   getSelectedDrawingId(): string | null {
-    return this.selectedDrawingId;
+    if (this.selectedDrawingId) return this.selectedDrawingId;
+    const activeChart = this.getActiveChart();
+    if (activeChart?.drawings) {
+      try {
+        const ctrl = (activeChart.drawings as any).ctrl || (activeChart.drawings as any);
+        const ids = ctrl?.selectedIds;
+        if (Array.isArray(ids) && ids.length > 0 && typeof ids[0] === 'string') {
+          return ids[0];
+        }
+        if (ids instanceof Set && ids.size > 0) {
+          return [...ids][0];
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /**
+   * Mengambil seluruh ID objek gambar yang sedang terseleksi (multi-selection)
+   */
+  getSelectedDrawingIds(): string[] {
+    const list: string[] = [];
+    if (this.selectedDrawingId) list.push(this.selectedDrawingId);
+    const activeChart = this.getActiveChart();
+    if (activeChart?.drawings) {
+      try {
+        const ctrl = (activeChart.drawings as any).ctrl || (activeChart.drawings as any);
+        const ids = ctrl?.selectedIds;
+        if (Array.isArray(ids)) {
+          for (const id of ids) {
+            if (id && typeof id === 'string' && !list.includes(id)) list.push(id);
+          }
+        } else if (ids instanceof Set) {
+          for (const id of ids) {
+            if (id && typeof id === 'string' && !list.includes(id)) list.push(id);
+          }
+        }
+      } catch (_) {}
+    }
+    return list;
+  }
+
+  /**
+   * Hapus seluruh objek gambar yang sedang dipilih (baik via Del/Backspace maupun programatik)
+   */
+  deleteSelectedDrawing(): string[] {
+    const ids = this.getSelectedDrawingIds();
+    if (ids.length === 0) return [];
+    for (const id of ids) {
+      this.deleteDrawing(id);
+    }
+    return ids;
   }
 
   /**

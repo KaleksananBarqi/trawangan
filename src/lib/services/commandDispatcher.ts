@@ -517,7 +517,10 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       allowInInput: false,
       match: {
         customMatch: (e) =>
-          !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'Delete' || e.key === 'Backspace' || e.code === 'Delete'),
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey &&
+          (e.key === 'Delete' || e.key === 'Backspace' || e.code === 'Delete' || e.code === 'Backspace'),
       },
     },
     {
