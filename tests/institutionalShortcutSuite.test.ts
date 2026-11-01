@@ -248,4 +248,62 @@ describe('Institutional Shortcut & Productivity Suite Seam Tests (#137)', () => 
 
     assert.equal(priceScaleState.invert, false);
   });
+
+  test('6. Ctrl+Del: Hapus massal seluruh gambar pada simbol aktif dengan supresi input', async () => {
+    const controller = new ChartDrawingController();
+    let clearAllCalled = false;
+
+    const mockDrawings = {
+      all: () => [{ id: 'd-1' }],
+      removeMany: (ids: string[]) => {
+        clearAllCalled = true;
+      },
+      show: () => {},
+      lock: () => {},
+    };
+
+    const mockWorkspace = {
+      active: { chart: { drawings: mockDrawings } },
+      cells: () => [{ chart: { drawings: mockDrawings } }]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    const dispatcher = createDefaultCommandDispatcher();
+
+    dispatcher.bindHandler('clear-all-drawings', () => {
+      controller.clearAll();
+    });
+
+    // 1. Eksekusi pada input teks -> harus disupresi (allowInInput: false)
+    const suppressed = dispatcher.dispatch({
+      key: 'Delete',
+      code: 'Delete',
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      target: { tagName: 'INPUT' },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as any);
+
+    assert.equal(suppressed, false, 'Ctrl+Del harus diabaikan di dalam input');
+    assert.equal(clearAllCalled, false);
+
+    // 2. Eksekusi pada kanvas -> memanggil controller.clearAll()
+    const dispatched = dispatcher.dispatch({
+      key: 'Delete',
+      code: 'Delete',
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      target: { tagName: 'CANVAS' },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as any);
+
+    assert.equal(dispatched, true, 'Ctrl+Del pada kanvas harus tertangani');
+    assert.equal(clearAllCalled, true, 'controller.clearAll() harus dipanggil');
+  });
 });
