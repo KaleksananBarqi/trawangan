@@ -15,10 +15,14 @@
     Plus,
     Minus,
     Folder,
-    ShieldCheck
+    ShieldCheck,
+    Columns2,
+    EyeOff
   } from '@lucide/svelte';
   import { THEME_PRESETS } from '../constants/themes';
-  import type { AppSettings, SnapshotScaleMultiplier } from '../types/market';
+  import type { AppSettings, SnapshotScaleMultiplier, SnapshotThesisLayout } from '../types/market';
+  import { chartDrawingController, isSameSymbol } from '../services/chartDrawingController';
+  import type { ParsedTradingPlan } from '../services/planParserService';
   import {
     compositeSnapshot,
     generateSnapshotFilename,
@@ -42,10 +46,12 @@
     currentPrice?: number | null;
     currentLayout?: string;
     appSettings: AppSettings;
-    getScreenshotCanvas: (scope: 'active' | 'all') => HTMLCanvasElement | null;
+    getScreenshotCanvas: (scope: 'active' | 'all', thesisLayout?: SnapshotThesisLayout) => HTMLCanvasElement | null;
     onUpdateSettings?: (newSettings: Partial<AppSettings>) => void | Promise<void>;
     onClose: () => void;
     onLog?: (message: string, type?: 'info' | 'success' | 'warn') => void;
+    activePlans?: Array<ParsedTradingPlan & { id?: string; symbol?: string }>;
+    showThesisCards?: boolean;
   }
 
   let {
@@ -60,6 +66,8 @@
     onUpdateSettings,
     onClose,
     onLog,
+    activePlans,
+    showThesisCards,
   }: Props = $props();
 
   // State Kontrol Interaktif
@@ -69,6 +77,24 @@
   let includeWatermark = $state(false);
   let snapshotScope = $state<'active' | 'all'>('active');
   let scaleMultiplier = $state<SnapshotScaleMultiplier>(2);
+  let thesisLayout = $state<SnapshotThesisLayout>('side-panel');
+
+  // Perhitungan Rencana Trading & Status Tesis (#132, #135)
+  let effectivePlans = $derived.by(() => {
+    if (activePlans !== undefined) {
+      if (snapshotScope === 'all') return activePlans;
+      return activePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, activeSymbol));
+    }
+    return chartDrawingController?.getActivePlans?.(snapshotScope === 'all' ? undefined : activeSymbol) || [];
+  });
+
+  let effectiveShowThesis = $derived(
+    showThesisCards !== undefined
+      ? showThesisCards
+      : (chartDrawingController?.isThesisCardsVisible?.() ?? true)
+  );
+
+  let hasActivePlans = $derived(effectivePlans.length > 0 && effectiveShowThesis);
 
   // State Zoom & Snapshot Frozen Data (Mencegah re-render dari WebSocket ticker)
   let zoomLevel = $state(1);
@@ -118,9 +144,10 @@
         includeWatermark = appSettings.securityWatermark?.enabled ?? false;
         snapshotScope = appSettings.snapshotScope ?? 'active';
         scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
+        thesisLayout = appSettings.snapshotThesisLayout ?? 'side-panel';
 
         // Tangkap kanvas sumber sekali saja saat modal dibuka
-        cachedSourceCanvas = getScreenshotCanvas(snapshotScope);
+        cachedSourceCanvas = getScreenshotCanvas(snapshotScope, thesisLayout);
         renderPreview();
       });
     } else if (!isOpen && wasOpen) {
@@ -180,6 +207,7 @@
       snapshotIncludeTimestamp: includeTimestamp,
       snapshotScope: snapshotScope,
       snapshotScaleMultiplier: scaleMultiplier,
+      snapshotThesisLayout: thesisLayout,
       securityWatermark: {
         ...(appSettings.securityWatermark || { text: '', opacity: 0.10, showOnLiveCanvas: false }),
         enabled: includeWatermark,
@@ -192,7 +220,7 @@
    */
   function generateCurrentComposite(): HTMLCanvasElement | null {
     if (!cachedSourceCanvas) {
-      cachedSourceCanvas = getScreenshotCanvas(snapshotScope);
+      cachedSourceCanvas = getScreenshotCanvas(snapshotScope, thesisLayout);
     }
     const sourceCanvas = cachedSourceCanvas;
     if (!sourceCanvas) return null;
@@ -226,6 +254,8 @@
     const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
     const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
 
+    const activePlan = hasActivePlans && effectivePlans.length > 0 ? effectivePlans[0] : null;
+
     const options: SnapshotOptions = {
       mode: includeFrame ? 'branded' : 'clean',
       scaleMultiplier: scaleMultiplier,
@@ -239,6 +269,11 @@
         ...(appSettings.securityWatermark || { text: '', opacity: 0.10, showOnLiveCanvas: false }),
         enabled: includeWatermark,
       },
+      thesisLayout: hasActivePlans ? thesisLayout : 'hidden',
+      activePlans: hasActivePlans ? effectivePlans : [],
+      tradingPlan: activePlan,
+      plan: activePlan,
+      themeConfig: activeTheme,
     };
 
     return compositeSnapshot(sourceCanvas, options);
@@ -305,10 +340,13 @@
     await renderPreview();
   }
 
-  // Menghitung estimasi dimensi piksel riil berdasarkan ukuran chart aktual (#125)
+  // Menghitung estimasi dimensi piksel riil berdasarkan ukuran chart aktual (#125, #135)
   function getEstimatedPixelDimensions(mult: SnapshotScaleMultiplier): string {
     const sourceW = cachedSourceCanvas?.width || (typeof window !== 'undefined' ? window.innerWidth : 1920);
     const sourceH = cachedSourceCanvas?.height || (typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.75) : 1080);
+    const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
+    const activePlan = hasActivePlans && effectivePlans.length > 0 ? effectivePlans[0] : null;
+
     const dim = calculateCompositeDimensions(sourceW, sourceH, {
       mode: includeFrame ? 'branded' : 'clean',
       scaleMultiplier: mult,
@@ -317,8 +355,22 @@
         timeframe: activeTimeframe,
         providerId: activeProviderId,
       },
+      thesisLayout: hasActivePlans ? thesisLayout : 'hidden',
+      activePlans: hasActivePlans ? effectivePlans : [],
+      tradingPlan: activePlan,
+      plan: activePlan,
+      themeConfig: activeTheme,
     });
     return `${mult}x · ${dim.width} × ${dim.height} px`;
+  }
+
+  // Ganti Opsi Tata Letak Tesis (#132, #135)
+  async function handleThesisLayoutChange(layout: SnapshotThesisLayout) {
+    if (thesisLayout === layout || isRendering) return;
+    thesisLayout = layout;
+    cachedSourceCanvas = getScreenshotCanvas(snapshotScope, thesisLayout);
+    persistChanges();
+    await renderPreview();
   }
 
   // Toggle Opsi Mode Bingkai
@@ -355,7 +407,7 @@
     if (snapshotScope === scope) return;
     snapshotScope = scope;
     // Ambil tangkapan kanvas baru khusus untuk scope yang berbeda
-    cachedSourceCanvas = getScreenshotCanvas(scope);
+    cachedSourceCanvas = getScreenshotCanvas(scope, thesisLayout);
     persistChanges();
     renderPreview();
   }
@@ -594,6 +646,53 @@
               </button>
             </div>
           </div>
+
+          <!-- Pilihan Tata Letak Tesis (#132, #135) -->
+          {#if hasActivePlans}
+            <div class="sidebar-section">
+              <span class="section-title">TATA LETAK TESIS</span>
+              <div class="mode-toggle-group">
+                <button
+                  type="button"
+                  class="mode-btn {thesisLayout === 'side-panel' ? 'active' : ''}"
+                  onclick={() => handleThesisLayoutChange('side-panel')}
+                  disabled={isRendering || isExporting}
+                >
+                  <div class="mode-btn-content">
+                    <Columns2 size={13} class="icon-sparkle" />
+                    <span class="btn-title">Side Panel (Samping Kanan)</span>
+                  </div>
+                  <span class="btn-desc">Berdampingan di samping kanan grafik (Bersih)</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="mode-btn {thesisLayout === 'overlay' ? 'active' : ''}"
+                  onclick={() => handleThesisLayoutChange('overlay')}
+                  disabled={isRendering || isExporting}
+                >
+                  <div class="mode-btn-content">
+                    <Layers size={13} />
+                    <span class="btn-title">Overlay (Mengambang)</span>
+                  </div>
+                  <span class="btn-desc">Overlay di Atas Grafik (Mengambang)</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="mode-btn {thesisLayout === 'hidden' ? 'active' : ''}"
+                  onclick={() => handleThesisLayoutChange('hidden')}
+                  disabled={isRendering || isExporting}
+                >
+                  <div class="mode-btn-content">
+                    <EyeOff size={13} />
+                    <span class="btn-title">Sembunyikan</span>
+                  </div>
+                  <span class="btn-desc">Sembunyikan Tesis (Hanya grafik lilin)</span>
+                </button>
+              </div>
+            </div>
+          {/if}
 
           <!-- Pilihan Multi-Chart Scope (tampil jika layout bukan single 1) -->
           {#if currentLayout !== '1'}

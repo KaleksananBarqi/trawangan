@@ -1256,6 +1256,9 @@
     const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
     const metadata = getActiveSnapshotMetadata(scope);
     const scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
+    const thesisLayout = appSettings.snapshotThesisLayout ?? 'side-panel';
+    const activePlans = showThesisCards ? (currentActivePlans || []) : [];
+    const activePlan = activePlans.length > 0 ? activePlans[0] : null;
 
     return {
       mode: (appSettings.snapshotIncludeFrame ?? true) ? 'branded' : 'clean',
@@ -1267,6 +1270,11 @@
       metadata,
       userProfile: appSettings.userProfile,
       watermark: appSettings.securityWatermark,
+      thesisLayout,
+      activePlans,
+      tradingPlan: activePlan,
+      plan: activePlan,
+      themeConfig: activeTheme,
     };
   }
 
@@ -1274,7 +1282,8 @@
     isSnapshotProcessing = true;
     try {
       const scope = appSettings.snapshotScope ?? 'active';
-      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
+      const thesisLayout = appSettings.snapshotThesisLayout ?? 'side-panel';
+      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope, thesisLayout);
       if (!canvas) {
         snapshotToast = {
           visible: true,
@@ -1355,7 +1364,8 @@
     isSnapshotProcessing = true;
     try {
       const scope = appSettings.snapshotScope ?? 'active';
-      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope);
+      const thesisLayout = appSettings.snapshotThesisLayout ?? 'side-panel';
+      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope, thesisLayout);
       if (!canvas) {
         snapshotToast = {
           visible: true,
@@ -1787,7 +1797,7 @@
     onOpenPreview={handleOpenSnapshotPreview}
   />
 
-  <!-- Interactive Snapshot Preview Modal (#95) -->
+  <!-- Interactive Snapshot Preview Modal (#95, #135) -->
   <SnapshotPreviewModal
     isOpen={isSnapshotPreviewOpen}
     {activeSymbol}
@@ -1796,7 +1806,9 @@
     currentPrice={ticker?.price || null}
     {currentLayout}
     {appSettings}
-    getScreenshotCanvas={(scope) => chartComponent?.getChartScreenshotCanvas?.(scope) || null}
+    activePlans={currentActivePlans}
+    {showThesisCards}
+    getScreenshotCanvas={(scope, thesisLayout) => chartComponent?.getChartScreenshotCanvas?.(scope, thesisLayout) || null}
     onUpdateSettings={handleUpdateSettings}
     onClose={() => { isSnapshotPreviewOpen = false; }}
     onLog={(msg, type) => addSystemLog(msg, type || 'info')}
