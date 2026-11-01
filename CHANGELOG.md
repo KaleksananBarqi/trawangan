@@ -5,6 +5,20 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.27.0] - 2026-11-01
+
+### 🚀 Ditambahkan (Added)
+- **Kalkulasi & Visualisasi R Dinamis pada TP1, TP2, dan SL:**
+  - **Sumbu Skala Harga Kanan (Price Scale Badges)**: Menghitung rasio imbalan/risiko R-Multiple secara dinamis langsung dari selisih koordinat harga aktual anchor ($R = \frac{|\Delta\text{TP}|}{\text{riskDistance}}$).
+  - **Format Label Padat**: Menyelaraskan teks badge sumbu harga kanan menjadi format padat `TP1 (+X.XXR)`, `TP2 (+X.XXR)`, dan `SL (-1.00R)`, serta `Target (+X.XXR)` dan `Stop (-1.00R)` pada alat gambar posisi manual (*single position tool*).
+  - **Zero-Division Guard & Directional Sign Awareness**: Ketika level `entry == stopLoss`, kalkulasi R di-fallback secara anggun tanpa menghasilkan nilai `NaN` atau `Infinity`. Arah target yang berlawanan dengan bias setup secara akurat menampilkan tanda minus (contoh: `-0.50R`).
+  - **Lencana R Stop Loss pada Kartu Tesis & Ekspor Snapshot**: Menambahkan lencana eksplisit `-1.00R` dengan aksen merah lembut berdampingan dengan harga Stop Loss pada judul seksi `INVALIDASI & STOP LOSS` di Floating Thesis Card maupun kanvas snapshot Ultra HD.
+  - **Sinkronisasi Dua Arah (Bidirectional Sync)**: Menyeret anchor harga Entry, Stop Loss, atau Take Profit pada kanvas grafik secara otomatis memperbarui koordinat harga dan nilai `rMultiple` pada registry `activePlans` dan menyinkronkan seluruh kotak posisi bertingkat saudara (*sibling staged position boxes*).
+
+### 🐛 Diperbaiki (Fixed)
+- **Eliminasi String Cacat `+-` pada R-Multiple Negatif**: Memperbaiki pemformatan tanda keuntungan pada Floating Thesis Card dan snapshot overlay agar target dengan nilai R negatif tidak menghasilkan awalan ganda `+-0.50R`.
+- **Pembersihan Stale R pada Stop Loss Nol**: Memastikan badge skala harga trading plan tidak lagi menampilkan nilai R usang dari metadata saat jarak risiko bernilai nol.
+
 ## [0.26.0] - 2026-10-31
 
 ### 🚀 Ditambahkan (Added)
