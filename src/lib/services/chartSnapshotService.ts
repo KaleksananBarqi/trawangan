@@ -4,9 +4,29 @@
  */
 
 import { formatPriceLabel } from './priceScaleLabelService';
-import type { SnapshotScaleMultiplier, UserProfileConfig, CustomChartBackgroundConfig, SecurityWatermarkConfig } from '../types/market';
+import type {
+  SnapshotScaleMultiplier,
+  UserProfileConfig,
+  CustomChartBackgroundConfig,
+  SecurityWatermarkConfig,
+  SnapshotThesisLayout
+} from '../types/market';
+import type { ParsedTradingPlan } from './planParserService';
 
-export type { SnapshotScaleMultiplier, UserProfileConfig, CustomChartBackgroundConfig, SecurityWatermarkConfig } from '../types/market';
+export type {
+  SnapshotScaleMultiplier,
+  UserProfileConfig,
+  CustomChartBackgroundConfig,
+  SecurityWatermarkConfig,
+  SnapshotThesisLayout
+} from '../types/market';
+
+/**
+ * Lebar logis default dan jarak pemisah untuk panel samping rencana trading (#132, #133)
+ */
+export const SNAPSHOT_SIDE_PANEL_WIDTH = 380;
+export const SNAPSHOT_SIDE_PANEL_GAP = 16;
+
 export type SnapshotScope = 'active' | 'all';
 export type SnapshotMode = 'branded' | 'clean';
 
@@ -36,6 +56,12 @@ export interface SnapshotOptions {
   userProfile?: UserProfileConfig;
   watermark?: Partial<SecurityWatermarkConfig>;
   metadata: SnapshotMetadata;
+  // Opsi Tata Letak & Data Rencana Trading (#132, #133)
+  thesisLayout?: SnapshotThesisLayout;
+  tradingPlan?: (ParsedTradingPlan & { id?: string }) | null;
+  activePlans?: Array<ParsedTradingPlan & { id?: string }>;
+  sidePanelWidth?: number;
+  sidePanelGap?: number;
 }
 
 export interface CompositeDimensions {
@@ -47,6 +73,13 @@ export interface CompositeDimensions {
   chartHeight: number;
   attributionY: number;
   attributionHeight: number;
+  attributionWidth?: number;
+  // Dimensi panel samping tesis (jika thesisLayout === 'side-panel' dan rencana aktif ada)
+  panelX?: number;
+  panelY?: number;
+  panelWidth?: number;
+  panelHeight?: number;
+  panelGap?: number;
 }
 
 /**
@@ -236,7 +269,99 @@ export function resolveEffectiveScale(options: SnapshotOptions): number {
 }
 
 /**
- * Menghitung dimensi presisi untuk komposit snapshot kartu maupun ekspor clean
+ * Memperkirakan jumlah baris teks terbungkus berdasarkan batas karakter per baris
+ */
+function estimateWrappedLineCount(text: string | undefined, charsPerLine = 44): number {
+  if (!text) return 0;
+  const clean = text.replace(/<[^>]+>/g, '').replace(/\*\*/g, '').replace(/_/g, '').trim();
+  if (!clean) return 0;
+
+  const paragraphs = clean.split('\n');
+  let totalLines = 0;
+  for (const p of paragraphs) {
+    const trimmed = p.trim();
+    if (!trimmed) continue;
+    totalLines += Math.max(1, Math.ceil(trimmed.length / charsPerLine));
+  }
+  return totalLines;
+}
+
+/**
+ * Menghitung perkiraan tinggi logis yang dibutuhkan oleh panel samping narasi tesis (Side Panel).
+ * Memastikan teks narasi panjang (alasan entry, invalidasi, target, probabilitas) tidak terpotong (#132, #133).
+ */
+export function calculateThesisPanelHeight(
+  plan: ParsedTradingPlan | null | undefined,
+  panelWidth: number = SNAPSHOT_SIDE_PANEL_WIDTH
+): number {
+  if (!plan) return 0;
+
+  // Margin dan padding wadah kartu luar (atas & bawah)
+  let height = 36;
+
+  // Header kartu: Lencana bias, harga entry, ikon/grip
+  height += 56;
+
+  // Lebar konten efektif di dalam padding kartu (~348px untuk panel 380px)
+  const contentWidth = Math.max(200, panelWidth - 32);
+  const charsPerLine = Math.floor(contentWidth / 8);
+
+  // Definisi / Narasi Pengantar
+  if (plan.definition) {
+    const lines = estimateWrappedLineCount(plan.definition, charsPerLine);
+    height += lines * 18 + 14;
+  }
+
+  // Seksi Katalis & Alasan Entry
+  height += 28;
+  if (plan.contextZones && plan.contextZones.length > 0) {
+    height += 24;
+  }
+  if (plan.reasons?.entry) {
+    const lines = estimateWrappedLineCount(plan.reasons.entry, charsPerLine);
+    height += lines * 18 + 10;
+  }
+
+  // Seksi Batas Invalidasi & Stop Loss
+  height += 32;
+  if (plan.reasons?.stopLoss) {
+    const lines = estimateWrappedLineCount(plan.reasons.stopLoss, charsPerLine);
+    height += lines * 18 + 8;
+  }
+  if (plan.conclusion?.invalidationScenario) {
+    // Kotak skenario pembatalan berbingkai memiliki padding internal ekstra
+    const lines = estimateWrappedLineCount(plan.conclusion.invalidationScenario, charsPerLine - 4);
+    height += lines * 18 + 26;
+  }
+
+  // Seksi Target Likuiditas Bertingkat
+  if (Array.isArray(plan.targets) && plan.targets.length > 0) {
+    height += 28;
+    for (let i = 0; i < plan.targets.length; i++) {
+      height += 26;
+      const targetReason = plan.reasons?.[`tp${i + 1}`] || plan.targets[i]?.reason;
+      if (targetReason) {
+        const lines = estimateWrappedLineCount(targetReason, charsPerLine - 4);
+        height += lines * 18 + 8;
+      }
+    }
+  }
+
+  // Seksi Unit Risiko & Catatan Probabilitas
+  if (plan.riskAmount || plan.conclusion?.probabilityNotes) {
+    height += 24;
+    if (plan.conclusion?.probabilityNotes) {
+      const lines = estimateWrappedLineCount(plan.conclusion.probabilityNotes, charsPerLine);
+      height += lines * 18 + 8;
+    }
+  }
+
+  return Math.ceil(height);
+}
+
+/**
+ * Menghitung dimensi presisi untuk komposit snapshot kartu maupun ekspor clean.
+ * Mendukung tata letak berdampingan (Side-by-Side) dengan panel samping mandiri 380px (#132, #133).
  */
 export function calculateCompositeDimensions(
   sourceWidth: number,
@@ -247,6 +372,71 @@ export function calculateCompositeDimensions(
   const scale = resolveEffectiveScale(options);
   const padding = options.padding ?? 24;
 
+  // Evaluasi apakah tata letak side-panel aktif dan memiliki rencana trading aktif
+  const isSidePanel = options.thesisLayout === 'side-panel';
+  const activePlan =
+    options.tradingPlan ??
+    (Array.isArray(options.activePlans) && options.activePlans.length > 0 ? options.activePlans[0] : null);
+  const hasActivePlan = Boolean(activePlan);
+
+  if (isSidePanel && hasActivePlan) {
+    const panelWidthLogical = options.sidePanelWidth ?? SNAPSHOT_SIDE_PANEL_WIDTH;
+    const panelGapLogical = options.sidePanelGap ?? SNAPSHOT_SIDE_PANEL_GAP;
+    const requiredPanelH = calculateThesisPanelHeight(activePlan, panelWidthLogical);
+    const contentHeightLogical = Math.max(sourceHeight, requiredPanelH);
+
+    const scaledPanelW = Math.round(panelWidthLogical * scale);
+    const scaledPanelGap = Math.round(panelGapLogical * scale);
+    const scaledChartW = Math.round(sourceWidth * scale);
+    const scaledChartH = Math.round(sourceHeight * scale);
+    const scaledPanelH = Math.round(contentHeightLogical * scale);
+
+    if (mode === 'clean') {
+      const totalLogicalWidth = sourceWidth + panelGapLogical + panelWidthLogical;
+      const totalLogicalHeight = contentHeightLogical;
+
+      return {
+        width: Math.round(totalLogicalWidth * scale),
+        height: Math.round(totalLogicalHeight * scale),
+        chartX: 0,
+        chartY: 0,
+        chartWidth: scaledChartW,
+        chartHeight: scaledChartH,
+        panelX: Math.round((sourceWidth + panelGapLogical) * scale),
+        panelY: 0,
+        panelWidth: scaledPanelW,
+        panelHeight: scaledPanelH,
+        panelGap: scaledPanelGap,
+        attributionY: 0,
+        attributionHeight: 0,
+        attributionWidth: 0,
+      };
+    }
+
+    // Mode branded dengan bingkai luar dan attribution bar terpadu
+    const attributionHeightLogical = 60;
+    const totalLogicalWidth = sourceWidth + panelGapLogical + panelWidthLogical + padding * 2;
+    const totalLogicalHeight = contentHeightLogical + padding * 2 + attributionHeightLogical;
+
+    return {
+      width: Math.round(totalLogicalWidth * scale),
+      height: Math.round(totalLogicalHeight * scale),
+      chartX: Math.round(padding * scale),
+      chartY: Math.round(padding * scale),
+      chartWidth: scaledChartW,
+      chartHeight: scaledChartH,
+      panelX: Math.round((padding + sourceWidth + panelGapLogical) * scale),
+      panelY: Math.round(padding * scale),
+      panelWidth: scaledPanelW,
+      panelHeight: scaledPanelH,
+      panelGap: scaledPanelGap,
+      attributionY: Math.round((padding + contentHeightLogical) * scale),
+      attributionHeight: Math.round(attributionHeightLogical * scale),
+      attributionWidth: Math.round((totalLogicalWidth - padding * 2) * scale),
+    };
+  }
+
+  // Fallback anggun ke dimensi standar grafik tunggal (single-chart)
   if (mode === 'clean') {
     const w = Math.round(sourceWidth * scale);
     const h = Math.round(sourceHeight * scale);
@@ -259,6 +449,7 @@ export function calculateCompositeDimensions(
       chartHeight: h,
       attributionY: 0,
       attributionHeight: 0,
+      attributionWidth: w,
     };
   }
 
@@ -276,6 +467,7 @@ export function calculateCompositeDimensions(
     chartHeight: Math.round(sourceHeight * scale),
     attributionY: Math.round((padding + sourceHeight) * scale),
     attributionHeight: Math.round(attributionHeightLogical * scale),
+    attributionWidth: Math.round(sourceWidth * scale),
   };
 }
 
@@ -788,7 +980,8 @@ export function compositeSnapshot(
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'right';
 
-  let rightX = dim.chartX + dim.chartWidth;
+  // Attribution bar membentang selebar total komposit (chart + side panel)
+  let rightX = dim.panelX && dim.panelWidth ? dim.panelX + dim.panelWidth : dim.chartX + dim.chartWidth;
 
   // 3e. URL Terminal Website
   if (options.includeBrandUrl !== false) {
