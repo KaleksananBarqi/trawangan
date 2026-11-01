@@ -5,6 +5,27 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.31.0] - 2026-11-02
+
+### 🚀 Ditambahkan (Added)
+- **Unified Theme Engine & Full Palette Matrix (9 Dimensi) (ADR 0016)**:
+  - **Matriks Palet Penuh 9 Dimensi**: Mendukung konfigurasi dan kustomisasi 6 komponen lilin individual (`bullBody`, `bullWick`, `bullBorder`, `bearBody`, `bearWick`, `bearBorder`) dan 3 atribut warna umum (`background`, `foreground/container`, `textColor`) sesuai standar modern (*chartthemes.com*).
+  - **Preset Resmi Baru "Red Folder News" (`red_folder`)**: Preset tema terang (*Light Theme*) terinspirasi dari referensi jurnalisme keuangan dengan latar krem koran (`#edede9`), tipografi burgundy (`#4A0E0F`), lilin bullish rose (`#D4A5A5`), dan lilin bearish crimson (`#9B1D20`).
+  - **Studio Palet Kustom Interaktif**: Sub-panel baru pada Appearance Settings dengan 9 pemilih warna individual, indikator status luminance, tombol salin cepat Hex per-item individual (`btn-mini-copy`), ekspor JSON palet, serta modal impor palet toleran yang membaca JSON maupun format teks mentah baris-demi-baris dari clipboard.
+  - **Kategorisasi Eksplisit & Filter Mode Tema**: Pengelompokan tegas preset menjadi Mode Gelap (*Dark*) dan Mode Terang (*Light*) dengan badge visual `[DARK]` / `[LIGHT]` dan filter cepat (Semua, Gelap, Terang) yang tersimpan secara persisten di `AppSettings`.
+  - **Adaptive Luminance Engine**: Kalkulasi deterministik berbasis kontras latar belakang untuk auto-deriving warna kisi kanvas (*grid*), garis batas (*border*), kursor silang (*crosshair*), dan separator skala chart tanpa membebani konfigurasi manual pengguna.
+
+### 🔄 Diubah (Changed)
+- **Harmonisasi Seluruh Subsistem UI Shell, Editor, & WebGL2**:
+  - **Injeksi Token Vela (`--vela-*`)**: Menginjeksikan seluruh token CSS kit WebGL2 Vela dinamis ke `:root` DOM host sehingga popup gear pengaturan, menu konteks, dan dialog indikator internal Vela (`@zag-js/dialog`) tampil selaras dengan tema aktif.
+  - **Reaktif Pine Editor Compartment**: Mengganti tema statis CodeMirror 6 dengan ekstensi reaktif `Compartment` yang menyelaraskan warna latar, gutter baris, selection, kursor, dan penyorotan sintaksis (*syntax highlighting*) secara adaptif antara lingkungan gelap dan terang.
+  - **Sinkronisasi Dua Arah Switch Mode Tema Vela**: Menghubungkan listener `chart.onThemeSelect` ke state tema Trawangan, menyinkronkan perpindahan mode terang/gelap dari dalam dialog Vela tanpa mereset palet kustom pengguna yang sudah sesuai mode.
+  - **Pemusatan Resolusi Warna Tema**: Mengabstraksikan kalkulasi warna efektif ke fungsi pembantu `resolveEffectiveThemeColors()` di `themes.ts` untuk menghilangkan duplikasi kode lintas modul.
+
+### 🐛 Diperbaiki (Fixed)
+- **Koreksi Tautologi & Penimpaan Semantik Token Brand**:
+  - Menghapus logika ternary tautologis pada `document.documentElement` yang sebelumnya menimpa `--brand-primary` dengan warna lilin bearish pengguna.
+
 ## [0.30.1] - 2026-11-01
 
 ### 🐛 Diperbaiki (Fixed)
