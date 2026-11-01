@@ -7,9 +7,10 @@
     highlightActiveLine,
     highlightActiveLineGutter,
   } from '@codemirror/view';
-  import { EditorState } from '@codemirror/state';
+  import { EditorState, Compartment } from '@codemirror/state';
   import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
-  import { bracketMatching } from '@codemirror/language';
+  import { bracketMatching, syntaxHighlighting, HighlightStyle } from '@codemirror/language';
+  import { tags as t } from '@lezer/highlight';
   import {
     Play,
     Save,
@@ -38,7 +39,11 @@
     PineScriptRecord,
     StrategyPerformanceSummary,
     StrategyTradeRecord,
+    ThemePresetId,
+    CustomThemePalette,
   } from '../types/market';
+  import { THEME_PRESETS, resolveEffectiveThemeColors } from '../constants/themes';
+  import { isDarkColor, withAlpha } from '../utils/colorUtils';
 
   interface Props {
     isOpen: boolean;
@@ -47,6 +52,8 @@
     activeSymbol?: string;
     activeTimeframe?: string;
     providerId?: string;
+    themePreset?: ThemePresetId;
+    customPalette?: CustomThemePalette;
     onClose: () => void;
     onAddToChart: (code: string, title: string) => Promise<boolean>;
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
@@ -59,6 +66,8 @@
     activeSymbol = 'BTCUSDT',
     activeTimeframe = '15m',
     providerId = 'binance',
+    themePreset = 'signature',
+    customPalette,
     onClose,
     onAddToChart,
     onStrategyUpdate,
@@ -130,43 +139,87 @@ plot(fastEMA, "EMA Fast", color=#00F090, linewidth=2)
 plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 `;
 
-  // Obsidian Precision Terminal theme untuk CodeMirror 6 (Sleek TradingView dark style)
-  const obsidianTheme = EditorView.theme({
-    '&': {
-      backgroundColor: '#0A0D14',
-      color: '#CBD5E1',
-      fontSize: '12px',
-      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-      height: '100%',
-    },
-    '.cm-content': {
-      caretColor: '#00F090',
-      padding: '8px 0',
-      lineHeight: '1.6',
-    },
-    '.cm-cursor': {
-      borderLeftColor: '#00F090',
-      borderLeftWidth: '2px',
-    },
-    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-      backgroundColor: 'rgba(0, 240, 144, 0.22) !important',
-    },
-    '.cm-gutters': {
-      backgroundColor: '#0D111A',
-      color: '#475569',
-      borderRight: '1px solid #1A2234',
-      minWidth: '38px',
-    },
-    '.cm-activeLineGutter': {
-      backgroundColor: '#141B29',
-      color: '#00F090',
-    },
-    '.cm-activeLine': {
-      backgroundColor: 'rgba(26, 34, 52, 0.45)',
-    },
-    '.cm-line': {
-      padding: '0 8px',
-    },
+  const themeCompartment = new Compartment();
+
+  function buildPineHighlightStyle(dark: boolean, accent: string) {
+    return HighlightStyle.define([
+      { tag: t.keyword, color: dark ? '#FF79C6' : '#9B1D20', fontWeight: '600' },
+      { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: dark ? '#F8F8F2' : '#2D3748' },
+      { tag: [t.function(t.variableName), t.labelName], color: dark ? '#50FA7B' : '#1A365D' },
+      { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: dark ? '#BD93F9' : '#5E1D1D' },
+      { tag: [t.definition(t.name), t.separator], color: dark ? '#F8F8F2' : '#1A202C' },
+      { tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace], color: dark ? '#FFB86C' : '#C05621' },
+      { tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)], color: dark ? '#8BE9FD' : '#2B6CB0' },
+      { tag: [t.meta, t.comment], color: dark ? '#6272A4' : '#718096', fontStyle: 'italic' },
+      { tag: t.strong, fontWeight: 'bold' },
+      { tag: t.emphasis, fontStyle: 'italic' },
+      { tag: t.strikethrough, textDecoration: 'line-through' },
+      { tag: t.link, color: accent, textDecoration: 'underline' },
+      { tag: t.heading, fontWeight: 'bold', color: accent },
+      { tag: [t.atom, t.bool, t.special(t.variableName)], color: dark ? '#BD93F9' : '#805AD5' },
+      { tag: [t.processingInstruction, t.string, t.inserted], color: dark ? '#F1FA8C' : '#276749' },
+      { tag: t.invalid, color: '#FF5555' },
+    ]);
+  }
+
+  function buildPineTheme(preset: ThemePresetId = 'signature', palette?: CustomThemePalette) {
+    const { background, foreground, textColor, isDark } = resolveEffectiveThemeColors(preset, palette);
+    const cfg = THEME_PRESETS[preset] || THEME_PRESETS.signature;
+    const isCustom = Boolean(palette && palette.enabled !== false);
+    const accent = isCustom && palette?.candles?.bullBody ? palette.candles.bullBody : (cfg.tokens.brandPrimary || '#00F090');
+
+    const themeExtension = EditorView.theme({
+      '&': {
+        backgroundColor: background,
+        color: textColor,
+        fontSize: '12px',
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        height: '100%',
+      },
+      '.cm-content': {
+        caretColor: accent,
+        padding: '8px 0',
+        lineHeight: '1.6',
+      },
+      '.cm-cursor': {
+        borderLeftColor: accent,
+        borderLeftWidth: '2px',
+      },
+      '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+        backgroundColor: withAlpha(accent, 0.22) + ' !important',
+      },
+      '.cm-gutters': {
+        backgroundColor: foreground,
+        color: withAlpha(textColor, 0.45),
+        borderRight: `1px solid ${withAlpha(textColor, 0.12)}`,
+        minWidth: '38px',
+      },
+      '.cm-activeLineGutter': {
+        backgroundColor: withAlpha(textColor, 0.08),
+        color: accent,
+      },
+      '.cm-activeLine': {
+        backgroundColor: withAlpha(textColor, 0.04),
+      },
+      '.cm-line': {
+        padding: '0 8px',
+      },
+    }, { dark: isDark });
+
+    return [
+      themeExtension,
+      syntaxHighlighting(buildPineHighlightStyle(isDark, accent), { fallback: true })
+    ];
+  }
+
+  $effect(() => {
+    const tp = themePreset;
+    const cp = customPalette;
+    if (editorView) {
+      editorView.dispatch({
+        effects: themeCompartment.reconfigure(buildPineTheme(tp, cp))
+      });
+    }
   });
 
   onMount(() => {
@@ -217,7 +270,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
             updateCursorPos(update.view);
           }
         }),
-        obsidianTheme,
+        themeCompartment.of(buildPineTheme(themePreset, customPalette)),
       ],
     });
 
@@ -710,8 +763,9 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
     flex-direction: column;
     width: 100%;
     height: 100%;
-    background-color: #0A0D14;
-    border-left: 1px solid var(--border-hairline, #1E293B);
+    background-color: var(--bg-surface);
+    color: var(--text-main);
+    border-left: 1px solid var(--border-hairline);
     overflow: hidden;
     position: relative;
     user-select: none;
@@ -724,8 +778,8 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
     align-items: center;
     justify-content: space-between;
     padding: 0 10px;
-    background-color: #0E121B;
-    border-bottom: 1px solid var(--border-hairline, #1E293B);
+    background-color: var(--bg-panel);
+    border-bottom: 1px solid var(--border-hairline);
     flex-shrink: 0;
     gap: 8px;
   }
@@ -753,7 +807,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   .script-name-input {
     background: transparent;
     border: 1px solid transparent;
-    color: #F8FAFC;
+    color: var(--text-main);
     font-size: 11px;
     font-weight: 600;
     padding: 2px 6px;
@@ -766,8 +820,8 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 
   .script-name-input:focus,
   .script-name-input:hover {
-    border-color: #334155;
-    background-color: #141A26;
+    border-color: var(--border-bright);
+    background-color: var(--bg-container);
   }
 
   /* Status Pills */
@@ -786,7 +840,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 
   .status-pill.ready {
     background-color: rgba(148, 163, 184, 0.12);
-    color: #94A3B8;
+    color: var(--text-muted);
   }
 
   .status-pill.success {
@@ -825,10 +879,10 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   }
 
   .btn-primary {
-    background: linear-gradient(135deg, #00F090, #00C875);
-    color: #05080E;
+    background: var(--brand-primary);
+    color: #FFFFFF;
     padding: 4px 10px;
-    box-shadow: 0 1px 3px rgba(0, 240, 144, 0.25);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
 
   .btn-primary:hover:not(:disabled) {
@@ -842,15 +896,15 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   }
 
   .btn-secondary {
-    background-color: #171E2D;
-    color: #CBD5E1;
-    border: 1px solid #28334A;
+    background-color: var(--bg-elevated);
+    color: var(--text-main);
+    border: 1px solid var(--border-subtle);
     padding: 4px 8px;
   }
 
   .btn-secondary:hover {
-    background-color: #222C3F;
-    color: #FFFFFF;
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
   }
 
   .btn-saved {
@@ -860,17 +914,17 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 
   .btn-icon {
     background: transparent;
-    color: #94A3B8;
+    color: var(--text-muted);
     padding: 4px;
   }
 
   .btn-icon:hover {
-    background-color: #1A2234;
-    color: #F8FAFC;
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
   }
 
   .btn-close:hover {
-    color: #F43F5E;
+    color: var(--bear-color, #F43F5E);
     background-color: rgba(244, 63, 94, 0.12);
   }
 
@@ -929,7 +983,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 
   .err-hint {
     font-size: 9px;
-    color: #94A3B8;
+    color: var(--text-muted);
     text-decoration: underline;
   }
 
@@ -953,14 +1007,14 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   /* Status Bar */
   .tv-status-bar {
     height: 24px;
-    background-color: #090C12;
-    border-top: 1px solid #161D2B;
+    background-color: var(--bg-panel);
+    border-top: 1px solid var(--border-hairline);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 10px;
     font-size: 10px;
-    color: #64748B;
+    color: var(--text-muted);
     flex-shrink: 0;
   }
 
@@ -971,13 +1025,13 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   }
 
   .separator {
-    color: #334155;
+    color: var(--border-hairline);
   }
 
   .drawer-toggle-btn {
     background: transparent;
     border: none;
-    color: #94A3B8;
+    color: var(--text-muted);
     font-size: 10px;
     display: inline-flex;
     align-items: center;
@@ -989,15 +1043,15 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 
   .drawer-toggle-btn:hover,
   .drawer-toggle-btn.active {
-    color: #00F090;
-    background-color: #141B29;
+    color: var(--brand-primary);
+    background-color: var(--bg-hover);
   }
 
   /* Drawer Container */
   .tv-drawer {
     height: 190px;
-    background-color: #0B0E16;
-    border-top: 1px solid #1E293B;
+    background-color: var(--bg-surface);
+    border-top: 1px solid var(--border-hairline);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
@@ -1021,8 +1075,8 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
     align-items: center;
     justify-content: space-between;
     padding: 0 8px;
-    background-color: #0E121B;
-    border-bottom: 1px solid #1A2234;
+    background-color: var(--bg-panel);
+    border-bottom: 1px solid var(--border-hairline);
     flex-shrink: 0;
   }
 
@@ -1034,7 +1088,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   .drawer-tab {
     background: transparent;
     border: none;
-    color: #64748B;
+    color: var(--text-muted);
     font-size: 10px;
     font-weight: 600;
     padding: 3px 8px;
@@ -1046,12 +1100,12 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   }
 
   .drawer-tab:hover {
-    color: #CBD5E1;
+    color: var(--text-main);
   }
 
   .drawer-tab.active {
-    background-color: #161D2C;
-    color: #00F090;
+    background-color: var(--bg-elevated);
+    color: var(--brand-primary);
   }
 
   .drawer-actions {
@@ -1061,9 +1115,9 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   }
 
   .btn-run-backtest {
-    background-color: #141C2B;
-    border: 1px solid #222F47;
-    color: #38BDF8;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    color: var(--brand-primary);
     font-size: 10px;
     font-weight: 600;
     padding: 2px 8px;
@@ -1075,21 +1129,20 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   }
 
   .btn-run-backtest:hover:not(:disabled) {
-    background-color: #1A263B;
-    color: #7DD3FC;
+    background-color: var(--bg-hover);
   }
 
   .btn-close-drawer {
     background: transparent;
     border: none;
-    color: #64748B;
+    color: var(--text-muted);
     cursor: pointer;
     padding: 2px;
     display: flex;
   }
 
   .btn-close-drawer:hover {
-    color: #E2E8F0;
+    color: var(--text-main);
   }
 
   .drawer-body {
@@ -1113,20 +1166,20 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   }
 
   .log-time {
-    color: #475569;
+    color: var(--text-muted);
     flex-shrink: 0;
   }
 
   .console-row.info .log-msg {
-    color: #94A3B8;
+    color: var(--text-main);
   }
 
   .console-row.success .log-msg {
-    color: #00F090;
+    color: var(--bull-color, #00F090);
   }
 
   .console-row.error .log-msg {
-    color: #F43F5E;
+    color: var(--bear-color, #F43F5E);
   }
 
   /* Performance Grid */
@@ -1137,8 +1190,8 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
   }
 
   .metric-box {
-    background-color: #0F1420;
-    border: 1px solid #1C2436;
+    background-color: var(--bg-container);
+    border: 1px solid var(--border-hairline);
     border-radius: 4px;
     padding: 6px 8px;
     display: flex;
@@ -1148,7 +1201,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 
   .metric-title {
     font-size: 9px;
-    color: #64748B;
+    color: var(--text-muted);
   }
 
   .metric-value {

@@ -81,13 +81,15 @@
     THEME_PRESETS,
     UI_FONT_OPTIONS,
     MONO_FONT_OPTIONS,
-    DENSITY_OPTIONS
+    DENSITY_OPTIONS,
+    resolveEffectiveThemeColors
   } from '../lib/constants/themes';
   import {
     DEFAULT_APP_SETTINGS,
     DEFAULT_SYNC_CONFIG,
     resolveAppSettings
   } from '../lib/constants/defaults';
+  import { generateVelaThemeTokens, isDarkColor, withAlpha } from '../lib/utils/colorUtils';
 
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
   import { updateService } from '../lib/services/updateService';
@@ -112,11 +114,20 @@
   // Settings & Preferences State
   let appSettings = $state<AppSettings>({ ...DEFAULT_APP_SETTINGS });
 
-  // Reaktif Sinkronisasi Tema & Tipografi ke Elemen Root DOM
+  // Reaktif Sinkronisasi Tema, Token Vela, & Tipografi ke Elemen Root DOM
   $effect(() => {
     if (typeof document !== 'undefined') {
       const preset = appSettings.themePreset || 'signature';
+      const isCustomActive = Boolean(appSettings.customPalette && appSettings.customPalette.enabled !== false);
+      const cp = appSettings.customPalette;
+
       document.documentElement.setAttribute('data-theme', preset);
+
+      const { background: effectiveBg, textColor: effectiveText, isDark } = resolveEffectiveThemeColors(preset, cp);
+      const themeMode = isDark ? 'dark' : 'light';
+
+      document.documentElement.setAttribute('data-theme-mode', themeMode);
+      document.documentElement.style.setProperty('color-scheme', themeMode);
 
       const uiOpt = UI_FONT_OPTIONS.find((f) => f.id === appSettings.fontFamilyUi);
       const monoOpt = MONO_FONT_OPTIONS.find((f) => f.id === appSettings.fontFamilyMono);
@@ -128,6 +139,39 @@
       document.documentElement.style.setProperty('--font-code', monoOpt ? monoOpt.css : "'JetBrains Mono', monospace");
       document.documentElement.style.setProperty('--base-font-size', `${currentFontSize}px`);
       document.documentElement.style.setProperty('--font-scale', `${fontScale}`);
+
+      // Sinkronisasi variabel CSS UI Shell saat Custom Palette aktif
+      if (isCustomActive && cp) {
+        document.documentElement.style.setProperty('--bg-darkest', effectiveBg);
+        document.documentElement.style.setProperty('--bg-surface', effectiveBg);
+        document.documentElement.style.setProperty('--bg-container', cp.general.foreground);
+        document.documentElement.style.setProperty('--bg-panel', cp.general.foreground);
+        document.documentElement.style.setProperty('--text-main', effectiveText);
+        document.documentElement.style.setProperty('--text-primary', effectiveText);
+        document.documentElement.style.setProperty('--bull-color', cp.candles.bullBody);
+        document.documentElement.style.setProperty('--bear-color', cp.candles.bearBody);
+      } else {
+        document.documentElement.style.removeProperty('--bg-darkest');
+        document.documentElement.style.removeProperty('--bg-surface');
+        document.documentElement.style.removeProperty('--bg-container');
+        document.documentElement.style.removeProperty('--bg-panel');
+        document.documentElement.style.removeProperty('--text-main');
+        document.documentElement.style.removeProperty('--text-primary');
+        document.documentElement.style.removeProperty('--bull-color');
+        document.documentElement.style.removeProperty('--bear-color');
+        document.documentElement.style.removeProperty('--brand-primary');
+      }
+
+      // Injeksi token runtime kit WebGL2 Vela (--vela-*) ke elemen root DOM
+      const velaTokens = generateVelaThemeTokens(
+        effectiveBg,
+        effectiveText,
+        isDark ? withAlpha(effectiveText, 0.14) : withAlpha(effectiveText, 0.18),
+        uiOpt ? uiOpt.css : "'Plus Jakarta Sans', sans-serif"
+      );
+      for (const [k, v] of Object.entries(velaTokens)) {
+        document.documentElement.style.setProperty(k, v);
+      }
     }
   });
 
@@ -815,6 +859,25 @@
     }
     persistAppSettings();
     addSystemLog(`Pengaturan aplikasi diperbarui.`, 'info');
+  }
+
+  function handleVelaThemeSelect(mode: 'dark' | 'light') {
+    const cp = appSettings.customPalette;
+    const isCustomActive = Boolean(cp && cp.enabled !== false && cp.candles && cp.general);
+    if (isCustomActive && cp?.general?.background) {
+      const customIsDark = isDarkColor(cp.general.background);
+      const customMode = customIsDark ? 'dark' : 'light';
+      // Jika palet kustom aktif sudah sesuai dengan mode yang dipilih, pertahankan palet kustom!
+      if (customMode === mode) {
+        return;
+      }
+    }
+    // Jika tidak sesuai atau bukan kustom palet, beralih ke preset bawaan resmi yang relevan
+    if (mode === 'light') {
+      handleUpdateSettings({ themePreset: 'red_folder', customPalette: undefined });
+    } else {
+      handleUpdateSettings({ themePreset: 'signature', customPalette: undefined });
+    }
   }
 
   function handleToggleVolumeVisibility() {
@@ -1580,6 +1643,7 @@
           layout={currentLayout}
           providerId={activeProviderId}
           themePreset={appSettings.themePreset || 'signature'}
+          customPalette={appSettings.customPalette}
           customBullColor={appSettings.customBullColor}
           customBearColor={appSettings.customBearColor}
           customChartBackground={appSettings.customChartBackground}
@@ -1599,6 +1663,7 @@
           onRequestCreateAlert={handleRequestCreateAlert}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
           onOpenImportPlan={(text) => handleOpenImportPlanModal(text || '')}
+          onVelaThemeSelect={handleVelaThemeSelect}
         />
       </div>
 
@@ -1622,6 +1687,8 @@
             activeSymbol={activeSymbol}
             activeTimeframe={activeTimeframe}
             providerId={activeProviderId}
+            themePreset={appSettings.themePreset || 'signature'}
+            customPalette={appSettings.customPalette}
             onClose={() => handleWorkspaceModeChange('terminal')}
             onAddToChart={handleAddIndicator}
             onStrategyUpdate={handleStrategyUpdate}

@@ -62,6 +62,34 @@
   --radius-sm: 3px;
   --radius-md: 4px;
   --radius-lg: 6px;
+
+  /* ─── Vela WebGL2 UI Kit CSS Variables Bridge ─── */
+  --vela-font: var(--font-ui);
+  --vela-bg: var(--bg-surface);
+  --vela-fg: var(--text-main);
+  --vela-fg-muted: var(--text-muted);
+  --vela-fg-faint: var(--text-dim);
+  --vela-fg-bright: var(--text-primary);
+  --vela-surface: var(--bg-surface);
+  --vela-surface-elev: var(--bg-panel);
+  --vela-surface-overlay: var(--bg-elevated);
+  --vela-surface-sunken: var(--bg-container);
+  --vela-border: var(--border-hairline);
+  --vela-border-strong: var(--border-bright);
+  --vela-border-soft: var(--border-subtle);
+  --vela-border-faint: var(--border-subtle);
+  --vela-hover: var(--bg-hover);
+  --vela-active: var(--bg-active);
+  --vela-hover-strong: var(--bg-elevated);
+  --vela-focus: var(--border-focus);
+  --vela-selected-bg: var(--brand-primary);
+  --vela-selected-fg: #FFFFFF;
+  --vela-accent: var(--brand-primary);
+  --vela-accent-bright: var(--brand-primary);
+  --vela-radius-sm: var(--radius-xs);
+  --vela-radius-md: var(--radius-sm);
+  --vela-radius-lg: var(--radius-md);
+  color-scheme: dark;
 }
 
 /* ─── THEME PRESETS OVERRIDES ─── */
@@ -163,6 +191,56 @@
   --bear-color: #EF5350;
   --bear-glow: rgba(239, 83, 80, 0.22);
   --brand-primary: #26A69A;
+}
+
+[data-theme="red_folder"] {
+  --bg-darkest: #edede9;
+  --bg-base: #f4f4f0;
+  --bg-surface: #edede9;
+  --bg-container: #e5e5df;
+  --bg-panel: #deded8;
+  --bg-secondary: #e5e5df;
+  --bg-elevated: #d8d8d0;
+  --bg-hover: #cfcfc7;
+  --bg-active: #c5c5bc;
+  --border-hairline: #cfcfc7;
+  --border-subtle: #c7c7be;
+  --border-medium: #b8b8ae;
+  --border-bright: #a8a89e;
+  --border-focus: #9B1D20;
+  --text-main: #4A0E0F;
+  --text-primary: #4A0E0F;
+  --text-muted: #7F4F4F;
+  --text-dim: #996666;
+  --text-disabled: #b08888;
+  --bull-color: #D4A5A5;
+  --bull-fill: #D4A5A5;
+  --bull-glow: rgba(212, 165, 165, 0.35);
+  --bear-color: #9B1D20;
+  --bear-fill: #9B1D20;
+  --bear-glow: rgba(155, 29, 32, 0.35);
+  --brand-primary: #9B1D20;
+  --brand-pink: #9B1D20;
+  --brand-cyan: #7F4F4F;
+  color-scheme: light;
+}
+
+[data-theme-mode="light"] {
+  color-scheme: light;
+}
+
+[data-theme-mode="light"] ::-webkit-scrollbar-track {
+  background: var(--bg-container);
+}
+
+[data-theme-mode="light"] ::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+}
+
+[data-theme-mode="light"] .vela-dialog {
+  background: var(--bg-panel) !important;
+  color: var(--text-main) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.15) !important;
 }
 
 * {

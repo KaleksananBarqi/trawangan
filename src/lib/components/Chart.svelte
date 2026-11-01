@@ -20,7 +20,7 @@
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
     Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
     CustomChartBackgroundConfig, UserProfileConfig, SecurityWatermarkConfig,
-    SnapshotThesisLayout
+    SnapshotThesisLayout, CustomThemePalette
   } from '../types/market';
   import type { PriceScaleBadge } from '../services/priceScaleLabelService';
   import type { FeedConnectionStatus } from '../services/market/types';
@@ -42,7 +42,9 @@
     onRequestCreateAlert?: (symbol: string, price: number) => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
     onOpenImportPlan?: (initialText?: string) => void;
+    onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
     themePreset?: ThemePresetId; fontSize?: number; timezone?: string;
+    customPalette?: CustomThemePalette;
     customBullColor?: string; customBearColor?: string;
     customChartBackground?: CustomChartBackgroundConfig;
     securityWatermark?: SecurityWatermarkConfig;
@@ -52,12 +54,12 @@
   let {
     symbol, timeframe, defaultTimeframe = '15m', layout, providerId = 'binance',
     themePreset = 'signature', fontSize = 12, timezone = 'Asia/Jakarta',
-    customBullColor, customBearColor, customChartBackground,
+    customPalette, customBullColor, customBearColor, customChartBackground,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenImportPlan,
-    securityWatermark, userProfile,
+    onVelaThemeSelect, securityWatermark, userProfile,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -65,8 +67,9 @@
 
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
-    fontSize, timezone, customBullColor, customBearColor, customChartBackground,
-    showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange
+    fontSize, timezone, customPalette, customBullColor, customBearColor, customChartBackground,
+    showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange,
+    onVelaThemeSelect
   });
 
   let feedConnectionStatus = $state(marketFeed.getConnectionStatus());
@@ -114,7 +117,10 @@
   $effect(() => { const tf = timeframe; if (isMounted) controller.setTimeframe(tf); });
   $effect(() => { const l = layout; if (isMounted && l) controller.setLayout(l); });
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
-  $effect(() => { const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor; if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }); });
+  $effect(() => {
+    const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor, cp = customPalette;
+    if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp);
+  });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
   $effect(() => {
     const bg = customChartBackground;

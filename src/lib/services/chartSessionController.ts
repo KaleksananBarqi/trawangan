@@ -19,9 +19,10 @@ import type {
   ThemePresetId,
   ActiveIndicatorInfo,
   SavedWorkspace,
-  CustomChartBackgroundConfig
+  CustomChartBackgroundConfig,
+  CustomThemePalette
 } from '../types/market';
-import { THEME_PRESETS, resolveEffectiveVolumeColors } from '../constants/themes';
+import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
 import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 import { applyLayoutTimeframePolicy } from '../constants/defaults';
@@ -29,7 +30,7 @@ import {
   saveChartDefaultConfig,
   clearChartDefaultConfig
 } from './persistence';
-import { deriveBorderColor } from '../utils/colorUtils';
+import { deriveBorderColor, isDarkColor, withAlpha } from '../utils/colorUtils';
 
 export interface ChartSessionOptions {
   symbol: string;
@@ -40,6 +41,7 @@ export interface ChartSessionOptions {
   themePreset?: ThemePresetId;
   fontSize?: number;
   timezone?: string;
+  customPalette?: CustomThemePalette;
   customBullColor?: string;
   customBearColor?: string;
   customChartBackground?: CustomChartBackgroundConfig;
@@ -48,6 +50,7 @@ export interface ChartSessionOptions {
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
+  onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
   // Factory opsional untuk dependency injection / headless unit testing
   workspaceFactory?: (container: HTMLElement, config: any) => any;
 }
@@ -61,6 +64,7 @@ export interface ChartSessionSnapshot {
   timezone: string;
   themePreset: ThemePresetId;
   fontSize: number;
+  customPalette?: CustomThemePalette;
   customBullColor?: string;
   customBearColor?: string;
   showCurrentPriceLine: boolean;
@@ -383,8 +387,10 @@ export class ChartSessionController {
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
   private activeChartDefaultConfig: any = null;
   private isApplyingLayout = false;
+  private customPalette: CustomThemePalette | null = null;
   private customCandleColors: { bullColor?: string; bearColor?: string } | null = null;
   private customChartBackground?: CustomChartBackgroundConfig;
+  private onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -398,6 +404,8 @@ export class ChartSessionController {
     this.showCurrentPriceLine = options.showCurrentPriceLine ?? true;
     this.showVolume = options.showVolume ?? true;
     this.customChartBackground = options.customChartBackground;
+    this.customPalette = options.customPalette || null;
+    this.onVelaThemeSelect = options.onVelaThemeSelect;
     if (options.customBullColor || options.customBearColor) {
       this.customCandleColors = {
         bullColor: options.customBullColor,
@@ -429,6 +437,7 @@ export class ChartSessionController {
       timezone: this.timezone,
       themePreset: this.themePreset,
       fontSize: this.fontSize,
+      customPalette: this.customPalette || undefined,
       customBullColor: this.customCandleColors?.bullColor,
       customBearColor: this.customCandleColors?.bearColor,
       showCurrentPriceLine: this.showCurrentPriceLine,
@@ -478,6 +487,8 @@ export class ChartSessionController {
     if (options.fontSize) this.fontSize = options.fontSize;
     if (options.syncConfig) this.syncConfig = options.syncConfig;
     if (options.showVolume !== undefined) this.showVolume = options.showVolume;
+    if (options.customPalette !== undefined) this.customPalette = options.customPalette;
+    if (options.onVelaThemeSelect) this.onVelaThemeSelect = options.onVelaThemeSelect;
     if (options.customChartBackground !== undefined) this.customChartBackground = options.customChartBackground;
     if (options.workspaceFactory) this.workspaceFactory = options.workspaceFactory;
 
@@ -619,6 +630,15 @@ export class ChartSessionController {
     attachPriceScaleInputGuard(cell);
 
     const chart = cell.chart || cell.inner;
+    if (chart && typeof chart.onThemeSelect === 'function') {
+      try {
+        chart.onThemeSelect((mode: 'dark' | 'light') => {
+          if (this.onVelaThemeSelect) {
+            this.onVelaThemeSelect(mode);
+          }
+        });
+      } catch (_) {}
+    }
     if (chart && typeof chart.on === 'function') {
       try {
         chart.on('market:changed', () => {
@@ -645,7 +665,7 @@ export class ChartSessionController {
    */
   public syncNativeVolumeColors(cell?: any, syncPineIndicators: boolean = true): void {
     const { upColor: effectiveUp, downColor: effectiveDown, maColor: effectiveMA } =
-      resolveEffectiveVolumeColors(this.themePreset, this.customCandleColors || undefined);
+      resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
     const cells = cell ? [cell] : this.getAllCells();
 
     for (const c of cells) {
@@ -858,7 +878,7 @@ export class ChartSessionController {
       let effectiveInputs = savedInputs ? { ...savedInputs } : undefined;
       if (isVolumeScript) {
         const { upColor: effectiveUp, downColor: effectiveDown, maColor: effectiveMA } =
-          resolveEffectiveVolumeColors(this.themePreset, this.customCandleColors || undefined);
+          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
 
         effectiveInputs = {
           upColor: effectiveUp,
@@ -1111,12 +1131,16 @@ export class ChartSessionController {
     preset: ThemePresetId,
     fontSize?: number,
     customCandleColors?: { bullColor?: string; bearColor?: string },
-    customBackground?: CustomChartBackgroundConfig
+    customBackground?: CustomChartBackgroundConfig,
+    customPalette?: CustomThemePalette
   ): void {
     this.themePreset = preset;
     if (fontSize) this.fontSize = fontSize;
     if (customCandleColors !== undefined) {
       this.customCandleColors = customCandleColors;
+    }
+    if (customPalette !== undefined) {
+      this.customPalette = customPalette;
     }
     if (customBackground !== undefined) {
       this.customChartBackground = customBackground;
@@ -1125,25 +1149,62 @@ export class ChartSessionController {
 
     if (this.workspace) {
       const cfg = THEME_PRESETS[preset] || THEME_PRESETS.signature;
+      const isCustomPaletteActive = Boolean(this.customPalette && this.customPalette.enabled !== false);
+      const cp = this.customPalette;
 
-      // Hitung warna efektif (warna kustom mendominasi jika disetel pengguna)
-      const effectiveUp = this.customCandleColors?.bullColor || cfg.chart.upColor;
-      const effectiveDown = this.customCandleColors?.bearColor || cfg.chart.downColor;
-      const effectiveWickUp = this.customCandleColors?.bullColor || cfg.chart.wickUpColor || cfg.chart.upColor;
-      const effectiveWickDown = this.customCandleColors?.bearColor || cfg.chart.wickDownColor || cfg.chart.downColor;
-      const effectiveBorderUp = this.customCandleColors?.bullColor
-        ? deriveBorderColor(this.customCandleColors.bullColor, 0.15)
-        : cfg.chart.borderUpColor || cfg.chart.upColor;
-      const effectiveBorderDown = this.customCandleColors?.bearColor
-        ? deriveBorderColor(this.customCandleColors.bearColor, 0.15)
-        : cfg.chart.borderDownColor || cfg.chart.downColor;
+      // 6 Atribut Lilin Individual (Bull & Bear: Body, Wick, Border)
+      const effectiveUp = isCustomPaletteActive && cp?.candles?.bullBody
+        ? cp.candles.bullBody
+        : this.customCandleColors?.bullColor || cfg.chart.upColor;
+
+      const effectiveDown = isCustomPaletteActive && cp?.candles?.bearBody
+        ? cp.candles.bearBody
+        : this.customCandleColors?.bearColor || cfg.chart.downColor;
+
+      const effectiveWickUp = isCustomPaletteActive && cp?.candles?.bullWick
+        ? cp.candles.bullWick
+        : this.customCandleColors?.bullColor || cfg.chart.wickUpColor || cfg.chart.upColor;
+
+      const effectiveWickDown = isCustomPaletteActive && cp?.candles?.bearWick
+        ? cp.candles.bearWick
+        : this.customCandleColors?.bearColor || cfg.chart.wickDownColor || cfg.chart.downColor;
+
+      const effectiveBorderUp = isCustomPaletteActive && cp?.candles?.bullBorder
+        ? cp.candles.bullBorder
+        : this.customCandleColors?.bullColor
+          ? deriveBorderColor(this.customCandleColors.bullColor, 0.15)
+          : cfg.chart.borderUpColor || cfg.chart.upColor;
+
+      const effectiveBorderDown = isCustomPaletteActive && cp?.candles?.bearBorder
+        ? cp.candles.bearBorder
+        : this.customCandleColors?.bearColor
+          ? deriveBorderColor(this.customCandleColors.bearColor, 0.15)
+          : cfg.chart.borderDownColor || cfg.chart.downColor;
+
+      // 3 Atribut Warna Umum & Turunan Adaptif Luminance
+      const { background: effectiveBg, textColor: effectiveText, isDark: dark } = resolveEffectiveThemeColors(preset, this.customPalette);
+
+      const effectiveGrid = dark
+        ? withAlpha(effectiveText, 0.06)
+        : withAlpha(effectiveText, 0.08);
+
+      const effectiveBorder = dark
+        ? withAlpha(effectiveText, 0.14)
+        : withAlpha(effectiveText, 0.18);
+
+      const effectiveCrosshair = dark
+        ? withAlpha(effectiveText, 0.45)
+        : withAlpha(effectiveText, 0.55);
 
       const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
       const themeObj = {
-        background: isCustomBg ? 'transparent' : cfg.chart.background,
-        textColor: cfg.chart.textColor,
-        gridColor: cfg.chart.gridColor,
-        borderColor: cfg.chart.borderColor,
+        background: isCustomBg ? 'transparent' : effectiveBg,
+        surfaceBackground: effectiveBg,
+        textColor: effectiveText,
+        gridColor: effectiveGrid,
+        borderColor: effectiveBorder,
+        crosshair: effectiveCrosshair,
+        crosshairColor: effectiveCrosshair,
         upColor: effectiveUp,
         downColor: effectiveDown,
         fontSize: Math.max(9, Math.min(32, Math.round(this.fontSize))),
@@ -1181,6 +1242,12 @@ export class ChartSessionController {
       try {
         for (const cell of this.getAllCells()) {
           const chart = cell?.chart || cell?.inner;
+          if (chart && typeof chart.setTheme === 'function') {
+            try { chart.setTheme(themeObj); } catch (_) {}
+          }
+          if (chart && typeof chart.setSurfaceBackground === 'function') {
+            try { chart.setSurfaceBackground(effectiveBg); } catch (_) {}
+          }
           const r = chart?.renderer?.renderer || chart?.renderer;
           if (r && typeof r.applyConfig === 'function') {
             r.applyConfig(candleConfig);

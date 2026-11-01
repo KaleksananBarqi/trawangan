@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Check, Minus, Plus, RotateCcw } from '@lucide/svelte';
+  import {
+    Check, Minus, Plus, RotateCcw, Copy, CheckCheck, Sun, Moon, Palette, FileText, Clipboard, X
+  } from '@lucide/svelte';
   import {
     THEME_PRESETS,
     UI_FONT_OPTIONS,
@@ -7,9 +9,21 @@
     FONT_SIZE_PRESETS,
     MIN_FONT_SIZE,
     MAX_FONT_SIZE,
-    DEFAULT_FONT_SIZE
+    DEFAULT_FONT_SIZE,
+    buildCustomPaletteFromPreset,
+    parseCustomPaletteFromText,
+    serializeCustomPaletteJson,
+    serializeCustomPaletteText,
   } from '../../constants/themes';
-  import type { AppSettings, CustomChartBackgroundConfig } from '../../types/market';
+  import { isDarkColor } from '../../utils/colorUtils';
+  import type {
+    AppSettings,
+    CustomChartBackgroundConfig,
+    CustomThemePalette,
+    CustomCandleColors,
+    CustomGeneralColors,
+    ThemePresetId,
+  } from '../../types/market';
 
   interface Props {
     settings: AppSettings;
@@ -17,6 +31,16 @@
   }
 
   let { settings, onUpdateSettings }: Props = $props();
+
+  const filterMode = $derived<'all' | 'dark' | 'light'>(settings.themeFilterMode || 'all');
+  let copyFeedback = $state<string | null>(null);
+  let isPasteModalOpen = $state(false);
+  let pasteInputText = $state('');
+  let pasteError = $state<string | null>(null);
+
+  function setFilterMode(mode: 'all' | 'dark' | 'light') {
+    onUpdateSettings({ themeFilterMode: mode });
+  }
 
   function handleSetFontSize(newSize: number) {
     if (isNaN(newSize)) return;
@@ -35,12 +59,113 @@
   }
 
   const activePreset = $derived(THEME_PRESETS[settings.themePreset || 'signature'] || THEME_PRESETS.signature);
-  const currentBull = $derived(settings.customBullColor || activePreset.chart.upColor);
-  const currentBear = $derived(settings.customBearColor || activePreset.chart.downColor);
-  const isCustomActive = $derived(Boolean(settings.customBullColor || settings.customBearColor));
+  const defaultPalette = $derived<CustomThemePalette>(
+    buildCustomPaletteFromPreset(settings.themePreset || 'signature')
+  );
+  const currentPalette = $derived<CustomThemePalette>(
+    settings.customPalette || defaultPalette
+  );
+  const isCustomActive = $derived(
+    Boolean(settings.customPalette && settings.customPalette.enabled !== false)
+  );
+  const isPaletteDark = $derived(
+    isDarkColor(currentPalette.general?.background || activePreset.chart.background || '#0F0F0F')
+  );
 
-  function handleResetCandleColors() {
-    onUpdateSettings({ customBullColor: undefined, customBearColor: undefined });
+  const filteredPresets = $derived.by(() => {
+    const list = Object.values(THEME_PRESETS);
+    if (filterMode === 'dark') return list.filter((p) => p.mode === 'dark');
+    if (filterMode === 'light') return list.filter((p) => p.mode === 'light');
+    return list;
+  });
+
+  function sanitizeHex(val: string): string | null {
+    let v = val.trim();
+    if (!v.startsWith('#') && /^[0-9A-Fa-f]{3,8}$/.test(v)) {
+      v = '#' + v;
+    }
+    if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(v)) {
+      return v;
+    }
+    return null;
+  }
+
+  function handleUpdatePaletteColor<T extends 'candles' | 'general'>(
+    section: T,
+    key: T extends 'candles' ? keyof CustomCandleColors : keyof CustomGeneralColors,
+    val: string
+  ) {
+    const clean = sanitizeHex(val);
+    if (!clean) return;
+    onUpdateSettings({
+      customPalette: {
+        ...currentPalette,
+        enabled: true,
+        [section]: {
+          ...currentPalette[section],
+          [key]: clean,
+        },
+      },
+    });
+  }
+
+  const handleUpdateCandle = (key: keyof CustomCandleColors, val: string) =>
+    handleUpdatePaletteColor('candles', key, val);
+  const handleUpdateGeneral = (key: keyof CustomGeneralColors, val: string) =>
+    handleUpdatePaletteColor('general', key, val);
+
+  async function handleCopyJson() {
+    try {
+      await navigator.clipboard.writeText(serializeCustomPaletteJson(currentPalette));
+      copyFeedback = 'JSON palet berhasil disalin!';
+      setTimeout(() => { copyFeedback = null; }, 2500);
+    } catch (_) {}
+  }
+
+  async function handleCopyText() {
+    try {
+      await navigator.clipboard.writeText(serializeCustomPaletteText(currentPalette));
+      copyFeedback = 'Format teks Hex berhasil disalin!';
+      setTimeout(() => { copyFeedback = null; }, 2500);
+    } catch (_) {}
+  }
+
+  async function handleCopySingle(hex: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(hex);
+      copyFeedback = `${label} (${hex}) disalin!`;
+      setTimeout(() => { copyFeedback = null; }, 2000);
+    } catch (_) {}
+  }
+
+  function handleOpenPaste() {
+    pasteInputText = '';
+    pasteError = null;
+    isPasteModalOpen = true;
+  }
+
+  function handleApplyPaste() {
+    const parsed = parseCustomPaletteFromText(pasteInputText);
+    if (parsed) {
+      onUpdateSettings({
+        customPalette: parsed,
+      });
+      isPasteModalOpen = false;
+      pasteInputText = '';
+      pasteError = null;
+      copyFeedback = 'Palet kustom berhasil diterapkan!';
+      setTimeout(() => { copyFeedback = null; }, 2500);
+    } else {
+      pasteError = 'Format tidak dapat dikenali. Tempel JSON atau teks baris (misal: "Bullish body: #D4A5A5").';
+    }
+  }
+
+  function handleResetCustomPalette() {
+    onUpdateSettings({
+      customPalette: undefined,
+      customBullColor: undefined,
+      customBearColor: undefined,
+    });
   }
 
   // Kustomisasi latar belakang grafik (solid & vertikal gradient) (#128)
@@ -105,13 +230,44 @@
 </script>
 
 <div class="section-group">
-  <h4 class="section-title">Preset Tema Tampilan & Candlestick</h4>
-  <p class="section-subtitle">
-    Pilih skema warna antarmuka dan palet candlestick. Tema signature trawangan dirancang dengan kontras Cyber-Monochrome ultra-gelap (#0F0F0F).
-  </p>
+  <div class="presets-header-row">
+    <div>
+      <h4 class="section-title">Preset Tema Tampilan & Candlestick</h4>
+      <p class="section-subtitle">
+        Pilih skema warna antarmuka dan palet candlestick. Tersedia tema gelap (Dark) dan terang (Light) dengan sinkronisasi penuh ke WebGL2 Vela & Pine IDE.
+      </p>
+    </div>
+
+    <!-- Mode Filter Chips -->
+    <div class="theme-mode-filters" role="radiogroup" aria-label="Filter Mode Tema">
+      <button
+        type="button"
+        class="filter-chip {filterMode === 'all' ? 'active' : ''}"
+        onclick={() => setFilterMode('all')}
+      >
+        <span>Semua ({Object.keys(THEME_PRESETS).length})</span>
+      </button>
+      <button
+        type="button"
+        class="filter-chip {filterMode === 'dark' ? 'active' : ''}"
+        onclick={() => setFilterMode('dark')}
+      >
+        <Moon size={11} />
+        <span>Gelap (5)</span>
+      </button>
+      <button
+        type="button"
+        class="filter-chip {filterMode === 'light' ? 'active' : ''}"
+        onclick={() => setFilterMode('light')}
+      >
+        <Sun size={11} />
+        <span>Terang (1)</span>
+      </button>
+    </div>
+  </div>
 
   <div class="theme-presets-grid">
-    {#each Object.values(THEME_PRESETS) as preset}
+    {#each filteredPresets as preset}
       {@const isSelected = (settings.themePreset || 'signature') === preset.id}
       <button
         type="button"
@@ -120,13 +276,21 @@
           onUpdateSettings({
             themePreset: preset.id,
             theme: preset.id as any,
+            customPalette: undefined,
             customBullColor: undefined,
             customBearColor: undefined,
           })}
       >
         <div class="theme-card-header">
           <span class="theme-name">{preset.name}</span>
-          <span class="theme-badge">{preset.badge}</span>
+          <div class="card-badges">
+            {#if preset.mode === 'light'}
+              <span class="mode-pill light"><Sun size={9} /> LIGHT</span>
+            {:else}
+              <span class="mode-pill dark"><Moon size={9} /> DARK</span>
+            {/if}
+            <span class="theme-badge">{preset.badge}</span>
+          </div>
         </div>
 
         <p class="theme-desc">{preset.description}</p>
@@ -162,100 +326,415 @@
     {/each}
   </div>
 
-  <!-- Kustomisasi Warna Candlestick Hibrida -->
-  <div class="custom-candle-box">
-    <div class="custom-candle-header">
-      <div class="custom-candle-info">
-        <span class="custom-candle-title">Kustomisasi Warna Candlestick</span>
-        <span class="custom-candle-desc">
-          Atur warna lilin Bullish dan Bearish secara mandiri. Garis tepi otomatis dihitung 15% lebih gelap dan sumbu mengikuti badan.
+  <!-- Palet Kustom Studio (9 Dimensi - Sesuai Referensi chartthemes.com) -->
+  <div class="custom-studio-box">
+    <div class="custom-studio-header">
+      <div class="custom-studio-info">
+        <div class="studio-title-row">
+          <Palette size={16} class="studio-icon" />
+          <span class="custom-studio-title">Palet Kustom Studio</span>
+          {#if isCustomActive}
+            <span class="custom-active-badge">Custom Aktif</span>
+          {:else}
+            <span class="custom-theme-badge">Mengikuti Preset</span>
+          {/if}
+          <span class="mode-indicator {isPaletteDark ? 'dark' : 'light'}">
+            {#if isPaletteDark}
+              <Moon size={10} /> Mode Gelap Terdeteksi
+            {:else}
+              <Sun size={10} /> Mode Terang Terdeteksi
+            {/if}
+          </span>
+        </div>
+        <span class="custom-studio-desc">
+          Kustomisasi 6 warna candlestick dan 3 warna umum. Perubahan langsung diaplikasikan serentak ke UI Trawangan, Pine IDE, kanvas WebGL2 Vela, dan dialog pengaturan bawaan Vela.
         </span>
       </div>
-      <div class="custom-candle-actions">
-        {#if isCustomActive}
-          <span class="custom-active-badge">Custom Aktif</span>
-        {:else}
-          <span class="custom-theme-badge">Mengikuti Tema</span>
+
+      <div class="custom-studio-actions">
+        {#if copyFeedback}
+          <span class="feedback-toast"><CheckCheck size={12} /> {copyFeedback}</span>
         {/if}
         <button
           type="button"
-          class="btn-reset-candle"
-          onclick={handleResetCandleColors}
+          class="btn-studio-action"
+          onclick={handleCopyJson}
+          title="Salin konfigurasi palet dalam format JSON ke clipboard"
+        >
+          <Copy size={12} />
+          <span>Salin JSON</span>
+        </button>
+        <button
+          type="button"
+          class="btn-studio-action"
+          onclick={handleCopyText}
+          title="Salin ringkasan palet dalam format teks Hex (ala chartthemes.com)"
+        >
+          <FileText size={12} />
+          <span>Salin Teks Hex</span>
+        </button>
+        <button
+          type="button"
+          class="btn-studio-action"
+          onclick={handleOpenPaste}
+          title="Tempel palet dari JSON atau teks daftar warna"
+        >
+          <Clipboard size={12} />
+          <span>Tempel Palet</span>
+        </button>
+        <button
+          type="button"
+          class="btn-studio-action btn-reset"
+          onclick={handleResetCustomPalette}
           disabled={!isCustomActive}
-          title="Kembalikan warna candlestick ke setelan bawaan tema aktif"
+          title="Kembalikan semua warna kustom ke setelan bawaan preset aktif"
         >
           <RotateCcw size={12} />
-          <span>Reset ke Tema</span>
+          <span>Reset ke Preset</span>
         </button>
       </div>
     </div>
 
-    <div class="custom-candle-inputs">
-      <!-- Bullish Picker -->
-      <div class="candle-picker-card">
-        <div class="picker-label-row">
-          <span class="picker-title">Candlestick Bullish (Naik)</span>
-          <span class="picker-current-hex mono-nums">{currentBull}</span>
-        </div>
-        <div class="picker-controls">
-          <input
-            type="color"
-            class="color-input"
-            value={currentBull}
-            onchange={(e) => onUpdateSettings({ customBullColor: e.currentTarget.value })}
-            aria-label="Warna Candlestick Bullish"
-          />
-          <input
-            type="text"
-            class="hex-text-input mono-nums"
-            value={currentBull}
-            maxlength="7"
-            onchange={(e) => {
-              let val = e.currentTarget.value.trim();
-              if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
-                val = '#' + val;
-              }
-              if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
-                onUpdateSettings({ customBullColor: val });
-              }
-            }}
-          />
-        </div>
+    <!-- Kategori 1: Warna Candlestick -->
+    <div class="studio-category">
+      <div class="category-header">
+        <span class="category-title">Warna Candlestick (Candle Colors)</span>
+        <span class="category-sub">6 atribut lilin individual untuk kondisi Bullish dan Bearish</span>
       </div>
 
-      <!-- Bearish Picker -->
-      <div class="candle-picker-card">
-        <div class="picker-label-row">
-          <span class="picker-title">Candlestick Bearish (Turun)</span>
-          <span class="picker-current-hex mono-nums">{currentBear}</span>
+      <div class="studio-pickers-grid">
+        <!-- Bearish Body -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Bearish body</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() => handleCopySingle(currentPalette.candles.bearBody, 'Bearish body')}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.candles.bearBody}
+              onchange={(e) => handleUpdateCandle('bearBody', e.currentTarget.value)}
+              aria-label="Bearish body"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.candles.bearBody}
+              maxlength="7"
+              onchange={(e) => handleUpdateCandle('bearBody', e.currentTarget.value)}
+            />
+          </div>
         </div>
-        <div class="picker-controls">
-          <input
-            type="color"
-            class="color-input"
-            value={currentBear}
-            onchange={(e) => onUpdateSettings({ customBearColor: e.currentTarget.value })}
-            aria-label="Warna Candlestick Bearish"
-          />
-          <input
-            type="text"
-            class="hex-text-input mono-nums"
-            value={currentBear}
-            maxlength="7"
-            onchange={(e) => {
-              let val = e.currentTarget.value.trim();
-              if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
-                val = '#' + val;
-              }
-              if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
-                onUpdateSettings({ customBearColor: val });
-              }
-            }}
-          />
+
+        <!-- Bearish Wick -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Bearish wick</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() => handleCopySingle(currentPalette.candles.bearWick, 'Bearish wick')}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.candles.bearWick}
+              onchange={(e) => handleUpdateCandle('bearWick', e.currentTarget.value)}
+              aria-label="Bearish wick"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.candles.bearWick}
+              maxlength="7"
+              onchange={(e) => handleUpdateCandle('bearWick', e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <!-- Bearish Border -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Bearish border</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() => handleCopySingle(currentPalette.candles.bearBorder, 'Bearish border')}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.candles.bearBorder}
+              onchange={(e) => handleUpdateCandle('bearBorder', e.currentTarget.value)}
+              aria-label="Bearish border"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.candles.bearBorder}
+              maxlength="7"
+              onchange={(e) => handleUpdateCandle('bearBorder', e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <!-- Bullish Body -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Bullish body</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() => handleCopySingle(currentPalette.candles.bullBody, 'Bullish body')}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.candles.bullBody}
+              onchange={(e) => handleUpdateCandle('bullBody', e.currentTarget.value)}
+              aria-label="Bullish body"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.candles.bullBody}
+              maxlength="7"
+              onchange={(e) => handleUpdateCandle('bullBody', e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <!-- Bullish Wick -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Bullish wick</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() => handleCopySingle(currentPalette.candles.bullWick, 'Bullish wick')}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.candles.bullWick}
+              onchange={(e) => handleUpdateCandle('bullWick', e.currentTarget.value)}
+              aria-label="Bullish wick"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.candles.bullWick}
+              maxlength="7"
+              onchange={(e) => handleUpdateCandle('bullWick', e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <!-- Bullish Border -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Bullish border</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() => handleCopySingle(currentPalette.candles.bullBorder, 'Bullish border')}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.candles.bullBorder}
+              onchange={(e) => handleUpdateCandle('bullBorder', e.currentTarget.value)}
+              aria-label="Bullish border"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.candles.bullBorder}
+              maxlength="7"
+              onchange={(e) => handleUpdateCandle('bullBorder', e.currentTarget.value)}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kategori 2: Warna Umum (General Colors) -->
+    <div class="studio-category">
+      <div class="category-header">
+        <span class="category-title">Warna Umum (General Colors)</span>
+        <span class="category-sub">3 atribut fondasi: latar kanvas & app, permukaan panel, dan tipografi teks</span>
+      </div>
+
+      <div class="studio-pickers-grid general-grid">
+        <!-- Background Color -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Background color</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() => handleCopySingle(currentPalette.general.background, 'Background color')}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.general.background}
+              onchange={(e) => handleUpdateGeneral('background', e.currentTarget.value)}
+              aria-label="Background color"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.general.background}
+              maxlength="7"
+              onchange={(e) => handleUpdateGeneral('background', e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <!-- Foreground -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Foreground (Panel/Border)</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() => handleCopySingle(currentPalette.general.foreground, 'Foreground')}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.general.foreground}
+              onchange={(e) => handleUpdateGeneral('foreground', e.currentTarget.value)}
+              aria-label="Foreground"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.general.foreground}
+              maxlength="7"
+              onchange={(e) => handleUpdateGeneral('foreground', e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <!-- Text color -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Text color (Teks & Sumbu)</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() => handleCopySingle(currentPalette.general.textColor, 'Text color')}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.general.textColor}
+              onchange={(e) => handleUpdateGeneral('textColor', e.currentTarget.value)}
+              aria-label="Text color"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.general.textColor}
+              maxlength="7"
+              onchange={(e) => handleUpdateGeneral('textColor', e.currentTarget.value)}
+            />
+          </div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Modal Dialog Tempel Palet -->
+  {#if isPasteModalOpen}
+    <div class="studio-modal-scrim" onclick={() => (isPasteModalOpen = false)} role="presentation">
+      <div class="studio-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <div class="modal-title-row">
+            <Clipboard size={16} />
+            <span class="modal-title">Tempel Palet Tema</span>
+          </div>
+          <button type="button" class="btn-modal-close" onclick={() => (isPasteModalOpen = false)}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <p class="modal-desc">
+          Tempelkan konfigurasi JSON atau format teks daftar warna (seperti salinan dari situs tema atau format chartthemes.com):
+        </p>
+
+        <textarea
+          class="paste-textarea mono-nums"
+          bind:value={pasteInputText}
+          placeholder={`Contoh teks:\nBearish body: #9B1D20\nBearish wick: #7F4F4F\nBullish body: #D4A5A5\nBackground color: #edede9\nText color: #4A0E0F`}
+          rows="8"
+        ></textarea>
+
+        {#if pasteError}
+          <div class="paste-error-msg">{pasteError}</div>
+        {/if}
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" onclick={() => (isPasteModalOpen = false)}>
+            Batal
+          </button>
+          <button type="button" class="btn-apply-paste" onclick={handleApplyPaste}>
+            Terapkan Palet
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- Kustomisasi Latar Belakang Grafik (Solid & Vertical Gradient) (#128) -->
   <div class="custom-candle-box custom-bg-box">
@@ -719,6 +1198,454 @@
 
   .status-inactive {
     color: var(--text-dim);
+  }
+
+  /* Header Preset dengan Filter */
+  .presets-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .theme-mode-filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-surface);
+    padding: 3px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-hairline);
+  }
+
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .filter-chip:hover {
+    color: var(--text-main);
+  }
+
+  .filter-chip.active {
+    background: var(--bg-elevated);
+    color: var(--brand-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
+  .card-badges {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .mode-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 8.5px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: var(--radius-xs);
+  }
+
+  .mode-pill.light {
+    background: rgba(234, 179, 8, 0.14);
+    color: #eab308;
+    border: 1px solid rgba(234, 179, 8, 0.3);
+  }
+
+  .mode-pill.dark {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+  }
+
+  /* Palet Kustom Studio */
+  .custom-studio-box {
+    margin-top: 14px;
+    padding: 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  }
+
+  .custom-studio-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border-hairline);
+    padding-bottom: 14px;
+  }
+
+  .custom-studio-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 600px;
+  }
+
+  .studio-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .studio-title-row :global(.studio-icon) {
+    color: var(--brand-primary);
+  }
+
+  .custom-studio-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-main);
+    letter-spacing: 0.02em;
+  }
+
+  .mode-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+
+  .mode-indicator.dark {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+  }
+
+  .mode-indicator.light {
+    background: rgba(234, 179, 8, 0.14);
+    color: #ca8a04;
+  }
+
+  .custom-studio-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.45;
+  }
+
+  .custom-studio-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .feedback-toast {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.12);
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  .btn-studio-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-studio-action:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--border-bright);
+    color: var(--text-primary);
+  }
+
+  .btn-studio-action:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-studio-action.btn-reset:hover:not(:disabled) {
+    color: var(--bear-color);
+  }
+
+  /* Kategori */
+  .studio-category {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .category-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .category-title {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .category-sub {
+    font-size: 10.5px;
+    color: var(--text-muted);
+  }
+
+  .studio-pickers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 10px;
+  }
+
+  .general-grid {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+
+  .studio-picker-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg-darkest);
+    border: 1px solid var(--border-hairline);
+    border-radius: 6px;
+    transition: border-color 0.15s ease;
+  }
+
+  .studio-picker-card:hover {
+    border-color: var(--border-bright);
+  }
+
+  .picker-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .picker-name {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .btn-mini-copy {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 3px;
+    transition: all 0.15s ease;
+  }
+
+  .btn-mini-copy:hover {
+    color: var(--text-main);
+    background: var(--bg-hover);
+  }
+
+  .picker-bottom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .color-chip {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 32px;
+    height: 26px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  .color-chip::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+
+  .color-chip::-webkit-color-swatch {
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+  }
+
+  .hex-box {
+    flex: 1;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .hex-box:focus {
+    border-color: var(--brand-primary);
+  }
+
+  /* Modal Tempel Palet */
+  .studio-modal-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+
+  .studio-modal-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    width: 100%;
+    max-width: 520px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .modal-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .btn-modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+  }
+
+  .btn-modal-close:hover {
+    color: var(--text-main);
+    background: var(--bg-hover);
+  }
+
+  .modal-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  .paste-textarea {
+    width: 100%;
+    background: var(--bg-darkest);
+    border: 1px solid var(--border-hairline);
+    border-radius: 6px;
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 10px;
+    outline: none;
+    resize: vertical;
+    font-family: var(--font-code);
+  }
+
+  .paste-textarea:focus {
+    border-color: var(--brand-primary);
+  }
+
+  .paste-error-msg {
+    font-size: 10.5px;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .btn-cancel {
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid var(--border-hairline);
+    border-radius: 5px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-cancel:hover {
+    color: var(--text-main);
+    background: var(--bg-hover);
+  }
+
+  .btn-apply-paste {
+    padding: 6px 14px;
+    background: var(--brand-primary);
+    border: none;
+    border-radius: 5px;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .btn-apply-paste:hover {
+    filter: brightness(1.1);
   }
 
   .custom-candle-box {

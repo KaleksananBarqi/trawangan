@@ -1,9 +1,11 @@
-import type { ThemePresetId, UiDensity } from '../types/market';
+import type { CustomThemePalette, ThemePresetId, UiDensity } from '../types/market';
+import { deriveBorderColor, isDarkColor, withAlpha } from '../utils/colorUtils';
 
 export interface ThemeConfig {
   id: ThemePresetId;
   name: string;
   badge: string;
+  mode: 'dark' | 'light';
   description: string;
   tokens: {
     bgDarkest: string;
@@ -44,6 +46,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
     id: 'signature',
     name: 'trawangan (Signature)',
     badge: 'DEFAULT',
+    mode: 'dark',
     description: 'Cyber-Monochrome: Ultra Dark #0F0F0F, Pure White Bull & Hot Pink Bear',
     tokens: {
       bgDarkest: '#0F0F0F',
@@ -82,6 +85,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
     id: 'binance',
     name: 'Binance Classic',
     badge: 'GOLD/RED',
+    mode: 'dark',
     description: 'Platform standar Binance dengan kanvas Dark Charcoal, Hijau Emerald & Crimson',
     tokens: {
       bgDarkest: '#181A20',
@@ -120,6 +124,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
     id: 'bitunix',
     name: 'Bitunix Neon',
     badge: 'CYAN/ROSE',
+    mode: 'dark',
     description: 'Gaya visual Bitunix dengan aksen Neon Cyan, Emerald Bull & Rose Bear',
     tokens: {
       bgDarkest: '#0D1117',
@@ -158,6 +163,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
     id: 'tradingview',
     name: 'TradingView Pro',
     badge: 'NAVY/TEAL',
+    mode: 'dark',
     description: 'Skema warna legendaris Midnight Slate dengan Teal Green & Crimson',
     tokens: {
       bgDarkest: '#131722',
@@ -196,6 +202,7 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
     id: 'coinglass',
     name: 'Coinglass Dark',
     badge: 'JET/CYAN',
+    mode: 'dark',
     description: 'Tema Jet Black ala Coinglass data terminal dengan kontras analitis tinggi',
     tokens: {
       bgDarkest: '#0B0E11',
@@ -228,6 +235,45 @@ export const THEME_PRESETS: Record<ThemePresetId, ThemeConfig> = {
       borderDownColor: '#EF5350',
       wickUpColor: '#26A69A',
       wickDownColor: '#EF5350',
+    },
+  },
+  red_folder: {
+    id: 'red_folder',
+    name: 'Red Folder News',
+    badge: 'LIGHT/RED',
+    mode: 'light',
+    description: 'Tema Koran & Analisis Terang: Latar Krem #edede9, Teks Burgundy #4A0E0F, Lilin Rose & Crimson',
+    tokens: {
+      bgDarkest: '#edede9',
+      bgSurface: '#edede9',
+      bgContainer: '#e3e3de',
+      bgPanel: '#dcdcd6',
+      bgElevated: '#d4d4cd',
+      bgHover: '#c8c8c0',
+      bgSecondary: '#e3e3de',
+      borderHairline: '#cfcfc7',
+      borderSubtle: '#c5c5bd',
+      brandPrimary: '#9B1D20',
+      brandCyan: '#4A0E0F',
+      bullColor: '#D4A5A5',
+      bullGlow: 'rgba(212, 165, 165, 0.25)',
+      bearColor: '#9B1D20',
+      bearGlow: 'rgba(155, 29, 32, 0.25)',
+      textMain: '#4A0E0F',
+      textMuted: '#7F4F4F',
+      textPrimary: '#4A0E0F',
+    },
+    chart: {
+      background: '#edede9',
+      gridColor: 'rgba(74, 14, 15, 0.08)',
+      textColor: '#4A0E0F',
+      borderColor: '#cfcfc7',
+      upColor: '#D4A5A5',
+      downColor: '#9B1D20',
+      borderUpColor: '#B87B7B',
+      borderDownColor: '#5E1D1D',
+      wickUpColor: '#7F4F4F',
+      wickDownColor: '#7F4F4F',
     },
   },
 };
@@ -270,18 +316,197 @@ export interface EffectiveVolumeColors {
 }
 
 /**
+ * Membangun konfigurasi Palet Kustom dari Theme Preset tertentu sebagai titik mula (template)
+ */
+export function buildCustomPaletteFromPreset(presetId: ThemePresetId = 'signature'): CustomThemePalette {
+  const p = THEME_PRESETS[presetId] || THEME_PRESETS.signature;
+  return {
+    enabled: true,
+    candles: {
+      bullBody: p.chart.upColor,
+      bullWick: p.chart.wickUpColor || p.chart.upColor,
+      bullBorder: p.chart.borderUpColor || deriveBorderColor(p.chart.upColor),
+      bearBody: p.chart.downColor,
+      bearWick: p.chart.wickDownColor || p.chart.downColor,
+      bearBorder: p.chart.borderDownColor || deriveBorderColor(p.chart.downColor),
+    },
+    general: {
+      background: p.chart.background || p.tokens.bgDarkest,
+      foreground: p.tokens.bgPanel || p.tokens.bgContainer,
+      textColor: p.chart.textColor || p.tokens.textMain,
+    },
+  };
+}
+
+/**
  * Menghitung warna efektif volume (bull, bear, dan MA) berdasarkan tema aktif
  * dengan memprioritaskan kustomisasi lilin pengguna jika tersedia.
  */
 export function resolveEffectiveVolumeColors(
   themePresetId: ThemePresetId = 'signature',
-  customColors?: { bullColor?: string; bearColor?: string }
+  customPaletteOrColors?: CustomThemePalette | { bullColor?: string; bearColor?: string },
+  legacyCustomColors?: { bullColor?: string; bearColor?: string }
 ): EffectiveVolumeColors {
   const cfg = THEME_PRESETS[themePresetId] || THEME_PRESETS.signature;
+
+  let up = cfg.chart.upColor;
+  let down = cfg.chart.downColor;
+
+  if (customPaletteOrColors) {
+    if ('candles' in customPaletteOrColors && customPaletteOrColors.candles) {
+      if (customPaletteOrColors.candles.bullBody) up = customPaletteOrColors.candles.bullBody;
+      if (customPaletteOrColors.candles.bearBody) down = customPaletteOrColors.candles.bearBody;
+    } else if ('bullColor' in customPaletteOrColors || 'bearColor' in customPaletteOrColors) {
+      const legacy = customPaletteOrColors as { bullColor?: string; bearColor?: string };
+      if (legacy.bullColor) up = legacy.bullColor;
+      if (legacy.bearColor) down = legacy.bearColor;
+    }
+  }
+
+  if (legacyCustomColors) {
+    if (legacyCustomColors.bullColor) up = legacyCustomColors.bullColor;
+    if (legacyCustomColors.bearColor) down = legacyCustomColors.bearColor;
+  }
+
   return {
-    upColor: customColors?.bullColor || cfg.chart.upColor,
-    downColor: customColors?.bearColor || cfg.chart.downColor,
+    upColor: up,
+    downColor: down,
     maColor: cfg.tokens.brandPrimary || cfg.tokens.brandCyan || '#ff9800',
   };
+}
+
+/**
+ * Serialisasi objek CustomThemePalette ke JSON yang rapi
+ */
+export function serializeCustomPaletteJson(palette: CustomThemePalette): string {
+  return JSON.stringify(palette, null, 2);
+}
+
+/**
+ * Serialisasi objek CustomThemePalette ke format daftar teks (ala chartthemes.com)
+ */
+export function serializeCustomPaletteText(palette: CustomThemePalette): string {
+  return [
+    'Candle colors:',
+    `Bearish body: ${palette.candles.bearBody}`,
+    `Bearish wick: ${palette.candles.bearWick}`,
+    `Bearish border: ${palette.candles.bearBorder}`,
+    `Bullish body: ${palette.candles.bullBody}`,
+    `Bullish wick: ${palette.candles.bullWick}`,
+    `Bullish border: ${palette.candles.bullBorder}`,
+    '',
+    'General colors:',
+    `Background color: ${palette.general.background}`,
+    `Foreground: ${palette.general.foreground}`,
+    `Text color: ${palette.general.textColor}`,
+  ].join('\n');
+}
+
+/**
+ * Parser toleran untuk membaca salinan teks maupun JSON palet tema dari clipboard
+ */
+export function parseCustomPaletteFromText(input: string): CustomThemePalette | null {
+  if (!input || typeof input !== 'string') return null;
+  const trimmed = input.trim();
+
+  // 1. Coba JSON parse
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.candles && parsed.general) {
+        return {
+          enabled: true,
+          candles: {
+            bullBody: parsed.candles.bullBody || '#D4A5A5',
+            bullWick: parsed.candles.bullWick || '#7F4F4F',
+            bullBorder: parsed.candles.bullBorder || '#B87B7B',
+            bearBody: parsed.candles.bearBody || '#9B1D20',
+            bearWick: parsed.candles.bearWick || '#7F4F4F',
+            bearBorder: parsed.candles.bearBorder || '#5E1D1D',
+          },
+          general: {
+            background: parsed.general.background || '#edede9',
+            foreground: parsed.general.foreground || '#4A0E0F',
+            textColor: parsed.general.textColor || '#4A0E0F',
+          },
+        };
+      }
+    } catch (_) {}
+  }
+
+  // 2. Coba parse key-value plain-text (case-insensitive)
+  const lines = trimmed.split('\n');
+  const dict: Record<string, string> = {};
+
+  for (const line of lines) {
+    const parts = line.split(':');
+    if (parts.length >= 2) {
+      const k = parts[0].trim().toLowerCase();
+      const v = parts.slice(1).join(':').trim();
+      const hexMatch = v.match(/#[0-9A-Fa-f]{3,8}/);
+      if (hexMatch) {
+        dict[k] = hexMatch[0];
+      }
+    }
+  }
+
+  // Cek apakah minimal ada 3 key utama yang cocok
+  const hasCandles = dict['bearish body'] || dict['bullish body'] || dict['bear body'] || dict['bull body'];
+  const hasGeneral = dict['background color'] || dict['background'] || dict['text color'] || dict['text'];
+
+  if (hasCandles || hasGeneral) {
+    const bullBody = dict['bullish body'] || dict['bull body'] || '#D4A5A5';
+    const bearBody = dict['bearish body'] || dict['bear body'] || '#9B1D20';
+
+    return {
+      enabled: true,
+      candles: {
+        bullBody,
+        bullWick: dict['bullish wick'] || dict['bull wick'] || bullBody,
+        bullBorder: dict['bullish border'] || dict['bull border'] || deriveBorderColor(bullBody),
+        bearBody,
+        bearWick: dict['bearish wick'] || dict['bear wick'] || bearBody,
+        bearBorder: dict['bearish border'] || dict['bear border'] || deriveBorderColor(bearBody),
+      },
+      general: {
+        background: dict['background color'] || dict['background'] || '#edede9',
+        foreground: dict['foreground'] || dict['panel'] || '#4A0E0F',
+        textColor: dict['text color'] || dict['text'] || '#4A0E0F',
+      },
+    };
+  }
+
+  return null;
+}
+
+export interface EffectiveThemeColors {
+  background: string;
+  foreground: string;
+  textColor: string;
+  isDark: boolean;
+}
+
+/**
+ * Menghitung warna efektif tema (background, foreground, textColor, dan status isDark)
+ * dengan memperhitungkan fallback ke preset aktif jika palet kustom tidak aktif atau parsial.
+ */
+export function resolveEffectiveThemeColors(
+  themePreset: ThemePresetId = 'signature',
+  customPalette?: CustomThemePalette | null
+): EffectiveThemeColors {
+  const cfg = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+  const isCustomActive = Boolean(customPalette && customPalette.enabled !== false && customPalette.candles && customPalette.general);
+  const background = isCustomActive && customPalette?.general?.background
+    ? customPalette.general.background
+    : (cfg.chart?.background || cfg.tokens.bgDarkest);
+  const foreground = isCustomActive && customPalette?.general?.foreground
+    ? customPalette.general.foreground
+    : (cfg.tokens.bgContainer || cfg.tokens.bgPanel);
+  const textColor = isCustomActive && customPalette?.general?.textColor
+    ? customPalette.general.textColor
+    : (cfg.chart?.textColor || cfg.tokens.textMain);
+  const isDark = isDarkColor(background);
+
+  return { background, foreground, textColor, isDark };
 }
 

@@ -192,4 +192,17 @@ _Avoid_: OCR plan parser, LLM plan extractor, AI signal reader
 Visualisasi gambar terpadu pada kanvas grafik yang memetakan rencana posisi trading dengan titik masuk tunggal, tingkat batas risiko (Stop Loss), dan target keuntungan bertingkat (TP1, TP2, dst.) yang dilengkapi label harga serta metrik R-multiple untuk tiap jenjang target.
 _Avoid_: Single-target position only, Disjointed position boxes, Cluttered trade lines
 
+**Custom Theme Palette**:
+Objek konfigurasi skema warna kustom 9 dimensi yang mencakup 6 atribut lilin individual (badan, sumbu, dan garis tepi untuk kondisi bullish dan bearish) serta 3 atribut visual umum (background, foreground, text) yang diterapkan serentak ke UI Trawangan, Pine Editor, dan kanvas WebGL2 Vela.
+_Avoid_: Partial candle override, Disconnected UI palette, Fixed wick color
+
+**Unified Token Engine**:
+Subsistem injeksi token styling yang menyinkronkan token CSS aplikasi (`--bg-*`, `--text-*`, `--border-*`), token runtime Vela (`--vela-*`), serta compartment CodeMirror 6 secara dinamis dan reaktif berdasarkan status tema aktif maupun kustomisasi pengguna.
+_Avoid_: Hardcoded component theme, Isolated chart styler, Ungoverned dialog tokens
+
+**Adaptive Luminance Engine**:
+Modul kalkulasi tingkat kecerahan latar belakang (`isDarkColor`) yang secara otomatis menurunkan tonalitas turunan (elevated surfaces, hairlines, muted text, wash layers, dan dialog scrim) agar kontras visual tetap proporsional baik pada skema ultra-dark maupun light-theme.
+_Avoid_: Fixed dark transparency, Blinding light UI, Inverted illegible text
+
+
 

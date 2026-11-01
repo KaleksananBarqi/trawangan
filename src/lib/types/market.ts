@@ -217,8 +217,38 @@ export interface ObjectTreeItem {
   locked?: boolean;
 }
 
-export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass';
+export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'red_folder';
 export type UiDensity = 'compact' | 'regular' | 'comfortable';
+
+/**
+ * 6 Atribut Warna Candlestick Modular (Sesuai Referensi chartthemes.com)
+ */
+export interface CustomCandleColors {
+  bullBody: string;
+  bullWick: string;
+  bullBorder: string;
+  bearBody: string;
+  bearWick: string;
+  bearBorder: string;
+}
+
+/**
+ * 3 Atribut Warna Visual Umum (Fondasi Background, Surface Container, dan Teks)
+ */
+export interface CustomGeneralColors {
+  background: string;
+  foreground: string;
+  textColor: string;
+}
+
+/**
+ * Palet Kustom Terpadu 9 Dimensi (Unified Custom Palette Matrix)
+ */
+export interface CustomThemePalette {
+  enabled?: boolean;
+  candles: CustomCandleColors;
+  general: CustomGeneralColors;
+}
 
 /**
  * Konfigurasi profil personal trader untuk atribusi snapshot frame (#126)
@@ -262,8 +292,10 @@ export interface AppSettings {
   showVolume?: boolean;
   showIndicatorPriceLabels?: boolean;
   showDrawingPriceLabels?: boolean;
-  theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'obsidian';
+  theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'red_folder' | 'obsidian';
   themePreset?: ThemePresetId;
+  themeFilterMode?: 'all' | 'dark' | 'light';
+  customPalette?: CustomThemePalette;
   customBullColor?: string;
   customBearColor?: string;
   customChartBackground?: CustomChartBackgroundConfig;
