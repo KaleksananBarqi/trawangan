@@ -5,6 +5,17 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.30.1] - 2026-11-01
+
+### 🐛 Diperbaiki (Fixed)
+- **Sinkronisasi Event Seleksi Kanvas & Penghapusan Objek Gambar via Del/Backspace**:
+  - **Penyelarasan Event Seleksi Vela**: Memperbaiki ketidaksesuaian nama event pada `chartDrawingController.ts` dari `'drawing:select'` ke event resmi WebGL2 Vela **`'drawing:selected'`** (`{ id: string | null, ids: string[] }`). Kini, mengklik objek gambar langsung pada kanvas grafik mencatat ID objek terpilih (`selectedDrawingId`) secara instan dan akurat.
+  - **Fallback Cerdas Status Seleksi Engine**: Menambahkan inspeksi langsung pada array `activeChart.drawings.ctrl.selectedIds` di dalam `getSelectedDrawingId()`, menjamin ID seleksi selalu terdeteksi meski event asinkron belum sempat diproses.
+  - **Dukungan Multi-Selection & Penghapusan Fleksibel**: Menambahkan method `getSelectedDrawingIds()` dan `deleteSelectedDrawing()`, serta memperbarui handler `draw-delete` di `src/routes/+page.svelte` untuk mengeksekusi penghapusan objek gambar yang sedang dipilih secara andal.
+  - **Listener Dinamis Seluruh Sel Workspace**: Mengaitkan listener drawing secara dinamis ke seluruh sel yang ada di workspace serta berlangganan event `workspace.on('cell:created')` dan `workspace.on('cell:active')`.
+  - **Kompatibilitas macOS Keyboard**: Menyertakan `e.code === 'Backspace'` pada matcher perintah `draw-delete` di `commandDispatcher.ts` guna menjamin tombol Backspace/Delete pada papan ketik macOS berfungsi konsisten.
+  - **Pengujian Regresi Otomatis**: Menambahkan suite pengujian terfokus di `tests/reproDelDrawingSelection.test.ts` untuk memvalidasi alur klik kanvas, penekanan tombol Del/Backspace, deselect klik kanvas kosong (*safe no-op*), dan pembatalan (*undo*).
+
 ## [0.30.0] - 2026-11-01
 
 ### 🚀 Ditambahkan (Added)
