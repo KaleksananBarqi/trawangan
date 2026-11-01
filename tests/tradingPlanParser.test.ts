@@ -454,5 +454,88 @@ Struktur tren Bearish.
       assert.equal(plan.conclusion?.probability, 'Medium Confidence');
       assert.match(plan.conclusion?.invalidationScenario || '', /77850\.0/);
     });
+
+    it('Bug Repro: Mengurai tabel Markdown bervalue multiline dengan baris kosong dan mencegah false context zone tanggal (10-30)', () => {
+      const userText = `
+## 1. Multi-Timeframe Alignment (HTF, MTF & LTF)
+* **HTF Narrative:** Struktur 4H terkonfirmasi **Bearish** dengan sekuens *Lower High* di 81953.7 (10-29) dan *Lower Low* di 76270.0 (10-30).
+
+---
+
+## 5. Trading Plan
+
+| Parameter | Nilai |
+| --- | --- |
+| Bias | Bearish |
+| Entry | **78200.0** (Limit sell pada batas bawah 1H Bearish FVG setelah *liquidity run* atas resistansi lokal, terkonfirmasi penolakan di area pasokan) |
+| Alasan Entry | Selaras dengan tren makro Bearish 4H [FAKTA]. Level 78200.0 adalah batas bawah 1H Bearish FVG (78200.0 – 78377.9) [FAKTA] dan gerbang masuk 4H Bearish FVG (78242.4 – 80549.9) [FAKTA], yang merupakan zona premium ideal untuk menyerap likuiditas beli ritel [INFERENSI] dan eksekusi mitigasi institusional [SPEKULASI].
+
+ |
+| Stop Loss | **78600.0** |
+| Alasan SL | Ditempatkan di atas *Mean Threshold* (level 50% = 78577.2) dari 1H Bearish Order Block (78377.9 – 78776.5) [FAKTA]. Penutupan candle di atas *Mean Threshold* membatalkan validitas pertahanan institusional pada *order block* tersebut [INFERENSI].
+
+ |
+| TP1 | **77400.0** |
+| R multiple TP1 | **2.0R** — Nilai $R = \\Vert{}78200.0 - 78600.0\\Vert{} = 400.0$ poin. Jarak ke TP1: $\\Vert{}78200.0 - 77400.0\\Vert{} = 800.0$ poin. $R\\text{ multiple} = 800.0 / 400.0 = 2.0R$. Angka ini didasarkan pada jarak menuju *liquidity pool* di bawah *Swing Low* 77458.4 [INFERENSI].
+
+ |
+| Alasan TP1 | Likuidasi Sell-Side Liquidity (SSL Pool 1) dari Stop Loss pembeli *breakout* di bawah *Swing Low* LTF 77458.4 [INFERENSI], tepat di atas 15m unmitigated Bullish OB (77462.2 – 77522.7) [FAKTA].
+
+ |
+| TP2 | **77000.0** |
+| R multiple TP2 | **3.0R** — Jarak ke TP2: $\\Vert{}78200.0 - 77000.0\\Vert{} = 1200.0$ poin. $R\\text{ multiple} = 1200.0 / 400.0 = 3.0R$. Angka ini didasarkan pada jarak sapuan likuiditas penuh di bawah struktur *Higher Low* MTF 77060.0 [FAKTA + INFERENSI].
+
+ |
+| Alasan TP2 | Penyerapan Sell-Side Liquidity utama (SSL Pool 2) di bawah 1H *Swing Low* 77060.0 [FAKTA], sekaligus menjadi level invalidasi tren naik internal 1H [INFERENSI].
+
+ |
+| RRR aktual (TP1) | **1:2.0** |
+| RRR aktual (TP2) | **1:3.0** |
+
+---
+
+## 6. Kesimpulan & Confidence Level
+* **Skenario Invalidasi:**
+* Setup terinvalidasi penuh jika terjadi penutupan candle 1H/4H secara meyakinkan (*candle body close*) di atas level 78776.5 (batas atas 1H Bearish OB & *Swing High* 10-30 06:00) [FAKTA].
+      `.trim();
+
+      const plan = parseTradingPlan(userText);
+
+      // 1. Tesis / Alasan harus tercatat
+      assert.ok(plan.reasons.entry, 'Tesis Alasan Entry harus tercatat');
+      assert.match(plan.reasons.entry, /Selaras dengan tren makro Bearish 4H/);
+
+      assert.ok(plan.reasons.stopLoss, 'Tesis Alasan SL harus tercatat');
+      assert.match(plan.reasons.stopLoss, /Mean Threshold/);
+
+      assert.ok(plan.reasons.tp1, 'Tesis Alasan TP1 harus tercatat');
+      assert.match(plan.reasons.tp1, /Likuidasi Sell-Side Liquidity/);
+
+      assert.ok(plan.reasons.tp2, 'Tesis Alasan TP2 harus tercatat');
+      assert.match(plan.reasons.tp2, /Penyerapan Sell-Side Liquidity/);
+
+      // 2. R multiple pada targets harus tercatat
+      assert.equal(plan.targets[0].rMultiple, 2.0);
+      assert.equal(plan.targets[1].rMultiple, 3.0);
+
+      // 3. Tanggal (10-30 atau 10-29) tidak boleh dijadikan Context Zone
+      const falseDateZone = plan.contextZones.find(
+        (z) => (z.low === 10 && z.high === 30) || (z.low === 10 && z.high === 29)
+      );
+      assert.equal(falseDateZone, undefined, 'Format tanggal 10-30 tidak boleh dijadikan Context Zone');
+
+      // 4. Label Context Zone harus bersih dan spesifik (bukan "Context Zone" generik jika ada nama institusional)
+      const htfFvg = plan.contextZones.find((z) => z.low === 78242.4 && z.high === 80549.9);
+      assert.ok(htfFvg, 'Zona 4H Bearish FVG harus terdeteksi');
+      assert.equal(htfFvg?.label, '4H Bearish FVG');
+
+      const mtfOb = plan.contextZones.find((z) => z.low === 78377.9 && z.high === 78776.5);
+      assert.ok(mtfOb, 'Zona 1H Bearish Order Block harus terdeteksi');
+      assert.equal(mtfOb?.label, '1H Bearish Order Block');
+
+      const ltfOb = plan.contextZones.find((z) => z.low === 77462.2 && z.high === 77522.7);
+      assert.ok(ltfOb, 'Zona 15m unmitigated Bullish OB harus terdeteksi');
+      assert.equal(ltfOb?.label, '15m unmitigated Bullish OB');
+    });
   });
 });

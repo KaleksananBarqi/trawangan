@@ -124,19 +124,28 @@ function extractExplicitDistance(rawVal: string): number | null {
 /**
  * Mengekstrak area FVG atau zona rentang harga (misal "LTF FVG 81182.2 - 81236.7").
  */
-function extractContextZones(text: string, tickSize?: number): ContextZone[] {
+function extractContextZones(
+  text: string,
+  tickSize?: number,
+  referencePrice?: number
+): ContextZone[] {
   const zones: ContextZone[] = [];
   if (!text) return zones;
 
   // Pola rentang harga: angka - angka
   // Memeriksa konteks apakah memuat kata kunci seperti FVG, OB, Imbalance, Zona, Area, dll.
-  const regex = /(?:(?:di dalam|tunggu harga masuk|masuk|area|zona)?\s*([a-zA-Z0-9_\s]{0,35}?(?:FVG|OB|Order Block|Imbalance|Demand|Supply|Zone|Area|Rentang|Range)[a-zA-Z0-9_\s]{0,20}?)\s+)?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|s\/d|to)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)/gi;
+  // Mendukung label dengan jeda kurung atau titik dua (misal "4H Bearish FVG (78242.4 - 80549.9)")
+  const regex = /(?:(?:di dalam|tunggu harga masuk|masuk|area|zona)?\s*([a-zA-Z0-9_\s]{0,35}?(?:FVG|OB|Order Block|Imbalance|Demand|Supply|Zone|Area|Rentang|Range)[a-zA-Z0-9_\s]{0,20}?)\s*(?:\(\s*|:\s*|\s+))?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|s\/d|to)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)/gi;
 
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
     const rawLabel = match[1]?.trim() || '';
     const fullMatch = match[0];
     const matchIndex = match.index;
+    const num1Str = match[2];
+    const num2Str = match[3];
+    const afterMatch = text.substring(matchIndex + fullMatch.length, matchIndex + fullMatch.length + 20);
+    const beforeMatch = text.substring(Math.max(0, matchIndex - 30), matchIndex);
     const surrounding = text.substring(Math.max(0, matchIndex - 20), matchIndex + fullMatch.length + 20);
 
     // Abaikan kalkulasi rumus matematika seperti |78300 - 78900| atau R = |...|
@@ -144,15 +153,45 @@ function extractContextZones(text: string, tickSize?: number): ContextZone[] {
       continue;
     }
 
+    const num1 = parseFloat(num1Str.replace(/,/g, ''));
+    const num2 = parseFloat(num2Str.replace(/,/g, ''));
+
+    if (isNaN(num1) || isNaN(num2)) continue;
+
+    // Abaikan format tanggal / timestamp kalender (misal "10-30 06:00", "(10-29)", "(10-30)")
+    const isFollowedByTime = /^\s*(?:[Tt]\s*)?\d{1,2}:\d{2}\b/.test(afterMatch);
+    const isPrecededBySwingOrDate = /(?:swing\s+(?:high|low)|candle|bar|pada|tanggal|tgl|date|time|waktu|hl|ll|hh|lh)\s*[*_]*\s*$/i.test(beforeMatch);
+    const isEnclosedDate =
+      /[([]\s*$/.test(beforeMatch) &&
+      /^\s*[)\]]/.test(afterMatch) &&
+      !num1Str.includes('.') &&
+      !num2Str.includes('.') &&
+      num1 <= 31 &&
+      num2 <= 31;
+    const isCalendarDate =
+      !rawLabel &&
+      !num1Str.includes('.') &&
+      !num2Str.includes('.') &&
+      ((num1 >= 1 && num1 <= 12 && num2 >= 1 && num2 <= 31) ||
+        (num1 >= 1 && num1 <= 31 && num2 >= 1 && num2 <= 12));
+
+    if (isFollowedByTime || isPrecededBySwingOrDate || isEnclosedDate || isCalendarDate) {
+      continue;
+    }
+
+    // Jika referencePrice diketahui dan nilainya jauh lebih besar (misal aset > 100 seperti BTC),
+    // abaikan nilai sangat kecil yang jelas bukan level harga instrumen
+    if (typeof referencePrice === 'number' && referencePrice > 100) {
+      const maxVal = Math.max(num1, num2);
+      if (maxVal < referencePrice * 0.1 && num1 <= 31 && num2 <= 31) {
+        continue;
+      }
+    }
+
     // Jika tidak ada kata kunci struktural di label atau sekitar, abaikan
     if (!rawLabel && !/(?:fvg|ob|order block|imbalance|zona|area|demand|supply|range)/i.test(surrounding)) {
       continue;
     }
-
-    const num1 = parseFloat(match[2].replace(/,/g, ''));
-    const num2 = parseFloat(match[3].replace(/,/g, ''));
-
-    if (isNaN(num1) || isNaN(num2)) continue;
 
     let low = Math.min(num1, num2);
     let high = Math.max(num1, num2);
@@ -162,10 +201,27 @@ function extractContextZones(text: string, tickSize?: number): ContextZone[] {
       high = roundToTickSize(high, tickSize);
     }
 
-    // Bersihkan label
-    let cleanLabel = rawLabel
-      .replace(/^(?:di dalam|tunggu harga masuk|masuk|area|zona)\s+/i, '')
-      .trim();
+    // Bersihkan label zona (ekstrak frase institusional terdekat seperti "4H Bearish FVG" atau "1H Bearish OB")
+    let cleanLabel = '';
+    if (rawLabel) {
+      const labelRegex =
+        /\b((?:[0-9]{1,3}\s*[mhdHDwW]|daily|weekly|macro|htf|mtf|ltf)\s+)?(?:unmitigated\s+)?(?:(?:bullish|bearish)\s+)?(?:FVG|OB|Order\s*Block|Imbalance|Demand|Supply)(?:\s+(?:Zone|Area))?\b/gi;
+      let lastMatch: string | null = null;
+      let lm: RegExpExecArray | null;
+      while ((lm = labelRegex.exec(rawLabel)) !== null) {
+        lastMatch = lm[0];
+      }
+      if (lastMatch) {
+        cleanLabel = lastMatch.trim();
+      } else {
+        cleanLabel = rawLabel
+          .replace(
+            /^(?:serta|dan|di\s+area|di\s+zona|zona\s+mitigasi|area\s+mitigasi|di\s+dalam|tunggu\s+harga\s+masuk|masuk|area|zona)\s+/i,
+            ''
+          )
+          .trim();
+      }
+    }
     if (!cleanLabel) cleanLabel = 'Context Zone';
 
     // Hindari duplikasi zona yang sama persis
@@ -326,6 +382,79 @@ export function validatePlanSanity(
 }
 
 /**
+ * Menggabungkan baris tabel Markdown yang terpotong menjadi beberapa baris (multiline)
+ * atau memiliki baris kosong di dalam sel sebelum pipa penutup.
+ */
+function normalizePlanLines(rawLines: string[]): string[] {
+  const normalized: string[] = [];
+  let currentTableRow: string | null = null;
+
+  for (const rawLine of rawLines) {
+    const trimmed = rawLine.trim();
+
+    // 1. Baris kosong
+    if (!trimmed) {
+      if (currentTableRow !== null) {
+        currentTableRow += ' ';
+      }
+      continue;
+    }
+
+    // 2. Baris yang hanya berisi karakter pipa penutup (misal "|" atau " |")
+    if (/^\|+\s*$/.test(trimmed)) {
+      if (currentTableRow !== null) {
+        currentTableRow = currentTableRow.trimEnd() + ' |';
+        normalized.push(currentTableRow);
+        currentTableRow = null;
+      }
+      continue;
+    }
+
+    const isTableRowStart = trimmed.startsWith('|');
+
+    if (isTableRowStart) {
+      if (currentTableRow !== null) {
+        normalized.push(currentTableRow.endsWith('|') ? currentTableRow : `${currentTableRow} |`);
+        currentTableRow = null;
+      }
+
+      if (trimmed.endsWith('|')) {
+        normalized.push(trimmed);
+      } else {
+        currentTableRow = trimmed;
+      }
+    } else {
+      if (currentTableRow !== null) {
+        if (trimmed.endsWith('|')) {
+          currentTableRow += ' ' + trimmed;
+          normalized.push(currentTableRow);
+          currentTableRow = null;
+        } else if (
+          trimmed.startsWith('#') ||
+          trimmed.startsWith('---') ||
+          trimmed.startsWith('===') ||
+          /^(?:entry|sl|stop\s*loss|tp\d*|target\d*|bias)\s*:/i.test(trimmed)
+        ) {
+          normalized.push(currentTableRow.endsWith('|') ? currentTableRow : `${currentTableRow} |`);
+          currentTableRow = null;
+          normalized.push(trimmed);
+        } else {
+          currentTableRow += ' ' + trimmed;
+        }
+      } else {
+        normalized.push(trimmed);
+      }
+    }
+  }
+
+  if (currentTableRow !== null) {
+    normalized.push(currentTableRow.endsWith('|') ? currentTableRow : `${currentTableRow} |`);
+  }
+
+  return normalized;
+}
+
+/**
  * Mesin Parser Rencana Perdagangan Deterministik.
  * Mengurai string tabel Markdown atau format teks biasa menjadi struktur ParsedTradingPlan.
  */
@@ -365,7 +494,8 @@ export function parseTradingPlan(
     return t;
   };
 
-  const lines = (text || '').split(/\r?\n/);
+  const rawLines = (text || '').split(/\r?\n/);
+  const lines = normalizePlanLines(rawLines);
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -375,8 +505,9 @@ export function parseTradingPlan(
     let val = '';
 
     // Cek apakah baris Markdown table
-    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-      const parts = trimmed
+    if (trimmed.startsWith('|')) {
+      const row = trimmed.endsWith('|') ? trimmed : `${trimmed} |`;
+      const parts = row
         .split('|')
         .map((p) => p.trim())
         .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
@@ -548,8 +679,8 @@ export function parseTradingPlan(
     if (stopLoss > 0) stopLoss = roundToTickSize(stopLoss, tickSize);
   }
 
-  // Ekstraksi zona konteks
-  const contextZones = extractContextZones(text, tickSize);
+  // Ekstraksi zona konteks dengan referensi harga untuk mencegah false context zone
+  const contextZones = extractContextZones(text, tickSize, entry || stopLoss);
 
   // Hitung riskAmount
   let riskAmount = 0;
