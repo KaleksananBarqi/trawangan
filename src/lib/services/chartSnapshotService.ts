@@ -200,7 +200,8 @@ function drawRoundedRect(
     ctx.arcTo(x + w, y + h, x + w - radius.br, y + h, radius.br);
     ctx.lineTo(x + radius.bl, y + h);
     ctx.arcTo(x, y + h, x, y + h - radius.bl, radius.bl);
-    ctx.lineTo(x + radius.tl);
+    // Sisi kiri naik ke titik awal kurva sudut kiri-atas
+    ctx.lineTo(x, y + radius.tl);
     ctx.arcTo(x, y, x + radius.tl, y, radius.tl);
     ctx.closePath();
     return;
@@ -215,7 +216,8 @@ function drawRoundedRect(
     ctx.quadraticCurveTo(x + w, y + h, x + w - radius.br, y + h);
     ctx.lineTo(x + radius.bl, y + h);
     ctx.quadraticCurveTo(x, y + h, x, y + h - radius.bl);
-    ctx.lineTo(x + radius.tl);
+    // Sisi kiri naik ke titik awal kurva sudut kiri-atas
+    ctx.lineTo(x, y + radius.tl);
     ctx.quadraticCurveTo(x, y, x + radius.tl, y);
     ctx.closePath();
     return;
