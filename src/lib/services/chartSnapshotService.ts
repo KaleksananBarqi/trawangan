@@ -14,6 +14,7 @@ import type {
 } from '../types/market';
 import { formatPlanPrice, type ParsedTradingPlan } from './planParserService';
 import { colorToRgba, wrapCanvasText } from './chartSnapshotOverlayService';
+import { isDarkColor } from '../utils/colorUtils';
 
 export { colorToRgba, wrapCanvasText };
 
@@ -1253,17 +1254,43 @@ export function resolveSecurityWatermarkText(
   return 'TRAWANGAN';
 }
 
+export interface WatermarkColors {
+  fill: string;
+  stroke: string;
+}
+
 /**
- * Merender tanda air keamanan semi-transparan diagonal pada kanvas grafik (#127)
- * Memosisikan teks di tengah area grafik dengan sudut rotasi diagonal -30° s.d. -35°
- * serta opasitas yang dikontrol oleh pengaturan pengguna.
+ * Menyelesaikan warna teks tanda air keamanan (Security Watermark) secara adaptif
+ * berdasarkan tingkat kecerahan (luminance) kanvas latar belakang (#147).
+ * - Latar Gelap: teks putih cerah (#FFFFFF) dengan stroke bayangan gelap (rgba(0, 0, 0, 0.45))
+ * - Latar Terang: teks kontras gelap (#1A1A1A) dengan stroke terang (rgba(255, 255, 255, 0.65))
  */
-function drawSecurityWatermark(
+export function resolveWatermarkColors(backgroundHex?: string): WatermarkColors {
+  const isDark = isDarkColor(backgroundHex || '#0F0F0F');
+  if (isDark) {
+    return {
+      fill: '#FFFFFF',
+      stroke: 'rgba(0, 0, 0, 0.45)'
+    };
+  }
+  return {
+    fill: '#1A1A1A',
+    stroke: 'rgba(255, 255, 255, 0.65)'
+  };
+}
+
+/**
+ * Merender tanda air keamanan semi-transparan diagonal pada kanvas grafik (#127, #147)
+ * Memosisikan teks di tengah area grafik dengan sudut rotasi diagonal -30° s.d. -35°
+ * serta opasitas dan warna adaptif berdasarkan tingkat kecerahan latar belakang.
+ */
+export function drawSecurityWatermark(
   ctx: any,
   dim: CompositeDimensions,
   watermark?: Partial<SecurityWatermarkConfig>,
   profile?: UserProfileConfig,
-  scale = 1
+  scale = 1,
+  backgroundColor?: string
 ): void {
   if (!watermark || !watermark.enabled) {
     return;
@@ -1291,6 +1318,9 @@ function drawSecurityWatermark(
   // Sudut diagonal -32° (-0.5585 radian)
   const ROTATION_ANGLE = -32 * (Math.PI / 180);
 
+  // Selesaikan warna adaptif berdasarkan luminansi latar belakang (#147)
+  const watermarkColors = resolveWatermarkColors(backgroundColor);
+
   ctx.save();
   // Kliping ke batas area grafik agar tanda air tidak meluber ke Attribution Bar atau batas luar
   ctx.beginPath();
@@ -1303,14 +1333,14 @@ function drawSecurityWatermark(
   ctx.textBaseline = 'middle';
   ctx.globalAlpha = opacity;
 
-  // Render teks utama dengan font tebal
+  // Render teks utama dengan font tebal dan warna adaptif
   ctx.font = `800 ${fontSize}px "JetBrains Mono", "Plus Jakarta Sans", monospace, sans-serif`;
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = watermarkColors.fill;
   ctx.fillText(text, 0, 0);
 
   // Garis tepi tipis agar tanda air tetap kontras pada ragam tema dan latar belakang
   ctx.lineWidth = Math.max(1, Math.round(1.5 * scale));
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.strokeStyle = watermarkColors.stroke;
   ctx.strokeText(text, 0, 0);
 
   ctx.restore();
@@ -1367,6 +1397,12 @@ export function compositeSnapshot(
   const isCustomGradient =
     customBg?.mode === 'gradient' && Boolean(customBg.gradientTop || customBg.gradientBottom);
 
+  const effectiveChartBg = isCustomSolid
+    ? customBg!.solidColor!
+    : isCustomGradient
+      ? (customBg!.gradientTop || '#0F0F0F')
+      : (options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F');
+
   if (mode === 'clean') {
     if (isCustomSolid) {
       ctx.fillStyle = customBg!.solidColor!;
@@ -1387,7 +1423,7 @@ export function compositeSnapshot(
     ctx.drawImage(sourceCanvasOrImage, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
     
     // Tanda air keamanan strictly bounded/clipped ke area kanvas grafik di sisi kiri
-    drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
+    drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale, effectiveChartBg);
 
     // Render panel samping tesis jika aktif berdampingan
     if (isSidePanelActive && activePlan && dim.panelX !== undefined && dim.panelWidth !== undefined) {
@@ -1438,7 +1474,7 @@ export function compositeSnapshot(
 
   // 2b. Tanda Air Keamanan Anti-Pencurian semi-transparan DI ATAS grafik (#127)
   // Menjaga agar watermark profil tidak tertutup/terhapus oleh kanvas grafik Vela yang opaque
-  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
+  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale, effectiveChartBg);
   ctx.restore();
 
   // Garis batas redup di sekeliling area chart
