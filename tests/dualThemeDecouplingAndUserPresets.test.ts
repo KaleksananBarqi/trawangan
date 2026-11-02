@@ -331,4 +331,94 @@ describe('Tiket #149: Dual-Theme Decoupling & User Theme Presets ("Save As") Stu
       );
     });
   });
+
+  describe('6. Code Review Hardening Suite (#144 Review Findings)', () => {
+    const pagePath = path.resolve(process.cwd(), 'src/routes/+page.svelte');
+    const pageContent = fs.readFileSync(pagePath, 'utf8');
+
+    const appearancePath = path.resolve(process.cwd(), 'src/lib/components/settings/AppearanceTab.svelte');
+    const appearanceContent = fs.readFileSync(appearancePath, 'utf8');
+
+    const snapshotModalPath = path.resolve(process.cwd(), 'src/lib/components/SnapshotPreviewModal.svelte');
+    const snapshotModalContent = fs.readFileSync(snapshotModalPath, 'utf8');
+
+    const contextMenuPath = path.resolve(process.cwd(), 'src/lib/components/ChartContextMenu.svelte');
+    const contextMenuContent = fs.readFileSync(contextMenuPath, 'utf8');
+
+    test('1. +page.svelte menyuntikkan token CSS UI Shell saat preset pengguna aktif tanpa customPalette', () => {
+      assert.match(
+        pageContent,
+        /!isBuiltInTheme\(effectivePreset\)/,
+        '+page.svelte harus mengecek !isBuiltInTheme untuk menyuntikkan token user preset'
+      );
+      assert.match(pageContent, /--bg-darkest.*activeThemeConfig\.tokens\.bgDarkest/);
+      assert.match(pageContent, /--bg-surface.*activeThemeConfig\.tokens\.bgSurface/);
+      assert.match(pageContent, /--bg-container.*activeThemeConfig\.tokens\.bgContainer/);
+      assert.match(pageContent, /--bg-panel.*activeThemeConfig\.tokens\.bgPanel/);
+      assert.match(pageContent, /--text-main.*activeThemeConfig\.tokens\.textMain/);
+      assert.match(pageContent, /--bull-color.*activeThemeConfig\.tokens\.bullColor/);
+      assert.match(pageContent, /--bear-color.*activeThemeConfig\.tokens\.bearColor/);
+      assert.match(pageContent, /--brand-primary.*activeThemeConfig\.tokens\.brandPrimary/);
+    });
+
+    test('2. SnapshotPreviewModal.svelte menghitung activeTheme grafik menggunakan resolveEffectiveChartThemePreset', () => {
+      assert.match(
+        snapshotModalContent,
+        /resolveEffectiveChartThemePreset/,
+        'SnapshotPreviewModal harus memanggil resolveEffectiveChartThemePreset'
+      );
+      assert.match(
+        snapshotModalContent,
+        /resolveEffectiveThemePreset/,
+        'SnapshotPreviewModal harus menghormati preferensi colorModePreference'
+      );
+    });
+
+    test('3. AppearanceTab.svelte memvalidasi keunikan nama tema (Save As) case-insensitively', () => {
+      assert.match(
+        appearanceContent,
+        /Nama tema sudah digunakan, gunakan nama lain\./,
+        'AppearanceTab harus memunculkan pesan validasi duplikasi nama'
+      );
+      assert.match(
+        appearanceContent,
+        /THEME_PRESETS/,
+        'Validasi duplikasi harus membandingkan dengan preset resmi bawaan'
+      );
+    });
+
+    test('4. AppearanceTab.svelte membersihkan customPalette: null saat memilih preset di mode decoupled', () => {
+      assert.match(
+        appearanceContent,
+        /handleSelectChartPreset/,
+        'AppearanceTab harus mendefinisikan handleSelectChartPreset'
+      );
+      assert.match(
+        appearanceContent,
+        /customPalette:\s*null/,
+        'handleSelectPreset / handleSelectChartPreset harus menyetel customPalette: null'
+      );
+    });
+
+    test('5. AppearanceTab.svelte menyediakan ekspor palet format teks Hex (serializeCustomPaletteText)', () => {
+      assert.match(
+        appearanceContent,
+        /handleExportUserThemeText/,
+        'AppearanceTab harus menyediakan handler handleExportUserThemeText'
+      );
+      assert.match(
+        appearanceContent,
+        /serializeCustomPaletteText/,
+        'handleExportUserThemeText harus memanggil serializeCustomPaletteText'
+      );
+    });
+
+    test('6. ChartContextMenu.svelte menyertakan warna --text-dim pada status disabled', () => {
+      assert.match(
+        contextMenuContent,
+        /\.menu-item:disabled\s*\{[^}]*color:\s*var\(--text-dim,\s*#737373\)/,
+        'Status .menu-item:disabled harus menyertakan color: var(--text-dim, #737373)'
+      );
+    });
+  });
 });

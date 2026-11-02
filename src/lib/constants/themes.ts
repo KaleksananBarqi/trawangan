@@ -1,8 +1,10 @@
-import type { ColorModePreference, CustomThemeDefinition, CustomThemePalette, ThemePresetId, UiDensity } from '../types/market';
+import type { ColorModePreference, CustomThemeDefinition, CustomThemePalette, ThemePresetId, ThemeId, UiDensity } from '../types/market';
 import { deriveBorderColor, isDarkColor, withAlpha } from '../utils/colorUtils';
 
+export type { ThemeId };
+
 export interface ThemeConfig {
-  id: ThemePresetId | string;
+  id: ThemeId;
   name: string;
   badge: string;
   mode: 'dark' | 'light';
@@ -491,7 +493,7 @@ export interface EffectiveThemeColors {
 /**
  * Memeriksa apakah suatu ID tema merupakan preset resmi bawaan Trawangan (#149)
  */
-export function isBuiltInTheme(themeId: string): boolean {
+export function isBuiltInTheme(themeId: ThemeId): boolean {
   return Object.prototype.hasOwnProperty.call(THEME_PRESETS, themeId);
 }
 
@@ -579,7 +581,7 @@ export function buildThemeConfigFromUserTheme(def: CustomThemeDefinition): Theme
  * Menyelesaikan ThemeConfig berdasarkan ID tema (baik preset resmi bawaan maupun preset pengguna) (#149)
  */
 export function resolveThemeConfig(
-  themeId: ThemePresetId | string = 'signature',
+  themeId: ThemeId = 'signature',
   savedUserThemes?: CustomThemeDefinition[]
 ): ThemeConfig {
   if (isBuiltInTheme(themeId)) {
@@ -623,7 +625,7 @@ export function createUserTheme(
  */
 export function renameUserTheme(
   themes: CustomThemeDefinition[],
-  themeId: string,
+  themeId: ThemeId,
   newName: string
 ): CustomThemeDefinition[] {
   if (isBuiltInTheme(themeId)) {
@@ -650,7 +652,7 @@ export function renameUserTheme(
  */
 export function deleteUserTheme(
   themes: CustomThemeDefinition[],
-  themeId: string
+  themeId: ThemeId
 ): CustomThemeDefinition[] {
   if (isBuiltInTheme(themeId)) {
     throw new Error(`Tidak dapat menghapus preset resmi bawaan: ${themeId}`);
@@ -677,9 +679,9 @@ export function resolveDeletedThemeFallback(
  */
 export function resolveEffectiveChartThemePreset(
   syncWithApp: boolean,
-  effectiveAppPreset: ThemePresetId | string,
-  chartThemePreset?: ThemePresetId | string
-): ThemePresetId | string {
+  effectiveAppPreset: ThemeId,
+  chartThemePreset?: ThemeId
+): ThemeId {
   if (syncWithApp) {
     return effectiveAppPreset;
   }
@@ -691,7 +693,7 @@ export function resolveEffectiveChartThemePreset(
  * dengan memperhitungkan fallback ke preset aktif atau user theme jika palet kustom tidak aktif atau parsial.
  */
 export function resolveEffectiveThemeColors(
-  themePreset: ThemePresetId | string = 'signature',
+  themePreset: ThemeId = 'signature',
   customPalette?: CustomThemePalette | null,
   savedUserThemes?: CustomThemeDefinition[]
 ): EffectiveThemeColors {
@@ -721,10 +723,10 @@ export function resolveEffectiveThemeColors(
 export function resolveEffectiveThemePreset(
   preference: ColorModePreference = 'system',
   systemIsDark: boolean = true,
-  fallback: ThemePresetId | string = 'signature',
-  darkPreset?: ThemePresetId | string,
-  lightPreset?: ThemePresetId | string
-): ThemePresetId | string {
+  fallback: ThemeId = 'signature',
+  darkPreset?: ThemeId,
+  lightPreset?: ThemeId
+): ThemeId {
   const effectiveDark = darkPreset || fallback || 'signature';
   const effectiveLight = lightPreset || (fallback === 'red_folder' ? fallback : 'red_folder');
 

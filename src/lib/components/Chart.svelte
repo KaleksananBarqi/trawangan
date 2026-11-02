@@ -44,7 +44,7 @@
     onOpenImportPlan?: (initialText?: string) => void;
     onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
     themePreset?: ThemePresetId | string; fontSize?: number; timezone?: string;
-    customPalette?: CustomThemePalette;
+    customPalette?: CustomThemePalette | null;
     customBullColor?: string; customBearColor?: string;
     customChartBackground?: CustomChartBackgroundConfig;
     securityWatermark?: SecurityWatermarkConfig;
@@ -67,7 +67,7 @@
 
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
-    fontSize, timezone, customPalette, customBullColor, customBearColor, customChartBackground,
+    fontSize, timezone, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange,
     onVelaThemeSelect
   });
@@ -119,7 +119,7 @@
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
   $effect(() => {
     const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor, cp = customPalette;
-    if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp);
+    if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp || undefined);
   });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
   $effect(() => {

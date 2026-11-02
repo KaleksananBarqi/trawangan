@@ -53,7 +53,7 @@
     activeTimeframe?: string;
     providerId?: string;
     themePreset?: ThemePresetId;
-    customPalette?: CustomThemePalette;
+    customPalette?: CustomThemePalette | null;
     onClose: () => void;
     onAddToChart: (code: string, title: string) => Promise<boolean>;
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
@@ -217,7 +217,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
     const cp = customPalette;
     if (editorView) {
       editorView.dispatch({
-        effects: themeCompartment.reconfigure(buildPineTheme(tp, cp))
+        effects: themeCompartment.reconfigure(buildPineTheme(tp, cp || undefined))
       });
     }
   });
@@ -270,7 +270,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
             updateCursorPos(update.view);
           }
         }),
-        themeCompartment.of(buildPineTheme(themePreset, customPalette)),
+        themeCompartment.of(buildPineTheme(themePreset, customPalette || undefined)),
       ],
     });
 

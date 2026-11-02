@@ -1262,20 +1262,20 @@ export interface WatermarkColors {
 /**
  * Menyelesaikan warna teks tanda air keamanan (Security Watermark) secara adaptif
  * berdasarkan tingkat kecerahan (luminance) kanvas latar belakang (#147).
- * - Latar Gelap: teks putih cerah (#FFFFFF) dengan stroke bayangan gelap (rgba(0, 0, 0, 0.45))
- * - Latar Terang: teks kontras gelap (#1A1A1A) dengan stroke terang (rgba(255, 255, 255, 0.65))
+ * - Latar Gelap: teks putih cerah (rgba(255, 255, 255, 0.9)) dengan stroke bayangan gelap (rgba(0, 0, 0, 0.5))
+ * - Latar Terang: teks kontras gelap (rgba(20, 20, 20, 0.85)) dengan stroke terang (rgba(255, 255, 255, 0.6))
  */
 export function resolveWatermarkColors(backgroundHex?: string): WatermarkColors {
   const isDark = isDarkColor(backgroundHex || '#0F0F0F');
   if (isDark) {
     return {
-      fill: '#FFFFFF',
-      stroke: 'rgba(0, 0, 0, 0.45)'
+      fill: 'rgba(255, 255, 255, 0.9)',
+      stroke: 'rgba(0, 0, 0, 0.5)'
     };
   }
   return {
-    fill: '#1A1A1A',
-    stroke: 'rgba(255, 255, 255, 0.65)'
+    fill: 'rgba(20, 20, 20, 0.85)',
+    stroke: 'rgba(255, 255, 255, 0.6)'
   };
 }
 

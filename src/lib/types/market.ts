@@ -218,6 +218,7 @@ export interface ObjectTreeItem {
 }
 
 export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'red_folder';
+export type ThemeId = ThemePresetId | string;
 
 /**
  * Preferensi mode tampilan warna antarmuka Trawangan (#148)
@@ -314,15 +315,15 @@ export interface AppSettings {
   showIndicatorPriceLabels?: boolean;
   showDrawingPriceLabels?: boolean;
   theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'red_folder' | 'obsidian';
-  themePreset?: ThemePresetId | string;
-  chartThemePreset?: ThemePresetId | string;
+  themePreset?: ThemeId;
+  chartThemePreset?: ThemeId;
   syncChartWithAppTheme?: boolean;
   savedUserThemes?: CustomThemeDefinition[];
   colorModePreference?: ColorModePreference;
-  activeDarkPreset?: ThemePresetId | string;
-  activeLightPreset?: ThemePresetId | string;
+  activeDarkPreset?: ThemeId;
+  activeLightPreset?: ThemeId;
   themeFilterMode?: 'all' | 'dark' | 'light';
-  customPalette?: CustomThemePalette;
+  customPalette?: CustomThemePalette | null;
   customBullColor?: string;
   customBearColor?: string;
   customChartBackground?: CustomChartBackgroundConfig;

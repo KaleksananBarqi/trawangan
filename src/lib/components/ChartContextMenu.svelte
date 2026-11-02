@@ -378,6 +378,7 @@
 
   .menu-item:disabled {
     opacity: 0.45;
+    color: var(--text-dim, #737373);
     cursor: not-allowed;
   }
 

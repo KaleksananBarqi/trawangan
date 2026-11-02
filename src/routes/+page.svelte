@@ -88,6 +88,7 @@
     resolveEffectiveThemePreset,
     resolveEffectiveChartThemePreset,
     resolveThemeConfig,
+    isBuiltInTheme,
     registerUserThemes,
     getNextColorMode
   } from '../lib/constants/themes';
@@ -158,13 +159,14 @@
   // Reaktif Sinkronisasi Tema, Token Vela, & Tipografi ke Elemen Root DOM
   $effect(() => {
     if (typeof document !== 'undefined') {
-      const preset = (effectiveThemePreset as ThemePresetId) || 'signature';
+      const effectivePreset = effectiveThemePreset || 'signature';
+      const activeThemeConfig = resolveThemeConfig(effectivePreset, appSettings.savedUserThemes);
       const isCustomActive = Boolean(appSettings.customPalette && appSettings.customPalette.enabled !== false);
       const cp = appSettings.customPalette;
 
-      document.documentElement.setAttribute('data-theme', preset);
+      document.documentElement.setAttribute('data-theme', effectivePreset);
 
-      const { background: effectiveBg, textColor: effectiveText, isDark } = resolveEffectiveThemeColors(preset, cp);
+      const { background: effectiveBg, textColor: effectiveText, isDark } = resolveEffectiveThemeColors(effectivePreset, cp, appSettings.savedUserThemes);
       const themeMode = isDark ? 'dark' : 'light';
 
       document.documentElement.setAttribute('data-theme-mode', themeMode);
@@ -181,7 +183,7 @@
       document.documentElement.style.setProperty('--base-font-size', `${currentFontSize}px`);
       document.documentElement.style.setProperty('--font-scale', `${fontScale}`);
 
-      // Sinkronisasi variabel CSS UI Shell saat Custom Palette aktif
+      // Sinkronisasi variabel CSS UI Shell saat Custom Palette atau User Preset aktif (#149 review)
       if (isCustomActive && cp) {
         document.documentElement.style.setProperty('--bg-darkest', effectiveBg);
         document.documentElement.style.setProperty('--bg-surface', effectiveBg);
@@ -191,6 +193,18 @@
         document.documentElement.style.setProperty('--text-primary', effectiveText);
         document.documentElement.style.setProperty('--bull-color', cp.candles.bullBody);
         document.documentElement.style.setProperty('--bear-color', cp.candles.bearBody);
+        document.documentElement.style.setProperty('--brand-primary', cp.candles.bullBody);
+      } else if (!isBuiltInTheme(effectivePreset)) {
+        // Suntikkan token UI Shell dari preset tema pengguna personal ke root DOM
+        document.documentElement.style.setProperty('--bg-darkest', activeThemeConfig.tokens.bgDarkest);
+        document.documentElement.style.setProperty('--bg-surface', activeThemeConfig.tokens.bgSurface);
+        document.documentElement.style.setProperty('--bg-container', activeThemeConfig.tokens.bgContainer);
+        document.documentElement.style.setProperty('--bg-panel', activeThemeConfig.tokens.bgPanel);
+        document.documentElement.style.setProperty('--text-main', activeThemeConfig.tokens.textMain);
+        document.documentElement.style.setProperty('--text-primary', activeThemeConfig.tokens.textPrimary || activeThemeConfig.tokens.textMain);
+        document.documentElement.style.setProperty('--bull-color', activeThemeConfig.tokens.bullColor);
+        document.documentElement.style.setProperty('--bear-color', activeThemeConfig.tokens.bearColor);
+        document.documentElement.style.setProperty('--brand-primary', activeThemeConfig.tokens.brandPrimary);
       } else {
         document.documentElement.style.removeProperty('--bg-darkest');
         document.documentElement.style.removeProperty('--bg-surface');

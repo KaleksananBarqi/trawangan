@@ -19,7 +19,12 @@
     Columns2,
     EyeOff
   } from '@lucide/svelte';
-  import { THEME_PRESETS, resolveThemeConfig } from '../constants/themes';
+  import {
+    THEME_PRESETS,
+    resolveThemeConfig,
+    resolveEffectiveThemePreset,
+    resolveEffectiveChartThemePreset
+  } from '../constants/themes';
   import type { AppSettings, SnapshotScaleMultiplier, SnapshotThesisLayout } from '../types/market';
   import { chartDrawingController, isSameSymbol } from '../services/chartDrawingController';
   import type { ParsedTradingPlan } from '../services/planParserService';
@@ -215,6 +220,23 @@
     });
   }
 
+  function getEffectiveChartThemeConfig() {
+    const systemIsDark = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : true;
+    const effectiveAppPreset = resolveEffectiveThemePreset(
+      appSettings.colorModePreference ?? 'system',
+      systemIsDark,
+      appSettings.themePreset ?? 'signature',
+      appSettings.activeDarkPreset ?? 'signature',
+      appSettings.activeLightPreset ?? 'red_folder'
+    );
+    const effectiveChartPreset = resolveEffectiveChartThemePreset(
+      appSettings.syncChartWithAppTheme ?? true,
+      effectiveAppPreset,
+      appSettings.chartThemePreset ?? 'signature'
+    );
+    return resolveThemeConfig(effectiveChartPreset, appSettings.savedUserThemes);
+  }
+
   /**
    * Menghasilkan kanvas komposit snapshot berdasarkan konfigurasi aktif
    */
@@ -251,7 +273,7 @@
       scope: 'active',
     };
 
-    const activeTheme = resolveThemeConfig(appSettings.chartThemePreset || appSettings.themePreset || 'signature', appSettings.savedUserThemes);
+    const activeTheme = getEffectiveChartThemeConfig();
     const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
 
     const activePlan = hasActivePlans && effectivePlans.length > 0 ? effectivePlans[0] : null;
@@ -343,7 +365,7 @@
   function getEstimatedPixelDimensions(mult: SnapshotScaleMultiplier): string {
     const sourceW = cachedSourceCanvas?.width || (typeof window !== 'undefined' ? window.innerWidth : 1920);
     const sourceH = cachedSourceCanvas?.height || (typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.75) : 1080);
-    const activeTheme = resolveThemeConfig(appSettings.chartThemePreset || appSettings.themePreset || 'signature', appSettings.savedUserThemes);
+    const activeTheme = getEffectiveChartThemeConfig();
     const activePlan = hasActivePlans && effectivePlans.length > 0 ? effectivePlans[0] : null;
 
     const dim = calculateCompositeDimensions(sourceW, sourceH, {

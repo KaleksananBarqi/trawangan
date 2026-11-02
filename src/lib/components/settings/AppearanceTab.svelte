@@ -145,6 +145,13 @@
     isDarkColor(currentPalette.general?.background || activePreset.chart.background || '#0F0F0F')
   );
 
+  function handleSelectChartPreset(preset: { id: string; mode: 'dark' | 'light' }) {
+    onUpdateSettings({
+      chartThemePreset: preset.id,
+      customPalette: null as any,
+    });
+  }
+
   function handleSelectPreset(preset: { id: string; mode: 'dark' | 'light' }) {
     if (syncChartWithAppTheme) {
       onUpdateSettings({
@@ -152,7 +159,7 @@
         chartThemePreset: preset.id,
         theme: preset.id as any,
         ...(preset.mode === 'dark' ? { activeDarkPreset: preset.id } : { activeLightPreset: preset.id }),
-        customPalette: undefined,
+        customPalette: null as any,
         customBullColor: undefined,
         customBearColor: undefined,
       });
@@ -162,11 +169,10 @@
           themePreset: preset.id,
           theme: preset.id as any,
           ...(preset.mode === 'dark' ? { activeDarkPreset: preset.id } : { activeLightPreset: preset.id }),
+          customPalette: null as any,
         });
       } else {
-        onUpdateSettings({
-          chartThemePreset: preset.id,
-        });
+        handleSelectChartPreset(preset);
       }
     }
   }
@@ -182,6 +188,19 @@
     const cleanName = saveAsThemeName.trim();
     if (!cleanName) {
       saveAsError = 'Nama tema tidak boleh kosong.';
+      return;
+    }
+
+    const lowerName = cleanName.toLowerCase();
+    const isBuiltInDuplicate = Object.values(THEME_PRESETS).some(
+      (p) => p.name.trim().toLowerCase() === lowerName || p.id.toLowerCase() === lowerName
+    );
+    const isUserDuplicate = savedUserThemes.some(
+      (t) => t.name.trim().toLowerCase() === lowerName
+    );
+
+    if (isBuiltInDuplicate || isUserDuplicate) {
+      saveAsError = 'Nama tema sudah digunakan, gunakan nama lain.';
       return;
     }
 
@@ -217,6 +236,20 @@
       renameError = 'Nama tema tidak boleh kosong.';
       return;
     }
+
+    const lowerName = cleanName.toLowerCase();
+    const isBuiltInDuplicate = Object.values(THEME_PRESETS).some(
+      (p) => p.name.trim().toLowerCase() === lowerName || p.id.toLowerCase() === lowerName
+    );
+    const isUserDuplicate = savedUserThemes.some(
+      (t) => t.id !== renameTargetThemeId && t.name.trim().toLowerCase() === lowerName
+    );
+
+    if (isBuiltInDuplicate || isUserDuplicate) {
+      renameError = 'Nama tema sudah digunakan, gunakan nama lain.';
+      return;
+    }
+
     try {
       const updatedList = renameUserTheme(savedUserThemes, renameTargetThemeId, cleanName);
       onUpdateSettings({ savedUserThemes: updatedList });
@@ -250,7 +283,18 @@
     }
   }
 
-  async function handleExportUserTheme(themeId: string, themeName: string, e: MouseEvent) {
+  async function handleExportUserThemeText(themeId: string, themeName: string, e: MouseEvent) {
+    e.stopPropagation();
+    const userTheme = savedUserThemes.find((t) => t.id === themeId);
+    if (!userTheme) return;
+    try {
+      await navigator.clipboard.writeText(serializeCustomPaletteText(userTheme.palette));
+      copyFeedback = `Palet teks "${themeName}" disalin ke clipboard!`;
+      setTimeout(() => { copyFeedback = null; }, 2500);
+    } catch (_) {}
+  }
+
+  async function handleExportUserThemeJson(themeId: string, themeName: string, e: MouseEvent) {
     e.stopPropagation();
     const userTheme = savedUserThemes.find((t) => t.id === themeId);
     if (!userTheme) return;
@@ -260,6 +304,8 @@
       setTimeout(() => { copyFeedback = null; }, 2500);
     } catch (_) {}
   }
+
+  const handleExportUserTheme = handleExportUserThemeJson;
 
   function sanitizeHex(val: string): string | null {
     let v = val.trim();
@@ -695,8 +741,16 @@
               <button
                 type="button"
                 class="btn-card-action"
+                title="Ekspor palet sebagai teks Hex"
+                onclick={(e) => handleExportUserThemeText(preset.id, preset.name, e)}
+              >
+                <FileText size={11} />
+              </button>
+              <button
+                type="button"
+                class="btn-card-action"
                 title="Ekspor tema sebagai JSON"
-                onclick={(e) => handleExportUserTheme(preset.id, preset.name, e)}
+                onclick={(e) => handleExportUserThemeJson(preset.id, preset.name, e)}
               >
                 <Download size={11} />
               </button>

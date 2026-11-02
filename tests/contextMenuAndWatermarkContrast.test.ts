@@ -127,28 +127,28 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
   });
 
   describe('2. resolveWatermarkColors Helper Unit Tests', () => {
-    test('Mengembalikan teks putih (#FFFFFF) dan garis tepi gelap untuk latar gelap (e.g. #0F0F0F, #181A20, #131722)', () => {
+    test('Mengembalikan teks putih (rgba(255, 255, 255, 0.9)) dan garis tepi gelap (rgba(0, 0, 0, 0.5)) untuk latar gelap (e.g. #0F0F0F, #181A20, #131722)', () => {
       const darkBgs = ['#0F0F0F', '#181A20', '#131722', '#000000', '#1E1E1E'];
       for (const bg of darkBgs) {
         const colors = resolveWatermarkColors(bg);
-        assert.equal(colors.fill, '#FFFFFF', `Background ${bg} harus menghasilkan fill putih (#FFFFFF)`);
-        assert.equal(colors.stroke, 'rgba(0, 0, 0, 0.45)', `Background ${bg} harus menghasilkan dark stroke`);
+        assert.equal(colors.fill, 'rgba(255, 255, 255, 0.9)', `Background ${bg} harus menghasilkan fill putih transparan (rgba(255, 255, 255, 0.9))`);
+        assert.equal(colors.stroke, 'rgba(0, 0, 0, 0.5)', `Background ${bg} harus menghasilkan dark stroke rgba(0, 0, 0, 0.5)`);
       }
     });
 
-    test('Mengembalikan teks kontras gelap (#1A1A1A) dan garis tepi terang untuk latar terang (e.g. #EDEDE9, #FFFFFF, #F5F5F5)', () => {
+    test('Mengembalikan teks kontras gelap (rgba(20, 20, 20, 0.85)) dan garis tepi terang (rgba(255, 255, 255, 0.6)) untuk latar terang (e.g. #EDEDE9, #FFFFFF, #F5F5F5)', () => {
       const lightBgs = ['#EDEDE9', '#FFFFFF', '#F5F5F5', '#FAFAFA', '#E5E7EB'];
       for (const bg of lightBgs) {
         const colors = resolveWatermarkColors(bg);
-        assert.equal(colors.fill, '#1A1A1A', `Background ${bg} harus menghasilkan fill gelap (#1A1A1A)`);
-        assert.equal(colors.stroke, 'rgba(255, 255, 255, 0.65)', `Background ${bg} harus menghasilkan light stroke`);
+        assert.equal(colors.fill, 'rgba(20, 20, 20, 0.85)', `Background ${bg} harus menghasilkan fill gelap (rgba(20, 20, 20, 0.85))`);
+        assert.equal(colors.stroke, 'rgba(255, 255, 255, 0.6)', `Background ${bg} harus menghasilkan light stroke rgba(255, 255, 255, 0.6)`);
       }
     });
 
     test('Fallback cerdas ke skema latar gelap ketika parameter kosong atau undefined', () => {
       const defaultColors = resolveWatermarkColors(undefined as any);
-      assert.equal(defaultColors.fill, '#FFFFFF');
-      assert.equal(defaultColors.stroke, 'rgba(0, 0, 0, 0.45)');
+      assert.equal(defaultColors.fill, 'rgba(255, 255, 255, 0.9)');
+      assert.equal(defaultColors.stroke, 'rgba(0, 0, 0, 0.5)');
     });
   });
 
@@ -180,13 +180,13 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
         (op) => op.method === 'fillText' && op.args[0] === 'SEC-DARK'
       );
       assert.ok(darkFillOp, 'fillText harus terpanggil untuk watermark');
-      assert.equal(darkFillOp.args[5], '#FFFFFF', 'Watermark pada latar gelap harus menggunakan fill #FFFFFF');
+      assert.equal(darkFillOp.args[5], 'rgba(255, 255, 255, 0.9)', 'Watermark pada latar gelap harus menggunakan fill rgba(255, 255, 255, 0.9)');
 
       const darkStrokeOp = mockCanvasDark.operations.find(
         (op) => op.method === 'strokeText' && op.args[0] === 'SEC-DARK'
       );
       assert.ok(darkStrokeOp, 'strokeText harus terpanggil untuk watermark');
-      assert.equal(darkStrokeOp.args[3], 'rgba(0, 0, 0, 0.45)', 'Watermark pada latar gelap harus stroke gelap');
+      assert.equal(darkStrokeOp.args[3], 'rgba(0, 0, 0, 0.5)', 'Watermark pada latar gelap harus stroke gelap');
 
       // Uji latar terang
       const mockCanvasLight = createMockCanvas(800, 600);
@@ -203,13 +203,13 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
         (op) => op.method === 'fillText' && op.args[0] === 'SEC-LIGHT'
       );
       assert.ok(lightFillOp, 'fillText harus terpanggil untuk watermark');
-      assert.equal(lightFillOp.args[5], '#1A1A1A', 'Watermark pada latar terang harus menggunakan fill #1A1A1A');
+      assert.equal(lightFillOp.args[5], 'rgba(20, 20, 20, 0.85)', 'Watermark pada latar terang harus menggunakan fill rgba(20, 20, 20, 0.85)');
 
       const lightStrokeOp = mockCanvasLight.operations.find(
         (op) => op.method === 'strokeText' && op.args[0] === 'SEC-LIGHT'
       );
       assert.ok(lightStrokeOp, 'strokeText harus terpanggil untuk watermark');
-      assert.equal(lightStrokeOp.args[3], 'rgba(255, 255, 255, 0.65)', 'Watermark pada latar terang harus stroke terang');
+      assert.equal(lightStrokeOp.args[3], 'rgba(255, 255, 255, 0.6)', 'Watermark pada latar terang harus stroke terang');
     });
   });
 
@@ -233,13 +233,13 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
         (op) => op.method === 'fillText' && op.args[0] === 'LIGHT THEME WATERMARK'
       );
       assert.ok(fillTextOp, 'Watermark harus dirender pada screenshot komposit');
-      assert.equal(fillTextOp.args[5], '#1A1A1A', 'Watermark pada tema terang harus berwarna gelap #1A1A1A');
+      assert.equal(fillTextOp.args[5], 'rgba(20, 20, 20, 0.85)', 'Watermark pada tema terang harus berwarna gelap rgba(20, 20, 20, 0.85)');
 
       const strokeTextOp = mockCanvas.operations.find(
         (op) => op.method === 'strokeText' && op.args[0] === 'LIGHT THEME WATERMARK'
       );
       assert.ok(strokeTextOp, 'Stroke watermark harus dirender');
-      assert.equal(strokeTextOp.args[3], 'rgba(255, 255, 255, 0.65)', 'Stroke pada tema terang harus stroke terang');
+      assert.equal(strokeTextOp.args[3], 'rgba(255, 255, 255, 0.6)', 'Stroke pada tema terang harus stroke terang');
     });
 
     test('compositeSnapshot menggunakan warna adaptif pada custom solid background terang', () => {
@@ -264,10 +264,10 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
         (op) => op.method === 'fillText' && op.args[0] === 'WHITE BG WATERMARK'
       );
       assert.ok(fillTextOp, 'Watermark harus dirender pada custom white background');
-      assert.equal(fillTextOp.args[5], '#1A1A1A', 'Watermark pada solid white background harus fill gelap');
+      assert.equal(fillTextOp.args[5], 'rgba(20, 20, 20, 0.85)', 'Watermark pada solid white background harus fill gelap');
     });
 
-    test('compositeSnapshot mempertahankan warna putih (#FFFFFF) pada latar gelap default (#0F0F0F)', () => {
+    test('compositeSnapshot mempertahankan warna putih (rgba(255, 255, 255, 0.9)) pada latar gelap default (#0F0F0F)', () => {
       const mockCanvas = createMockCanvas(1280, 720);
       const source = { width: 1280, height: 720 };
 
@@ -286,7 +286,7 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
         (op) => op.method === 'fillText' && op.args[0] === 'DARK BG WATERMARK'
       );
       assert.ok(fillTextOp, 'Watermark harus dirender pada dark background');
-      assert.equal(fillTextOp.args[5], '#FFFFFF', 'Watermark pada dark background harus fill putih #FFFFFF');
+      assert.equal(fillTextOp.args[5], 'rgba(255, 255, 255, 0.9)', 'Watermark pada dark background harus fill putih transparan');
     });
   });
 });
