@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
-    Check, Minus, Plus, RotateCcw, Copy, CheckCheck, Sun, Moon, Palette, FileText, Clipboard, X
+    Check, Minus, Plus, RotateCcw, Copy, CheckCheck, Sun, Moon, Palette, FileText, Clipboard, X, Monitor,
+    Save, Trash2, Edit2, Download
   } from '@lucide/svelte';
   import {
     THEME_PRESETS,
@@ -14,14 +15,23 @@
     parseCustomPaletteFromText,
     serializeCustomPaletteJson,
     serializeCustomPaletteText,
+    createUserTheme,
+    renameUserTheme,
+    deleteUserTheme,
+    resolveDeletedThemeFallback,
+    resolveThemeConfig,
+    buildThemeConfigFromUserTheme,
+    isBuiltInTheme,
   } from '../../constants/themes';
   import { isDarkColor } from '../../utils/colorUtils';
   import type {
     AppSettings,
+    ColorModePreference,
     CustomChartBackgroundConfig,
     CustomThemePalette,
     CustomCandleColors,
     CustomGeneralColors,
+    CustomThemeDefinition,
     ThemePresetId,
   } from '../../types/market';
 
@@ -38,8 +48,69 @@
   let pasteInputText = $state('');
   let pasteError = $state<string | null>(null);
 
+  // Dual-Theme Decoupling & User Presets State (#149)
+  const syncChartWithAppTheme = $derived<boolean>(settings.syncChartWithAppTheme ?? true);
+  const savedUserThemes = $derived<CustomThemeDefinition[]>(settings.savedUserThemes || []);
+  let targetThemeSelection = $state<'app' | 'chart'>('app');
+
+  // Modal Save As ("Simpan Sebagai Tema Baru")
+  let isSaveAsModalOpen = $state(false);
+  let saveAsThemeName = $state('');
+  let saveAsThemeMode = $state<'dark' | 'light'>('dark');
+  let saveAsError = $state<string | null>(null);
+
+  // Modal Rename Preset Pengguna
+  let isRenameModalOpen = $state(false);
+  let renameTargetThemeId = $state<string | null>(null);
+  let renameThemeName = $state('');
+  let renameError = $state<string | null>(null);
+
   function setFilterMode(mode: 'all' | 'dark' | 'light') {
     onUpdateSettings({ themeFilterMode: mode });
+  }
+
+  const colorModePref = $derived<ColorModePreference>(settings.colorModePreference || 'system');
+
+  // Koleksi seluruh preset yang tersedia (Preset Resmi Bawaan + Preset Pengguna Tersimpan) (#149)
+  const allAvailablePresets = $derived.by(() => {
+    const builtIns = Object.values(THEME_PRESETS);
+    const customPresets = savedUserThemes.map((u) => buildThemeConfigFromUserTheme(u));
+    return [...builtIns, ...customPresets];
+  });
+
+  const darkPresets = $derived(allAvailablePresets.filter((p) => p.mode === 'dark'));
+  const lightPresets = $derived(allAvailablePresets.filter((p) => p.mode === 'light'));
+
+  const filteredPresets = $derived.by(() => {
+    if (filterMode === 'dark') return darkPresets;
+    if (filterMode === 'light') return lightPresets;
+    return allAvailablePresets;
+  });
+
+  function handleSetColorMode(mode: ColorModePreference) {
+    onUpdateSettings({
+      colorModePreference: mode,
+      ...(mode === 'dark' ? { themePreset: (settings.activeDarkPreset as any) || 'signature' } : {}),
+      ...(mode === 'light' ? { themePreset: (settings.activeLightPreset as any) || 'red_folder' } : {}),
+      ...(syncChartWithAppTheme && mode === 'dark' ? { chartThemePreset: (settings.activeDarkPreset as any) || 'signature' } : {}),
+      ...(syncChartWithAppTheme && mode === 'light' ? { chartThemePreset: (settings.activeLightPreset as any) || 'red_folder' } : {}),
+    });
+  }
+
+  function handleSetDarkPreset(presetId: string) {
+    onUpdateSettings({
+      activeDarkPreset: presetId,
+      ...(colorModePref === 'dark' ? { themePreset: presetId as any } : {}),
+      ...(syncChartWithAppTheme && colorModePref === 'dark' ? { chartThemePreset: presetId as any } : {}),
+    });
+  }
+
+  function handleSetLightPreset(presetId: string) {
+    onUpdateSettings({
+      activeLightPreset: presetId,
+      ...(colorModePref === 'light' ? { themePreset: presetId as any } : {}),
+      ...(syncChartWithAppTheme && colorModePref === 'light' ? { chartThemePreset: presetId as any } : {}),
+    });
   }
 
   function handleSetFontSize(newSize: number) {
@@ -58,9 +129,11 @@
     handleSetFontSize(current + delta);
   }
 
-  const activePreset = $derived(THEME_PRESETS[settings.themePreset || 'signature'] || THEME_PRESETS.signature);
+  const activePreset = $derived(
+    resolveThemeConfig(settings.themePreset || 'signature', savedUserThemes)
+  );
   const defaultPalette = $derived<CustomThemePalette>(
-    buildCustomPaletteFromPreset(settings.themePreset || 'signature')
+    buildCustomPaletteFromPreset((settings.themePreset as ThemePresetId) || 'signature')
   );
   const currentPalette = $derived<CustomThemePalette>(
     settings.customPalette || defaultPalette
@@ -72,12 +145,167 @@
     isDarkColor(currentPalette.general?.background || activePreset.chart.background || '#0F0F0F')
   );
 
-  const filteredPresets = $derived.by(() => {
-    const list = Object.values(THEME_PRESETS);
-    if (filterMode === 'dark') return list.filter((p) => p.mode === 'dark');
-    if (filterMode === 'light') return list.filter((p) => p.mode === 'light');
-    return list;
-  });
+  function handleSelectChartPreset(preset: { id: string; mode: 'dark' | 'light' }) {
+    onUpdateSettings({
+      chartThemePreset: preset.id,
+      customPalette: null as any,
+    });
+  }
+
+  function handleSelectPreset(preset: { id: string; mode: 'dark' | 'light' }) {
+    if (syncChartWithAppTheme) {
+      onUpdateSettings({
+        themePreset: preset.id,
+        chartThemePreset: preset.id,
+        theme: preset.id as any,
+        ...(preset.mode === 'dark' ? { activeDarkPreset: preset.id } : { activeLightPreset: preset.id }),
+        customPalette: null as any,
+        customBullColor: undefined,
+        customBearColor: undefined,
+      });
+    } else {
+      if (targetThemeSelection === 'app') {
+        onUpdateSettings({
+          themePreset: preset.id,
+          theme: preset.id as any,
+          ...(preset.mode === 'dark' ? { activeDarkPreset: preset.id } : { activeLightPreset: preset.id }),
+          customPalette: null as any,
+        });
+      } else {
+        handleSelectChartPreset(preset);
+      }
+    }
+  }
+
+  function handleOpenSaveAs() {
+    saveAsThemeName = '';
+    saveAsThemeMode = isPaletteDark ? 'dark' : 'light';
+    saveAsError = null;
+    isSaveAsModalOpen = true;
+  }
+
+  function handleConfirmSaveAs() {
+    const cleanName = saveAsThemeName.trim();
+    if (!cleanName) {
+      saveAsError = 'Nama tema tidak boleh kosong.';
+      return;
+    }
+
+    const lowerName = cleanName.toLowerCase();
+    const isBuiltInDuplicate = Object.values(THEME_PRESETS).some(
+      (p) => p.name.trim().toLowerCase() === lowerName || p.id.toLowerCase() === lowerName
+    );
+    const isUserDuplicate = savedUserThemes.some(
+      (t) => t.name.trim().toLowerCase() === lowerName
+    );
+
+    if (isBuiltInDuplicate || isUserDuplicate) {
+      saveAsError = 'Nama tema sudah digunakan, gunakan nama lain.';
+      return;
+    }
+
+    const newTheme = createUserTheme(cleanName, saveAsThemeMode, currentPalette);
+    const updatedList = [...savedUserThemes, newTheme];
+
+    onUpdateSettings({
+      savedUserThemes: updatedList,
+      themePreset: newTheme.id,
+      ...(syncChartWithAppTheme ? { chartThemePreset: newTheme.id } : {}),
+      customPalette: undefined,
+    });
+
+    isSaveAsModalOpen = false;
+    saveAsThemeName = '';
+    saveAsError = null;
+    copyFeedback = `Tema "${newTheme.name}" berhasil disimpan!`;
+    setTimeout(() => { copyFeedback = null; }, 2500);
+  }
+
+  function handleOpenRename(themeId: string, currentName: string, e: MouseEvent) {
+    e.stopPropagation();
+    renameTargetThemeId = themeId;
+    renameThemeName = currentName;
+    renameError = null;
+    isRenameModalOpen = true;
+  }
+
+  function handleConfirmRename() {
+    if (!renameTargetThemeId) return;
+    const cleanName = renameThemeName.trim();
+    if (!cleanName) {
+      renameError = 'Nama tema tidak boleh kosong.';
+      return;
+    }
+
+    const lowerName = cleanName.toLowerCase();
+    const isBuiltInDuplicate = Object.values(THEME_PRESETS).some(
+      (p) => p.name.trim().toLowerCase() === lowerName || p.id.toLowerCase() === lowerName
+    );
+    const isUserDuplicate = savedUserThemes.some(
+      (t) => t.id !== renameTargetThemeId && t.name.trim().toLowerCase() === lowerName
+    );
+
+    if (isBuiltInDuplicate || isUserDuplicate) {
+      renameError = 'Nama tema sudah digunakan, gunakan nama lain.';
+      return;
+    }
+
+    try {
+      const updatedList = renameUserTheme(savedUserThemes, renameTargetThemeId, cleanName);
+      onUpdateSettings({ savedUserThemes: updatedList });
+      isRenameModalOpen = false;
+      renameTargetThemeId = null;
+      renameThemeName = '';
+      copyFeedback = `Nama tema diperbarui menjadi "${cleanName}"!`;
+      setTimeout(() => { copyFeedback = null; }, 2500);
+    } catch (err: any) {
+      renameError = err?.message || 'Gagal mengubah nama tema.';
+    }
+  }
+
+  function handleDeleteUserTheme(themeId: string, themeName: string, e: MouseEvent) {
+    e.stopPropagation();
+    try {
+      const updatedList = deleteUserTheme(savedUserThemes, themeId);
+      const fallbackApp = resolveDeletedThemeFallback(themeId, settings.themePreset, 'signature');
+      const fallbackChart = resolveDeletedThemeFallback(themeId, settings.chartThemePreset, 'signature');
+
+      onUpdateSettings({
+        savedUserThemes: updatedList,
+        themePreset: fallbackApp,
+        chartThemePreset: fallbackChart,
+      });
+      copyFeedback = `Tema "${themeName}" berhasil dihapus.`;
+      setTimeout(() => { copyFeedback = null; }, 2500);
+    } catch (err: any) {
+      copyFeedback = `Gagal menghapus: ${err?.message || 'Error'}`;
+      setTimeout(() => { copyFeedback = null; }, 3000);
+    }
+  }
+
+  async function handleExportUserThemeText(themeId: string, themeName: string, e: MouseEvent) {
+    e.stopPropagation();
+    const userTheme = savedUserThemes.find((t) => t.id === themeId);
+    if (!userTheme) return;
+    try {
+      await navigator.clipboard.writeText(serializeCustomPaletteText(userTheme.palette));
+      copyFeedback = `Palet teks "${themeName}" disalin ke clipboard!`;
+      setTimeout(() => { copyFeedback = null; }, 2500);
+    } catch (_) {}
+  }
+
+  async function handleExportUserThemeJson(themeId: string, themeName: string, e: MouseEvent) {
+    e.stopPropagation();
+    const userTheme = savedUserThemes.find((t) => t.id === themeId);
+    if (!userTheme) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(userTheme, null, 2));
+      copyFeedback = `Tema "${themeName}" disalin ke clipboard sebagai JSON!`;
+      setTimeout(() => { copyFeedback = null; }, 2500);
+    } catch (_) {}
+  }
+
+  const handleExportUserTheme = handleExportUserThemeJson;
 
   function sanitizeHex(val: string): string | null {
     let v = val.trim();
@@ -230,6 +458,171 @@
 </script>
 
 <div class="section-group">
+  <!-- System Theme Bridge & Color Mode Selector (#148) -->
+  <div class="system-bridge-section">
+    <div class="presets-header-row">
+      <div>
+        <h4 class="section-title">Mode Warna & Sinkronisasi Sistem</h4>
+        <p class="section-subtitle">
+          Pilih mode warna antarmuka: ikuti skema OS host secara dinamis via System Theme Bridge, atau kunci ke Mode Gelap / Mode Terang.
+        </p>
+      </div>
+
+      <!-- Segmented Control untuk colorModePreference -->
+      <div class="theme-mode-filters" role="radiogroup" aria-label="Preferensi Mode Warna">
+        <button
+          type="button"
+          class="filter-chip {colorModePref === 'system' ? 'active' : ''}"
+          onclick={() => handleSetColorMode('system')}
+          title="Ikuti preferensi tema sistem operasi secara otomatis"
+        >
+          <Monitor size={12} />
+          <span>Ikuti Sistem</span>
+        </button>
+        <button
+          type="button"
+          class="filter-chip {colorModePref === 'dark' ? 'active' : ''}"
+          onclick={() => handleSetColorMode('dark')}
+          title="Paksa antarmuka terminal ke Mode Gelap"
+        >
+          <Moon size={12} />
+          <span>Mode Gelap</span>
+        </button>
+        <button
+          type="button"
+          class="filter-chip {colorModePref === 'light' ? 'active' : ''}"
+          onclick={() => handleSetColorMode('light')}
+          title="Paksa antarmuka terminal ke Mode Terang"
+        >
+          <Sun size={12} />
+          <span>Mode Terang</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Dropdowns untuk Preset Default Gelap & Terang -->
+    <div class="theme-defaults-grid">
+      <div class="setting-row default-preset-item">
+        <div class="setting-info">
+          <span class="setting-label">Preset Default Mode Gelap (activeDarkPreset)</span>
+          <span class="setting-desc">Tema yang otomatis aktif saat berada di Mode Gelap</span>
+        </div>
+        <select
+          class="select-input"
+          value={settings.activeDarkPreset || 'signature'}
+          onchange={(e) => handleSetDarkPreset(e.currentTarget.value)}
+        >
+          {#each darkPresets as p}
+            <option value={p.id}>{p.name}</option>
+          {/each}
+        </select>
+      </div>
+
+      <div class="setting-row default-preset-item">
+        <div class="setting-info">
+          <span class="setting-label">Preset Default Mode Terang (activeLightPreset)</span>
+          <span class="setting-desc">Tema yang otomatis aktif saat berada di Mode Terang</span>
+        </div>
+        <select
+          class="select-input"
+          value={settings.activeLightPreset || 'red_folder'}
+          onchange={(e) => handleSetLightPreset(e.currentTarget.value)}
+        >
+          {#each lightPresets as p}
+            <option value={p.id}>{p.name}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+
+    <!-- Dual-Theme Decoupling Toggle (#149) -->
+    <div class="setting-row sync-chart-row">
+      <div class="setting-info">
+        <span class="setting-label">Sinkronkan Tema Chart dengan Aplikasi</span>
+        <span class="setting-desc">
+          Saat aktif, tema kanvas chart otomatis mengikuti tema aplikasi. Nonaktifkan untuk memilih tema aplikasi dan tema chart secara terpisah.
+        </span>
+      </div>
+      <label class="toggle-switch">
+        <input
+          type="checkbox"
+          checked={syncChartWithAppTheme}
+          onchange={(e) => {
+            const checked = e.currentTarget.checked;
+            onUpdateSettings({
+              syncChartWithAppTheme: checked,
+              ...(checked ? { chartThemePreset: settings.themePreset || 'signature' } : {}),
+            });
+          }}
+          aria-label="Sinkronkan Tema Chart dengan Aplikasi"
+        />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <!-- Pemilih Independen Tema Aplikasi & Tema Chart saat Un-Synced (#149) -->
+    {#if !syncChartWithAppTheme}
+      <div class="decoupled-selectors-grid">
+        <div class="setting-row default-preset-item">
+          <div class="setting-info">
+            <span class="setting-label">Tema Aplikasi (Desktop Shell)</span>
+            <span class="setting-desc">Bilah header, sidebar, dock, status bar, dialog, dan Pine IDE</span>
+          </div>
+          <select
+            class="select-input"
+            value={settings.themePreset || 'signature'}
+            onchange={(e) =>
+              onUpdateSettings({
+                themePreset: e.currentTarget.value,
+                theme: e.currentTarget.value as any,
+                customPalette: undefined,
+              })}
+          >
+            {#each allAvailablePresets as p}
+              <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ''}</option>
+            {/each}
+          </select>
+        </div>
+
+        <div class="setting-row default-preset-item">
+          <div class="setting-info">
+            <span class="setting-label">Tema Kanvas Chart (chartThemePreset)</span>
+            <span class="setting-desc">Candlestick, gridline, crosshair, latar kanvas, dan watermark</span>
+          </div>
+          <select
+            class="select-input"
+            value={settings.chartThemePreset || 'signature'}
+            onchange={(e) => onUpdateSettings({ chartThemePreset: e.currentTarget.value })}
+          >
+            {#each allAvailablePresets as p}
+              <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ''}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+
+      <div class="target-selection-strip">
+        <span class="target-label">Target Penerapan Klik Kartu:</span>
+        <div class="target-chips" role="radiogroup" aria-label="Target Penerapan Klik Kartu">
+          <button
+            type="button"
+            class="filter-chip {targetThemeSelection === 'app' ? 'active' : ''}"
+            onclick={() => (targetThemeSelection = 'app')}
+          >
+            Tema Aplikasi
+          </button>
+          <button
+            type="button"
+            class="filter-chip {targetThemeSelection === 'chart' ? 'active' : ''}"
+            onclick={() => (targetThemeSelection = 'chart')}
+          >
+            Tema Kanvas Chart
+          </button>
+        </div>
+      </div>
+    {/if}
+  </div>
+
   <div class="presets-header-row">
     <div>
       <h4 class="section-title">Preset Tema Tampilan & Candlestick</h4>
@@ -245,7 +638,7 @@
         class="filter-chip {filterMode === 'all' ? 'active' : ''}"
         onclick={() => setFilterMode('all')}
       >
-        <span>Semua ({Object.keys(THEME_PRESETS).length})</span>
+        <span>Semua ({allAvailablePresets.length})</span>
       </button>
       <button
         type="button"
@@ -253,7 +646,7 @@
         onclick={() => setFilterMode('dark')}
       >
         <Moon size={11} />
-        <span>Gelap (5)</span>
+        <span>Gelap ({darkPresets.length})</span>
       </button>
       <button
         type="button"
@@ -261,29 +654,28 @@
         onclick={() => setFilterMode('light')}
       >
         <Sun size={11} />
-        <span>Terang (1)</span>
+        <span>Terang ({lightPresets.length})</span>
       </button>
     </div>
   </div>
 
   <div class="theme-presets-grid">
     {#each filteredPresets as preset}
-      {@const isSelected = (settings.themePreset || 'signature') === preset.id}
+      {@const isSelectedApp = (settings.themePreset || 'signature') === preset.id}
+      {@const isSelectedChart = (settings.chartThemePreset || 'signature') === preset.id}
+      {@const isSelected = syncChartWithAppTheme ? isSelectedApp : (targetThemeSelection === 'app' ? isSelectedApp : isSelectedChart)}
+      {@const isCustom = !isBuiltInTheme(preset.id)}
       <button
         type="button"
-        class="theme-card {isSelected ? 'selected' : ''}"
-        onclick={() =>
-          onUpdateSettings({
-            themePreset: preset.id,
-            theme: preset.id as any,
-            customPalette: undefined,
-            customBullColor: undefined,
-            customBearColor: undefined,
-          })}
+        class="theme-card {isSelected ? 'selected' : ''} {isCustom ? 'custom-theme-card' : ''}"
+        onclick={() => handleSelectPreset(preset)}
       >
         <div class="theme-card-header">
           <span class="theme-name">{preset.name}</span>
           <div class="card-badges">
+            {#if isCustom}
+              <span class="mode-pill custom">[CUSTOM]</span>
+            {/if}
             {#if preset.mode === 'light'}
               <span class="mode-pill light"><Sun size={9} /> LIGHT</span>
             {:else}
@@ -315,11 +707,62 @@
           </div>
         </div>
 
-        <div class="theme-status">
-          {#if isSelected}
-            <span class="status-active"><Check size={12} /> Sedang Digunakan</span>
-          {:else}
-            <span class="status-inactive">Klik untuk Terapkan</span>
+        <div class="theme-card-footer">
+          <div class="theme-status">
+            {#if syncChartWithAppTheme}
+              {#if isSelectedApp}
+                <span class="status-active"><Check size={12} /> Sedang Digunakan</span>
+              {:else}
+                <span class="status-inactive">Klik untuk Terapkan</span>
+              {/if}
+            {:else}
+              {#if isSelectedApp && isSelectedChart}
+                <span class="status-active"><Check size={12} /> Aktif: Aplikasi & Chart</span>
+              {:else if isSelectedApp}
+                <span class="status-active"><Check size={12} /> Aktif: Tema Aplikasi</span>
+              {:else if isSelectedChart}
+                <span class="status-active"><Check size={12} /> Aktif: Tema Chart</span>
+              {:else}
+                <span class="status-inactive">Klik untuk {targetThemeSelection === 'app' ? 'Aplikasi' : 'Chart'}</span>
+              {/if}
+            {/if}
+          </div>
+
+          {#if isCustom}
+            <div class="custom-card-actions" onclick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                class="btn-card-action"
+                title="Ubah nama tema"
+                onclick={(e) => handleOpenRename(preset.id, preset.name, e)}
+              >
+                <Edit2 size={11} />
+              </button>
+              <button
+                type="button"
+                class="btn-card-action"
+                title="Ekspor palet sebagai teks Hex"
+                onclick={(e) => handleExportUserThemeText(preset.id, preset.name, e)}
+              >
+                <FileText size={11} />
+              </button>
+              <button
+                type="button"
+                class="btn-card-action"
+                title="Ekspor tema sebagai JSON"
+                onclick={(e) => handleExportUserThemeJson(preset.id, preset.name, e)}
+              >
+                <Download size={11} />
+              </button>
+              <button
+                type="button"
+                class="btn-card-action btn-card-delete"
+                title="Hapus tema"
+                onclick={(e) => handleDeleteUserTheme(preset.id, preset.name, e)}
+              >
+                <Trash2 size={11} />
+              </button>
+            </div>
           {/if}
         </div>
       </button>
@@ -381,6 +824,15 @@
         >
           <Clipboard size={12} />
           <span>Tempel Palet</span>
+        </button>
+        <button
+          type="button"
+          class="btn-studio-action btn-save-as"
+          onclick={handleOpenSaveAs}
+          title="Simpan konfigurasi palet saat ini sebagai preset tema pengguna baru"
+        >
+          <Save size={12} />
+          <span>Simpan Sebagai Tema Baru</span>
         </button>
         <button
           type="button"
@@ -730,6 +1182,117 @@
           </button>
           <button type="button" class="btn-apply-paste" onclick={handleApplyPaste}>
             Terapkan Palet
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal Dialog Simpan Sebagai Tema Baru (Save As) (#149) -->
+  {#if isSaveAsModalOpen}
+    <div class="studio-modal-scrim" onclick={() => (isSaveAsModalOpen = false)} role="presentation">
+      <div class="studio-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <div class="modal-title-row">
+            <Save size={16} />
+            <span class="modal-title">Simpan Sebagai Tema Baru (Save As)</span>
+          </div>
+          <button type="button" class="btn-modal-close" onclick={() => (isSaveAsModalOpen = false)}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <p class="modal-desc">
+          Simpan palet 9 dimensi saat ini ke dalam koleksi tema pengguna personal. Tema ini akan tersimpan berdampingan dengan preset resmi dan dapat diterapkan secara mandiri ke antarmuka aplikasi atau grafik chart.
+        </p>
+
+        <div class="modal-form-group">
+          <label class="modal-label" for="saveAsThemeName">Nama Preset Tema</label>
+          <input
+            id="saveAsThemeName"
+            type="text"
+            class="modal-input"
+            placeholder="Contoh: Cyberpunk Neon, Coffee Paper"
+            bind:value={saveAsThemeName}
+            onkeydown={(e) => e.key === 'Enter' && handleConfirmSaveAs()}
+            autofocus
+          />
+        </div>
+
+        <div class="modal-form-group">
+          <span class="modal-label">Kategori Mode Warna</span>
+          <div class="modal-mode-options" role="radiogroup" aria-label="Mode Tema">
+            <button
+              type="button"
+              class="filter-chip {saveAsThemeMode === 'dark' ? 'active' : ''}"
+              onclick={() => (saveAsThemeMode = 'dark')}
+            >
+              <Moon size={11} />
+              <span>Mode Gelap (Dark)</span>
+            </button>
+            <button
+              type="button"
+              class="filter-chip {saveAsThemeMode === 'light' ? 'active' : ''}"
+              onclick={() => (saveAsThemeMode = 'light')}
+            >
+              <Sun size={11} />
+              <span>Mode Terang (Light)</span>
+            </button>
+          </div>
+        </div>
+
+        {#if saveAsError}
+          <div class="paste-error-msg">{saveAsError}</div>
+        {/if}
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" onclick={() => (isSaveAsModalOpen = false)}>
+            Batal
+          </button>
+          <button type="button" class="btn-apply-paste" onclick={handleConfirmSaveAs}>
+            Simpan Tema
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal Dialog Ubah Nama Tema Pengguna (#149) -->
+  {#if isRenameModalOpen}
+    <div class="studio-modal-scrim" onclick={() => (isRenameModalOpen = false)} role="presentation">
+      <div class="studio-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <div class="modal-title-row">
+            <Edit2 size={16} />
+            <span class="modal-title">Ubah Nama Tema Preset</span>
+          </div>
+          <button type="button" class="btn-modal-close" onclick={() => (isRenameModalOpen = false)}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <div class="modal-form-group">
+          <label class="modal-label" for="renameThemeName">Nama Baru</label>
+          <input
+            id="renameThemeName"
+            type="text"
+            class="modal-input"
+            bind:value={renameThemeName}
+            onkeydown={(e) => e.key === 'Enter' && handleConfirmRename()}
+            autofocus
+          />
+        </div>
+
+        {#if renameError}
+          <div class="paste-error-msg">{renameError}</div>
+        {/if}
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" onclick={() => (isRenameModalOpen = false)}>
+            Batal
+          </button>
+          <button type="button" class="btn-apply-paste" onclick={handleConfirmRename}>
+            Simpan Perubahan
           </button>
         </div>
       </div>
@@ -1093,6 +1656,29 @@
     margin: -4px 0 2px 0;
   }
 
+  /* System Theme Bridge & Color Mode Switcher (#148) */
+  .system-bridge-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .theme-defaults-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .default-preset-item {
+    background: var(--bg-surface);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-hairline);
+  }
+
   .theme-presets-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -1270,6 +1856,183 @@
     background: rgba(56, 189, 248, 0.12);
     color: #38bdf8;
     border: 1px solid rgba(56, 189, 248, 0.25);
+  }
+
+  .mode-pill.custom {
+    background: rgba(255, 105, 180, 0.15);
+    color: #ff69b4;
+    border: 1px solid rgba(255, 105, 180, 0.35);
+  }
+
+  .theme-badge.custom-badge {
+    background: rgba(255, 105, 180, 0.15);
+    color: #ff69b4;
+    border: 1px solid rgba(255, 105, 180, 0.35);
+  }
+
+  .theme-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-hairline);
+    width: 100%;
+  }
+
+  .custom-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  .btn-card-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-muted);
+    border-radius: var(--radius-xs);
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .btn-card-action:hover {
+    color: var(--text-main);
+    border-color: var(--brand-primary);
+  }
+
+  .btn-card-action.btn-card-delete:hover {
+    color: #ef4444;
+    border-color: #ef4444;
+  }
+
+  .sync-chart-row {
+    padding: 10px 0;
+    border-top: 1px solid var(--border-hairline);
+    margin-top: 8px;
+  }
+
+  .decoupled-selectors-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+  }
+
+  .target-selection-strip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 6px 10px;
+    background: var(--bg-darkest);
+    border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius-xs);
+  }
+
+  .target-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .target-chips {
+    display: flex;
+    gap: 6px;
+  }
+
+  /* Toggle Switch */
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    cursor: pointer;
+  }
+
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-elevated, #242424);
+    border: 1px solid var(--border-subtle, #333);
+    transition: 0.2s;
+    border-radius: 20px;
+  }
+
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--text-muted, #a3a3a3);
+    transition: 0.2s;
+    border-radius: 50%;
+  }
+
+  .toggle-switch input:checked + .slider {
+    background-color: rgba(255, 105, 180, 0.2);
+    border-color: #ff69b4;
+  }
+
+  .toggle-switch input:checked + .slider:before {
+    transform: translateX(16px);
+    background-color: #ff69b4;
+  }
+
+  /* Form controls for modals */
+  .modal-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .modal-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .modal-input {
+    width: 100%;
+    background: var(--bg-darkest);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    font-size: 12px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .modal-input:focus {
+    border-color: var(--brand-primary);
+  }
+
+  .modal-mode-options {
+    display: flex;
+    gap: 8px;
   }
 
   /* Palet Kustom Studio */

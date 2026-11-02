@@ -296,11 +296,12 @@
     position: fixed;
     z-index: 99999;
     width: 240px;
-    background-color: rgba(16, 20, 29, 0.97);
+    background-color: var(--bg-panel, #171717);
+    color: var(--text-main, #f7f7f7);
     backdrop-filter: blur(16px);
     border: 1px solid var(--border-medium, #2a3447);
     border-radius: var(--radius-sm, 6px);
-    box-shadow: 0 10px 36px rgba(0, 0, 0, 0.85), 0 0 1px rgba(255, 255, 255, 0.15);
+    box-shadow: 0 10px 36px rgba(0, 0, 0, 0.4), 0 0 1px var(--border-subtle, rgba(255, 255, 255, 0.15));
     padding: 5px;
     display: flex;
     flex-direction: column;
@@ -327,7 +328,7 @@
     padding: 6px 8px;
     font-size: 11px;
     color: var(--text-muted, #8b9bb4);
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: var(--bg-elevated, rgba(255, 255, 255, 0.03));
     border-radius: 4px;
     margin-bottom: 2px;
   }
@@ -350,7 +351,7 @@
 
   .menu-divider {
     height: 1px;
-    background-color: var(--border-hairline, rgba(255, 255, 255, 0.08));
+    background-color: var(--border-subtle, var(--border-hairline, rgba(255, 255, 255, 0.08)));
     margin: 4px 0;
   }
 
@@ -377,12 +378,13 @@
 
   .menu-item:disabled {
     opacity: 0.45;
+    color: var(--text-dim, #737373);
     cursor: not-allowed;
   }
 
   /* Item aksi utama: Buat Alert */
   .menu-item.primary-action {
-    color: #38bdf8;
+    color: var(--brand-cyan, #38bdf8);
     background-color: rgba(56, 189, 248, 0.08);
     border: 1px solid rgba(56, 189, 248, 0.2);
     margin-bottom: 2px;
@@ -409,7 +411,7 @@
   }
 
   .menu-item.primary-action .bell-icon {
-    color: #38bdf8;
+    color: var(--brand-cyan, #38bdf8);
   }
 
   .item-label {
@@ -420,10 +422,10 @@
   .shortcut-tag {
     font-size: 9px;
     color: var(--text-dim, #64748b);
-    background-color: rgba(255, 255, 255, 0.06);
+    background-color: var(--bg-elevated, rgba(255, 255, 255, 0.06));
     padding: 1px 5px;
     border-radius: var(--radius-xs, 3px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   }
 
   .menu-item.primary-action .shortcut-tag {

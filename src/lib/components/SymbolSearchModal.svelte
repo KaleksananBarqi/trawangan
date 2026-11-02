@@ -5,6 +5,7 @@
   import { getSearchResultKey, parseAdaptiveSymbol } from '../services/market/symbolSearchService';
   import SymbolLogo from './common/SymbolLogo.svelte';
   import { formatWatchlistEntry, parseWatchlistEntry, normalizeProviderId } from '../services/watchlistUtils';
+  import { applySearchInputFocus, type SearchTriggerSource } from '../services/symbolSearchFocusGuard';
   import type { MarketSearchResult } from '../types/market';
 
   interface Props {
@@ -13,6 +14,7 @@
     activeProviderId?: string;
     watchlistSymbols?: string[];
     initialQuery?: string;
+    triggerSource?: SearchTriggerSource;
     onSelectSymbol: (symbol: string, providerId?: string) => void;
     onToggleWatchlistSymbol?: (symbol: string) => void;
     onClose: () => void;
@@ -24,6 +26,7 @@
     activeProviderId = 'binance',
     watchlistSymbols = [],
     initialQuery = '',
+    triggerSource = 'explicit',
     onSelectSymbol,
     onToggleWatchlistSymbol,
     onClose,
@@ -140,12 +143,11 @@
     }
   });
 
-  // Auto-focus input saat modal dibuka
+  // Auto-focus input saat modal dibuka dengan guard seleksi kontekstual (Tiket #145)
   $effect(() => {
     if (isOpen) {
       tick().then(() => {
-        searchInputEl?.focus();
-        searchInputEl?.select();
+        applySearchInputFocus(searchInputEl, triggerSource, query.length);
       });
     }
   });

@@ -12,7 +12,7 @@
   import { isEditableElement } from '../services/commandDispatcher';
   import { isTradingPlanText } from '../services/planParserService';
   import { renderScreenshotCanvasWithOverlay } from '../services/chartSnapshotOverlayService';
-  import { THEME_PRESETS } from '../constants/themes';
+  import { THEME_PRESETS, resolveThemeConfig } from '../constants/themes';
   import { resolveSecurityWatermarkText } from '../services/chartSnapshotService';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
@@ -43,8 +43,8 @@
     onRequestEditAlert?: (alert: PriceAlert) => void;
     onOpenImportPlan?: (initialText?: string) => void;
     onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
-    themePreset?: ThemePresetId; fontSize?: number; timezone?: string;
-    customPalette?: CustomThemePalette;
+    themePreset?: ThemePresetId | string; fontSize?: number; timezone?: string;
+    customPalette?: CustomThemePalette | null;
     customBullColor?: string; customBearColor?: string;
     customChartBackground?: CustomChartBackgroundConfig;
     securityWatermark?: SecurityWatermarkConfig;
@@ -67,7 +67,7 @@
 
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
-    fontSize, timezone, customPalette, customBullColor, customBearColor, customChartBackground,
+    fontSize, timezone, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange,
     onVelaThemeSelect
   });
@@ -119,7 +119,7 @@
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
   $effect(() => {
     const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor, cp = customPalette;
-    if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp);
+    if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp || undefined);
   });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
   $effect(() => {
@@ -384,7 +384,7 @@
     if (!baseCanvas) return null;
     if (!chartContainer) return baseCanvas;
 
-    const currentTheme = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+    const currentTheme = resolveThemeConfig(themePreset);
 
     return renderScreenshotCanvasWithOverlay({
       baseCanvas,
@@ -658,7 +658,7 @@
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
 
   const chartBackgroundStyle = $derived.by(() => {
-    const cfg = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+    const cfg = resolveThemeConfig(themePreset);
     if (customChartBackground?.mode === 'gradient') {
       const top = customChartBackground.gradientTop || '#0F0F0F';
       const bottom = customChartBackground.gradientBottom || '#181A20';

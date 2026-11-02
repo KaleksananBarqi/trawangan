@@ -22,7 +22,7 @@ import type {
   CustomChartBackgroundConfig,
   CustomThemePalette
 } from '../types/market';
-import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors } from '../constants/themes';
+import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors, resolveThemeConfig } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
 import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 import { applyLayoutTimeframePolicy } from '../constants/defaults';
@@ -38,7 +38,7 @@ export interface ChartSessionOptions {
   defaultTimeframe?: Timeframe;
   layout?: string;
   providerId?: string;
-  themePreset?: ThemePresetId;
+  themePreset?: ThemePresetId | string;
   fontSize?: number;
   timezone?: string;
   customPalette?: CustomThemePalette;
@@ -62,7 +62,7 @@ export interface ChartSessionSnapshot {
   providerId: string;
   layout: string;
   timezone: string;
-  themePreset: ThemePresetId;
+  themePreset: ThemePresetId | string;
   fontSize: number;
   customPalette?: CustomThemePalette;
   customBullColor?: string;
@@ -375,7 +375,7 @@ export class ChartSessionController {
   private defaultTimeframe: Timeframe;
   private layout: string;
   private providerId: string;
-  private themePreset: ThemePresetId;
+  private themePreset: ThemePresetId | string;
   private fontSize: number;
   private timezone: string;
   private showCurrentPriceLine: boolean;
@@ -497,7 +497,7 @@ export class ChartSessionController {
     ensurePineEngine();
 
     const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
-    const themeConfig = THEME_PRESETS[this.themePreset] || THEME_PRESETS.signature;
+    const themeConfig = resolveThemeConfig(this.themePreset);
     const velaTheme = {
       background: isCustomBg ? 'transparent' : themeConfig.chart.background,
       textColor: themeConfig.chart.textColor,
@@ -1128,7 +1128,7 @@ export class ChartSessionController {
    * Menyelaraskan tema visual kanvas WebGL2 dan warna candlestick (bawaan tema maupun kustom)
    */
   public setTheme(
-    preset: ThemePresetId,
+    preset: ThemePresetId | string,
     fontSize?: number,
     customCandleColors?: { bullColor?: string; bearColor?: string },
     customBackground?: CustomChartBackgroundConfig,
@@ -1148,7 +1148,7 @@ export class ChartSessionController {
     this.applyBackground();
 
     if (this.workspace) {
-      const cfg = THEME_PRESETS[preset] || THEME_PRESETS.signature;
+      const cfg = resolveThemeConfig(preset);
       const isCustomPaletteActive = Boolean(this.customPalette && this.customPalette.enabled !== false);
       const cp = this.customPalette;
 
@@ -1277,7 +1277,7 @@ export class ChartSessionController {
    */
   public applyBackground(): void {
     if (!this.container) return;
-    const cfg = THEME_PRESETS[this.themePreset] || THEME_PRESETS.signature;
+    const cfg = resolveThemeConfig(this.themePreset);
     const custom = this.customChartBackground;
     const isCustom = custom?.mode === 'solid' || custom?.mode === 'gradient';
 

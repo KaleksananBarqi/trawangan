@@ -11,17 +11,22 @@
     Layers,
     Sparkles,
     ChevronDown,
-    Check
+    Check,
+    Moon,
+    Sun,
+    Monitor
   } from '@lucide/svelte';
   import type {
     Timeframe,
     MultiChartSyncConfig,
     WorkspaceMode,
     SavedWorkspace,
-    ProviderConfig
+    ProviderConfig,
+    ColorModePreference
   } from '../types/market';
   import { updateService, type UpdateState } from '../services/updateService';
   import { marketFeed } from '../services/market';
+  import { getNextColorMode } from '../constants/themes';
 
   // Subkomponen modular header baru yang ringkas dan terpadu
   import WorkspaceLayoutMenu from './header/WorkspaceLayoutMenu.svelte';
@@ -78,6 +83,11 @@
     onSnapshotScaleMultiplierChange?: (scale: import('../types/market').SnapshotScaleMultiplier) => void;
     isSnapshotProcessing?: boolean;
     chartDimensions?: { width: number; height: number };
+    // Mode Warna & System Theme Bridge (#148)
+    colorModePreference?: ColorModePreference;
+    systemIsDark?: boolean;
+    onCycleColorMode?: () => void;
+    onColorModeChange?: (mode: ColorModePreference) => void;
     // Props opsional lama agar backward-compatible
     ticker?: any;
     watchlistSymbols?: string[];
@@ -130,8 +140,30 @@
     snapshotScaleMultiplier,
     onSnapshotScaleMultiplierChange,
     isSnapshotProcessing = false,
-    chartDimensions
+    chartDimensions,
+    colorModePreference = 'system',
+    systemIsDark = true,
+    onCycleColorMode,
+    onColorModeChange
   }: Props = $props();
+
+  function handleCycleColorMode() {
+    if (onCycleColorMode) {
+      onCycleColorMode();
+    } else if (onColorModeChange) {
+      onColorModeChange(getNextColorMode(colorModePreference));
+    }
+  }
+
+  const colorModeTooltip = $derived.by(() => {
+    if (colorModePreference === 'dark') {
+      return 'Mode Gelap (Klik untuk beralih ke Mode Terang)';
+    }
+    if (colorModePreference === 'light') {
+      return 'Mode Terang (Klik untuk beralih ke Ikuti Sistem)';
+    }
+    return `Ikuti Sistem (${systemIsDark ? 'Gelap' : 'Terang'}) (Klik untuk beralih ke Mode Gelap)`;
+  });
 
   let updateState = $state<UpdateState>(updateService.getSnapshot());
   let unsubUpdate: (() => void) | null = null;
@@ -373,6 +405,23 @@
         <span>Update {updateState.updateInfo.latestTag}</span>
       </button>
     {/if}
+
+    <!-- Mode Warna Switcher Button (#148) -->
+    <button
+      type="button"
+      class="action-btn icon-only color-mode-btn"
+      title={colorModeTooltip}
+      aria-label="Ganti mode warna tema"
+      onclick={handleCycleColorMode}
+    >
+      {#if colorModePreference === 'dark'}
+        <Moon size={13} />
+      {:else if colorModePreference === 'light'}
+        <Sun size={13} />
+      {:else}
+        <Monitor size={13} />
+      {/if}
+    </button>
 
     <!-- Settings & Help Modal -->
     <button

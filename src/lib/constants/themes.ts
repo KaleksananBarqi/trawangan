@@ -1,12 +1,15 @@
-import type { CustomThemePalette, ThemePresetId, UiDensity } from '../types/market';
+import type { ColorModePreference, CustomThemeDefinition, CustomThemePalette, ThemePresetId, ThemeId, UiDensity } from '../types/market';
 import { deriveBorderColor, isDarkColor, withAlpha } from '../utils/colorUtils';
 
+export type { ThemeId };
+
 export interface ThemeConfig {
-  id: ThemePresetId;
+  id: ThemeId;
   name: string;
   badge: string;
   mode: 'dark' | 'light';
   description: string;
+  isCustom?: boolean;
   tokens: {
     bgDarkest: string;
     bgSurface: string;
@@ -343,11 +346,12 @@ export function buildCustomPaletteFromPreset(presetId: ThemePresetId = 'signatur
  * dengan memprioritaskan kustomisasi lilin pengguna jika tersedia.
  */
 export function resolveEffectiveVolumeColors(
-  themePresetId: ThemePresetId = 'signature',
+  themePresetId: ThemePresetId | string = 'signature',
   customPaletteOrColors?: CustomThemePalette | { bullColor?: string; bearColor?: string },
-  legacyCustomColors?: { bullColor?: string; bearColor?: string }
+  legacyCustomColors?: { bullColor?: string; bearColor?: string },
+  savedUserThemes?: CustomThemeDefinition[]
 ): EffectiveVolumeColors {
-  const cfg = THEME_PRESETS[themePresetId] || THEME_PRESETS.signature;
+  const cfg = resolveThemeConfig(themePresetId, savedUserThemes);
 
   let up = cfg.chart.upColor;
   let down = cfg.chart.downColor;
@@ -487,26 +491,268 @@ export interface EffectiveThemeColors {
 }
 
 /**
+ * Memeriksa apakah suatu ID tema merupakan preset resmi bawaan Trawangan (#149)
+ */
+export function isBuiltInTheme(themeId: ThemeId): boolean {
+  return Object.prototype.hasOwnProperty.call(THEME_PRESETS, themeId);
+}
+
+let registeredUserThemes: CustomThemeDefinition[] = [];
+
+/**
+ * Mendaftarkan koleksi tema pengguna ke modul themes secara reaktif (#149)
+ */
+export function registerUserThemes(themes: CustomThemeDefinition[]): void {
+  registeredUserThemes = Array.isArray(themes) ? [...themes] : [];
+}
+
+/**
+ * Mengambil daftar tema pengguna yang terdaftar saat ini (#149)
+ */
+export function getRegisteredUserThemes(): CustomThemeDefinition[] {
+  return [...registeredUserThemes];
+}
+
+/**
+ * Mengonversi CustomThemeDefinition menjadi ThemeConfig lengkap (#149)
+ */
+export function buildThemeConfigFromUserTheme(def: CustomThemeDefinition): ThemeConfig {
+  const { id, name, mode, palette } = def;
+  const isDark = mode === 'dark';
+  const bg = palette.general?.background || (isDark ? '#0F0F0F' : '#edede9');
+  const fg = palette.general?.foreground || (isDark ? '#171717' : '#dcdcd6');
+  const text = palette.general?.textColor || (isDark ? '#F7F7F7' : '#4A0E0F');
+
+  const up = palette.candles?.bullBody || (isDark ? '#F7F7F7' : '#D4A5A5');
+  const down = palette.candles?.bearBody || (isDark ? '#FF69B4' : '#9B1D20');
+  const wickUp = palette.candles?.bullWick || up;
+  const wickDown = palette.candles?.bearWick || down;
+  const borderUp = palette.candles?.bullBorder || deriveBorderColor(up);
+  const borderDown = palette.candles?.bearBorder || deriveBorderColor(down);
+
+  const borderHairline = isDark ? withAlpha(text, 0.14) : deriveBorderColor(bg, 0.15);
+  const borderSubtle = isDark ? withAlpha(text, 0.10) : deriveBorderColor(bg, 0.10);
+  const bgHover = isDark ? withAlpha(fg, 0.20) : withAlpha(fg, 0.15);
+  const textMuted = isDark ? withAlpha(text, 0.65) : withAlpha(text, 0.65);
+
+  return {
+    id,
+    name,
+    badge: 'CUSTOM',
+    mode,
+    description: `Preset kustom pengguna: ${name} (${isDark ? 'Gelap' : 'Terang'})`,
+    isCustom: true,
+    tokens: {
+      bgDarkest: bg,
+      bgSurface: bg,
+      bgContainer: fg,
+      bgPanel: fg,
+      bgElevated: fg,
+      bgHover,
+      bgSecondary: fg,
+      borderHairline,
+      borderSubtle,
+      brandPrimary: up,
+      brandCyan: up,
+      bullColor: up,
+      bullGlow: withAlpha(up, 0.22),
+      bearColor: down,
+      bearGlow: withAlpha(down, 0.25),
+      textMain: text,
+      textMuted,
+      textPrimary: text,
+    },
+    chart: {
+      background: bg,
+      gridColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.06)',
+      textColor: text,
+      borderColor: borderHairline,
+      upColor: up,
+      downColor: down,
+      borderUpColor: borderUp,
+      borderDownColor: borderDown,
+      wickUpColor: wickUp,
+      wickDownColor: wickDown,
+    },
+  };
+}
+
+/**
+ * Menyelesaikan ThemeConfig berdasarkan ID tema (baik preset resmi bawaan maupun preset pengguna) (#149)
+ */
+export function resolveThemeConfig(
+  themeId: ThemeId = 'signature',
+  savedUserThemes?: CustomThemeDefinition[]
+): ThemeConfig {
+  if (isBuiltInTheme(themeId)) {
+    return THEME_PRESETS[themeId as ThemePresetId];
+  }
+
+  const themesToSearch = savedUserThemes || registeredUserThemes;
+  const userDef = themesToSearch.find((t) => t.id === themeId);
+  if (userDef) {
+    return buildThemeConfigFromUserTheme(userDef);
+  }
+
+  return THEME_PRESETS.signature;
+}
+
+/**
+ * Membuat entitas CustomThemeDefinition baru dari palet kustom pengguna (#149)
+ */
+export function createUserTheme(
+  name: string,
+  mode: 'dark' | 'light',
+  palette: CustomThemePalette,
+  id?: string
+): CustomThemeDefinition {
+  const trimmedName = name.trim() || 'Tema Kustom';
+  const themeId = id || `user_theme_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const now = Date.now();
+  return {
+    id: themeId,
+    name: trimmedName,
+    mode,
+    palette: JSON.parse(JSON.stringify(palette)),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/**
+ * Mengubah nama tema pengguna tersimpan (#149)
+ * Mencegah pengubahan nama preset resmi bawaan.
+ */
+export function renameUserTheme(
+  themes: CustomThemeDefinition[],
+  themeId: ThemeId,
+  newName: string
+): CustomThemeDefinition[] {
+  if (isBuiltInTheme(themeId)) {
+    throw new Error(`Tidak dapat mengubah nama preset resmi bawaan: ${themeId}`);
+  }
+  const cleanName = newName.trim();
+  if (!cleanName) return themes;
+  const now = Date.now();
+  return themes.map((t) => {
+    if (t.id === themeId) {
+      return {
+        ...t,
+        name: cleanName,
+        updatedAt: now,
+      };
+    }
+    return t;
+  });
+}
+
+/**
+ * Menghapus tema pengguna dari koleksi tersimpan (#149)
+ * Mencegah penghapusan preset resmi bawaan.
+ */
+export function deleteUserTheme(
+  themes: CustomThemeDefinition[],
+  themeId: ThemeId
+): CustomThemeDefinition[] {
+  if (isBuiltInTheme(themeId)) {
+    throw new Error(`Tidak dapat menghapus preset resmi bawaan: ${themeId}`);
+  }
+  return themes.filter((t) => t.id !== themeId);
+}
+
+/**
+ * Menentukan fallback tema aktif yang aman jika tema yang dihapus sedang digunakan (#149)
+ */
+export function resolveDeletedThemeFallback(
+  deletedId: string,
+  activeId?: string,
+  fallbackId: string = 'signature'
+): string {
+  if (activeId === deletedId) {
+    return fallbackId;
+  }
+  return activeId || fallbackId;
+}
+
+/**
+ * Menyelesaikan tema kanvas grafik efektif berdasarkan status sinkronisasi dengan aplikasi (#149)
+ */
+export function resolveEffectiveChartThemePreset(
+  syncWithApp: boolean,
+  effectiveAppPreset: ThemeId,
+  chartThemePreset?: ThemeId
+): ThemeId {
+  if (syncWithApp) {
+    return effectiveAppPreset;
+  }
+  return chartThemePreset || 'signature';
+}
+
+/**
  * Menghitung warna efektif tema (background, foreground, textColor, dan status isDark)
- * dengan memperhitungkan fallback ke preset aktif jika palet kustom tidak aktif atau parsial.
+ * dengan memperhitungkan fallback ke preset aktif atau user theme jika palet kustom tidak aktif atau parsial.
  */
 export function resolveEffectiveThemeColors(
-  themePreset: ThemePresetId = 'signature',
-  customPalette?: CustomThemePalette | null
+  themePreset: ThemeId = 'signature',
+  customPalette?: CustomThemePalette | null,
+  savedUserThemes?: CustomThemeDefinition[]
 ): EffectiveThemeColors {
-  const cfg = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+  const cfg = resolveThemeConfig(themePreset, savedUserThemes);
   const isCustomActive = Boolean(customPalette && customPalette.enabled !== false && customPalette.candles && customPalette.general);
   const background = isCustomActive && customPalette?.general?.background
     ? customPalette.general.background
-    : (cfg.chart?.background || cfg.tokens.bgDarkest);
+    : (cfg.chart?.background || cfg.tokens?.bgDarkest || '#0F0F0F');
   const foreground = isCustomActive && customPalette?.general?.foreground
     ? customPalette.general.foreground
-    : (cfg.tokens.bgContainer || cfg.tokens.bgPanel);
+    : (cfg.tokens?.bgContainer || cfg.tokens?.bgPanel || '#171717');
   const textColor = isCustomActive && customPalette?.general?.textColor
     ? customPalette.general.textColor
-    : (cfg.chart?.textColor || cfg.tokens.textMain);
+    : (cfg.chart?.textColor || cfg.tokens?.textMain || '#F7F7F7');
   const isDark = isDarkColor(background);
 
   return { background, foreground, textColor, isDark };
 }
+
+/**
+ * Menyelesaikan ThemePresetId efektif berdasarkan preferensi mode warna pengguna,
+ * status prefers-color-scheme OS, dan fallback preset (#148).
+ * - 'dark': Selalu mengembalikan darkPreset (fallback ke fallback || 'signature')
+ * - 'light': Selalu mengembalikan lightPreset (fallback ke 'red_folder')
+ * - 'system': Mengembalikan darkPreset jika systemIsDark bernilai true, sebaliknya lightPreset
+ */
+export function resolveEffectiveThemePreset(
+  preference: ColorModePreference = 'system',
+  systemIsDark: boolean = true,
+  fallback: ThemeId = 'signature',
+  darkPreset?: ThemeId,
+  lightPreset?: ThemeId
+): ThemeId {
+  const effectiveDark = darkPreset || fallback || 'signature';
+  const effectiveLight = lightPreset || (fallback === 'red_folder' ? fallback : 'red_folder');
+
+  if (preference === 'dark') {
+    return effectiveDark;
+  }
+  if (preference === 'light') {
+    return effectiveLight;
+  }
+  return systemIsDark ? effectiveDark : effectiveLight;
+}
+
+/**
+ * Menghitung mode warna berikutnya dalam siklus toggle satu-klik pada Header (#148):
+ * dark -> light -> system -> dark
+ */
+export function getNextColorMode(current: ColorModePreference): ColorModePreference {
+  switch (current) {
+    case 'dark':
+      return 'light';
+    case 'light':
+      return 'system';
+    case 'system':
+    default:
+      return 'dark';
+  }
+}
+
 

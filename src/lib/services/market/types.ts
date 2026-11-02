@@ -60,6 +60,7 @@ export interface IMarketFeedService {
   onConnectionChange(listener: FeedConnectionListener): () => void;
   resetConnectionError(): void;
   destroy?(): void;
+  isPollingRunning?(): boolean;
 
   // ─── Pembacaan Langsung (Direct Read) ───
   getTicker(symbol: string): Promise<TickerInfo>;

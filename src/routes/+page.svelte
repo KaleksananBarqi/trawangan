@@ -61,6 +61,8 @@
     MultiChartSyncConfig,
     WorkspaceMode,
     AppSettings,
+    ColorModePreference,
+    ThemePresetId,
     QuickSymbolsConfig,
     StrategyPerformanceSummary,
     PriceAlert,
@@ -82,7 +84,13 @@
     UI_FONT_OPTIONS,
     MONO_FONT_OPTIONS,
     DENSITY_OPTIONS,
-    resolveEffectiveThemeColors
+    resolveEffectiveThemeColors,
+    resolveEffectiveThemePreset,
+    resolveEffectiveChartThemePreset,
+    resolveThemeConfig,
+    isBuiltInTheme,
+    registerUserThemes,
+    getNextColorMode
   } from '../lib/constants/themes';
   import {
     DEFAULT_APP_SETTINGS,
@@ -114,16 +122,51 @@
   // Settings & Preferences State
   let appSettings = $state<AppSettings>({ ...DEFAULT_APP_SETTINGS });
 
+  // System Theme Bridge State (#148)
+  let systemIsDark = $state(true);
+
+  // Tema preset efektif yang mengharmonisasikan preferensi pengguna dengan tema OS sistem
+  const effectiveThemePreset = $derived(
+    resolveEffectiveThemePreset(
+      appSettings.colorModePreference ?? 'system',
+      systemIsDark,
+      appSettings.themePreset ?? 'signature',
+      appSettings.activeDarkPreset ?? 'signature',
+      appSettings.activeLightPreset ?? 'red_folder'
+    )
+  );
+
+  // Tema kanvas grafik efektif (dapat didecouple dari tema aplikasi) (#149)
+  const effectiveChartThemePreset = $derived(
+    resolveEffectiveChartThemePreset(
+      appSettings.syncChartWithAppTheme ?? true,
+      effectiveThemePreset,
+      appSettings.chartThemePreset ?? 'signature'
+    )
+  );
+
+  // Daftarkan preset pengguna ke runtime tema secara reaktif (#149)
+  $effect(() => {
+    registerUserThemes(appSettings.savedUserThemes || []);
+  });
+
+  function handleCycleColorMode() {
+    const currentPreference = appSettings.colorModePreference ?? 'system';
+    const nextPreference = getNextColorMode(currentPreference);
+    handleUpdateSettings({ colorModePreference: nextPreference });
+  }
+
   // Reaktif Sinkronisasi Tema, Token Vela, & Tipografi ke Elemen Root DOM
   $effect(() => {
     if (typeof document !== 'undefined') {
-      const preset = appSettings.themePreset || 'signature';
+      const effectivePreset = effectiveThemePreset || 'signature';
+      const activeThemeConfig = resolveThemeConfig(effectivePreset, appSettings.savedUserThemes);
       const isCustomActive = Boolean(appSettings.customPalette && appSettings.customPalette.enabled !== false);
       const cp = appSettings.customPalette;
 
-      document.documentElement.setAttribute('data-theme', preset);
+      document.documentElement.setAttribute('data-theme', effectivePreset);
 
-      const { background: effectiveBg, textColor: effectiveText, isDark } = resolveEffectiveThemeColors(preset, cp);
+      const { background: effectiveBg, textColor: effectiveText, isDark } = resolveEffectiveThemeColors(effectivePreset, cp, appSettings.savedUserThemes);
       const themeMode = isDark ? 'dark' : 'light';
 
       document.documentElement.setAttribute('data-theme-mode', themeMode);
@@ -140,7 +183,7 @@
       document.documentElement.style.setProperty('--base-font-size', `${currentFontSize}px`);
       document.documentElement.style.setProperty('--font-scale', `${fontScale}`);
 
-      // Sinkronisasi variabel CSS UI Shell saat Custom Palette aktif
+      // Sinkronisasi variabel CSS UI Shell saat Custom Palette atau User Preset aktif (#149 review)
       if (isCustomActive && cp) {
         document.documentElement.style.setProperty('--bg-darkest', effectiveBg);
         document.documentElement.style.setProperty('--bg-surface', effectiveBg);
@@ -150,6 +193,18 @@
         document.documentElement.style.setProperty('--text-primary', effectiveText);
         document.documentElement.style.setProperty('--bull-color', cp.candles.bullBody);
         document.documentElement.style.setProperty('--bear-color', cp.candles.bearBody);
+        document.documentElement.style.setProperty('--brand-primary', cp.candles.bullBody);
+      } else if (!isBuiltInTheme(effectivePreset)) {
+        // Suntikkan token UI Shell dari preset tema pengguna personal ke root DOM
+        document.documentElement.style.setProperty('--bg-darkest', activeThemeConfig.tokens.bgDarkest);
+        document.documentElement.style.setProperty('--bg-surface', activeThemeConfig.tokens.bgSurface);
+        document.documentElement.style.setProperty('--bg-container', activeThemeConfig.tokens.bgContainer);
+        document.documentElement.style.setProperty('--bg-panel', activeThemeConfig.tokens.bgPanel);
+        document.documentElement.style.setProperty('--text-main', activeThemeConfig.tokens.textMain);
+        document.documentElement.style.setProperty('--text-primary', activeThemeConfig.tokens.textPrimary || activeThemeConfig.tokens.textMain);
+        document.documentElement.style.setProperty('--bull-color', activeThemeConfig.tokens.bullColor);
+        document.documentElement.style.setProperty('--bear-color', activeThemeConfig.tokens.bearColor);
+        document.documentElement.style.setProperty('--brand-primary', activeThemeConfig.tokens.brandPrimary);
       } else {
         document.documentElement.style.removeProperty('--bg-darkest');
         document.documentElement.style.removeProperty('--bg-surface');
@@ -181,6 +236,7 @@
   let isIndicatorModalOpen = $state(false);
   let isSymbolSearchOpen = $state(false);
   let symbolSearchInitialQuery = $state('');
+  let symbolSearchTriggerSource = $state<'keystroke' | 'explicit'>('explicit');
   let isTimeframeQuickBarOpen = $state(false);
   let timeframeQuickBarInitialInput = $state('');
   let isShortcutCheatsheetOpen = $state(false);
@@ -460,6 +516,7 @@
       }),
       commandDispatcher.bindHandler('search-symbol', () => {
         symbolSearchInitialQuery = '';
+        symbolSearchTriggerSource = 'explicit';
         isSymbolSearchOpen = true;
       }),
       commandDispatcher.bindHandler('help-cheatsheet-f1', () => {
@@ -674,6 +731,7 @@
     const unbindGlobalListener = commandDispatcher.attachGlobalListener(window);
     const unsubTypeToSearch = commandDispatcher.onTypeToSearch((char) => {
       symbolSearchInitialQuery = char;
+      symbolSearchTriggerSource = 'keystroke';
       isSymbolSearchOpen = true;
     });
     const unsubTypeTimeframe = commandDispatcher.onTypeTimeframe((digit) => {
@@ -681,7 +739,20 @@
       isTimeframeQuickBarOpen = true;
     });
 
+    // System Theme Bridge: Dengarkan preferensi prefers-color-scheme OS secara reaktif (#148)
+    let detachMediaQuery: (() => void) | undefined;
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      systemIsDark = mql.matches;
+      const mqlListener = (e: MediaQueryListEvent) => {
+        systemIsDark = e.matches;
+      };
+      mql.addEventListener('change', mqlListener);
+      detachMediaQuery = () => mql.removeEventListener('change', mqlListener);
+    }
+
     return () => {
+      if (detachMediaQuery) detachMediaQuery();
       unbindGlobalListener();
       unsubTypeToSearch();
       unsubTypeTimeframe();
@@ -872,11 +943,19 @@
         return;
       }
     }
-    // Jika tidak sesuai atau bukan kustom palet, beralih ke preset bawaan resmi yang relevan
+    // Jika tidak sesuai atau bukan kustom palet, beralih ke preset bawaan resmi yang relevan (#148)
     if (mode === 'light') {
-      handleUpdateSettings({ themePreset: 'red_folder', customPalette: undefined });
+      handleUpdateSettings({
+        colorModePreference: 'light',
+        themePreset: (appSettings.activeLightPreset as any) || 'red_folder',
+        customPalette: undefined
+      });
     } else {
-      handleUpdateSettings({ themePreset: 'signature', customPalette: undefined });
+      handleUpdateSettings({
+        colorModePreference: 'dark',
+        themePreset: (appSettings.activeDarkPreset as any) || 'signature',
+        customPalette: undefined
+      });
     }
   }
 
@@ -1353,7 +1432,7 @@
    * Merangkum opsi snapshot lengkap untuk aksi cepat (quick copy & quick download) (#124, #125, #126, #127, #128)
    */
   function getQuickSnapshotOptions(scope: 'active' | 'all' = 'active'): SnapshotOptions {
-    const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
+    const activeTheme = resolveThemeConfig(effectiveChartThemePreset, appSettings.savedUserThemes);
     const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
     const metadata = getActiveSnapshotMetadata(scope);
     const scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
@@ -1545,6 +1624,7 @@
     }}
     onOpenSymbolSearch={() => {
       symbolSearchInitialQuery = '';
+      symbolSearchTriggerSource = 'explicit';
       isSymbolSearchOpen = true;
     }}
     favoriteTimeframes={appSettings.favoriteTimeframes}
@@ -1558,6 +1638,9 @@
     snapshotScaleMultiplier={appSettings.snapshotScaleMultiplier ?? 2}
     onSnapshotScaleMultiplierChange={(multiplier) => handleUpdateSettings({ snapshotScaleMultiplier: multiplier })}
     {isSnapshotProcessing}
+    colorModePreference={appSettings.colorModePreference ?? 'system'}
+    {systemIsDark}
+    onCycleColorMode={handleCycleColorMode}
   />
 
   <!-- Main Viewport Area -->
@@ -1642,7 +1725,7 @@
           defaultTimeframe={appSettings.defaultTimeframe || '15m'}
           layout={currentLayout}
           providerId={activeProviderId}
-          themePreset={appSettings.themePreset || 'signature'}
+          themePreset={effectiveChartThemePreset as any}
           customPalette={appSettings.customPalette}
           customBullColor={appSettings.customBullColor}
           customBearColor={appSettings.customBearColor}
@@ -1687,7 +1770,7 @@
             activeSymbol={activeSymbol}
             activeTimeframe={activeTimeframe}
             providerId={activeProviderId}
-            themePreset={appSettings.themePreset || 'signature'}
+            themePreset={(effectiveThemePreset as ThemePresetId) || 'signature'}
             customPalette={appSettings.customPalette}
             onClose={() => handleWorkspaceModeChange('terminal')}
             onAddToChart={handleAddIndicator}
@@ -1730,6 +1813,7 @@
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
           onOpenSymbolSearch={() => {
             symbolSearchInitialQuery = '';
+            symbolSearchTriggerSource = 'explicit';
             isSymbolSearchOpen = true;
           }}
         />
@@ -1824,11 +1908,13 @@
     {activeProviderId}
     {watchlistSymbols}
     initialQuery={symbolSearchInitialQuery}
+    triggerSource={symbolSearchTriggerSource}
     onSelectSymbol={handleSymbolChange}
     onToggleWatchlistSymbol={handleToggleWatchlistSymbolFromSearch}
     onClose={() => {
       isSymbolSearchOpen = false;
       symbolSearchInitialQuery = '';
+      symbolSearchTriggerSource = 'explicit';
     }}
   />
 

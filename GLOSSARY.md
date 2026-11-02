@@ -204,5 +204,25 @@ _Avoid_: Hardcoded component theme, Isolated chart styler, Ungoverned dialog tok
 Modul kalkulasi tingkat kecerahan latar belakang (`isDarkColor`) yang secara otomatis menurunkan tonalitas turunan (elevated surfaces, hairlines, muted text, wash layers, dan dialog scrim) agar kontras visual tetap proporsional baik pada skema ultra-dark maupun light-theme.
 _Avoid_: Fixed dark transparency, Blinding light UI, Inverted illegible text
 
+**App Theme**:
+Skema visual yang mengatur antarmuka Desktop Shell luar grafik (bilah header, toolbar, dock, dialog, context menu, status bar, dan Pine Editor).
+_Avoid_: Global skin, Full app theme only
+
+**Chart Canvas Theme**:
+Skema visual khusus lapisan kanvas grafik WebGL2 (warna badan lilin, wick, border, latar kanvas, garis kisi, crosshair, dan watermark pengenal).
+_Avoid_: Candle skin, Chart-only CSS
+
+**System Theme Bridge**:
+Mekanisme sinkronisasi preferensi mode warna (Dark/Light) yang secara otomatis mendengarkan dan merespons perubahan skema warna sistem operasi pengguna.
+_Avoid_: OS color watcher, Desktop dark mode hook
+
+**User Theme Preset**:
+Entitas konfigurasi tema kustom tersimpan yang dibuat pengguna melalui aksi "Save As", memiliki nama dan mode biner mandiri, serta dikelola berdampingan dengan preset bawaan.
+_Avoid_: Custom skin slot, Unsaved palette
+
+**Background Alert Engine**:
+Subsistem pengawasan pasar di balik layar yang secara otomatis mendaftarkan seluruh instrumen berstatus alert aktif ke siklus polling bursa, menjamin sinyal harga tetap terpicu meskipun grafik instrumen tersebut sedang tidak dibuka.
+_Avoid_: Inactive alert sleep, Active chart alert only
+
 
 

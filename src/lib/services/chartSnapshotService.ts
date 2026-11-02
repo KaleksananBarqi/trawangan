@@ -14,6 +14,7 @@ import type {
 } from '../types/market';
 import { formatPlanPrice, type ParsedTradingPlan } from './planParserService';
 import { colorToRgba, wrapCanvasText } from './chartSnapshotOverlayService';
+import { isDarkColor } from '../utils/colorUtils';
 
 export { colorToRgba, wrapCanvasText };
 
@@ -1253,17 +1254,99 @@ export function resolveSecurityWatermarkText(
   return 'TRAWANGAN';
 }
 
+export interface WatermarkColors {
+  fill: string;
+  stroke: string;
+}
+
+export interface AttributionBarColors {
+  textPrimary: string;
+  textSecondary: string;
+  textHandle: string;
+  textBio: string;
+  textUrl: string;
+  textTimestamp: string;
+  dotSeparator: string;
+  outerBorder: string;
+  chartBorder: string;
+  isDark: boolean;
+}
+
 /**
- * Merender tanda air keamanan semi-transparan diagonal pada kanvas grafik (#127)
- * Memosisikan teks di tengah area grafik dengan sudut rotasi diagonal -30° s.d. -35°
- * serta opasitas yang dikontrol oleh pengaturan pengguna.
+ * Menyelesaikan warna teks tanda air keamanan (Security Watermark) secara adaptif
+ * berdasarkan tingkat kecerahan (luminance) kanvas latar belakang (#147).
+ * - Latar Gelap: teks putih cerah (rgba(255, 255, 255, 0.9)) dengan stroke bayangan gelap (rgba(0, 0, 0, 0.5))
+ * - Latar Terang: teks kontras gelap (rgba(20, 20, 20, 0.85)) dengan stroke terang (rgba(255, 255, 255, 0.6))
  */
-function drawSecurityWatermark(
+export function resolveWatermarkColors(backgroundHex?: string): WatermarkColors {
+  const isDark = isDarkColor(backgroundHex || '#0F0F0F');
+  if (isDark) {
+    return {
+      fill: 'rgba(255, 255, 255, 0.9)',
+      stroke: 'rgba(0, 0, 0, 0.5)'
+    };
+  }
+  return {
+    fill: 'rgba(20, 20, 20, 0.85)',
+    stroke: 'rgba(255, 255, 255, 0.6)'
+  };
+}
+
+/**
+ * Menyelesaikan warna elemen teks, label, dan garis pada Attribution Bar bawah
+ * secara adaptif berdasarkan tingkat kecerahan latar belakang bingkai/chart (#144, #147).
+ * - Latar Gelap: teks putih cerah dan abu-abu terang standar.
+ * - Latar Terang: teks kontras gelap (mengadopsi token tema atau abu-abu/hitam pekat) agar tidak pudar di atas kanvas terang.
+ */
+export function resolveAttributionBarColors(
+  frameBg?: string,
+  themeConfig?: ThemeConfig
+): AttributionBarColors {
+  const isDark = isDarkColor(frameBg || '#0F0F0F');
+  const tokens = themeConfig?.tokens;
+
+  if (isDark) {
+    return {
+      textPrimary: '#FFFFFF',
+      textSecondary: '#B0B0B0',
+      textHandle: '#9E9E9E',
+      textBio: '#7E8B9B',
+      textUrl: '#6E6E6E',
+      textTimestamp: '#9E9E9E',
+      dotSeparator: 'rgba(255, 255, 255, 0.25)',
+      outerBorder: 'rgba(255, 255, 255, 0.08)',
+      chartBorder: 'rgba(255, 255, 255, 0.06)',
+      isDark: true,
+    };
+  }
+
+  // Latar bingkai terang (seperti tema Red Folder News #EDEDE9 atau custom light background)
+  return {
+    textPrimary: tokens?.textMain || '#1A1A1A',
+    textSecondary: tokens?.textMuted || '#4A4A4A',
+    textHandle: tokens?.textMuted || '#5A5A5A',
+    textBio: tokens?.textMuted || '#6E6E6E',
+    textUrl: tokens?.textMuted || '#757575',
+    textTimestamp: tokens?.textMuted || '#5A5A5A',
+    dotSeparator: 'rgba(0, 0, 0, 0.25)',
+    outerBorder: tokens?.borderHairline || 'rgba(0, 0, 0, 0.12)',
+    chartBorder: tokens?.borderSubtle || 'rgba(0, 0, 0, 0.08)',
+    isDark: false,
+  };
+}
+
+/**
+ * Merender tanda air keamanan semi-transparan diagonal pada kanvas grafik (#127, #147)
+ * Memosisikan teks di tengah area grafik dengan sudut rotasi diagonal -30° s.d. -35°
+ * serta opasitas dan warna adaptif berdasarkan tingkat kecerahan latar belakang.
+ */
+export function drawSecurityWatermark(
   ctx: any,
   dim: CompositeDimensions,
   watermark?: Partial<SecurityWatermarkConfig>,
   profile?: UserProfileConfig,
-  scale = 1
+  scale = 1,
+  backgroundColor?: string
 ): void {
   if (!watermark || !watermark.enabled) {
     return;
@@ -1291,6 +1374,9 @@ function drawSecurityWatermark(
   // Sudut diagonal -32° (-0.5585 radian)
   const ROTATION_ANGLE = -32 * (Math.PI / 180);
 
+  // Selesaikan warna adaptif berdasarkan luminansi latar belakang (#147)
+  const watermarkColors = resolveWatermarkColors(backgroundColor);
+
   ctx.save();
   // Kliping ke batas area grafik agar tanda air tidak meluber ke Attribution Bar atau batas luar
   ctx.beginPath();
@@ -1303,14 +1389,14 @@ function drawSecurityWatermark(
   ctx.textBaseline = 'middle';
   ctx.globalAlpha = opacity;
 
-  // Render teks utama dengan font tebal
+  // Render teks utama dengan font tebal dan warna adaptif
   ctx.font = `800 ${fontSize}px "JetBrains Mono", "Plus Jakarta Sans", monospace, sans-serif`;
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = watermarkColors.fill;
   ctx.fillText(text, 0, 0);
 
   // Garis tepi tipis agar tanda air tetap kontras pada ragam tema dan latar belakang
   ctx.lineWidth = Math.max(1, Math.round(1.5 * scale));
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.strokeStyle = watermarkColors.stroke;
   ctx.strokeText(text, 0, 0);
 
   ctx.restore();
@@ -1367,6 +1453,12 @@ export function compositeSnapshot(
   const isCustomGradient =
     customBg?.mode === 'gradient' && Boolean(customBg.gradientTop || customBg.gradientBottom);
 
+  const effectiveChartBg = isCustomSolid
+    ? customBg!.solidColor!
+    : isCustomGradient
+      ? (customBg!.gradientTop || '#0F0F0F')
+      : (options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F');
+
   if (mode === 'clean') {
     if (isCustomSolid) {
       ctx.fillStyle = customBg!.solidColor!;
@@ -1387,7 +1479,7 @@ export function compositeSnapshot(
     ctx.drawImage(sourceCanvasOrImage, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight);
     
     // Tanda air keamanan strictly bounded/clipped ke area kanvas grafik di sisi kiri
-    drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
+    drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale, effectiveChartBg);
 
     // Render panel samping tesis jika aktif berdampingan
     if (isSidePanelActive && activePlan && dim.panelX !== undefined && dim.panelWidth !== undefined) {
@@ -1407,13 +1499,16 @@ export function compositeSnapshot(
   }
 
   // --- 1. Container Background & Outer Border ---
+  const frameBg = options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F';
+  const attrColors = resolveAttributionBarColors(frameBg, options.themeConfig);
+
   ctx.save();
   drawRoundedRect(ctx, 0, 0, dim.width, dim.height, 12 * scale);
-  ctx.fillStyle = options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F';
+  ctx.fillStyle = frameBg;
   ctx.fill();
 
   ctx.lineWidth = Math.max(1, Math.round(1 * scale));
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.strokeStyle = attrColors.outerBorder;
   ctx.stroke();
   ctx.restore();
 
@@ -1428,7 +1523,7 @@ export function compositeSnapshot(
     chartGrad.addColorStop(1, customBg!.gradientBottom || '#181A20');
     ctx.fillStyle = chartGrad;
   } else {
-    ctx.fillStyle = options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F';
+    ctx.fillStyle = frameBg;
   }
   ctx.fill();
   ctx.clip();
@@ -1438,14 +1533,14 @@ export function compositeSnapshot(
 
   // 2b. Tanda Air Keamanan Anti-Pencurian semi-transparan DI ATAS grafik (#127)
   // Menjaga agar watermark profil tidak tertutup/terhapus oleh kanvas grafik Vela yang opaque
-  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale);
+  drawSecurityWatermark(ctx, dim, options.watermark, options.userProfile, scale, effectiveChartBg);
   ctx.restore();
 
   // Garis batas redup di sekeliling area chart
   ctx.save();
   drawRoundedRect(ctx, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight, 8 * scale);
   ctx.lineWidth = Math.max(1, Math.round(1 * scale));
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+  ctx.strokeStyle = attrColors.chartBorder;
   ctx.stroke();
   ctx.restore();
 
@@ -1537,7 +1632,7 @@ export function compositeSnapshot(
     // 3b-2. Teks Nama Pengguna (Username)
     const displayName = username || (rawHandle ? (rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`) : 'Trader');
     ctx.font = `bold ${Math.round(14 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = attrColors.textPrimary;
     ctx.textAlign = 'left';
     ctx.fillText(displayName, currentX, centerY);
 
@@ -1549,7 +1644,7 @@ export function compositeSnapshot(
       const formattedHandle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
       currentX += Math.round(6 * scale);
       ctx.font = `400 ${Math.round(12 * scale)}px "JetBrains Mono", monospace, sans-serif`;
-      ctx.fillStyle = '#9E9E9E';
+      ctx.fillStyle = attrColors.textHandle;
       ctx.textAlign = 'left';
       ctx.fillText(formattedHandle, currentX, centerY);
 
@@ -1561,7 +1656,7 @@ export function compositeSnapshot(
     if (bio) {
       currentX += Math.round(8 * scale);
       ctx.font = `italic 400 ${Math.round(11 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-      ctx.fillStyle = '#7E8B9B';
+      ctx.fillStyle = attrColors.textBio;
       ctx.textAlign = 'left';
       const bioText = `(${bio})`;
       ctx.fillText(bioText, currentX, centerY);
@@ -1572,13 +1667,13 @@ export function compositeSnapshot(
     // 3c. Pemisah Titik Redup
     currentX += Math.round(12 * scale);
     ctx.font = `${Math.round(12 * scale)}px sans-serif`;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.fillStyle = attrColors.dotSeparator;
     ctx.fillText('·', currentX, centerY);
     currentX += Math.round(12 * scale);
   } else {
     // 3b-alt. Teks Brand 'trawangan' Bawaan
     ctx.font = `bold ${Math.round(15 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = attrColors.textPrimary;
     ctx.textAlign = 'left';
     ctx.fillText('trawangan', currentX, centerY);
 
@@ -1587,7 +1682,7 @@ export function compositeSnapshot(
 
     // 3c. Pemisah Titik Redup
     ctx.font = `${Math.round(12 * scale)}px sans-serif`;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.fillStyle = attrColors.dotSeparator;
     ctx.fillText('·', currentX, centerY);
     currentX += Math.round(12 * scale);
   }
@@ -1604,7 +1699,7 @@ export function compositeSnapshot(
     instrumentText = `${meta.symbol.toUpperCase()} · ${meta.timeframe} · ${meta.providerId.toUpperCase()}`;
   }
   ctx.font = `500 ${Math.round(12 * scale)}px "JetBrains Mono", monospace, sans-serif`;
-  ctx.fillStyle = '#B0B0B0';
+  ctx.fillStyle = attrColors.textSecondary;
   ctx.fillText(instrumentText, currentX, centerY);
 
   ctx.restore();
@@ -1621,7 +1716,7 @@ export function compositeSnapshot(
   if (options.includeBrandUrl !== false) {
     const brandUrl = 'kaleksananbarqi.github.io/trawangan';
     ctx.font = `400 ${Math.round(11 * scale)}px "JetBrains Mono", monospace, sans-serif`;
-    ctx.fillStyle = '#6E6E6E';
+    ctx.fillStyle = attrColors.textUrl;
     ctx.fillText(brandUrl, rightX, centerY);
 
     const urlWidth = ctx.measureText ? ctx.measureText(brandUrl).width : 160 * scale;
@@ -1632,7 +1727,7 @@ export function compositeSnapshot(
   if (options.includeTimestamp !== false) {
     const timestampText = formatSnapshotTimestamp(meta.timestamp, meta.timezone);
     ctx.font = `400 ${Math.round(12 * scale)}px "Plus Jakarta Sans", sans-serif`;
-    ctx.fillStyle = '#9E9E9E';
+    ctx.fillStyle = attrColors.textTimestamp;
     ctx.fillText(timestampText, rightX, centerY);
 
     const timeWidth = ctx.measureText ? ctx.measureText(timestampText).width : 120 * scale;
@@ -1645,7 +1740,7 @@ export function compositeSnapshot(
   if (options.includePrice !== false && meta.lastPrice != null && !isMultiScope) {
     const formattedPrice = formatSnapshotPrice(meta.lastPrice);
     ctx.font = `bold ${Math.round(14 * scale)}px "JetBrains Mono", monospace, sans-serif`;
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = attrColors.textPrimary;
     ctx.fillText(formattedPrice, rightX, centerY);
   }
 

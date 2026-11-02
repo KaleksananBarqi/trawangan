@@ -218,6 +218,16 @@ export interface ObjectTreeItem {
 }
 
 export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'red_folder';
+export type ThemeId = ThemePresetId | string;
+
+/**
+ * Preferensi mode tampilan warna antarmuka Trawangan (#148)
+ * - 'system': Mengikuti preferensi skema warna sistem operasi host (prefers-color-scheme)
+ * - 'dark': Selalu menggunakan mode gelap (default ke activeDarkPreset)
+ * - 'light': Selalu menggunakan mode terang (default ke activeLightPreset)
+ */
+export type ColorModePreference = 'system' | 'dark' | 'light';
+
 export type UiDensity = 'compact' | 'regular' | 'comfortable';
 
 /**
@@ -248,6 +258,18 @@ export interface CustomThemePalette {
   enabled?: boolean;
   candles: CustomCandleColors;
   general: CustomGeneralColors;
+}
+
+/**
+ * Definisi Preset Tema Kustom Pengguna ("Save As") (#149)
+ */
+export interface CustomThemeDefinition {
+  id: string;
+  name: string;
+  mode: 'dark' | 'light';
+  palette: CustomThemePalette;
+  createdAt: number;
+  updatedAt: number;
 }
 
 /**
@@ -293,9 +315,15 @@ export interface AppSettings {
   showIndicatorPriceLabels?: boolean;
   showDrawingPriceLabels?: boolean;
   theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'red_folder' | 'obsidian';
-  themePreset?: ThemePresetId;
+  themePreset?: ThemeId;
+  chartThemePreset?: ThemeId;
+  syncChartWithAppTheme?: boolean;
+  savedUserThemes?: CustomThemeDefinition[];
+  colorModePreference?: ColorModePreference;
+  activeDarkPreset?: ThemeId;
+  activeLightPreset?: ThemeId;
   themeFilterMode?: 'all' | 'dark' | 'light';
-  customPalette?: CustomThemePalette;
+  customPalette?: CustomThemePalette | null;
   customBullColor?: string;
   customBearColor?: string;
   customChartBackground?: CustomChartBackgroundConfig;
