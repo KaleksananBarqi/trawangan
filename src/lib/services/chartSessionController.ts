@@ -20,7 +20,8 @@ import type {
   ActiveIndicatorInfo,
   SavedWorkspace,
   CustomChartBackgroundConfig,
-  CustomThemePalette
+  CustomThemePalette,
+  GridMode
 } from '../types/market';
 import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors, resolveThemeConfig } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
@@ -47,6 +48,7 @@ export interface ChartSessionOptions {
   customChartBackground?: CustomChartBackgroundConfig;
   showCurrentPriceLine?: boolean;
   showVolume?: boolean;
+  gridMode?: GridMode;
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
@@ -69,6 +71,7 @@ export interface ChartSessionSnapshot {
   customBearColor?: string;
   showCurrentPriceLine: boolean;
   showVolume: boolean;
+  gridMode: GridMode;
   activeCell: { symbol: string; timeframe: Timeframe } | null;
   activeIndicators: ActiveIndicatorInfo[];
   syncConfig: MultiChartSyncConfig;
@@ -391,6 +394,7 @@ export class ChartSessionController {
   private customCandleColors: { bullColor?: string; bearColor?: string } | null = null;
   private customChartBackground?: CustomChartBackgroundConfig;
   private onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
+  private gridMode: GridMode = 'normal';
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -403,6 +407,7 @@ export class ChartSessionController {
     this.timezone = options.timezone || 'Asia/Jakarta';
     this.showCurrentPriceLine = options.showCurrentPriceLine ?? true;
     this.showVolume = options.showVolume ?? true;
+    this.gridMode = options.gridMode || 'normal';
     this.customChartBackground = options.customChartBackground;
     this.customPalette = options.customPalette || null;
     this.onVelaThemeSelect = options.onVelaThemeSelect;
@@ -442,12 +447,37 @@ export class ChartSessionController {
       customBearColor: this.customCandleColors?.bearColor,
       showCurrentPriceLine: this.showCurrentPriceLine,
       showVolume: this.showVolume,
+      gridMode: this.gridMode,
       activeCell: this.activeCellInfo
         ? { ...this.activeCellInfo }
         : { symbol: this.symbol, timeframe: this.timeframe },
       activeIndicators: this.getActiveIndicators(),
       syncConfig: { ...this.syncConfig }
     };
+  }
+
+  public setGridMode(mode?: GridMode): void {
+    const nextMode = mode || 'normal';
+    if (this.gridMode === nextMode) return;
+    this.gridMode = nextMode;
+    this.setTheme(this.themePreset);
+  }
+
+  public getGridMode(): GridMode {
+    return this.gridMode;
+  }
+
+  /**
+   * Menghitung warna efektif garis grid WebGL berdasarkan mode grid dan kontras teks
+   */
+  public resolveEffectiveGridColor(textColor: string, isDark: boolean = true): string {
+    if (this.gridMode === 'hidden') {
+      return 'rgba(0, 0, 0, 0)';
+    }
+    if (this.gridMode === 'dimmed') {
+      return withAlpha(textColor, 0.02);
+    }
+    return isDark ? withAlpha(textColor, 0.06) : withAlpha(textColor, 0.08);
   }
 
   private notify(): void {
@@ -498,10 +528,12 @@ export class ChartSessionController {
 
     const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
     const themeConfig = resolveThemeConfig(this.themePreset);
+    const { textColor: themeTextColor, isDark: themeIsDark } = resolveEffectiveThemeColors(this.themePreset, this.customPalette);
+    const effectiveGridInit = this.resolveEffectiveGridColor(themeTextColor, themeIsDark);
     const velaTheme = {
       background: isCustomBg ? 'transparent' : themeConfig.chart.background,
       textColor: themeConfig.chart.textColor,
-      gridColor: themeConfig.chart.gridColor,
+      gridColor: effectiveGridInit,
       borderColor: themeConfig.chart.borderColor,
       upColor: themeConfig.chart.upColor,
       downColor: themeConfig.chart.downColor,
@@ -630,15 +662,29 @@ export class ChartSessionController {
     attachPriceScaleInputGuard(cell);
 
     const chart = cell.chart || cell.inner;
-    if (chart && typeof chart.onThemeSelect === 'function') {
+    // Otoritas Tunggal Tema Trawangan: Sembunyikan 'canvas.theme' dari dialog Vela
+    if (chart && typeof chart.setSettingsVisibility === 'function') {
       try {
-        chart.onThemeSelect((mode: 'dark' | 'light') => {
-          if (this.onVelaThemeSelect) {
-            this.onVelaThemeSelect(mode);
+        chart.setSettingsVisibility({
+          hidden: ['canvas.theme']
+        });
+      } catch (_) {}
+    }
+
+    // Terapkan konfigurasi garis grid langsung ke cell WebGL
+    if (chart && typeof chart.applyConfig === 'function') {
+      try {
+        const { textColor: txt, isDark: dark } = resolveEffectiveThemeColors(this.themePreset, this.customPalette);
+        const gridCol = this.resolveEffectiveGridColor(txt, dark);
+        chart.applyConfig({
+          grid: {
+            vertLines: { visible: this.gridMode !== 'hidden', color: gridCol },
+            horzLines: { visible: this.gridMode !== 'hidden', color: gridCol }
           }
         });
       } catch (_) {}
     }
+
     if (chart && typeof chart.on === 'function') {
       try {
         chart.on('market:changed', () => {
@@ -1184,9 +1230,7 @@ export class ChartSessionController {
       // 3 Atribut Warna Umum & Turunan Adaptif Luminance
       const { background: effectiveBg, textColor: effectiveText, isDark: dark } = resolveEffectiveThemeColors(preset, this.customPalette);
 
-      const effectiveGrid = dark
-        ? withAlpha(effectiveText, 0.06)
-        : withAlpha(effectiveText, 0.08);
+      const effectiveGrid = this.resolveEffectiveGridColor(effectiveText, dark);
 
       const effectiveBorder = dark
         ? withAlpha(effectiveText, 0.14)
@@ -1236,6 +1280,10 @@ export class ChartSessionController {
           upColor: effectiveUp,
           downColor: effectiveDown,
         },
+        grid: {
+          vertLines: { visible: this.gridMode !== 'hidden', color: effectiveGrid },
+          horzLines: { visible: this.gridMode !== 'hidden', color: effectiveGrid }
+        }
       };
 
       // Terapkan ke seluruh sel grafik aktif

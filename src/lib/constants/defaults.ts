@@ -21,6 +21,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   systemNotificationEnabled: true,
   showWatermark: true,
   showGrid: true,
+  gridMode: 'normal',
   showReplayBar: false,
   showCurrentPriceLine: true,
   showVolume: true,
@@ -126,6 +127,11 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
   return {
     ...DEFAULT_APP_SETTINGS,
     ...saved,
+    gridMode:
+      saved.gridMode === 'normal' || saved.gridMode === 'dimmed' || saved.gridMode === 'hidden'
+        ? saved.gridMode
+        : (saved.showGrid === false ? 'hidden' : 'normal'),
+    showGrid: saved.gridMode ? saved.gridMode !== 'hidden' : (saved.showGrid ?? true),
     showCurrentPriceLine: saved.showCurrentPriceLine ?? DEFAULT_APP_SETTINGS.showCurrentPriceLine ?? true,
     showVolume: saved.showVolume ?? DEFAULT_APP_SETTINGS.showVolume ?? true,
     showIndicatorPriceLabels: saved.showIndicatorPriceLabels ?? DEFAULT_APP_SETTINGS.showIndicatorPriceLabels ?? true,

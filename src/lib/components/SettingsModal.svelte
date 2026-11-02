@@ -9,7 +9,8 @@
     Info,
     HelpCircle,
     UserShield,
-    Check
+    Check,
+    Type
   } from '@lucide/svelte';
   import { onDestroy } from 'svelte';
   import type { AppSettings } from '../types/market';
@@ -18,6 +19,7 @@
   // Submodul Pengaturan Terfokus (Architecture Deepening - Issue #9)
   import GeneralTab from './settings/GeneralTab.svelte';
   import AppearanceTab from './settings/AppearanceTab.svelte';
+  import TypographyTab from './settings/TypographyTab.svelte';
   import ChartTab from './settings/ChartTab.svelte';
   import ProfileTab from './settings/ProfileTab.svelte';
   import FeedTab from './settings/FeedTab.svelte';
@@ -29,7 +31,7 @@
     isOpen: boolean;
     settings: AppSettings;
     activeProviderId?: string;
-    initialTab?: 'general' | 'appearance' | 'chart' | 'profile' | 'feed' | 'system' | 'about' | 'help';
+    initialTab?: 'general' | 'appearance' | 'typography' | 'chart' | 'profile' | 'feed' | 'system' | 'about' | 'help';
     onClose: () => void;
     onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
     onProviderChange?: (providerId: string) => void;
@@ -51,7 +53,7 @@
     onOpenGestureGuide
   }: Props = $props();
 
-  let activeTab = $state<'general' | 'appearance' | 'chart' | 'profile' | 'feed' | 'system' | 'about' | 'help'>('general');
+  let activeTab = $state<'general' | 'appearance' | 'typography' | 'chart' | 'profile' | 'feed' | 'system' | 'about' | 'help'>('general');
   let updateState = $state<UpdateState>(updateService.getSnapshot());
   let unsubUpdate: (() => void) | null = null;
 
@@ -115,7 +117,15 @@
             onclick={() => (activeTab = 'appearance')}
           >
             <Palette size={14} />
-            <span>Tema & Tipografi</span>
+            <span>Tema & Warna</span>
+          </button>
+
+          <button
+            class="nav-tab {activeTab === 'typography' ? 'active' : ''}"
+            onclick={() => (activeTab = 'typography')}
+          >
+            <Type size={14} />
+            <span>Tipografi & Teks</span>
           </button>
 
           <button
@@ -123,7 +133,7 @@
             onclick={() => (activeTab = 'chart')}
           >
             <Monitor size={14} />
-            <span>Tampilan Grafik</span>
+            <span>Kanvas & Grafik</span>
           </button>
 
           <button
@@ -177,6 +187,8 @@
             <GeneralTab {settings} {onUpdateSettings} />
           {:else if activeTab === 'appearance'}
             <AppearanceTab {settings} {onUpdateSettings} />
+          {:else if activeTab === 'typography'}
+            <TypographyTab {settings} {onUpdateSettings} />
           {:else if activeTab === 'chart'}
             <ChartTab
               {settings}
@@ -222,7 +234,7 @@
   }
 
   .settings-modal {
-    width: 680px;
+    width: 920px;
     max-width: 94vw;
     background-color: var(--bg-surface, #161b22);
     border: 1px solid var(--border-hairline, #30363d);
@@ -275,12 +287,12 @@
 
   .modal-body {
     display: flex;
-    min-height: 420px;
-    max-height: 75vh;
+    min-height: 520px;
+    max-height: 82vh;
   }
 
   .settings-nav {
-    width: 185px;
+    width: 210px;
     background-color: var(--bg-container, #0d1117);
     border-right: 1px solid var(--border-hairline, #30363d);
     padding: 10px 8px;

@@ -77,7 +77,8 @@
     loadWorkspaces,
     getLastActiveWorkspaceId,
     setLastActiveWorkspaceId,
-    DEFAULT_QUICK_SYMBOLS_CONFIG
+    DEFAULT_QUICK_SYMBOLS_CONFIG,
+    flushDrawings
   } from '../lib/services/persistence';
   import {
     THEME_PRESETS,
@@ -479,6 +480,15 @@
       updateService.checkForUpdates(true);
     }, 3000);
 
+    // Auto-Flush gambar dan trigger auto-save workspace sebelum aplikasi ditutup (beforeunload)
+    const handleBeforeUnload = () => {
+      try {
+        flushDrawings();
+        triggerWorkspaceAutoSave();
+      } catch (_) {}
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     // Dengarkan event saat Price Alert terpicu secara real-time
     unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
       triggeredAlertsToasts = [alert, ...triggeredAlertsToasts.slice(0, 3)];
@@ -752,6 +762,7 @@
     }
 
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       if (detachMediaQuery) detachMediaQuery();
       unbindGlobalListener();
       unsubTypeToSearch();
@@ -773,7 +784,7 @@
     if (unsubWatchlistRegistry) unsubWatchlistRegistry();
   });
 
-  function handleSymbolChange(newSym: string, providerHint?: string) {
+  async function handleSymbolChange(newSym: string, providerHint?: string) {
     const clean = newSym.trim().toUpperCase();
     const hint = providerHint ? providerHint.trim().toLowerCase() : '';
 
@@ -797,9 +808,14 @@
     }
 
     if (targetProvider !== activeProviderId) {
-      handleProviderChange(targetProvider);
+      await handleProviderChange(targetProvider);
     }
 
+    if (activeSymbol && activeSymbol !== newSym) {
+      try {
+        await flushDrawings();
+      } catch (_) {}
+    }
     activeSymbol = newSym;
     addSystemLog(`Simbol berganti ke ${newSym} (${targetProvider.toUpperCase()})`, 'info');
   }
@@ -932,31 +948,9 @@
     addSystemLog(`Pengaturan aplikasi diperbarui.`, 'info');
   }
 
-  function handleVelaThemeSelect(mode: 'dark' | 'light') {
-    const cp = appSettings.customPalette;
-    const isCustomActive = Boolean(cp && cp.enabled !== false && cp.candles && cp.general);
-    if (isCustomActive && cp?.general?.background) {
-      const customIsDark = isDarkColor(cp.general.background);
-      const customMode = customIsDark ? 'dark' : 'light';
-      // Jika palet kustom aktif sudah sesuai dengan mode yang dipilih, pertahankan palet kustom!
-      if (customMode === mode) {
-        return;
-      }
-    }
-    // Jika tidak sesuai atau bukan kustom palet, beralih ke preset bawaan resmi yang relevan (#148)
-    if (mode === 'light') {
-      handleUpdateSettings({
-        colorModePreference: 'light',
-        themePreset: (appSettings.activeLightPreset as any) || 'red_folder',
-        customPalette: undefined
-      });
-    } else {
-      handleUpdateSettings({
-        colorModePreference: 'dark',
-        themePreset: (appSettings.activeDarkPreset as any) || 'signature',
-        customPalette: undefined
-      });
-    }
+  function handleVelaThemeSelect(_mode: 'dark' | 'light') {
+    // Otoritas Tunggal Tema Trawangan: Preferensi pengguna di Trawangan adalah nomor satu.
+    // Event internal Vela tidak diizinkan lagi menimpa mode warna atau mereset customPalette.
   }
 
   function handleToggleVolumeVisibility() {
@@ -999,7 +993,10 @@
     saveQuickSymbolsConfig(newConfig);
   }
 
-  function handleProviderChange(newProviderId: string) {
+  async function handleProviderChange(newProviderId: string) {
+    try {
+      await flushDrawings();
+    } catch (_) {}
     activeProviderId = newProviderId;
     marketFeed.setActiveProvider(newProviderId);
     telemetryService.setActiveProvider(newProviderId);
@@ -1046,20 +1043,26 @@
     addSystemLog(`Workspace "${name}" disimpan`, 'success');
   }
 
-  function handleNewWorkspace() {
+  async function handleNewWorkspace() {
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    try { await flushDrawings(); } catch (_) {}
     activeWorkspace = null;
     setLastActiveWorkspaceId(null);
+    chartDrawingController.setWorkspaceId('default_workspace');
+    chartDrawingController.clearCanvasVisuals();
+    chartDrawingController.clearAllPlans();
     addSystemLog('Workspace aktif dilepas. Siap menyetel tata letak atau indikator untuk workspace baru.', 'info');
   }
 
   async function handleLoadWorkspace(w: SavedWorkspace) {
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    try { await flushDrawings(); } catch (_) {}
     isLoadingWorkspace = true;
     try {
       activeWorkspace = w;
       if (w && w.id) {
         setLastActiveWorkspaceId(w.id);
+        chartDrawingController.setWorkspaceId(w.id);
       }
 
       // 1. FRESH CLEAN SLATE TAHAP 1: Reset activeIndicators state Svelte & bersihkan chart lama
@@ -1725,6 +1728,8 @@
           defaultTimeframe={appSettings.defaultTimeframe || '15m'}
           layout={currentLayout}
           providerId={activeProviderId}
+          workspaceId={activeWorkspace?.id || 'default_workspace'}
+          gridMode={appSettings.gridMode || 'normal'}
           themePreset={effectiveChartThemePreset as any}
           customPalette={appSettings.customPalette}
           customBullColor={appSettings.customBullColor}

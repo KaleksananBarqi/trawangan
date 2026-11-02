@@ -303,12 +303,15 @@ export interface SecurityWatermarkConfig {
   showOnLiveCanvas: boolean; // default: false
 }
 
+export type GridMode = 'normal' | 'dimmed' | 'hidden';
+
 export interface AppSettings {
   timezone: string;
   soundEnabled: boolean;
   systemNotificationEnabled?: boolean;
   showWatermark: boolean;
   showGrid: boolean;
+  gridMode?: GridMode;
   showReplayBar: boolean;
   showCurrentPriceLine?: boolean;
   showVolume?: boolean;

@@ -53,20 +53,34 @@ export interface DrawingState {
 
 type Subscriber = (state: DrawingState) => void;
 
+export interface DrawingContextResolvers {
+  getSymbol: () => string;
+  getTimeframe: () => string;
+  getProviderId?: () => string;
+  getWorkspaceId?: () => string | null | undefined;
+}
+
 /**
- * Menghasilkan kunci persistensi gabungan bursa dan simbol yang ternormalisasi (misal: 'binance:BTCUSDT')
+ * Menghasilkan kunci persistensi gabungan workspace, bursa, dan simbol yang ternormalisasi (misal: 'default_workspace:binance:BTCUSDT' atau 'binance:BTCUSDT')
  */
-export function resolveDrawingKey(providerId: string | undefined, symbol: string): string {
-  if (!symbol) return 'binance:BTCUSDT';
-  const clean = symbol.trim();
+export function resolveDrawingKey(
+  providerId: string | undefined,
+  symbol: string,
+  workspaceId?: string | null
+): string {
+  const clean = symbol ? symbol.trim() : 'BTCUSDT';
+  let provider = (providerId || 'binance').trim().toLowerCase();
+  let normalizedSymbol = clean.toUpperCase();
   if (clean.includes(':')) {
     const parts = clean.split(':');
-    const p = parts[0].trim().toLowerCase() || 'binance';
-    const s = parts[1].trim().toUpperCase();
-    return `${p}:${s}`;
+    provider = parts[0].trim().toLowerCase() || 'binance';
+    normalizedSymbol = parts[1].trim().toUpperCase();
   }
-  const p = (providerId || 'binance').trim().toLowerCase();
-  return `${p}:${clean.toUpperCase()}`;
+  const baseKey = `${provider}:${normalizedSymbol}`;
+  if (workspaceId && workspaceId.trim()) {
+    return `${workspaceId.trim().toLowerCase()}:${baseKey}`;
+  }
+  return baseKey;
 }
 
 /**
@@ -328,23 +342,53 @@ export class ChartDrawingController {
   private getSymbol: () => string = () => 'BTCUSDT';
   private getTimeframe: () => string = () => '15m';
   private getProviderId: () => string = () => 'binance';
+  private currentWorkspaceId: string | null = null;
+  private customWorkspaceIdGetter?: () => string | null | undefined;
+
+  public setWorkspaceId(id: string | null | undefined): void {
+    this.currentWorkspaceId = id ? id.trim() : null;
+  }
+
+  public getWorkspaceId(): string | null {
+    const fromGetter = this.customWorkspaceIdGetter ? this.customWorkspaceIdGetter() : null;
+    const ws = fromGetter || this.currentWorkspaceId;
+    return ws && ws.trim() ? ws.trim().toLowerCase() : null;
+  }
 
   private subscribers = new Set<Subscriber>();
 
   /**
-   * Mengaitkan instance workspace Vela dan getter simbol/timeframe/provider aktif
+   * Mengaitkan instance workspace Vela dan getter simbol/timeframe/provider/workspace aktif
    */
   attachWorkspace(
     workspace: any,
-    getSymbol: () => string,
-    getTimeframe: () => string,
-    getProviderId?: () => string
+    getSymbolOrResolvers: (() => string) | DrawingContextResolvers,
+    getTimeframe?: () => string,
+    getProviderId?: () => string,
+    getWorkspaceId?: () => string | null | undefined
   ): () => void {
     this.workspace = workspace;
-    this.getSymbol = getSymbol;
-    this.getTimeframe = getTimeframe;
-    if (getProviderId) {
-      this.getProviderId = getProviderId;
+    if (typeof getSymbolOrResolvers === 'object' && getSymbolOrResolvers !== null) {
+      const resolvers = getSymbolOrResolvers;
+      this.getSymbol = resolvers.getSymbol;
+      this.getTimeframe = resolvers.getTimeframe;
+      if (resolvers.getProviderId) {
+        this.getProviderId = resolvers.getProviderId;
+      }
+      if (resolvers.getWorkspaceId) {
+        this.customWorkspaceIdGetter = resolvers.getWorkspaceId;
+      }
+    } else {
+      this.getSymbol = getSymbolOrResolvers;
+      if (getTimeframe) {
+        this.getTimeframe = getTimeframe;
+      }
+      if (getProviderId) {
+        this.getProviderId = getProviderId;
+      }
+      if (getWorkspaceId) {
+        this.customWorkspaceIdGetter = getWorkspaceId;
+      }
     }
 
     // Pasang listener pada seluruh cell yang ada
@@ -1396,6 +1440,29 @@ export class ChartDrawingController {
   }
 
   /**
+   * Menangani event penghapusan drawing untuk membersihkan relasi plan dan memicu re-evaluasi plan
+   */
+  handleDrawingRemoved(ids: string[]): void {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    this.removeDrawingsFromChart(ids);
+    for (const id of ids) {
+      if (this.selectedDrawingId === id) {
+        this.selectedDrawingId = null;
+      }
+      this.drawingMetadata.delete(id);
+      const planId = this.drawingPlanMap.get(id);
+      if (planId) {
+        this.drawingPlanMap.delete(id);
+        const planDrawingSet = this.planDrawingIds.get(planId);
+        if (planDrawingSet) {
+          planDrawingSet.delete(id);
+        }
+      }
+    }
+    this.handleDrawingMutated();
+  }
+
+  /**
    * Duplikasi objek gambar yang sedang dipilih (Ctrl+D) dengan pergeseran spasial lembut
    */
   duplicateSelectedDrawing(): string | null {
@@ -2177,8 +2244,31 @@ export class ChartDrawingController {
         if (doc) {
           const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
           const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
-          const key = resolveDrawingKey(curProv, curSym);
-          saveDrawingsDebounced(key, 'GLOBAL', doc);
+          const curWs = this.getWorkspaceId();
+          const key = resolveDrawingKey(curProv, curSym, curWs);
+
+          // Serialisasi drawingMetadata dan activePlans yang relevan ke payload
+          const metaObj: Record<string, any> = {};
+          for (const [id, meta] of this.drawingMetadata.entries()) {
+            metaObj[id] = meta;
+          }
+          const plansArr = Array.from(this.activePlans.values());
+          const planDrawingEntries = Array.from(this.planDrawingIds.entries()).map(([k, set]) => [
+            k,
+            Array.from(set)
+          ]);
+
+          const enrichedDoc = {
+            ...doc,
+            _trawangan_meta: {
+              drawingMetadata: metaObj,
+              activePlans: plansArr,
+              planDrawingIds: planDrawingEntries,
+              timestamp: Date.now()
+            }
+          };
+
+          saveDrawingsDebounced(key, 'GLOBAL', enrichedDoc);
         }
       } catch (err) {
         console.warn('Gagal memproses auto-save drawing:', err);
@@ -2231,12 +2321,13 @@ export class ChartDrawingController {
   }
 
   /**
-   * Muat dan pasang gambar yang tersimpan dari SQLite / Storage sesuai bursa dan simbol aktif
+   * Muat dan pasang gambar yang tersimpan dari SQLite / Storage sesuai workspace, bursa, dan simbol aktif
    */
   async restoreDrawings(
     targetSymbol?: string,
     targetTimeframe?: string,
-    targetProvider?: string
+    targetProvider?: string,
+    targetWorkspace?: string
   ): Promise<void> {
     const activeChart = this.getActiveChart();
     if (!activeChart?.drawings) return;
@@ -2245,7 +2336,8 @@ export class ChartDrawingController {
     try {
       const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
       const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
-      const curKey = resolveDrawingKey(curProv, curSym);
+      const curWs = this.getWorkspaceId();
+      const curKey = resolveDrawingKey(curProv, curSym, curWs);
       await flushDrawings(curKey, 'GLOBAL');
     } catch (_) {}
 
@@ -2253,21 +2345,36 @@ export class ChartDrawingController {
     try {
       // 2. Bersihkan kanvas aktif terlebih dahulu (clean slate) agar gambar bursa lama tidak bocor
       this.clearCanvasVisuals();
+      this.activePlans.clear();
+      this.drawingMetadata.clear();
+      this.planDrawingIds.clear();
+      this.drawingPlanMap.clear();
 
       const sym = targetSymbol || (this.workspace?.active as any)?.symbol || this.getSymbol();
       const tf = targetTimeframe || (this.workspace?.active as any)?.timeframe || this.getTimeframe();
       const prov = targetProvider || this.getProviderId();
-      const key = resolveDrawingKey(prov, sym);
+      const ws = targetWorkspace || this.getWorkspaceId();
+      const key = resolveDrawingKey(prov, sym, ws);
 
-      // 3. Coba slot GLOBAL untuk bursa aktif
+      // 3. Coba slot GLOBAL untuk workspace dan bursa aktif
       let doc = await loadDrawings(key, 'GLOBAL');
       // 4. Fallback per timeframe bursa aktif
       if (!doc) {
         doc = await loadDrawings(key, tf);
       }
 
-      // 5. Legacy Fallback: jika bursa adalah binance dan belum ada record bursa, cek key lama tanpa prefix bursa
-      if (!doc && prov.toLowerCase() === 'binance') {
+      // 5. Backward Compatibility Fallback:
+      // A. Jika ada workspaceId, coba periksa key lama tanpa prefix workspace (provider:symbol)
+      if (!doc && ws) {
+        const legacyKey = `${(prov || 'binance').toLowerCase()}:${sym.toUpperCase()}`;
+        doc = await loadDrawings(legacyKey, 'GLOBAL');
+        if (!doc) {
+          doc = await loadDrawings(legacyKey, tf);
+        }
+      }
+
+      // B. Jika provider adalah binance dan belum ditemukan, periksa key purba tanpa prefix bursa sama sekali (symbol)
+      if (!doc && (prov || 'binance').toLowerCase() === 'binance') {
         const legacySym = sym.includes(':') ? sym.split(':')[1] : sym;
         doc = await loadDrawings(legacySym, 'GLOBAL');
         if (!doc) {
@@ -2275,9 +2382,50 @@ export class ChartDrawingController {
         }
       }
 
-      if (doc && activeChart.drawings) {
-        activeChart.drawings.fromJSON(doc);
-        this.activeDrawings = activeChart.drawings.all?.() || [];
+      if (doc) {
+        // Pulihkan metadata dan activePlans jika tersimpan di payload _trawangan_meta
+        if (doc._trawangan_meta) {
+          const meta = doc._trawangan_meta;
+          if (meta.drawingMetadata && typeof meta.drawingMetadata === 'object') {
+            for (const [id, m] of Object.entries(meta.drawingMetadata)) {
+              this.drawingMetadata.set(id, m);
+            }
+          }
+          if (Array.isArray(meta.activePlans)) {
+            for (const p of meta.activePlans) {
+              if (p && p.id) {
+                this.activePlans.set(p.id, p);
+              }
+            }
+          }
+          if (Array.isArray(meta.planDrawingIds)) {
+            for (const [k, ids] of meta.planDrawingIds) {
+              if (k && Array.isArray(ids)) {
+                this.planDrawingIds.set(k, new Set(ids));
+                for (const did of ids) {
+                  this.drawingPlanMap.set(did, k);
+                }
+              }
+            }
+          }
+        }
+
+        if (activeChart.drawings) {
+          activeChart.drawings.fromJSON(doc);
+          this.activeDrawings = (activeChart.drawings.all?.() || []) as ChartDrawingItem[];
+
+          // Tempelkan kembali metadata ke activeDrawings
+          for (const d of this.activeDrawings) {
+            if (d && d.id) {
+              if (this.drawingMetadata.has(d.id)) {
+                d.metadata = { ...(this.drawingMetadata.get(d.id) || {}), ...(d.metadata || {}) };
+              }
+              if (this.drawingPlanMap.has(d.id) && (!d.metadata || !d.metadata.planId)) {
+                d.metadata = { ...(d.metadata || {}), planId: this.drawingPlanMap.get(d.id) };
+              }
+            }
+          }
+        }
       }
     } catch (err) {
       console.warn('Gagal memulihkan drawings:', err);

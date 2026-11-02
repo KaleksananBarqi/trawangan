@@ -45,6 +45,7 @@
   ];
 
   let resetChartFeedback = $state<string | null>(null);
+  let currentGridMode = $derived(settings.gridMode || (settings.showGrid === false ? 'hidden' : 'normal'));
 
   function handleToggleFavFromSettings(tf: string) {
     const current = settings.favoriteTimeframes || ['1m', '5m', '15m', '1h', '4h', '1D'];
@@ -88,14 +89,34 @@
   <div class="setting-row">
     <div class="setting-info">
       <span class="setting-label">Garis Grid Latar (Grid Lines)</span>
-      <span class="setting-desc">Tampilkan garis pemandu koordinat horizontal dan vertikal</span>
+      <span class="setting-desc">Tampilkan pemandu koordinat harga dan waktu dengan pilihan intensitas garis</span>
     </div>
-    <button
-      class="toggle-btn {settings.showGrid ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showGrid: !settings.showGrid })}
-    >
-      {settings.showGrid ? 'Tampilkan' : 'Sembunyikan'}
-    </button>
+    <div class="grid-mode-selector" role="radiogroup" aria-label="Garis Grid">
+      <button
+        type="button"
+        class="mode-chip {currentGridMode === 'normal' ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ gridMode: 'normal', showGrid: true })}
+        title="Garis grid tampil jelas dengan opasitas tema standar"
+      >
+        <span>Normal</span>
+      </button>
+      <button
+        type="button"
+        class="mode-chip {currentGridMode === 'dimmed' ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ gridMode: 'dimmed', showGrid: true })}
+        title="Garis grid samar dan redup (transparan halus)"
+      >
+        <span>Redup</span>
+      </button>
+      <button
+        type="button"
+        class="mode-chip {currentGridMode === 'hidden' ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ gridMode: 'hidden', showGrid: false })}
+        title="Sembunyikan seluruh garis koordinat horizontal dan vertikal"
+      >
+        <span>Sembunyi</span>
+      </button>
+    </div>
   </div>
 
   <div class="setting-row">
@@ -236,48 +257,10 @@
 </div>
 
 <div class="section-group">
-  <h4 class="section-title">Timeframe & Navigasi Bilah Atas</h4>
-
-  <!-- Pilihan Timeframe Default -->
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Timeframe Default (Aplikasi & Layout Multi-Chart)</span>
-      <span class="setting-desc">Interval candle bawaan saat aplikasi dibuka dan saat panel baru terbentuk pada layout grid</span>
-    </div>
-    <select
-      class="select-input mono-nums"
-      value={settings.defaultTimeframe || '15m'}
-      onchange={(e) => onUpdateSettings({ defaultTimeframe: e.currentTarget.value as any })}
-    >
-      <optgroup label="Menit">
-        <option value="1m">1m (1 Menit)</option>
-        <option value="3m">3m (3 Menit)</option>
-        <option value="5m">5m (5 Menit)</option>
-        <option value="15m">15m (15 Menit - Day Trading)</option>
-        <option value="30m">30m (30 Menit)</option>
-        <option value="45m">45m (45 Menit)</option>
-      </optgroup>
-      <optgroup label="Jam">
-        <option value="1h">1h (1 Jam - Swing MTF)</option>
-        <option value="2h">2h (2 Jam)</option>
-        <option value="4h">4h (4 Jam - HTF Analisis)</option>
-        <option value="6h">6h (6 Jam)</option>
-        <option value="12h">12h (12 Jam)</option>
-      </optgroup>
-      <optgroup label="Hari & Pekan">
-        <option value="1D">1D (1 Hari - Trend Utama)</option>
-        <option value="1W">1W (1 Pekan)</option>
-        <option value="1M">1M (1 Bulan)</option>
-      </optgroup>
-      {#if settings.customTimeframes && settings.customTimeframes.length > 0}
-        <optgroup label="Kustom Pengguna">
-          {#each settings.customTimeframes as ctf}
-            <option value={ctf}>{ctf} (Kustom)</option>
-          {/each}
-        </optgroup>
-      {/if}
-    </select>
-  </div>
+  <h4 class="section-title">Sematan Timeframe Favorit</h4>
+  <p class="section-subtitle">
+    Pilih timeframe mana saja yang disematkan langsung di bilah navigasi kilat header grafik.
+  </p>
 
   <!-- Pilihan Sematan Timeframe Favorit -->
   <div class="setting-box-column">
@@ -333,42 +316,12 @@
   </div>
 </div>
 
-<!-- SEKSI 3: PERILAKU WORKSPACE & MULTI-CHART -->
+<!-- SEKSI 3: SINKRONISASI MULTI-CHART -->
 <div class="section-group">
-  <h4 class="section-title">Perilaku Workspace & Sinkronisasi Multi-Chart</h4>
+  <h4 class="section-title">Sinkronisasi Multi-Chart Grid</h4>
   <p class="section-subtitle">
-    Atur perilaku penyimpanan otomatis workspace dan preferensi sinkronisasi bawaan saat menggunakan multi-chart grid.
+    Atur preferensi sinkronisasi bawaan saat menggunakan tata letak multi-chart (2 Split, 4 Grid, dsb.).
   </p>
-
-  <!-- Auto-Save Workspace Toggle -->
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Penyimpanan Otomatis Workspace (Auto-Save)</span>
-      <span class="setting-desc">Simpan otomatis tata letak grid, simbol, dan perubahan workspace saat bekerja</span>
-    </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.autoSaveWorkspace !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ autoSaveWorkspace: settings.autoSaveWorkspace === false })}
-    >
-      {settings.autoSaveWorkspace !== false ? 'Aktif' : 'Nonaktif'}
-    </button>
-  </div>
-
-  <!-- Auto-Load Last Workspace on Startup Toggle -->
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Muat Workspace Terakhir saat Startup</span>
-      <span class="setting-desc">Otomatis memuat workspace, simbol, indikator, dan tata letak terakhir saat aplikasi dibuka</span>
-    </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.autoLoadLastWorkspace !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ autoLoadLastWorkspace: settings.autoLoadLastWorkspace === false })}
-    >
-      {settings.autoLoadLastWorkspace !== false ? 'Aktif' : 'Nonaktif'}
-    </button>
-  </div>
 
   <!-- Sinkronisasi Multi-Chart Cards Grid -->
   <div class="setting-box-column">
@@ -547,6 +500,38 @@
     background: rgba(35, 134, 54, 0.2);
     border-color: var(--bull-color, #238636);
     color: #3fb950;
+  }
+
+  .grid-mode-selector {
+    display: flex;
+    align-items: center;
+    background-color: var(--bg-subtle, #0d1117);
+    border: 1px solid var(--border-subtle, #30363d);
+    border-radius: 4px;
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .mode-chip {
+    padding: 4px 10px;
+    background: none;
+    border: none;
+    border-radius: 3px;
+    color: var(--text-dim, #8b949e);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .mode-chip:hover {
+    color: var(--text-base, #ffffff);
+  }
+
+  .mode-chip.active {
+    background-color: var(--bg-hover, #21262d);
+    color: var(--brand-primary, #00f090);
+    font-weight: 600;
   }
 
   .select-input {

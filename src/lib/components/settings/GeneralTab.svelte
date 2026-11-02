@@ -365,6 +365,72 @@
   </div>
 </div>
 
+<!-- Timeframe & Workspace Persistence -->
+<div class="section-group">
+  <h4 class="section-title">Timeframe & Penyimpanan Workspace</h4>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Timeframe Default (Aplikasi & Multi-Chart)</span>
+      <span class="setting-desc">Interval lilin bawaan saat aplikasi dibuka dan saat panel baru terbentuk</span>
+    </div>
+    <select
+      class="select-input mono-nums"
+      value={settings.defaultTimeframe || '15m'}
+      onchange={(e) => onUpdateSettings({ defaultTimeframe: e.currentTarget.value as any })}
+    >
+      <optgroup label="Menit">
+        <option value="1m">1m (1 Menit)</option>
+        <option value="3m">3m (3 Menit)</option>
+        <option value="5m">5m (5 Menit)</option>
+        <option value="15m">15m (15 Menit - Day Trading)</option>
+        <option value="30m">30m (30 Menit)</option>
+        <option value="45m">45m (45 Menit)</option>
+      </optgroup>
+      <optgroup label="Jam">
+        <option value="1h">1h (1 Jam - Swing MTF)</option>
+        <option value="2h">2h (2 Jam)</option>
+        <option value="4h">4h (4 Jam - HTF Analisis)</option>
+        <option value="6h">6h (6 Jam)</option>
+        <option value="12h">12h (12 Jam)</option>
+      </optgroup>
+      <optgroup label="Hari & Pekan">
+        <option value="1D">1D (1 Hari - Trend Utama)</option>
+        <option value="1W">1W (1 Pekan)</option>
+        <option value="1M">1M (1 Bulan)</option>
+      </optgroup>
+    </select>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Penyimpanan Otomatis Workspace (Auto-Save)</span>
+      <span class="setting-desc">Simpan otomatis tata letak grid, simbol, dan perubahan workspace saat bekerja</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.autoSaveWorkspace !== false ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ autoSaveWorkspace: settings.autoSaveWorkspace === false })}
+    >
+      {settings.autoSaveWorkspace !== false ? 'Aktif' : 'Nonaktif'}
+    </button>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Muat Workspace Terakhir saat Startup</span>
+      <span class="setting-desc">Otomatis memuat workspace, simbol, indikator, dan tata letak terakhir saat aplikasi dibuka</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.autoLoadLastWorkspace !== false ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ autoLoadLastWorkspace: settings.autoLoadLastWorkspace === false })}
+    >
+      {settings.autoLoadLastWorkspace !== false ? 'Aktif' : 'Nonaktif'}
+    </button>
+  </div>
+</div>
+
 <style>
   .section-group {
     display: flex;
