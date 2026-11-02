@@ -34,9 +34,12 @@
     onUpdateSettings({ fontSize: clamped, uiDensity: density });
   }
 
+  let effectiveFontSize = $derived(
+    settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE)
+  );
+
   function handleStepFontSize(delta: number) {
-    const current = settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE);
-    handleSetFontSize(current + delta);
+    handleSetFontSize(effectiveFontSize + delta);
   }
 
   function handleSetDensity(density: UiDensity) {
@@ -131,7 +134,7 @@
       <div class="setting-title-with-badge">
         <span class="setting-label">Ukuran Font Presisi (Fine-Tuning Stepper & Slider)</span>
         <span class="font-current-badge mono-nums">
-          {(settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE))}px
+          {effectiveFontSize}px
         </span>
       </div>
       <span class="setting-desc">
@@ -157,7 +160,7 @@
           min={MIN_FONT_SIZE}
           max={MAX_FONT_SIZE}
           step="0.5"
-          value={settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE)}
+          value={effectiveFontSize}
           oninput={(e) => handleSetFontSize(parseFloat(e.currentTarget.value))}
         />
         <div class="slider-ticks">
@@ -183,7 +186,7 @@
           min={MIN_FONT_SIZE}
           max={MAX_FONT_SIZE}
           step="0.5"
-          value={settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE)}
+          value={effectiveFontSize}
           onchange={(e) => handleSetFontSize(parseFloat(e.currentTarget.value))}
         />
         <span class="font-unit">px</span>
@@ -205,7 +208,7 @@
       <span class="presets-row-label">Preset Layar Monitor:</span>
       <div class="font-presets-chips">
         {#each FONT_SIZE_PRESETS as preset}
-          {@const currentSize = settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE)}
+          {@const currentSize = effectiveFontSize}
           {@const isActive = Math.abs(currentSize - preset.size) < 0.25}
           <button
             type="button"
@@ -223,12 +226,12 @@
     <!-- Live Typography Preview Box -->
     <div
       class="font-preview-box"
-      style="--preview-font-size: {(settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE))}px;"
+      style="--preview-font-size: {effectiveFontSize}px;"
     >
       <div class="preview-header">
         <span class="preview-title">Live Preview Tampilan (Skala Nyata)</span>
         <span class="preview-badge mono-nums">
-          {(settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE))}px
+          {effectiveFontSize}px
         </span>
       </div>
       <div class="preview-content">

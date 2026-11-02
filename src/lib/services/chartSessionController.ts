@@ -467,6 +467,19 @@ export class ChartSessionController {
     return this.gridMode;
   }
 
+  /**
+   * Menghitung warna efektif garis grid WebGL berdasarkan mode grid dan kontras teks
+   */
+  public resolveEffectiveGridColor(textColor: string, isDark: boolean = true): string {
+    if (this.gridMode === 'hidden') {
+      return 'rgba(0, 0, 0, 0)';
+    }
+    if (this.gridMode === 'dimmed') {
+      return withAlpha(textColor, 0.02);
+    }
+    return isDark ? withAlpha(textColor, 0.06) : withAlpha(textColor, 0.08);
+  }
+
   private notify(): void {
     const snapshot = this.getSnapshot();
     for (const sub of this.subscribers) {
@@ -515,11 +528,8 @@ export class ChartSessionController {
 
     const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
     const themeConfig = resolveThemeConfig(this.themePreset);
-    const effectiveGridInit = this.gridMode === 'hidden'
-      ? 'rgba(0, 0, 0, 0)'
-      : (this.gridMode === 'dimmed'
-          ? withAlpha(themeConfig.chart.textColor, 0.02)
-          : themeConfig.chart.gridColor);
+    const { textColor: themeTextColor, isDark: themeIsDark } = resolveEffectiveThemeColors(this.themePreset, this.customPalette);
+    const effectiveGridInit = this.resolveEffectiveGridColor(themeTextColor, themeIsDark);
     const velaTheme = {
       background: isCustomBg ? 'transparent' : themeConfig.chart.background,
       textColor: themeConfig.chart.textColor,
@@ -665,11 +675,7 @@ export class ChartSessionController {
     if (chart && typeof chart.applyConfig === 'function') {
       try {
         const { textColor: txt, isDark: dark } = resolveEffectiveThemeColors(this.themePreset, this.customPalette);
-        const gridCol = this.gridMode === 'hidden'
-          ? 'rgba(0, 0, 0, 0)'
-          : (this.gridMode === 'dimmed'
-              ? withAlpha(txt, 0.02)
-              : (dark ? withAlpha(txt, 0.06) : withAlpha(txt, 0.08)));
+        const gridCol = this.resolveEffectiveGridColor(txt, dark);
         chart.applyConfig({
           grid: {
             vertLines: { visible: this.gridMode !== 'hidden', color: gridCol },
@@ -1224,11 +1230,7 @@ export class ChartSessionController {
       // 3 Atribut Warna Umum & Turunan Adaptif Luminance
       const { background: effectiveBg, textColor: effectiveText, isDark: dark } = resolveEffectiveThemeColors(preset, this.customPalette);
 
-      const effectiveGrid = this.gridMode === 'hidden'
-        ? 'rgba(0, 0, 0, 0)'
-        : (this.gridMode === 'dimmed'
-            ? withAlpha(effectiveText, 0.02)
-            : (dark ? withAlpha(effectiveText, 0.06) : withAlpha(effectiveText, 0.08)));
+      const effectiveGrid = this.resolveEffectiveGridColor(effectiveText, dark);
 
       const effectiveBorder = dark
         ? withAlpha(effectiveText, 0.14)

@@ -78,6 +78,7 @@
   let feedConnectionStatus = $state(marketFeed.getConnectionStatus());
   let isDismissedConnectionWarning = $state(false);
   let isSelectingCutoff = $state(false);
+  let lastLoadedWorkspaceId = $state<string | null>(null);
   let lastHoveredPrice = $state<number | null>(null);
   let cutlineX = $state<number | null>(null);
   let cutlineY = $state<number | null>(null);
@@ -121,8 +122,12 @@
   $effect(() => { const l = layout; if (isMounted && l) controller.setLayout(l); });
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
   $effect(() => {
-    const wsId = workspaceId;
+    const wsId = workspaceId || 'default_workspace';
     chartDrawingController.setWorkspaceId(wsId);
+    if (isMounted && lastLoadedWorkspaceId !== null && lastLoadedWorkspaceId !== wsId) {
+      chartDrawingController.restoreDrawings(symbol, timeframe, providerId, wsId).catch(() => {});
+    }
+    lastLoadedWorkspaceId = wsId;
   });
   $effect(() => {
     const gm = gridMode;

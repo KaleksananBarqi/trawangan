@@ -53,6 +53,13 @@ export interface DrawingState {
 
 type Subscriber = (state: DrawingState) => void;
 
+export interface DrawingContextResolvers {
+  getSymbol: () => string;
+  getTimeframe: () => string;
+  getProviderId?: () => string;
+  getWorkspaceId?: () => string | null | undefined;
+}
+
 /**
  * Menghasilkan kunci persistensi gabungan workspace, bursa, dan simbol yang ternormalisasi (misal: 'default_workspace:binance:BTCUSDT' atau 'binance:BTCUSDT')
  */
@@ -62,14 +69,14 @@ export function resolveDrawingKey(
   workspaceId?: string | null
 ): string {
   const clean = symbol ? symbol.trim() : 'BTCUSDT';
-  let p = (providerId || 'binance').trim().toLowerCase();
-  let s = clean.toUpperCase();
+  let provider = (providerId || 'binance').trim().toLowerCase();
+  let normalizedSymbol = clean.toUpperCase();
   if (clean.includes(':')) {
     const parts = clean.split(':');
-    p = parts[0].trim().toLowerCase() || 'binance';
-    s = parts[1].trim().toUpperCase();
+    provider = parts[0].trim().toLowerCase() || 'binance';
+    normalizedSymbol = parts[1].trim().toUpperCase();
   }
-  const baseKey = `${p}:${s}`;
+  const baseKey = `${provider}:${normalizedSymbol}`;
   if (workspaceId && workspaceId.trim()) {
     return `${workspaceId.trim().toLowerCase()}:${baseKey}`;
   }
@@ -351,23 +358,37 @@ export class ChartDrawingController {
   private subscribers = new Set<Subscriber>();
 
   /**
-   * Mengaitkan instance workspace Vela dan getter simbol/timeframe/provider aktif
+   * Mengaitkan instance workspace Vela dan getter simbol/timeframe/provider/workspace aktif
    */
   attachWorkspace(
     workspace: any,
-    getSymbol: () => string,
-    getTimeframe: () => string,
+    getSymbolOrResolvers: (() => string) | DrawingContextResolvers,
+    getTimeframe?: () => string,
     getProviderId?: () => string,
     getWorkspaceId?: () => string | null | undefined
   ): () => void {
     this.workspace = workspace;
-    this.getSymbol = getSymbol;
-    this.getTimeframe = getTimeframe;
-    if (getProviderId) {
-      this.getProviderId = getProviderId;
-    }
-    if (getWorkspaceId) {
-      this.customWorkspaceIdGetter = getWorkspaceId;
+    if (typeof getSymbolOrResolvers === 'object' && getSymbolOrResolvers !== null) {
+      const resolvers = getSymbolOrResolvers;
+      this.getSymbol = resolvers.getSymbol;
+      this.getTimeframe = resolvers.getTimeframe;
+      if (resolvers.getProviderId) {
+        this.getProviderId = resolvers.getProviderId;
+      }
+      if (resolvers.getWorkspaceId) {
+        this.customWorkspaceIdGetter = resolvers.getWorkspaceId;
+      }
+    } else {
+      this.getSymbol = getSymbolOrResolvers;
+      if (getTimeframe) {
+        this.getTimeframe = getTimeframe;
+      }
+      if (getProviderId) {
+        this.getProviderId = getProviderId;
+      }
+      if (getWorkspaceId) {
+        this.customWorkspaceIdGetter = getWorkspaceId;
+      }
     }
 
     // Pasang listener pada seluruh cell yang ada
@@ -1419,6 +1440,29 @@ export class ChartDrawingController {
   }
 
   /**
+   * Menangani event penghapusan drawing untuk membersihkan relasi plan dan memicu re-evaluasi plan
+   */
+  handleDrawingRemoved(ids: string[]): void {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    this.removeDrawingsFromChart(ids);
+    for (const id of ids) {
+      if (this.selectedDrawingId === id) {
+        this.selectedDrawingId = null;
+      }
+      this.drawingMetadata.delete(id);
+      const planId = this.drawingPlanMap.get(id);
+      if (planId) {
+        this.drawingPlanMap.delete(id);
+        const planDrawingSet = this.planDrawingIds.get(planId);
+        if (planDrawingSet) {
+          planDrawingSet.delete(id);
+        }
+      }
+    }
+    this.handleDrawingMutated();
+  }
+
+  /**
    * Duplikasi objek gambar yang sedang dipilih (Ctrl+D) dengan pergeseran spasial lembut
    */
   duplicateSelectedDrawing(): string | null {
@@ -2301,6 +2345,10 @@ export class ChartDrawingController {
     try {
       // 2. Bersihkan kanvas aktif terlebih dahulu (clean slate) agar gambar bursa lama tidak bocor
       this.clearCanvasVisuals();
+      this.activePlans.clear();
+      this.drawingMetadata.clear();
+      this.planDrawingIds.clear();
+      this.drawingPlanMap.clear();
 
       const sym = targetSymbol || (this.workspace?.active as any)?.symbol || this.getSymbol();
       const tf = targetTimeframe || (this.workspace?.active as any)?.timeframe || this.getTimeframe();
@@ -2354,6 +2402,9 @@ export class ChartDrawingController {
             for (const [k, ids] of meta.planDrawingIds) {
               if (k && Array.isArray(ids)) {
                 this.planDrawingIds.set(k, new Set(ids));
+                for (const did of ids) {
+                  this.drawingPlanMap.set(did, k);
+                }
               }
             }
           }

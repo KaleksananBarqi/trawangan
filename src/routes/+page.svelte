@@ -784,7 +784,7 @@
     if (unsubWatchlistRegistry) unsubWatchlistRegistry();
   });
 
-  function handleSymbolChange(newSym: string, providerHint?: string) {
+  async function handleSymbolChange(newSym: string, providerHint?: string) {
     const clean = newSym.trim().toUpperCase();
     const hint = providerHint ? providerHint.trim().toLowerCase() : '';
 
@@ -808,11 +808,13 @@
     }
 
     if (targetProvider !== activeProviderId) {
-      handleProviderChange(targetProvider);
+      await handleProviderChange(targetProvider);
     }
 
     if (activeSymbol && activeSymbol !== newSym) {
-      flushDrawings();
+      try {
+        await flushDrawings();
+      } catch (_) {}
     }
     activeSymbol = newSym;
     addSystemLog(`Simbol berganti ke ${newSym} (${targetProvider.toUpperCase()})`, 'info');
@@ -991,8 +993,10 @@
     saveQuickSymbolsConfig(newConfig);
   }
 
-  function handleProviderChange(newProviderId: string) {
-    flushDrawings();
+  async function handleProviderChange(newProviderId: string) {
+    try {
+      await flushDrawings();
+    } catch (_) {}
     activeProviderId = newProviderId;
     marketFeed.setActiveProvider(newProviderId);
     telemetryService.setActiveProvider(newProviderId);
@@ -1039,9 +1043,9 @@
     addSystemLog(`Workspace "${name}" disimpan`, 'success');
   }
 
-  function handleNewWorkspace() {
+  async function handleNewWorkspace() {
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
-    try { flushDrawings(); } catch (_) {}
+    try { await flushDrawings(); } catch (_) {}
     activeWorkspace = null;
     setLastActiveWorkspaceId(null);
     chartDrawingController.setWorkspaceId('default_workspace');

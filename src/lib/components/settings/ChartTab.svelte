@@ -257,48 +257,10 @@
 </div>
 
 <div class="section-group">
-  <h4 class="section-title">Timeframe & Navigasi Bilah Atas</h4>
-
-  <!-- Pilihan Timeframe Default -->
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Timeframe Default (Aplikasi & Layout Multi-Chart)</span>
-      <span class="setting-desc">Interval candle bawaan saat aplikasi dibuka dan saat panel baru terbentuk pada layout grid</span>
-    </div>
-    <select
-      class="select-input mono-nums"
-      value={settings.defaultTimeframe || '15m'}
-      onchange={(e) => onUpdateSettings({ defaultTimeframe: e.currentTarget.value as any })}
-    >
-      <optgroup label="Menit">
-        <option value="1m">1m (1 Menit)</option>
-        <option value="3m">3m (3 Menit)</option>
-        <option value="5m">5m (5 Menit)</option>
-        <option value="15m">15m (15 Menit - Day Trading)</option>
-        <option value="30m">30m (30 Menit)</option>
-        <option value="45m">45m (45 Menit)</option>
-      </optgroup>
-      <optgroup label="Jam">
-        <option value="1h">1h (1 Jam - Swing MTF)</option>
-        <option value="2h">2h (2 Jam)</option>
-        <option value="4h">4h (4 Jam - HTF Analisis)</option>
-        <option value="6h">6h (6 Jam)</option>
-        <option value="12h">12h (12 Jam)</option>
-      </optgroup>
-      <optgroup label="Hari & Pekan">
-        <option value="1D">1D (1 Hari - Trend Utama)</option>
-        <option value="1W">1W (1 Pekan)</option>
-        <option value="1M">1M (1 Bulan)</option>
-      </optgroup>
-      {#if settings.customTimeframes && settings.customTimeframes.length > 0}
-        <optgroup label="Kustom Pengguna">
-          {#each settings.customTimeframes as ctf}
-            <option value={ctf}>{ctf} (Kustom)</option>
-          {/each}
-        </optgroup>
-      {/if}
-    </select>
-  </div>
+  <h4 class="section-title">Sematan Timeframe Favorit</h4>
+  <p class="section-subtitle">
+    Pilih timeframe mana saja yang disematkan langsung di bilah navigasi kilat header grafik.
+  </p>
 
   <!-- Pilihan Sematan Timeframe Favorit -->
   <div class="setting-box-column">
@@ -354,42 +316,12 @@
   </div>
 </div>
 
-<!-- SEKSI 3: PERILAKU WORKSPACE & MULTI-CHART -->
+<!-- SEKSI 3: SINKRONISASI MULTI-CHART -->
 <div class="section-group">
-  <h4 class="section-title">Perilaku Workspace & Sinkronisasi Multi-Chart</h4>
+  <h4 class="section-title">Sinkronisasi Multi-Chart Grid</h4>
   <p class="section-subtitle">
-    Atur perilaku penyimpanan otomatis workspace dan preferensi sinkronisasi bawaan saat menggunakan multi-chart grid.
+    Atur preferensi sinkronisasi bawaan saat menggunakan tata letak multi-chart (2 Split, 4 Grid, dsb.).
   </p>
-
-  <!-- Auto-Save Workspace Toggle -->
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Penyimpanan Otomatis Workspace (Auto-Save)</span>
-      <span class="setting-desc">Simpan otomatis tata letak grid, simbol, dan perubahan workspace saat bekerja</span>
-    </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.autoSaveWorkspace !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ autoSaveWorkspace: settings.autoSaveWorkspace === false })}
-    >
-      {settings.autoSaveWorkspace !== false ? 'Aktif' : 'Nonaktif'}
-    </button>
-  </div>
-
-  <!-- Auto-Load Last Workspace on Startup Toggle -->
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Muat Workspace Terakhir saat Startup</span>
-      <span class="setting-desc">Otomatis memuat workspace, simbol, indikator, dan tata letak terakhir saat aplikasi dibuka</span>
-    </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.autoLoadLastWorkspace !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ autoLoadLastWorkspace: settings.autoLoadLastWorkspace === false })}
-    >
-      {settings.autoLoadLastWorkspace !== false ? 'Aktif' : 'Nonaktif'}
-    </button>
-  </div>
 
   <!-- Sinkronisasi Multi-Chart Cards Grid -->
   <div class="setting-box-column">
