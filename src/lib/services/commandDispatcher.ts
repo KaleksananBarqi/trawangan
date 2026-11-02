@@ -722,3 +722,26 @@ export function createDefaultCommandDispatcher(): CommandDispatcher {
  * Singleton default command dispatcher
  */
 export const commandDispatcher = createDefaultCommandDispatcher();
+
+export type ShortcutItem = CommandDefinition;
+
+/**
+ * Glosarium lengkap pintasan keyboard terminal Trawangan.
+ * Terikat langsung ke singleton commandDispatcher.
+ */
+export const SHORTCUT_GLOSSARY: ShortcutItem[] = commandDispatcher.getCommands();
+
+/**
+ * Filter shortcut berdasarkan query pencarian (mencocokkan keys, deskripsi, atau kategori).
+ */
+export function filterShortcuts(query: string): ShortcutItem[] {
+  return commandDispatcher.filterCommands(query);
+}
+
+/**
+ * Mengelompokkan item shortcut berdasarkan nama kategori.
+ */
+export function getShortcutsByCategory(): Record<string, ShortcutItem[]> {
+  return commandDispatcher.getCommandsByCategory();
+}
+

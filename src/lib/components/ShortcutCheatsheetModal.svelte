@@ -5,7 +5,7 @@
     filterShortcuts,
     getShortcutsByCategory,
     type ShortcutItem
-  } from '../services/shortcutService';
+  } from '../services/commandDispatcher';
 
   interface Props {
     isOpen: boolean;

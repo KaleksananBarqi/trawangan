@@ -5,7 +5,11 @@ import {
   CommandDispatcher,
   createDefaultCommandDispatcher,
   isEditableElement,
-  type CommandDefinition
+  SHORTCUT_GLOSSARY,
+  getShortcutsByCategory,
+  filterShortcuts,
+  type CommandDefinition,
+  type ShortcutItem
 } from '../src/lib/services/commandDispatcher';
 import { rightDockService } from '../src/lib/services/rightDockService';
 
@@ -968,6 +972,58 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     assert.ok(searchCtrlD.some((c) => c.id === 'duplicate-selected-drawing'), 'Harus ditemukan saat query "ctrl+d"');
 
     unbind();
+  });
+
+  await t.test('22. Unified Glosarium & Shortcut Registry Seam: Verifikasi SHORTCUT_GLOSSARY, filterShortcuts, & getShortcutsByCategory', () => {
+    assert.ok(SHORTCUT_GLOSSARY.length >= 30, `Jumlah shortcut (${SHORTCUT_GLOSSARY.length}) harus >= 30`);
+
+    for (const item of SHORTCUT_GLOSSARY) {
+      assert.ok(item.category, `Item harus memiliki kategori: ${item.desc}`);
+      assert.ok(Array.isArray(item.keys) && item.keys.length > 0, `Item harus memiliki tombol keys: ${item.desc}`);
+      assert.ok(item.desc && item.desc.length > 3, `Item harus memiliki deskripsi jelas: ${item.desc}`);
+    }
+
+    const categories = new Set(SHORTCUT_GLOSSARY.map((s) => s.category));
+    assert.ok(categories.has('Navigasi & Simbol'));
+    assert.ok(categories.has('Alat Gambar (Drawing Tools)'));
+    assert.ok(categories.has('Bar Replay (Simulasi)'));
+    assert.ok(categories.has('Analisis & Indikator'));
+    assert.ok(categories.has('Skala & Tampilan Grafik'));
+    assert.ok(categories.has('Timeframe Cepat'));
+    assert.ok(categories.has('Sistem & Bantuan'));
+
+    // Verifikasi shortcut kritis
+    const watchlistShortcut = SHORTCUT_GLOSSARY.find((s) => s.keys.includes('Alt') && s.keys.includes('W'));
+    assert.ok(watchlistShortcut, 'Shortcut Alt + W untuk Watchlist harus terdaftar');
+
+    const objectsTreeShortcut = SHORTCUT_GLOSSARY.find((s) => s.id === 'toggle-objects-tree' && s.keys.includes('Alt') && s.keys.includes('O'));
+    assert.ok(objectsTreeShortcut, 'Shortcut Alt + O (toggle-objects-tree) harus terdaftar');
+
+    const replayBackShortcut = SHORTCUT_GLOSSARY.find((s) => s.category === 'Bar Replay (Simulasi)' && s.keys.includes('←'));
+    assert.ok(replayBackShortcut, 'Shortcut ← untuk Replay mundur 1 bar harus terdaftar');
+
+    const indicatorShortcut = SHORTCUT_GLOSSARY.find((s) => s.category === 'Analisis & Indikator' && (s.keys.includes('/') || s.keys.includes('I')));
+    assert.ok(indicatorShortcut, 'Shortcut indikator harus terdaftar');
+
+    const settingsShortcut = SHORTCUT_GLOSSARY.find((s) => s.keys.includes('Ctrl') && s.keys.includes(','));
+    assert.ok(settingsShortcut, 'Shortcut Ctrl + , untuk Settings harus terdaftar');
+
+    // Pencarian Cepat filterShortcuts
+    const replayResults = filterShortcuts('replay');
+    assert.ok(replayResults.length >= 4);
+
+    const altResults = filterShortcuts('Alt');
+    assert.ok(altResults.length >= 6);
+
+    const emptyResults = filterShortcuts('nonexistent_query_xyz');
+    assert.equal(emptyResults.length, 0);
+    assert.equal(filterShortcuts('').length, SHORTCUT_GLOSSARY.length);
+
+    // Pengelompokan getShortcutsByCategory
+    const grouped = getShortcutsByCategory();
+    assert.ok(Object.keys(grouped).length >= 6);
+    assert.ok(grouped['Navigasi & Simbol'].length >= 3);
+    assert.ok(grouped['Bar Replay (Simulasi)'].length >= 4);
   });
 });
 
