@@ -28,6 +28,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showDrawingPriceLabels: true,
   theme: 'signature',
   themePreset: 'signature',
+  colorModePreference: 'system',
+  activeDarkPreset: 'signature',
+  activeLightPreset: 'red_folder',
   fontFamilyUi: 'Plus Jakarta Sans',
   fontFamilyMono: 'JetBrains Mono',
   uiDensity: 'regular',
@@ -124,6 +127,20 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
     showVolume: saved.showVolume ?? DEFAULT_APP_SETTINGS.showVolume ?? true,
     showIndicatorPriceLabels: saved.showIndicatorPriceLabels ?? DEFAULT_APP_SETTINGS.showIndicatorPriceLabels ?? true,
     showDrawingPriceLabels: saved.showDrawingPriceLabels ?? DEFAULT_APP_SETTINGS.showDrawingPriceLabels ?? true,
+    colorModePreference:
+      saved.colorModePreference === 'dark' ||
+      saved.colorModePreference === 'light' ||
+      saved.colorModePreference === 'system'
+        ? saved.colorModePreference
+        : (DEFAULT_APP_SETTINGS.colorModePreference ?? 'system'),
+    activeDarkPreset:
+      typeof saved.activeDarkPreset === 'string' && saved.activeDarkPreset
+        ? saved.activeDarkPreset
+        : (DEFAULT_APP_SETTINGS.activeDarkPreset ?? 'signature'),
+    activeLightPreset:
+      typeof saved.activeLightPreset === 'string' && saved.activeLightPreset
+        ? saved.activeLightPreset
+        : (DEFAULT_APP_SETTINGS.activeLightPreset ?? 'red_folder'),
     autoSaveWorkspace: saved.autoSaveWorkspace ?? DEFAULT_APP_SETTINGS.autoSaveWorkspace ?? true,
     autoLoadLastWorkspace: saved.autoLoadLastWorkspace ?? DEFAULT_APP_SETTINGS.autoLoadLastWorkspace ?? true,
     clipboardWatcherEnabled: saved.clipboardWatcherEnabled ?? DEFAULT_APP_SETTINGS.clipboardWatcherEnabled ?? true,

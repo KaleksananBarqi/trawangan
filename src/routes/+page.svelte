@@ -61,6 +61,8 @@
     MultiChartSyncConfig,
     WorkspaceMode,
     AppSettings,
+    ColorModePreference,
+    ThemePresetId,
     QuickSymbolsConfig,
     StrategyPerformanceSummary,
     PriceAlert,
@@ -82,7 +84,9 @@
     UI_FONT_OPTIONS,
     MONO_FONT_OPTIONS,
     DENSITY_OPTIONS,
-    resolveEffectiveThemeColors
+    resolveEffectiveThemeColors,
+    resolveEffectiveThemePreset,
+    getNextColorMode
   } from '../lib/constants/themes';
   import {
     DEFAULT_APP_SETTINGS,
@@ -114,10 +118,30 @@
   // Settings & Preferences State
   let appSettings = $state<AppSettings>({ ...DEFAULT_APP_SETTINGS });
 
+  // System Theme Bridge State (#148)
+  let systemIsDark = $state(true);
+
+  // Tema preset efektif yang mengharmonisasikan preferensi pengguna dengan tema OS sistem
+  const effectiveThemePreset = $derived(
+    resolveEffectiveThemePreset(
+      appSettings.colorModePreference ?? 'system',
+      systemIsDark,
+      appSettings.themePreset ?? 'signature',
+      appSettings.activeDarkPreset ?? 'signature',
+      appSettings.activeLightPreset ?? 'red_folder'
+    )
+  );
+
+  function handleCycleColorMode() {
+    const currentPreference = appSettings.colorModePreference ?? 'system';
+    const nextPreference = getNextColorMode(currentPreference);
+    handleUpdateSettings({ colorModePreference: nextPreference });
+  }
+
   // Reaktif Sinkronisasi Tema, Token Vela, & Tipografi ke Elemen Root DOM
   $effect(() => {
     if (typeof document !== 'undefined') {
-      const preset = appSettings.themePreset || 'signature';
+      const preset = (effectiveThemePreset as ThemePresetId) || 'signature';
       const isCustomActive = Boolean(appSettings.customPalette && appSettings.customPalette.enabled !== false);
       const cp = appSettings.customPalette;
 
@@ -684,7 +708,20 @@
       isTimeframeQuickBarOpen = true;
     });
 
+    // System Theme Bridge: Dengarkan preferensi prefers-color-scheme OS secara reaktif (#148)
+    let detachMediaQuery: (() => void) | undefined;
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      systemIsDark = mql.matches;
+      const mqlListener = (e: MediaQueryListEvent) => {
+        systemIsDark = e.matches;
+      };
+      mql.addEventListener('change', mqlListener);
+      detachMediaQuery = () => mql.removeEventListener('change', mqlListener);
+    }
+
     return () => {
+      if (detachMediaQuery) detachMediaQuery();
       unbindGlobalListener();
       unsubTypeToSearch();
       unsubTypeTimeframe();
@@ -875,11 +912,19 @@
         return;
       }
     }
-    // Jika tidak sesuai atau bukan kustom palet, beralih ke preset bawaan resmi yang relevan
+    // Jika tidak sesuai atau bukan kustom palet, beralih ke preset bawaan resmi yang relevan (#148)
     if (mode === 'light') {
-      handleUpdateSettings({ themePreset: 'red_folder', customPalette: undefined });
+      handleUpdateSettings({
+        colorModePreference: 'light',
+        themePreset: (appSettings.activeLightPreset as any) || 'red_folder',
+        customPalette: undefined
+      });
     } else {
-      handleUpdateSettings({ themePreset: 'signature', customPalette: undefined });
+      handleUpdateSettings({
+        colorModePreference: 'dark',
+        themePreset: (appSettings.activeDarkPreset as any) || 'signature',
+        customPalette: undefined
+      });
     }
   }
 
@@ -1356,7 +1401,7 @@
    * Merangkum opsi snapshot lengkap untuk aksi cepat (quick copy & quick download) (#124, #125, #126, #127, #128)
    */
   function getQuickSnapshotOptions(scope: 'active' | 'all' = 'active'): SnapshotOptions {
-    const activeTheme = THEME_PRESETS[appSettings.themePreset || 'signature'] || THEME_PRESETS.signature;
+    const activeTheme = THEME_PRESETS[(effectiveThemePreset as ThemePresetId) || 'signature'] || THEME_PRESETS.signature;
     const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
     const metadata = getActiveSnapshotMetadata(scope);
     const scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
@@ -1562,6 +1607,9 @@
     snapshotScaleMultiplier={appSettings.snapshotScaleMultiplier ?? 2}
     onSnapshotScaleMultiplierChange={(multiplier) => handleUpdateSettings({ snapshotScaleMultiplier: multiplier })}
     {isSnapshotProcessing}
+    colorModePreference={appSettings.colorModePreference ?? 'system'}
+    {systemIsDark}
+    onCycleColorMode={handleCycleColorMode}
   />
 
   <!-- Main Viewport Area -->
@@ -1646,7 +1694,7 @@
           defaultTimeframe={appSettings.defaultTimeframe || '15m'}
           layout={currentLayout}
           providerId={activeProviderId}
-          themePreset={appSettings.themePreset || 'signature'}
+          themePreset={(effectiveThemePreset as ThemePresetId) || 'signature'}
           customPalette={appSettings.customPalette}
           customBullColor={appSettings.customBullColor}
           customBearColor={appSettings.customBearColor}
@@ -1691,7 +1739,7 @@
             activeSymbol={activeSymbol}
             activeTimeframe={activeTimeframe}
             providerId={activeProviderId}
-            themePreset={appSettings.themePreset || 'signature'}
+            themePreset={(effectiveThemePreset as ThemePresetId) || 'signature'}
             customPalette={appSettings.customPalette}
             onClose={() => handleWorkspaceModeChange('terminal')}
             onAddToChart={handleAddIndicator}
