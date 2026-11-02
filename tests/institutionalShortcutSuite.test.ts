@@ -2,7 +2,7 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDefaultCommandDispatcher } from '../src/lib/services/commandDispatcher';
 import { ChartDrawingController } from '../src/lib/services/chartDrawingController';
-import { rightDockService } from '../src/lib/services/rightDockService';
+import { workspaceShellService } from '../src/lib/services/workspaceShellService';
 import { getAdaptiveTickSize } from '../src/lib/services/priceSnapService';
 
 describe('Institutional Shortcut & Productivity Suite Seam Tests (#137)', () => {
@@ -37,7 +37,7 @@ describe('Institutional Shortcut & Productivity Suite Seam Tests (#137)', () => 
       if (workspaceMode === 'pine' || (workspaceMode as string) === 'pinescript') {
         workspaceMode = 'terminal';
       }
-      rightDockService.toggleTab('objects');
+      workspaceShellService.toggleRightDockTab('objects');
     });
 
     // 1. Jalankan Alt+O
@@ -55,8 +55,8 @@ describe('Institutional Shortcut & Productivity Suite Seam Tests (#137)', () => 
 
     assert.equal(dispatched, true);
     assert.equal(workspaceMode, 'terminal', 'Alt+O harus mengembalikan workspace ke mode terminal');
-    assert.equal(rightDockService.getSnapshot().activeTab, 'objects', 'Tab harus terbuka ke objects');
-    assert.equal(rightDockService.getSnapshot().isOpen, true);
+    assert.equal(workspaceShellService.getSnapshot().activeRightDockTab, 'objects', 'Tab harus terbuka ke objects');
+    assert.equal(workspaceShellService.getSnapshot().isRightDockOpen, true);
 
     // 2. Jalankan Alt+O lagi: smart toggle menutup dock
     dispatcher.dispatch({
@@ -71,7 +71,7 @@ describe('Institutional Shortcut & Productivity Suite Seam Tests (#137)', () => 
       stopPropagation: () => {},
     } as any);
 
-    assert.equal(rightDockService.getSnapshot().isOpen, false, 'Alt+O kedua kali harus menutup dock drawer');
+    assert.equal(workspaceShellService.getSnapshot().isRightDockOpen, false, 'Alt+O kedua kali harus menutup dock drawer');
   });
 
   test('3. Ctrl+D: Duplikasi objek gambar terpilih dengan pergeseran spasial lembut dan seleksi otomatis', () => {

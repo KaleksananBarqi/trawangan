@@ -34,8 +34,7 @@
     type SnapshotOptions
   } from '../lib/services/chartSnapshotService';
   import { alertService } from '../lib/services/alertService';
-  import { rightDockService, type RightDockState } from '../lib/services/rightDockService';
-  import { leftToolbarService, type LeftToolbarState } from '../lib/services/leftToolbarService';
+  import { workspaceShellService, type WorkspaceShellState } from '../lib/services/workspaceShellService';
   import { ensureNotificationPermission } from '../lib/services/systemNotificationService';
   import { marketFeed } from '../lib/services/market';
   import { telemetryService } from '../lib/services/telemetryService';
@@ -247,12 +246,10 @@
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
 
-  // Docked Structural Shell Reactive States
-  let rightDockState = $state<RightDockState>(rightDockService.getSnapshot());
-  let leftToolbarState = $state<LeftToolbarState>(leftToolbarService.getSnapshot());
+  // Docked Structural Shell Reactive States (Unified WorkspaceShell Deep Module)
+  let shellState = $state<WorkspaceShellState>(workspaceShellService.getSnapshot());
   let allAlerts = $state<PriceAlert[]>(alertService.getAlerts());
-  let unsubRightDock: (() => void) | null = null;
-  let unsubLeftToolbar: (() => void) | null = null;
+  let unsubShell: (() => void) | null = null;
   let unsubAlertsList: (() => void) | null = null;
   let unsubWatchlistRegistry: (() => void) | null = null;
 
@@ -394,13 +391,8 @@
       replaySnapshot = snap;
     });
 
-    unsubRightDock = rightDockService.subscribe((s) => {
-      rightDockState = s;
-      setTimeout(() => window.dispatchEvent(new Event('resize')), 40);
-    });
-
-    unsubLeftToolbar = leftToolbarService.subscribe((s) => {
-      leftToolbarState = s;
+    unsubShell = workspaceShellService.subscribe((s) => {
+      shellState = s;
       setTimeout(() => window.dispatchEvent(new Event('resize')), 40);
     });
 
@@ -558,16 +550,16 @@
         handleNavigateWatchlist(e.shiftKey ? -1 : 1);
       }),
       commandDispatcher.bindHandler('toggle-watchlist', () => {
-        rightDockService.toggleTab('watchlist');
-        addSystemLog(`Shortcut: Panel Watchlist ${rightDockState.isOpen ? 'ditutup' : 'dibuka'} (Alt+W)`, 'info');
+        workspaceShellService.toggleRightDockTab('watchlist');
+        addSystemLog(`Shortcut: Panel Watchlist ${shellState.isRightDockOpen ? 'ditutup' : 'dibuka'} (Alt+W)`, 'info');
       }),
       commandDispatcher.bindHandler('toggle-pine-editor', () => {
         handleWorkspaceModeChange(workspaceMode === 'pine' ? 'terminal' : 'pine');
         addSystemLog(`Shortcut: Beralih ke mode ${workspaceMode === 'pine' ? 'Terminal' : 'Pine IDE'} (Alt+E)`, 'info');
       }),
       commandDispatcher.bindHandler('toggle-left-toolbar', () => {
-        leftToolbarService.toggleCollapse();
-        addSystemLog(`Shortcut: Bilah gambar ${leftToolbarState.isCollapsed ? 'disembunyikan' : 'ditampilkan'} (Alt+T)`, 'info');
+        workspaceShellService.toggleLeftRail();
+        addSystemLog(`Shortcut: Bilah gambar ${shellState.isLeftRailCollapsed ? 'disembunyikan' : 'ditampilkan'} (Alt+T)`, 'info');
       }),
       commandDispatcher.bindHandler('toggle-gesture-mode', () => {
         chartDrawingController.toggleGestureMode();
@@ -667,7 +659,7 @@
         if (workspaceMode === 'pine') {
           handleWorkspaceModeChange('terminal');
         }
-        rightDockService.toggleTab('objects');
+        workspaceShellService.toggleRightDockTab('objects');
         addSystemLog('Shortcut: Beralih panel Object Tree & Indikator (Alt+O)', 'info');
       }),
       commandDispatcher.bindHandler('invert-price-scale', () => {
@@ -778,8 +770,7 @@
     if (unsubTicker) unsubTicker();
     if (unsubAlertTrigger) unsubAlertTrigger();
     if (unsubReplay) unsubReplay();
-    if (unsubRightDock) unsubRightDock();
-    if (unsubLeftToolbar) unsubLeftToolbar();
+    if (unsubShell) unsubShell();
     if (unsubAlertsList) unsubAlertsList();
     if (unsubWatchlistRegistry) unsubWatchlistRegistry();
   });
@@ -1031,7 +1022,7 @@
       barSpacing: chartComponent?.getBarSpacing?.() || 8,
       showVolume: appSettings.showVolume ?? true,
       providerId: activeProviderId,
-      activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
+      activeRightDockPanel: shellState.isRightDockOpen ? shellState.activeRightDockTab : null,
       syncConfig: { ...syncConfig },
       activePlans: chartDrawingController.getActivePlans(),
       showThesisCards: chartDrawingController.isThesisCardsVisible(),
@@ -1085,9 +1076,9 @@
 
       if (w.activeRightDockPanel !== undefined) {
         if (w.activeRightDockPanel === null) {
-          rightDockService.close();
+          workspaceShellService.closeRightDock();
         } else {
-          rightDockService.openTab(w.activeRightDockPanel as any);
+          workspaceShellService.openRightDockTab(w.activeRightDockPanel as any);
         }
       }
 
@@ -1209,7 +1200,7 @@
           barSpacing: chartComponent?.getBarSpacing?.() || 8,
           showVolume: appSettings.showVolume ?? true,
           providerId: activeProviderId,
-          activeRightDockPanel: rightDockState.isOpen ? rightDockState.activeTab : null,
+          activeRightDockPanel: shellState.isRightDockOpen ? shellState.activeRightDockTab : null,
           syncConfig: { ...syncConfig },
           activePlans: chartDrawingController.getActivePlans(),
           showThesisCards: chartDrawingController.isThesisCardsVisible(),
@@ -1595,7 +1586,7 @@
     {workspaceMode}
     {syncConfig}
     {activeIndicators}
-    isDrawingToolbarVisible={!leftToolbarState.isCollapsed}
+    isDrawingToolbarVisible={!shellState.isLeftRailCollapsed}
     isReplayActive={replaySnapshot.active}
     {watchlistSymbols}
     {quickSymbolsConfig}
@@ -1616,7 +1607,7 @@
     onToggleSyncSymbol={handleToggleSyncSymbol}
     onToggleSyncDrawings={handleToggleSyncDrawings}
     onToggleSyncIndicators={handleToggleSyncIndicators}
-    onToggleDrawingToolbar={() => leftToolbarService.toggleCollapse()}
+    onToggleDrawingToolbar={() => workspaceShellService.toggleLeftRail()}
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
     onOpenImportPlan={() => handleOpenImportPlanModal()}
@@ -1664,8 +1655,8 @@
       <!-- 1. DOCKED LEFT RAIL: Drawing Toolbar (Lebar 44px struktural, zero overlap lilin) -->
       {#if workspaceMode === 'terminal'}
         <DrawingToolbar
-          isCollapsed={leftToolbarState.isCollapsed}
-          onToggleCollapse={() => leftToolbarService.toggleCollapse()}
+          isCollapsed={shellState.isLeftRailCollapsed}
+          onToggleCollapse={() => workspaceShellService.toggleLeftRail()}
           activeTool={activeDrawingTool}
           {snapMode}
           {stayMode}
@@ -1782,11 +1773,11 @@
             onStrategyUpdate={handleStrategyUpdate}
           />
         </div>
-      {:else if rightDockState.isOpen}
+      {:else if shellState.isRightDockOpen}
         <WatchlistPanel
-          isOpen={rightDockState.isOpen}
-          activeTab={rightDockState.activeTab || rightDockState.lastOpenedTab}
-          onTabChange={(tab) => rightDockService.openTab(tab)}
+          isOpen={shellState.isRightDockOpen}
+          activeTab={shellState.activeRightDockTab || shellState.lastOpenedRightDockTab}
+          onTabChange={(tab) => workspaceShellService.openRightDockTab(tab)}
           {activeSymbol}
           {activeProviderId}
           {watchlistSymbols}
@@ -1797,7 +1788,7 @@
           onToggleVolumeVisibility={handleToggleVolumeVisibility}
           onSelectSymbol={handleSymbolChange}
           onWatchlistChange={handleWatchlistChange}
-          onToggleCollapse={() => rightDockService.close()}
+          onToggleCollapse={() => workspaceShellService.closeRightDock()}
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
           onRemoveIndicator={handleRemoveIndicator}
           onConfigureIndicator={() => (isIndicatorModalOpen = true)}
@@ -1826,8 +1817,8 @@
 
       <!-- 4. PERMANENT RIGHT DOCK RAIL: Ikon Vertikal 38px selalu hadir di tepi kanan -->
       <RightDockRail
-        isOpen={rightDockState.isOpen}
-        activeTab={rightDockState.activeTab}
+        isOpen={shellState.isRightDockOpen}
+        activeTab={shellState.activeRightDockTab}
         {workspaceMode}
         activeAlertsCount={allAlerts.filter((a) => a.active && !a.triggered).length}
         activeIndicatorsCount={activeIndicators.length}
@@ -1835,13 +1826,13 @@
           if (workspaceMode === 'pine') {
             handleWorkspaceModeChange('terminal');
           }
-          rightDockService.toggleTab(tab);
+          workspaceShellService.toggleRightDockTab(tab);
         }}
         onToggleHider={() => {
           if (workspaceMode === 'pine') {
             handleWorkspaceModeChange('terminal');
           } else {
-            rightDockService.toggleHider();
+            workspaceShellService.toggleRightDockHider();
           }
         }}
         onTogglePineMode={() => {

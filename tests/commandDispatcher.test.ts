@@ -11,7 +11,7 @@ import {
   type CommandDefinition,
   type ShortcutItem
 } from '../src/lib/services/commandDispatcher';
-import { rightDockService } from '../src/lib/services/rightDockService';
+import { workspaceShellService } from '../src/lib/services/workspaceShellService';
 
 test('Deep Command Dispatcher Seam Suite', async (t) => {
   await t.test('1. Registry: Mendaftarkan perintah dan mengembalikan katalog terstruktur', () => {
@@ -795,8 +795,8 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     let currentWorkspaceMode: 'terminal' | 'pine' = 'pine';
     const logs: string[] = [];
 
-    // Gunakan instance RightDockService nyata
-    rightDockService.resetState();
+    // Gunakan instance WorkspaceShellService nyata
+    workspaceShellService.resetState();
 
     function handleWorkspaceModeChange(mode: 'terminal' | 'pine') {
       currentWorkspaceMode = mode;
@@ -810,7 +810,7 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
       if (currentWorkspaceMode === 'pine') {
         handleWorkspaceModeChange('terminal');
       }
-      rightDockService.toggleTab('objects');
+      workspaceShellService.toggleRightDockTab('objects');
       logs.push('Shortcut: Beralih panel Object Tree & Indikator (Alt+O)');
     });
 
@@ -830,36 +830,36 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
 
     // Skenario A: Workspace di mode 'pine' dan dock di watchlist
     assert.equal(currentWorkspaceMode, 'pine');
-    assert.equal(rightDockService.getSnapshot().activeTab, 'watchlist');
+    assert.equal(workspaceShellService.getSnapshot().activeRightDockTab, 'watchlist');
 
     triggerAltO();
 
     // Harus beralih dari 'pine' ke 'terminal' dan mengaktifkan tab 'objects'
     assert.equal(currentWorkspaceMode, 'terminal', 'Workspace harus beralih ke terminal');
-    let snap = rightDockService.getSnapshot();
-    assert.equal(snap.isOpen, true, 'Right dock harus terbuka');
-    assert.equal(snap.activeTab, 'objects', 'Active tab harus beralih ke objects');
+    let snap = workspaceShellService.getSnapshot();
+    assert.equal(snap.isRightDockOpen, true, 'Right dock harus terbuka');
+    assert.equal(snap.activeRightDockTab, 'objects', 'Active tab harus beralih ke objects');
 
     // Skenario B: Dock sedang terbuka pada tab 'objects' -> tekan Alt+O lagi harus melipat (close dock)
     triggerAltO();
-    snap = rightDockService.getSnapshot();
-    assert.equal(snap.isOpen, false, 'Right dock harus tertutup saat tab yang sama di-toggle');
-    assert.equal(snap.activeTab, null);
+    snap = workspaceShellService.getSnapshot();
+    assert.equal(snap.isRightDockOpen, false, 'Right dock harus tertutup saat tab yang sama di-toggle');
+    assert.equal(snap.activeRightDockTab, null);
 
     // Skenario C: Dock sedang tertutup -> tekan Alt+O harus membuka dock langsung pada tab 'objects'
     triggerAltO();
-    snap = rightDockService.getSnapshot();
-    assert.equal(snap.isOpen, true, 'Right dock harus terbuka kembali');
-    assert.equal(snap.activeTab, 'objects', 'Tab aktif harus objects');
+    snap = workspaceShellService.getSnapshot();
+    assert.equal(snap.isRightDockOpen, true, 'Right dock harus terbuka kembali');
+    assert.equal(snap.activeRightDockTab, 'objects', 'Tab aktif harus objects');
 
     // Skenario D: Dock sedang terbuka pada tab lain (misal 'alerts') -> tekan Alt+O harus beralih tab tanpa menutup
-    rightDockService.openTab('alerts');
-    assert.equal(rightDockService.getSnapshot().activeTab, 'alerts');
+    workspaceShellService.openRightDockTab('alerts');
+    assert.equal(workspaceShellService.getSnapshot().activeRightDockTab, 'alerts');
 
     triggerAltO();
-    snap = rightDockService.getSnapshot();
-    assert.equal(snap.isOpen, true, 'Dock harus tetap terbuka');
-    assert.equal(snap.activeTab, 'objects', 'Tab harus berpindah ke objects');
+    snap = workspaceShellService.getSnapshot();
+    assert.equal(snap.isRightDockOpen, true, 'Dock harus tetap terbuka');
+    assert.equal(snap.activeRightDockTab, 'objects', 'Tab harus berpindah ke objects');
   });
 
   await t.test('20. Tiket #141: Pintasan Ctrl+D untuk Duplikasi Objek Gambar (duplicate-selected-drawing) & Input Suppression', () => {
