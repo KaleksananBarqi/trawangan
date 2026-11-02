@@ -5,14 +5,12 @@ import {
   calculateThesisPanelHeight,
   SNAPSHOT_SIDE_PANEL_WIDTH,
   SNAPSHOT_SIDE_PANEL_GAP,
+  renderScreenshotCanvasWithOverlay,
   type SnapshotOptions,
   type SnapshotMetadata,
-  type SnapshotThesisLayout
-} from '../src/lib/services/chartSnapshotService';
-import {
-  renderScreenshotCanvasWithOverlay,
+  type SnapshotThesisLayout,
   type OverlayRenderContext
-} from '../src/lib/services/chartSnapshotOverlayService';
+} from '../src/lib/services/chartSnapshotService';
 import {
   DEFAULT_APP_SETTINGS,
   resolveAppSettings

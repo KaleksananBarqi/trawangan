@@ -13,13 +13,11 @@ import type { AppSettings, SnapshotThesisLayout } from '../src/lib/types/market'
 import {
   calculateCompositeDimensions,
   compositeSnapshot,
-  type SnapshotOptions,
-  type SnapshotMetadata
-} from '../src/lib/services/chartSnapshotService';
-import {
   renderScreenshotCanvasWithOverlay,
+  type SnapshotOptions,
+  type SnapshotMetadata,
   type OverlayRenderContext
-} from '../src/lib/services/chartSnapshotOverlayService';
+} from '../src/lib/services/chartSnapshotService';
 import { PersistenceService } from '../src/lib/services/persistence/index';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import { parseTradingPlan, type ParsedTradingPlan } from '../src/lib/services/planParserService';

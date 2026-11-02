@@ -7,7 +7,7 @@ import {
   drawThesisCardOnCanvas,
   drawSnapshotThesisCard,
   renderScreenshotCanvasWithOverlay
-} from '../src/lib/services/chartSnapshotOverlayService';
+} from '../src/lib/services/chartSnapshotService';
 import { THEME_PRESETS, type ThemeConfig } from '../src/lib/constants/themes';
 import type { PriceScaleBadge } from '../src/lib/services/priceScaleLabelService';
 
