@@ -71,12 +71,18 @@ export class MarketFeedService implements IMarketFeedService {
   private readonly maxErrorThreshold = 3;
   private connectionState: FeedConnectionState = 'connected';
   private connectionListeners = new Set<FeedConnectionListener>();
+  private unsubscribeAlerts: (() => void) | null = null;
 
   constructor() {
     this.registerAdapter(new BinanceAdapter());
     this.registerAdapter(new IndodaxAdapter());
     this.registerAdapter(new BitunixAdapter());
     this.registerAdapter(new MockMarketAdapter());
+
+    // Pantau perubahan alert untuk mengaktifkan atau menonaktifkan siklus polling otomatis
+    this.unsubscribeAlerts = alertService.subscribe(() => {
+      this.syncAlertPollingState();
+    });
   }
 
   public registerAdapter(adapter: MarketProviderAdapter): void {
@@ -145,9 +151,17 @@ export class MarketFeedService implements IMarketFeedService {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+    if (this.unsubscribeAlerts) {
+      this.unsubscribeAlerts();
+      this.unsubscribeAlerts = null;
+    }
     this.activeSymbolSubscribers.clear();
     this.watchlistSubscribers.clear();
     this.connectionListeners.clear();
+  }
+
+  public isPollingRunning(): boolean {
+    return this.pollTimer !== null;
   }
 
   public setPollingInterval(ms: number): void {
@@ -243,12 +257,30 @@ export class MarketFeedService implements IMarketFeedService {
     this.ensurePollingRunning();
   }
 
+  private syncAlertPollingState(): void {
+    const activeAlertSymbols = alertService.getActiveAlertSymbols();
+    if (activeAlertSymbols.length > 0) {
+      const wasIdle = !this.pollTimer;
+      this.ensurePollingRunning();
+      if (wasIdle) {
+        this.pollTick().catch(() => {});
+      }
+    } else {
+      this.checkAndStopPollingIfEmpty();
+    }
+  }
+
   private checkAndStopPollingIfEmpty(): void {
     const totalActiveSubscribers = Array.from(this.activeSymbolSubscribers.values()).reduce(
       (sum, set) => sum + set.size,
       0
     );
-    if (totalActiveSubscribers === 0 && this.watchlistSubscribers.size === 0) {
+    const activeAlertSymbols = alertService.getActiveAlertSymbols();
+    if (
+      totalActiveSubscribers === 0 &&
+      this.watchlistSubscribers.size === 0 &&
+      activeAlertSymbols.length === 0
+    ) {
       if (this.pollTimer) {
         clearInterval(this.pollTimer);
         this.pollTimer = null;
@@ -269,6 +301,12 @@ export class MarketFeedService implements IMarketFeedService {
         if (s && !isSectionToken(s)) {
           allSymbolsSet.add(s);
         }
+      }
+    }
+    const activeAlertSymbols = alertService.getActiveAlertSymbols();
+    for (const sym of activeAlertSymbols) {
+      if (sym && !isSectionToken(sym)) {
+        allSymbolsSet.add(sym);
       }
     }
 
