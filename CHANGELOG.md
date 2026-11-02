@@ -5,6 +5,43 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.33.0] - 2026-11-02
+
+### 🚀 Ditambahkan (Added)
+- **Persistensi Gambar & Trade Setup Komposit Multi-Dimensi (#151)**:
+  - **Kunci Gabungan Workspace-Scoped**: Mengaitkan penyimpanan gambar kanvas ke dimensi komposit `[workspaceId:providerId:symbol]` via `resolveDrawingKey`. Analisis teknikal pada Workspace A kini terisolasi penuh dari Workspace B meskipun memantau pasangan koin dan bursa yang sama.
+  - **Serialisasi Metadata Trade Setup**: Payload basis data lokal SQLite / LocalStorage kini merekam seluruh `drawingMetadata`, daftar rencana trading aktif (`activePlans`), serta relasi `planDrawingIds`.
+  - **Pembersihan State & Rekonstruksi Reverse Mapping**: Saat pemulihan gambar (`restoreDrawings`), memori lama di-reset secara bersih dan pemetaan balik `drawingPlanMap` (`drawingId -> planId`) direkonstruksi, menjamin penghapusan objek gambar di kanvas memicu sinkronisasi pembersihan kartu thesis dan plan terkait.
+  - **Auto-Flush Atomik & Listener `beforeunload`**: Pemanggilan `flushDrawings()` dilakukan secara atomik sebelum pergantian simbol, bursa, atau workspace, serta terikat pada event `beforeunload` jendela aplikasi untuk mencegah setup hilang saat aplikasi ditutup mendadak.
+  - **Pemuatan Ulang Reaktif Antar-Workspace**: Pergantian workspace kini otomatis memuat gambar target workspace secara instan meskipun simbol aktifnya tidak berubah.
+  - **Clean Slate Workspace Baru**: Pembuatan workspace baru otomatis membersihkan kanvas aktif dan memori plan tanpa mewarisi coretan lama.
+  - **Backward Compatibility Fallback**: Gambar warisan versi lama tanpa prefix workspace (`provider:symbol` dan `symbol`) tetap otomatis dimuat pada workspace default.
+- **Tab Baru Tipografi & Skala Teks Antarmuka (`TypographyTab.svelte`) (#151)**:
+  - **Pemisahan Khusus Pengaturan Teks**: Tab mandiri untuk konfigurasi font antarmuka UI Sans (`fontFamilyUi`), font monospace angka dan kode (`fontFamilyMono`), kerapatan UI (*compact*, *regular*, *comfortable*), dan skala font bebas.
+  - **Kontrol Stepper & Slider Presisi**: Dilengkapi stepper tombol [-] / [+], range slider, dan input angka langsung dengan indikator persentase serta preset ukuran monitor (laptop 13-14", monitor 1080p, 2K, hingga 4K).
+  - **Live Preview Tampilan Skala Nyata**: Kotak pratinjau real-time yang langsung merefleksikan perubahan jenis font dan ukuran teks sebelum disimpan.
+- **Kontrol Garis Grid 3-Mode Langsung ke WebGL (#151)**:
+  - **Selector Segmented Cepat**: Pilihan mode garis grid latar belakang (*Normal*, *Redup*, *Sembunyi*) langsung di tab Grafik tanpa perlu membuka dialog internal engine Vela.
+  - **Integrasi WebGL Renderer**: Terhubung langsung ke properti garis horizontal dan vertikal kanvas grafik dengan kalkulasi opasitas dan warna yang tersentralisasi via `resolveEffectiveGridColor`.
+
+### 🔄 Diubah (Changed)
+- **Pelebaran & Tata Letak Modal Pengaturan (Settings Modal 920px) (#151)**:
+  - Dimensi modal diperbesar dari 780px × 75vh menjadi **920px × 82vh** (lebar maksimal 94vw dan tinggi minimum 520px).
+  - Lebar navigasi sidebar diperluas menjadi **210px**, memberikan ruang lapang saat menjelajahi tema dan studio warna.
+- **Restrukturisasi Taksonomi & Pembersihan Menu Pengaturan (#151)**:
+  - **Pembersihan Tab Tampilan (`AppearanceTab.svelte`)**: Murni berfokus pada Mode Warna (Gelap/Terang/Sistem), Studio Palet Candlestick, dan Galeri Preset Tema.
+  - **Pusat Pengaturan Umum (`GeneralTab.svelte`)**: Menampung preferensi bahasa antarmuka, Timeframe Default aplikasi (`defaultTimeframe`), serta tombol penyimpanan otomatis workspace (`autoSaveWorkspace` dan `autoLoadLastWorkspace`).
+  - **Pembersihan Tab Grafik (`ChartTab.svelte`)**: Menghapus opsi duplikat timeframe dan persistensi workspace yang kini tersentralisasi di tab Umum.
+- **Isolasi Tema Trawangan dari Pembajakan Vela (Single Source of Truth) (#151)**:
+  - Memutus listener `chart.onThemeSelect` dan menyembunyikan opsi `canvas.theme` dari dialog internal chart Vela (`setSettingsVisibility({ hidden: ['canvas.theme'] })`). Tema Trawangan menjadi satu-satunya otoritas pengatur warna grafik.
+
+### 🐛 Diperbaiki (Fixed)
+- **Pencegahan Race Condition Storage pada Transisi Konteks (#151)**:
+  - Fungsi penanganan perubahan simbol, pergantian provider bursa, dan pembuatan workspace baru kini bersifat `async` dengan `await flushDrawings()`, mengeliminasi risiko penimpaan data akibat operasi penulisan disk asinkron.
+- **Refactoring Standar Koding & Debt Teknis (#151)**:
+  - Menyatukan ekspresi evaluasi ukuran font di `TypographyTab.svelte` ke satu reactive rune `$derived(effectiveFontSize)`.
+  - Mengabstraksi setter context chart ke interface `DrawingContextResolvers` dan menstandardisasi penamaan variabel lokal menjadi deskriptif (`provider`, `normalizedSymbol`).
+
 ## [0.32.0] - 2026-11-02
 
 ### 🚀 Ditambahkan (Added)
