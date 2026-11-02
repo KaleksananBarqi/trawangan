@@ -895,7 +895,6 @@
     onCreateAlert={() => { if (contextMenuPrice) onRequestCreateAlert?.(symbol, contextMenuPrice); isContextMenuOpen = false; }}
     onDrawHorizontalLine={() => { chartDrawingController.setTool('hline'); isContextMenuOpen = false; }}
     onResetChartScale={fitChart}
-    onOpenSettings={() => { openChartSettings(); isContextMenuOpen = false; }}
     onClose={() => (isContextMenuOpen = false)}
   />
 </div>
