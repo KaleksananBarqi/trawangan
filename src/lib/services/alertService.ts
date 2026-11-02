@@ -58,6 +58,22 @@ class AlertService {
     });
   }
 
+  /**
+   * Mengembalikan daftar simbol unik dari seluruh alert yang berstatus aktif dan belum terpicu
+   */
+  public getActiveAlertSymbols(): string[] {
+    const activeSymbols = new Set<string>();
+    for (const alert of this.alerts) {
+      if (alert.active && !alert.triggered && alert.symbol) {
+        const clean = alert.symbol.trim().toUpperCase();
+        if (clean) {
+          activeSymbols.add(clean);
+        }
+      }
+    }
+    return Array.from(activeSymbols);
+  }
+
   public subscribe(listener: AlertChangeListener): () => void {
     this.changeListeners.add(listener);
     listener(this.getAlerts());
