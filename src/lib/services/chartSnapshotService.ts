@@ -1259,6 +1259,19 @@ export interface WatermarkColors {
   stroke: string;
 }
 
+export interface AttributionBarColors {
+  textPrimary: string;
+  textSecondary: string;
+  textHandle: string;
+  textBio: string;
+  textUrl: string;
+  textTimestamp: string;
+  dotSeparator: string;
+  outerBorder: string;
+  chartBorder: string;
+  isDark: boolean;
+}
+
 /**
  * Menyelesaikan warna teks tanda air keamanan (Security Watermark) secara adaptif
  * berdasarkan tingkat kecerahan (luminance) kanvas latar belakang (#147).
@@ -1276,6 +1289,49 @@ export function resolveWatermarkColors(backgroundHex?: string): WatermarkColors 
   return {
     fill: 'rgba(20, 20, 20, 0.85)',
     stroke: 'rgba(255, 255, 255, 0.6)'
+  };
+}
+
+/**
+ * Menyelesaikan warna elemen teks, label, dan garis pada Attribution Bar bawah
+ * secara adaptif berdasarkan tingkat kecerahan latar belakang bingkai/chart (#144, #147).
+ * - Latar Gelap: teks putih cerah dan abu-abu terang standar.
+ * - Latar Terang: teks kontras gelap (mengadopsi token tema atau abu-abu/hitam pekat) agar tidak pudar di atas kanvas terang.
+ */
+export function resolveAttributionBarColors(
+  frameBg?: string,
+  themeConfig?: ThemeConfig
+): AttributionBarColors {
+  const isDark = isDarkColor(frameBg || '#0F0F0F');
+  const tokens = themeConfig?.tokens;
+
+  if (isDark) {
+    return {
+      textPrimary: '#FFFFFF',
+      textSecondary: '#B0B0B0',
+      textHandle: '#9E9E9E',
+      textBio: '#7E8B9B',
+      textUrl: '#6E6E6E',
+      textTimestamp: '#9E9E9E',
+      dotSeparator: 'rgba(255, 255, 255, 0.25)',
+      outerBorder: 'rgba(255, 255, 255, 0.08)',
+      chartBorder: 'rgba(255, 255, 255, 0.06)',
+      isDark: true,
+    };
+  }
+
+  // Latar bingkai terang (seperti tema Red Folder News #EDEDE9 atau custom light background)
+  return {
+    textPrimary: tokens?.textMain || '#1A1A1A',
+    textSecondary: tokens?.textMuted || '#4A4A4A',
+    textHandle: tokens?.textMuted || '#5A5A5A',
+    textBio: tokens?.textMuted || '#6E6E6E',
+    textUrl: tokens?.textMuted || '#757575',
+    textTimestamp: tokens?.textMuted || '#5A5A5A',
+    dotSeparator: 'rgba(0, 0, 0, 0.25)',
+    outerBorder: tokens?.borderHairline || 'rgba(0, 0, 0, 0.12)',
+    chartBorder: tokens?.borderSubtle || 'rgba(0, 0, 0, 0.08)',
+    isDark: false,
   };
 }
 
@@ -1443,13 +1499,16 @@ export function compositeSnapshot(
   }
 
   // --- 1. Container Background & Outer Border ---
+  const frameBg = options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F';
+  const attrColors = resolveAttributionBarColors(frameBg, options.themeConfig);
+
   ctx.save();
   drawRoundedRect(ctx, 0, 0, dim.width, dim.height, 12 * scale);
-  ctx.fillStyle = options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F';
+  ctx.fillStyle = frameBg;
   ctx.fill();
 
   ctx.lineWidth = Math.max(1, Math.round(1 * scale));
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.strokeStyle = attrColors.outerBorder;
   ctx.stroke();
   ctx.restore();
 
@@ -1464,7 +1523,7 @@ export function compositeSnapshot(
     chartGrad.addColorStop(1, customBg!.gradientBottom || '#181A20');
     ctx.fillStyle = chartGrad;
   } else {
-    ctx.fillStyle = options.backgroundColor || themeTokens.bgDarkest || '#0F0F0F';
+    ctx.fillStyle = frameBg;
   }
   ctx.fill();
   ctx.clip();
@@ -1481,7 +1540,7 @@ export function compositeSnapshot(
   ctx.save();
   drawRoundedRect(ctx, dim.chartX, dim.chartY, dim.chartWidth, dim.chartHeight, 8 * scale);
   ctx.lineWidth = Math.max(1, Math.round(1 * scale));
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+  ctx.strokeStyle = attrColors.chartBorder;
   ctx.stroke();
   ctx.restore();
 
@@ -1573,7 +1632,7 @@ export function compositeSnapshot(
     // 3b-2. Teks Nama Pengguna (Username)
     const displayName = username || (rawHandle ? (rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`) : 'Trader');
     ctx.font = `bold ${Math.round(14 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = attrColors.textPrimary;
     ctx.textAlign = 'left';
     ctx.fillText(displayName, currentX, centerY);
 
@@ -1585,7 +1644,7 @@ export function compositeSnapshot(
       const formattedHandle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
       currentX += Math.round(6 * scale);
       ctx.font = `400 ${Math.round(12 * scale)}px "JetBrains Mono", monospace, sans-serif`;
-      ctx.fillStyle = '#9E9E9E';
+      ctx.fillStyle = attrColors.textHandle;
       ctx.textAlign = 'left';
       ctx.fillText(formattedHandle, currentX, centerY);
 
@@ -1597,7 +1656,7 @@ export function compositeSnapshot(
     if (bio) {
       currentX += Math.round(8 * scale);
       ctx.font = `italic 400 ${Math.round(11 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-      ctx.fillStyle = '#7E8B9B';
+      ctx.fillStyle = attrColors.textBio;
       ctx.textAlign = 'left';
       const bioText = `(${bio})`;
       ctx.fillText(bioText, currentX, centerY);
@@ -1608,13 +1667,13 @@ export function compositeSnapshot(
     // 3c. Pemisah Titik Redup
     currentX += Math.round(12 * scale);
     ctx.font = `${Math.round(12 * scale)}px sans-serif`;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.fillStyle = attrColors.dotSeparator;
     ctx.fillText('·', currentX, centerY);
     currentX += Math.round(12 * scale);
   } else {
     // 3b-alt. Teks Brand 'trawangan' Bawaan
     ctx.font = `bold ${Math.round(15 * scale)}px "Plus Jakarta Sans", -apple-system, sans-serif`;
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = attrColors.textPrimary;
     ctx.textAlign = 'left';
     ctx.fillText('trawangan', currentX, centerY);
 
@@ -1623,7 +1682,7 @@ export function compositeSnapshot(
 
     // 3c. Pemisah Titik Redup
     ctx.font = `${Math.round(12 * scale)}px sans-serif`;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.fillStyle = attrColors.dotSeparator;
     ctx.fillText('·', currentX, centerY);
     currentX += Math.round(12 * scale);
   }
@@ -1640,7 +1699,7 @@ export function compositeSnapshot(
     instrumentText = `${meta.symbol.toUpperCase()} · ${meta.timeframe} · ${meta.providerId.toUpperCase()}`;
   }
   ctx.font = `500 ${Math.round(12 * scale)}px "JetBrains Mono", monospace, sans-serif`;
-  ctx.fillStyle = '#B0B0B0';
+  ctx.fillStyle = attrColors.textSecondary;
   ctx.fillText(instrumentText, currentX, centerY);
 
   ctx.restore();
@@ -1657,7 +1716,7 @@ export function compositeSnapshot(
   if (options.includeBrandUrl !== false) {
     const brandUrl = 'kaleksananbarqi.github.io/trawangan';
     ctx.font = `400 ${Math.round(11 * scale)}px "JetBrains Mono", monospace, sans-serif`;
-    ctx.fillStyle = '#6E6E6E';
+    ctx.fillStyle = attrColors.textUrl;
     ctx.fillText(brandUrl, rightX, centerY);
 
     const urlWidth = ctx.measureText ? ctx.measureText(brandUrl).width : 160 * scale;
@@ -1668,7 +1727,7 @@ export function compositeSnapshot(
   if (options.includeTimestamp !== false) {
     const timestampText = formatSnapshotTimestamp(meta.timestamp, meta.timezone);
     ctx.font = `400 ${Math.round(12 * scale)}px "Plus Jakarta Sans", sans-serif`;
-    ctx.fillStyle = '#9E9E9E';
+    ctx.fillStyle = attrColors.textTimestamp;
     ctx.fillText(timestampText, rightX, centerY);
 
     const timeWidth = ctx.measureText ? ctx.measureText(timestampText).width : 120 * scale;
@@ -1681,7 +1740,7 @@ export function compositeSnapshot(
   if (options.includePrice !== false && meta.lastPrice != null && !isMultiScope) {
     const formattedPrice = formatSnapshotPrice(meta.lastPrice);
     ctx.font = `bold ${Math.round(14 * scale)}px "JetBrains Mono", monospace, sans-serif`;
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = attrColors.textPrimary;
     ctx.fillText(formattedPrice, rightX, centerY);
   }
 

@@ -6,9 +6,11 @@ import {
   compositeSnapshot,
   drawSecurityWatermark,
   resolveWatermarkColors,
+  resolveAttributionBarColors,
   type SnapshotOptions,
   type SnapshotMetadata
 } from '../src/lib/services/chartSnapshotService';
+import { THEME_PRESETS } from '../src/lib/constants/themes';
 
 /**
  * Mock 2D Canvas Context untuk pengujian snapshot komposit di Node.js
@@ -287,6 +289,80 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
       );
       assert.ok(fillTextOp, 'Watermark harus dirender pada dark background');
       assert.equal(fillTextOp.args[5], 'rgba(255, 255, 255, 0.9)', 'Watermark pada dark background harus fill putih transparan');
+    });
+  });
+
+  describe('5. Attribution Bar Adaptive Contrast (Light vs Dark Frame Background)', () => {
+    test('resolveAttributionBarColors menghasilkan teks putih dan abu-abu terang pada latar gelap', () => {
+      const darkColors = resolveAttributionBarColors('#0F0F0F', THEME_PRESETS.signature);
+      assert.equal(darkColors.isDark, true);
+      assert.equal(darkColors.textPrimary, '#FFFFFF');
+      assert.equal(darkColors.textSecondary, '#B0B0B0');
+      assert.equal(darkColors.dotSeparator, 'rgba(255, 255, 255, 0.25)');
+      assert.equal(darkColors.outerBorder, 'rgba(255, 255, 255, 0.08)');
+    });
+
+    test('resolveAttributionBarColors menghasilkan teks kontras gelap pada latar terang (Red Folder News / #EDEDE9)', () => {
+      const lightColors = resolveAttributionBarColors('#EDEDE9', THEME_PRESETS.red_folder);
+      assert.equal(lightColors.isDark, false);
+      assert.equal(lightColors.textPrimary, THEME_PRESETS.red_folder.tokens.textMain);
+      assert.equal(lightColors.textSecondary, THEME_PRESETS.red_folder.tokens.textMuted);
+      assert.equal(lightColors.dotSeparator, 'rgba(0, 0, 0, 0.25)');
+      assert.equal(lightColors.outerBorder, THEME_PRESETS.red_folder.tokens.borderHairline);
+    });
+
+    test('compositeSnapshot merender teks Attribution Bar dengan warna kontras gelap pada tema terang (#EDEDE9)', () => {
+      const mockCanvas = createMockCanvas(1280, 720);
+      const source = { width: 1280, height: 720 };
+
+      compositeSnapshot(source, {
+        mode: 'branded',
+        backgroundColor: '#EDEDE9',
+        themeConfig: THEME_PRESETS.red_folder,
+        metadata: {
+          ...baseMetadata,
+          lastPrice: 2282.07
+        },
+        userProfile: {
+          username: 'arthex1204',
+          handle: '@arthex1204',
+          bio: 'WANBDYORLCH/YA'
+        }
+      }, mockCanvas);
+
+      // 1. Teks Username harus menggunakan textMain tema terang (burgundy #4A0E0F)
+      const usernameOp = mockCanvas.operations.find(
+        (op) => op.method === 'fillText' && op.args[0] === 'arthex1204'
+      );
+      assert.ok(usernameOp, 'Username harus digambar di attribution bar');
+      assert.equal(usernameOp.args[5], THEME_PRESETS.red_folder.tokens.textMain, 'Username pada latar terang tidak boleh berwarna putih #FFFFFF');
+
+      // 2. Teks Handle (@arthex1204) harus menggunakan warna kontras gelap
+      const handleOp = mockCanvas.operations.find(
+        (op) => op.method === 'fillText' && op.args[0] === '@arthex1204'
+      );
+      assert.ok(handleOp, 'Handle harus digambar di attribution bar');
+      assert.equal(handleOp.args[5], THEME_PRESETS.red_folder.tokens.textMuted, 'Handle pada latar terang tidak boleh pudar #9E9E9E');
+
+      // 3. Teks instrumen (BTCUSDT · 15m · BINANCE)
+      const instOp = mockCanvas.operations.find(
+        (op) => op.method === 'fillText' && typeof op.args[0] === 'string' && op.args[0].includes('BTCUSDT')
+      );
+      assert.ok(instOp, 'Instrumen badge harus digambar');
+      assert.equal(instOp.args[5], THEME_PRESETS.red_folder.tokens.textMuted, 'Instrumen pada latar terang tidak boleh abu-abu terang #B0B0B0');
+
+      // 4. Harga pasar
+      const priceOp = mockCanvas.operations.find(
+        (op) => op.method === 'fillText' && typeof op.args[0] === 'string' && op.args[0].includes('2,282.07')
+      );
+      assert.ok(priceOp, 'Harga pasar harus digambar');
+      assert.equal(priceOp.args[5], THEME_PRESETS.red_folder.tokens.textMain, 'Harga pada latar terang tidak boleh putih #FFFFFF');
+
+      // 5. Outer border stroke harus menggunakan borderHairline tema terang
+      const outerStrokeOp = mockCanvas.operations.find(
+        (op) => op.method === 'setStrokeStyle' && op.args[0] === THEME_PRESETS.red_folder.tokens.borderHairline
+      );
+      assert.ok(outerStrokeOp, 'Garis border luar harus menggunakan warna border tema terang');
     });
   });
 });
