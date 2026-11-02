@@ -373,7 +373,7 @@ export const loadWorkspaces = () => storage.loadWorkspaces();
 export const saveWorkspace = (w: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string }) => storage.saveWorkspace(w);
 export const updateWorkspace = (w: SavedWorkspace) => storage.updateWorkspace(w);
 export const deleteWorkspace = (id: string) => storage.deleteWorkspace(id);
-export { getLastActiveWorkspaceId, setLastActiveWorkspaceId } from './workspaceService';
+export { getLastActiveWorkspaceId, setLastActiveWorkspaceId, computeWorkspaceFingerprint } from './workspaceService';
 
 export const loadScripts = () => storage.loadScripts();
 export const saveScript = (s: PineScriptRecord) => storage.saveScript(s);

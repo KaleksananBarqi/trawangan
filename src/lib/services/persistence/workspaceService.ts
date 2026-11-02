@@ -50,6 +50,31 @@ export function setLastActiveWorkspaceId(id: string | null | undefined): void {
   }
 }
 
+/**
+ * Menghasilkan fingerprint string deterministik dari parameter struktural workspace
+ * Digunakan oleh Workspace Auto-Save Guard untuk mencegah I/O disk berulang
+ * saat mutasi referensi array terjadi tanpa adanya perubahan nilai data.
+ */
+export function computeWorkspaceFingerprint(
+  workspaceId: string,
+  symbol: string,
+  timeframe: string,
+  layout: string,
+  providerId: string,
+  indicators?: Array<{ title?: string; source?: string; visible?: boolean; inputs?: any; props?: any }>
+): string {
+  const indParts = (indicators || [])
+    .map((i) => {
+      const inputsStr = i.inputs ? JSON.stringify(i.inputs) : '';
+      const propsStr = i.props ? JSON.stringify(i.props) : '';
+      return `${i.title || ''}:${i.source || ''}:${i.visible !== false}:${inputsStr}:${propsStr}`;
+    })
+    .sort()
+    .join('|');
+
+  return `${workspaceId || 'default'}:${symbol || ''}:${timeframe || ''}:${layout || '1'}:${providerId || 'binance'}#[${indParts}]`;
+}
+
 export {
   loadWorkspaces,
   saveWorkspace,
