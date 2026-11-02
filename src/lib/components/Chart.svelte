@@ -20,7 +20,7 @@
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
     Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
     CustomChartBackgroundConfig, UserProfileConfig, SecurityWatermarkConfig,
-    SnapshotThesisLayout, CustomThemePalette
+    SnapshotThesisLayout, CustomThemePalette, GridMode
   } from '../types/market';
   import type { PriceScaleBadge } from '../services/priceScaleLabelService';
   import type { FeedConnectionStatus } from '../services/market/types';
@@ -44,6 +44,8 @@
     onOpenImportPlan?: (initialText?: string) => void;
     onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
     themePreset?: ThemePresetId | string; fontSize?: number; timezone?: string;
+    workspaceId?: string | null;
+    gridMode?: GridMode;
     customPalette?: CustomThemePalette | null;
     customBullColor?: string; customBearColor?: string;
     customChartBackground?: CustomChartBackgroundConfig;
@@ -54,6 +56,7 @@
   let {
     symbol, timeframe, defaultTimeframe = '15m', layout, providerId = 'binance',
     themePreset = 'signature', fontSize = 12, timezone = 'Asia/Jakarta',
+    workspaceId = 'default_workspace', gridMode = 'normal',
     customPalette, customBullColor, customBearColor, customChartBackground,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
@@ -67,7 +70,7 @@
 
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
-    fontSize, timezone, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
+    fontSize, timezone, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange,
     onVelaThemeSelect
   });
@@ -118,6 +121,14 @@
   $effect(() => { const l = layout; if (isMounted && l) controller.setLayout(l); });
   $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
   $effect(() => {
+    const wsId = workspaceId;
+    chartDrawingController.setWorkspaceId(wsId);
+  });
+  $effect(() => {
+    const gm = gridMode;
+    if (isMounted) controller.setGridMode(gm);
+  });
+  $effect(() => {
     const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor, cp = customPalette;
     if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp || undefined);
   });
@@ -150,7 +161,7 @@
       controller.attach(chartContainer);
       const ws = controller.getWorkspace();
       if (ws) {
-        chartDrawingController.attachWorkspace(ws, () => symbol, () => timeframe, () => providerId);
+        chartDrawingController.attachWorkspace(ws, () => symbol, () => timeframe, () => providerId, () => workspaceId);
         priceScaleOverlayController.attachChart(chartContainer, ws);
       }
     }

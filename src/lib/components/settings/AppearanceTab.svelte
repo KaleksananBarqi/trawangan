@@ -5,12 +5,6 @@
   } from '@lucide/svelte';
   import {
     THEME_PRESETS,
-    UI_FONT_OPTIONS,
-    MONO_FONT_OPTIONS,
-    FONT_SIZE_PRESETS,
-    MIN_FONT_SIZE,
-    MAX_FONT_SIZE,
-    DEFAULT_FONT_SIZE,
     buildCustomPaletteFromPreset,
     parseCustomPaletteFromText,
     serializeCustomPaletteJson,
@@ -111,22 +105,6 @@
       ...(colorModePref === 'light' ? { themePreset: presetId as any } : {}),
       ...(syncChartWithAppTheme && colorModePref === 'light' ? { chartThemePreset: presetId as any } : {}),
     });
-  }
-
-  function handleSetFontSize(newSize: number) {
-    if (isNaN(newSize)) return;
-    const clamped = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, Math.round(newSize * 2) / 2));
-    let density = settings.uiDensity;
-    if (clamped <= 11) density = 'compact';
-    else if (clamped >= 13.5) density = 'comfortable';
-    else density = 'regular';
-
-    onUpdateSettings({ fontSize: clamped, uiDensity: density });
-  }
-
-  function handleStepFontSize(delta: number) {
-    const current = settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE);
-    handleSetFontSize(current + delta);
   }
 
   const activePreset = $derived(
@@ -1470,166 +1448,6 @@
         </div>
       </div>
     {/if}
-  </div>
-</div>
-
-<div class="section-group">
-  <h4 class="section-title">Tipografi & Skala Teks Antarmuka</h4>
-
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Font Family Antarmuka (UI Sans)</span>
-      <span class="setting-desc">Font untuk navigasi, menu, dialog modal, dan tombol antarmuka</span>
-    </div>
-    <select
-      class="select-input"
-      value={settings.fontFamilyUi || 'Plus Jakarta Sans'}
-      onchange={(e) => onUpdateSettings({ fontFamilyUi: e.currentTarget.value })}
-    >
-      {#each UI_FONT_OPTIONS as opt}
-        <option value={opt.id}>{opt.label}</option>
-      {/each}
-    </select>
-  </div>
-
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Font Angka & Kode (Monospace)</span>
-      <span class="setting-desc">Font untuk digit harga chart, orderflow, dan editor Pine Script</span>
-    </div>
-    <select
-      class="select-input mono-nums"
-      value={settings.fontFamilyMono || 'JetBrains Mono'}
-      onchange={(e) => onUpdateSettings({ fontFamilyMono: e.currentTarget.value })}
-    >
-      {#each MONO_FONT_OPTIONS as opt}
-        <option value={opt.id}>{opt.label}</option>
-      {/each}
-    </select>
-  </div>
-
-  <!-- KUSTOM UKURAN FONT BEBAS UNTUK MENYESUAIKAN UKURAN LAYAR USER -->
-  <div class="setting-box-column custom-font-section">
-    <div class="setting-info-header">
-      <div class="setting-title-with-badge">
-        <span class="setting-label">Ukuran Font Kustom (Custom Font Size)</span>
-        <span class="font-current-badge mono-nums">
-          {(settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE))}px
-        </span>
-      </div>
-      <span class="setting-desc">
-        Sesuaikan ukuran teks secara presisi dengan slider, stepper, atau input angka bebas agar pas dengan resolusi layar Anda (laptop 13-14", monitor 1080p, 2K, hingga 4K).
-      </span>
-    </div>
-
-    <!-- Kontrol Interaktif: Stepper [-] + Range Slider + Stepper [+] + Input Langsung + Reset -->
-    <div class="font-controls-bar">
-      <button
-        type="button"
-        class="font-step-btn"
-        onclick={() => handleStepFontSize(-0.5)}
-        title="Perkecil font 0.5px"
-      >
-        <Minus size={13} />
-      </button>
-
-      <div class="slider-wrapper">
-        <input
-          type="range"
-          class="font-range-slider"
-          min={MIN_FONT_SIZE}
-          max={MAX_FONT_SIZE}
-          step="0.5"
-          value={settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE)}
-          oninput={(e) => handleSetFontSize(parseFloat(e.currentTarget.value))}
-        />
-        <div class="slider-ticks">
-          <span>{MIN_FONT_SIZE}px (Min)</span>
-          <span>12px (Bawaan)</span>
-          <span>{MAX_FONT_SIZE}px (Maks)</span>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        class="font-step-btn"
-        onclick={() => handleStepFontSize(0.5)}
-        title="Perbesar font 0.5px"
-      >
-        <Plus size={13} />
-      </button>
-
-      <div class="font-direct-input-box">
-        <input
-          type="number"
-          class="font-number-input mono-nums"
-          min={MIN_FONT_SIZE}
-          max={MAX_FONT_SIZE}
-          step="0.5"
-          value={settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE)}
-          onchange={(e) => handleSetFontSize(parseFloat(e.currentTarget.value))}
-        />
-        <span class="font-unit">px</span>
-      </div>
-
-      <button
-        type="button"
-        class="btn-reset-font"
-        onclick={() => handleSetFontSize(DEFAULT_FONT_SIZE)}
-        title="Kembalikan ke ukuran standar bawaan 12px"
-      >
-        <RotateCcw size={12} />
-        <span>Reset</span>
-      </button>
-    </div>
-
-    <!-- Shortcut Preset Ukuran Layar Monitor -->
-    <div class="font-presets-row">
-      <span class="presets-row-label">Preset Layar Monitor:</span>
-      <div class="font-presets-chips">
-        {#each FONT_SIZE_PRESETS as preset}
-          {@const currentSize = settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE)}
-          {@const isActive = Math.abs(currentSize - preset.size) < 0.25}
-          <button
-            type="button"
-            class="preset-size-chip {isActive ? 'active' : ''}"
-            onclick={() => handleSetFontSize(preset.size)}
-            title="{preset.desc}"
-          >
-            <span class="chip-size mono-nums">{preset.size}px</span>
-            <span class="chip-label">{preset.label.split(' ')[1] || preset.label}</span>
-          </button>
-        {/each}
-      </div>
-    </div>
-
-    <!-- Live Typography Preview Box -->
-    <div
-      class="font-preview-box"
-      style="--preview-font-size: {(settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE))}px;"
-    >
-      <div class="preview-header">
-        <span class="preview-title">Live Preview Tampilan (Skala Nyata)</span>
-        <span class="preview-badge mono-nums">
-          {(settings.fontSize ?? (settings.uiDensity === 'compact' ? 11 : settings.uiDensity === 'comfortable' ? 13.5 : DEFAULT_FONT_SIZE))}px
-        </span>
-      </div>
-      <div class="preview-content">
-        <div class="preview-ui-row">
-          <span class="preview-symbol">BTCUSDT</span>
-          <span class="preview-tf">15m</span>
-          <span class="preview-title-app">trawangan · terminal</span>
-          <span class="preview-status-pill">LIVE 60 FPS</span>
-        </div>
-        <div class="preview-numbers-row mono-nums">
-          <span class="preview-metric">O: <strong class="text-bull">64,250.00</strong></span>
-          <span class="preview-metric">H: <strong class="text-bull">64,890.50</strong></span>
-          <span class="preview-metric">L: <strong class="text-bear">63,900.00</strong></span>
-          <span class="preview-metric">C: <strong class="text-bull">64,720.00</strong></span>
-          <span class="preview-pnl text-bull">+1.25% (+798.50)</span>
-        </div>
-      </div>
-    </div>
   </div>
 </div>
 

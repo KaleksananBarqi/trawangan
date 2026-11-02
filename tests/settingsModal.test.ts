@@ -44,9 +44,9 @@ test('Settings Modal & Tab Submodules Seam Suite', async (t) => {
     assert.equal(typeof defaultSettings.userProfile.handle, 'string');
   });
 
-  await t.test('2. Integritas Tab Identifiers: Seluruh 8 tab terdefinisi secara konsisten', () => {
-    const validTabs = ['general', 'appearance', 'chart', 'profile', 'feed', 'system', 'about', 'help'];
-    assert.equal(validTabs.length, 8);
+  await t.test('2. Integritas Tab Identifiers: Seluruh 9 tab terdefinisi secara konsisten', () => {
+    const validTabs = ['general', 'appearance', 'typography', 'chart', 'profile', 'feed', 'system', 'about', 'help'];
+    assert.equal(validTabs.length, 9);
     for (const tab of validTabs) {
       assert.ok(tab.length > 0);
     }
