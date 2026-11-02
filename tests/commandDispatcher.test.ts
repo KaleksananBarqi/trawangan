@@ -5,9 +5,13 @@ import {
   CommandDispatcher,
   createDefaultCommandDispatcher,
   isEditableElement,
-  type CommandDefinition
+  SHORTCUT_GLOSSARY,
+  getShortcutsByCategory,
+  filterShortcuts,
+  type CommandDefinition,
+  type ShortcutItem
 } from '../src/lib/services/commandDispatcher';
-import { rightDockService } from '../src/lib/services/rightDockService';
+import { workspaceShellService } from '../src/lib/services/workspaceShellService';
 
 test('Deep Command Dispatcher Seam Suite', async (t) => {
   await t.test('1. Registry: Mendaftarkan perintah dan mengembalikan katalog terstruktur', () => {
@@ -791,8 +795,8 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     let currentWorkspaceMode: 'terminal' | 'pine' = 'pine';
     const logs: string[] = [];
 
-    // Gunakan instance RightDockService nyata
-    rightDockService.resetState();
+    // Gunakan instance WorkspaceShellService nyata
+    workspaceShellService.resetState();
 
     function handleWorkspaceModeChange(mode: 'terminal' | 'pine') {
       currentWorkspaceMode = mode;
@@ -806,7 +810,7 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
       if (currentWorkspaceMode === 'pine') {
         handleWorkspaceModeChange('terminal');
       }
-      rightDockService.toggleTab('objects');
+      workspaceShellService.toggleRightDockTab('objects');
       logs.push('Shortcut: Beralih panel Object Tree & Indikator (Alt+O)');
     });
 
@@ -826,36 +830,36 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
 
     // Skenario A: Workspace di mode 'pine' dan dock di watchlist
     assert.equal(currentWorkspaceMode, 'pine');
-    assert.equal(rightDockService.getSnapshot().activeTab, 'watchlist');
+    assert.equal(workspaceShellService.getSnapshot().activeRightDockTab, 'watchlist');
 
     triggerAltO();
 
     // Harus beralih dari 'pine' ke 'terminal' dan mengaktifkan tab 'objects'
     assert.equal(currentWorkspaceMode, 'terminal', 'Workspace harus beralih ke terminal');
-    let snap = rightDockService.getSnapshot();
-    assert.equal(snap.isOpen, true, 'Right dock harus terbuka');
-    assert.equal(snap.activeTab, 'objects', 'Active tab harus beralih ke objects');
+    let snap = workspaceShellService.getSnapshot();
+    assert.equal(snap.isRightDockOpen, true, 'Right dock harus terbuka');
+    assert.equal(snap.activeRightDockTab, 'objects', 'Active tab harus beralih ke objects');
 
     // Skenario B: Dock sedang terbuka pada tab 'objects' -> tekan Alt+O lagi harus melipat (close dock)
     triggerAltO();
-    snap = rightDockService.getSnapshot();
-    assert.equal(snap.isOpen, false, 'Right dock harus tertutup saat tab yang sama di-toggle');
-    assert.equal(snap.activeTab, null);
+    snap = workspaceShellService.getSnapshot();
+    assert.equal(snap.isRightDockOpen, false, 'Right dock harus tertutup saat tab yang sama di-toggle');
+    assert.equal(snap.activeRightDockTab, null);
 
     // Skenario C: Dock sedang tertutup -> tekan Alt+O harus membuka dock langsung pada tab 'objects'
     triggerAltO();
-    snap = rightDockService.getSnapshot();
-    assert.equal(snap.isOpen, true, 'Right dock harus terbuka kembali');
-    assert.equal(snap.activeTab, 'objects', 'Tab aktif harus objects');
+    snap = workspaceShellService.getSnapshot();
+    assert.equal(snap.isRightDockOpen, true, 'Right dock harus terbuka kembali');
+    assert.equal(snap.activeRightDockTab, 'objects', 'Tab aktif harus objects');
 
     // Skenario D: Dock sedang terbuka pada tab lain (misal 'alerts') -> tekan Alt+O harus beralih tab tanpa menutup
-    rightDockService.openTab('alerts');
-    assert.equal(rightDockService.getSnapshot().activeTab, 'alerts');
+    workspaceShellService.openRightDockTab('alerts');
+    assert.equal(workspaceShellService.getSnapshot().activeRightDockTab, 'alerts');
 
     triggerAltO();
-    snap = rightDockService.getSnapshot();
-    assert.equal(snap.isOpen, true, 'Dock harus tetap terbuka');
-    assert.equal(snap.activeTab, 'objects', 'Tab harus berpindah ke objects');
+    snap = workspaceShellService.getSnapshot();
+    assert.equal(snap.isRightDockOpen, true, 'Dock harus tetap terbuka');
+    assert.equal(snap.activeRightDockTab, 'objects', 'Tab harus berpindah ke objects');
   });
 
   await t.test('20. Tiket #141: Pintasan Ctrl+D untuk Duplikasi Objek Gambar (duplicate-selected-drawing) & Input Suppression', () => {
@@ -968,6 +972,58 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     assert.ok(searchCtrlD.some((c) => c.id === 'duplicate-selected-drawing'), 'Harus ditemukan saat query "ctrl+d"');
 
     unbind();
+  });
+
+  await t.test('22. Unified Glosarium & Shortcut Registry Seam: Verifikasi SHORTCUT_GLOSSARY, filterShortcuts, & getShortcutsByCategory', () => {
+    assert.ok(SHORTCUT_GLOSSARY.length >= 30, `Jumlah shortcut (${SHORTCUT_GLOSSARY.length}) harus >= 30`);
+
+    for (const item of SHORTCUT_GLOSSARY) {
+      assert.ok(item.category, `Item harus memiliki kategori: ${item.desc}`);
+      assert.ok(Array.isArray(item.keys) && item.keys.length > 0, `Item harus memiliki tombol keys: ${item.desc}`);
+      assert.ok(item.desc && item.desc.length > 3, `Item harus memiliki deskripsi jelas: ${item.desc}`);
+    }
+
+    const categories = new Set(SHORTCUT_GLOSSARY.map((s) => s.category));
+    assert.ok(categories.has('Navigasi & Simbol'));
+    assert.ok(categories.has('Alat Gambar (Drawing Tools)'));
+    assert.ok(categories.has('Bar Replay (Simulasi)'));
+    assert.ok(categories.has('Analisis & Indikator'));
+    assert.ok(categories.has('Skala & Tampilan Grafik'));
+    assert.ok(categories.has('Timeframe Cepat'));
+    assert.ok(categories.has('Sistem & Bantuan'));
+
+    // Verifikasi shortcut kritis
+    const watchlistShortcut = SHORTCUT_GLOSSARY.find((s) => s.keys.includes('Alt') && s.keys.includes('W'));
+    assert.ok(watchlistShortcut, 'Shortcut Alt + W untuk Watchlist harus terdaftar');
+
+    const objectsTreeShortcut = SHORTCUT_GLOSSARY.find((s) => s.id === 'toggle-objects-tree' && s.keys.includes('Alt') && s.keys.includes('O'));
+    assert.ok(objectsTreeShortcut, 'Shortcut Alt + O (toggle-objects-tree) harus terdaftar');
+
+    const replayBackShortcut = SHORTCUT_GLOSSARY.find((s) => s.category === 'Bar Replay (Simulasi)' && s.keys.includes('←'));
+    assert.ok(replayBackShortcut, 'Shortcut ← untuk Replay mundur 1 bar harus terdaftar');
+
+    const indicatorShortcut = SHORTCUT_GLOSSARY.find((s) => s.category === 'Analisis & Indikator' && (s.keys.includes('/') || s.keys.includes('I')));
+    assert.ok(indicatorShortcut, 'Shortcut indikator harus terdaftar');
+
+    const settingsShortcut = SHORTCUT_GLOSSARY.find((s) => s.keys.includes('Ctrl') && s.keys.includes(','));
+    assert.ok(settingsShortcut, 'Shortcut Ctrl + , untuk Settings harus terdaftar');
+
+    // Pencarian Cepat filterShortcuts
+    const replayResults = filterShortcuts('replay');
+    assert.ok(replayResults.length >= 4);
+
+    const altResults = filterShortcuts('Alt');
+    assert.ok(altResults.length >= 6);
+
+    const emptyResults = filterShortcuts('nonexistent_query_xyz');
+    assert.equal(emptyResults.length, 0);
+    assert.equal(filterShortcuts('').length, SHORTCUT_GLOSSARY.length);
+
+    // Pengelompokan getShortcutsByCategory
+    const grouped = getShortcutsByCategory();
+    assert.ok(Object.keys(grouped).length >= 6);
+    assert.ok(grouped['Navigasi & Simbol'].length >= 3);
+    assert.ok(grouped['Bar Replay (Simulasi)'].length >= 4);
   });
 });
 

@@ -9,7 +9,7 @@
     Pencil,
     Sparkles
   } from '@lucide/svelte';
-  import { SHORTCUT_GLOSSARY, filterShortcuts } from '../../services/shortcutService';
+  import { SHORTCUT_GLOSSARY, filterShortcuts } from '../../services/commandDispatcher';
   import BrowserBridgeGuide from './BrowserBridgeGuide.svelte';
 
   interface Props {

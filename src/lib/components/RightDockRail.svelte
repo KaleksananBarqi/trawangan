@@ -7,7 +7,7 @@
     ChevronRight,
     ChevronLeft
   } from '@lucide/svelte';
-  import type { RightDockTab } from '../services/rightDockService';
+  import type { RightDockTab } from '../services/workspaceShellService';
   import type { WorkspaceMode } from '../types/market';
 
   interface Props {

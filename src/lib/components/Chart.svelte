@@ -11,9 +11,11 @@
   import { findNearestOhlcPoint } from '../services/priceSnapService';
   import { isEditableElement } from '../services/commandDispatcher';
   import { isTradingPlanText } from '../services/planParserService';
-  import { renderScreenshotCanvasWithOverlay } from '../services/chartSnapshotOverlayService';
+  import {
+    renderScreenshotCanvasWithOverlay,
+    resolveSecurityWatermarkText
+  } from '../services/chartSnapshotService';
   import { THEME_PRESETS, resolveThemeConfig } from '../constants/themes';
-  import { resolveSecurityWatermarkText } from '../services/chartSnapshotService';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
   import type {

@@ -5,18 +5,12 @@ import {
   calculateThesisPanelHeight,
   SNAPSHOT_SIDE_PANEL_WIDTH,
   SNAPSHOT_SIDE_PANEL_GAP,
-  colorToRgba as colorToRgbaSnapshot,
-  wrapCanvasText as wrapCanvasTextSnapshot,
+  renderScreenshotCanvasWithOverlay,
   type SnapshotOptions,
   type SnapshotMetadata,
-  type SnapshotThesisLayout
-} from '../src/lib/services/chartSnapshotService';
-import {
-  renderScreenshotCanvasWithOverlay,
-  colorToRgba as colorToRgbaOverlay,
-  wrapCanvasText as wrapCanvasTextOverlay,
+  type SnapshotThesisLayout,
   type OverlayRenderContext
-} from '../src/lib/services/chartSnapshotOverlayService';
+} from '../src/lib/services/chartSnapshotService';
 import {
   DEFAULT_APP_SETTINGS,
   resolveAppSettings
@@ -516,17 +510,11 @@ describe('Ticket #133: Core Side-by-Side Dimension Engine & Clean Canvas Separat
     });
   });
 
-  describe('5. Canvas Helper Deduplication & Re-export (Standards Review finding A)', () => {
-    it('colorToRgba & wrapCanvasText diekspor dari chartSnapshotOverlayService dan dire-ekspor dari chartSnapshotService', () => {
-      assert.strictEqual(colorToRgbaOverlay, colorToRgbaSnapshot, 'colorToRgba harus identik');
-      assert.strictEqual(wrapCanvasTextOverlay, wrapCanvasTextSnapshot, 'wrapCanvasText harus identik');
-
-      assert.equal(colorToRgbaOverlay('#ff0000', 0.5), 'rgba(255, 0, 0, 0.5)');
-      assert.equal(colorToRgbaOverlay('rgb(10, 20, 30)', 0.8), 'rgba(10, 20, 30, 0.8)');
-
-      const mockCtx = { measureText: (t: string) => ({ width: t.length * 10 }) };
-      const lines = wrapCanvasTextOverlay(mockCtx, 'Satu Dua Tiga Empat Lima', 100);
-      assert.ok(lines.length > 1);
+  describe('5. Canvas Helper Encapsulation (#155: Seam Leakage Elimination)', () => {
+    it('memastikan internal canvas helpers tidak bocor ke antarmuka publik chartSnapshotService', async () => {
+      const snapshotModule = await import('../src/lib/services/chartSnapshotService');
+      assert.strictEqual((snapshotModule as any).colorToRgba, undefined, 'colorToRgba tidak boleh diekspor ke publik');
+      assert.strictEqual((snapshotModule as any).wrapCanvasText, undefined, 'wrapCanvasText tidak boleh diekspor ke publik');
     });
   });
 });

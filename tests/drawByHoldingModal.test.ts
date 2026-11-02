@@ -10,9 +10,9 @@ import {
 import {
   SHORTCUT_GLOSSARY,
   filterShortcuts,
-  getShortcutsByCategory
-} from '../src/lib/services/shortcutService.js';
-import { commandDispatcher } from '../src/lib/services/commandDispatcher.js';
+  getShortcutsByCategory,
+  commandDispatcher
+} from '../src/lib/services/commandDispatcher.js';
 
 test('Tiket #107: Draw by Holding Visual Cheatsheet Modal & Toolbar Integration Suite', async (t) => {
   await t.test('1. Glosarium Kartu Visual: DRAW_BY_HOLDING_CARDS memuat persis 13 kartu bergaya OpenMarket', () => {
