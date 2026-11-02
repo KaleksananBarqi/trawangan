@@ -28,6 +28,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showDrawingPriceLabels: true,
   theme: 'signature',
   themePreset: 'signature',
+  chartThemePreset: 'signature',
+  syncChartWithAppTheme: true,
+  savedUserThemes: [],
   colorModePreference: 'system',
   activeDarkPreset: 'signature',
   activeLightPreset: 'red_folder',
@@ -133,6 +136,19 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
       saved.colorModePreference === 'system'
         ? saved.colorModePreference
         : (DEFAULT_APP_SETTINGS.colorModePreference ?? 'system'),
+    syncChartWithAppTheme:
+      typeof saved.syncChartWithAppTheme === 'boolean'
+        ? saved.syncChartWithAppTheme
+        : (DEFAULT_APP_SETTINGS.syncChartWithAppTheme ?? true),
+    chartThemePreset:
+      typeof saved.chartThemePreset === 'string' && saved.chartThemePreset
+        ? saved.chartThemePreset
+        : (typeof saved.themePreset === 'string' && saved.themePreset
+            ? saved.themePreset
+            : (DEFAULT_APP_SETTINGS.chartThemePreset ?? 'signature')),
+    savedUserThemes: Array.isArray(saved.savedUserThemes)
+      ? saved.savedUserThemes.filter((t) => t && typeof t.id === 'string' && typeof t.name === 'string' && t.palette)
+      : (DEFAULT_APP_SETTINGS.savedUserThemes ?? []),
     activeDarkPreset:
       typeof saved.activeDarkPreset === 'string' && saved.activeDarkPreset
         ? saved.activeDarkPreset

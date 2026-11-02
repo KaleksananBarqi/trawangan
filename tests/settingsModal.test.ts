@@ -6,7 +6,7 @@ import {
   DEFAULT_SYNC_CONFIG,
   resolveAppSettings
 } from '../src/lib/constants/defaults';
-import { THEME_PRESETS } from '../src/lib/constants/themes';
+import { THEME_PRESETS, resolveThemeConfig } from '../src/lib/constants/themes';
 
 test('Settings Modal & Tab Submodules Seam Suite', async (t) => {
   await t.test('1. Validasi Kontrak AppSettings untuk seluruh 8 tab domain', () => {
@@ -20,7 +20,7 @@ test('Settings Modal & Tab Submodules Seam Suite', async (t) => {
     assert.ok(Array.isArray(defaultSettings.worldClockCities));
 
     // Tab Appearance
-    assert.ok(THEME_PRESETS[defaultSettings.themePreset ?? 'signature']);
+    assert.ok(resolveThemeConfig(defaultSettings.themePreset ?? 'signature'));
     assert.equal(typeof defaultSettings.fontFamilyUi, 'string');
     assert.equal(typeof defaultSettings.fontFamilyMono, 'string');
     assert.equal(typeof defaultSettings.uiDensity, 'string');

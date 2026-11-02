@@ -12,7 +12,7 @@
   import { isEditableElement } from '../services/commandDispatcher';
   import { isTradingPlanText } from '../services/planParserService';
   import { renderScreenshotCanvasWithOverlay } from '../services/chartSnapshotOverlayService';
-  import { THEME_PRESETS } from '../constants/themes';
+  import { THEME_PRESETS, resolveThemeConfig } from '../constants/themes';
   import { resolveSecurityWatermarkText } from '../services/chartSnapshotService';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
@@ -43,7 +43,7 @@
     onRequestEditAlert?: (alert: PriceAlert) => void;
     onOpenImportPlan?: (initialText?: string) => void;
     onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
-    themePreset?: ThemePresetId; fontSize?: number; timezone?: string;
+    themePreset?: ThemePresetId | string; fontSize?: number; timezone?: string;
     customPalette?: CustomThemePalette;
     customBullColor?: string; customBearColor?: string;
     customChartBackground?: CustomChartBackgroundConfig;
@@ -384,7 +384,7 @@
     if (!baseCanvas) return null;
     if (!chartContainer) return baseCanvas;
 
-    const currentTheme = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+    const currentTheme = resolveThemeConfig(themePreset);
 
     return renderScreenshotCanvasWithOverlay({
       baseCanvas,
@@ -658,7 +658,7 @@
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
 
   const chartBackgroundStyle = $derived.by(() => {
-    const cfg = THEME_PRESETS[themePreset] || THEME_PRESETS.signature;
+    const cfg = resolveThemeConfig(themePreset);
     if (customChartBackground?.mode === 'gradient') {
       const top = customChartBackground.gradientTop || '#0F0F0F';
       const bottom = customChartBackground.gradientBottom || '#181A20';

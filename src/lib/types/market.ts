@@ -260,6 +260,18 @@ export interface CustomThemePalette {
 }
 
 /**
+ * Definisi Preset Tema Kustom Pengguna ("Save As") (#149)
+ */
+export interface CustomThemeDefinition {
+  id: string;
+  name: string;
+  mode: 'dark' | 'light';
+  palette: CustomThemePalette;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
  * Konfigurasi profil personal trader untuk atribusi snapshot frame (#126)
  */
 export interface UserProfileConfig {
@@ -302,7 +314,10 @@ export interface AppSettings {
   showIndicatorPriceLabels?: boolean;
   showDrawingPriceLabels?: boolean;
   theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'red_folder' | 'obsidian';
-  themePreset?: ThemePresetId;
+  themePreset?: ThemePresetId | string;
+  chartThemePreset?: ThemePresetId | string;
+  syncChartWithAppTheme?: boolean;
+  savedUserThemes?: CustomThemeDefinition[];
   colorModePreference?: ColorModePreference;
   activeDarkPreset?: ThemePresetId | string;
   activeLightPreset?: ThemePresetId | string;
