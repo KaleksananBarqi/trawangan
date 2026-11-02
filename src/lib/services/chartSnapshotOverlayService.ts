@@ -54,31 +54,61 @@ export function colorToRgba(color: string, alpha: number): string {
 }
 
 /**
- * Helper untuk menggambar rounded rectangle pada context 2D
+ * Helper internal untuk menggambar rounded rectangle pada context 2D secara adaptif
  */
-function drawRoundedRect(
-  ctx: CanvasRenderingContext2D,
+export function drawRoundedRect(
+  ctx: CanvasRenderingContext2D | any,
   x: number,
   y: number,
-  width: number,
-  height: number,
-  radius: number | { tl?: number; tr?: number; br?: number; bl?: number }
+  w: number,
+  h: number,
+  r: number | { tl?: number; tr?: number; br?: number; bl?: number }
 ): void {
-  const r = typeof radius === 'number'
-    ? { tl: radius, tr: radius, br: radius, bl: radius }
-    : { tl: radius.tl || 0, tr: radius.tr || 0, br: radius.br || 0, bl: radius.bl || 0 };
+  const radius = typeof r === 'number'
+    ? { tl: r, tr: r, br: r, bl: r }
+    : { tl: r.tl || 0, tr: r.tr || 0, br: r.br || 0, bl: r.bl || 0 };
 
-  ctx.beginPath();
-  ctx.moveTo(x + r.tl, y);
-  ctx.lineTo(x + width - r.tr, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + r.tr);
-  ctx.lineTo(x + width, y + height - r.br);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - r.br, y + height);
-  ctx.lineTo(x + r.bl, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - r.bl);
-  ctx.lineTo(x, y + r.tl);
-  ctx.quadraticCurveTo(x, y, x + r.tl, y);
-  ctx.closePath();
+  if (typeof ctx.roundRect === 'function' && typeof r === 'number') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    return;
+  }
+
+  if (typeof ctx.arcTo === 'function') {
+    ctx.beginPath();
+    ctx.moveTo(x + radius.tl, y);
+    ctx.lineTo(x + w - radius.tr, y);
+    ctx.arcTo(x + w, y, x + w, y + radius.tr, radius.tr);
+    ctx.lineTo(x + w, y + h - radius.br);
+    ctx.arcTo(x + w, y + h, x + w - radius.br, y + h, radius.br);
+    ctx.lineTo(x + radius.bl, y + h);
+    ctx.arcTo(x, y + h, x, y + h - radius.bl, radius.bl);
+    ctx.lineTo(x, y + radius.tl);
+    ctx.arcTo(x, y, x + radius.tl, y, radius.tl);
+    ctx.closePath();
+    return;
+  }
+
+  if (typeof ctx.quadraticCurveTo === 'function') {
+    ctx.beginPath();
+    ctx.moveTo(x + radius.tl, y);
+    ctx.lineTo(x + w - radius.tr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius.tr);
+    ctx.lineTo(x + w, y + h - radius.br);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius.br, y + h);
+    ctx.lineTo(x + radius.bl, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius.bl);
+    ctx.lineTo(x, y + radius.tl);
+    ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+    ctx.closePath();
+    return;
+  }
+
+  if (typeof ctx.rect === 'function') {
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.closePath();
+  }
 }
 
 /**

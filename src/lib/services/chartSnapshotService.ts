@@ -13,10 +13,8 @@ import type {
   SnapshotThesisLayout
 } from '../types/market';
 import { formatPlanPrice, type ParsedTradingPlan } from './planParserService';
-import { colorToRgba, wrapCanvasText } from './chartSnapshotOverlayService';
+import { colorToRgba, wrapCanvasText, drawRoundedRect } from './chartSnapshotOverlayService';
 import { isDarkColor } from '../utils/colorUtils';
-
-export { colorToRgba, wrapCanvasText };
 
 export type {
   SnapshotScaleMultiplier,
@@ -1142,38 +1140,6 @@ export function renderDedicatedThesisSidePanel(
   ctx.restore();
 }
 
-/**
- * Helper internal untuk menggambar rounded rectangle pada context kanvas 2D
- */
-function drawRoundedRect(
-  ctx: any,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number | { tl?: number; tr?: number; br?: number; bl?: number }
-): void {
-  const radius = typeof r === 'number'
-    ? { tl: r, tr: r, br: r, bl: r }
-    : { tl: r.tl || 0, tr: r.tr || 0, br: r.br || 0, bl: r.bl || 0 };
-
-  if (typeof ctx.roundRect === 'function' && typeof r === 'number') {
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
-    return;
-  }
-  ctx.beginPath();
-  ctx.moveTo(x + radius.tl, y);
-  ctx.lineTo(x + w - radius.tr, y);
-  ctx.arcTo(x + w, y, x + w, y + radius.tr, radius.tr);
-  ctx.lineTo(x + w, y + h - radius.br);
-  ctx.arcTo(x + w, y + h, x + w - radius.br, y + h, radius.br);
-  ctx.lineTo(x + radius.bl, y + h);
-  ctx.arcTo(x, y + h, x, y + h - radius.bl, radius.bl);
-  ctx.lineTo(x, y + radius.tl);
-  ctx.arcTo(x, y, x + radius.tl, y, radius.tl);
-  ctx.closePath();
-}
 
 export interface FallbackCanvas {
   width: number;
