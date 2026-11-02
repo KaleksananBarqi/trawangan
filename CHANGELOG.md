@@ -5,6 +5,37 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.32.0] - 2026-11-02
+
+### 🚀 Ditambahkan (Added)
+- **Dekopling Tema Aplikasi vs Tema Kanvas Grafik (Dual-Theme Decoupling) (ADR 0017 & Issue #144)**:
+  - **Pemisahan Independen App Theme & Chart Theme**: Memungkinkan pengguna memilih tema UI Shell/Aplikasi (`appThemePreset`) dan tema kanvas grafik (`chartThemePreset`) secara terpisah.
+  - **Opsi Sinkronisasi Dua Arah (*Sync Chart with App Theme*)**: Toggle reaktif untuk otomatis menyelaraskan kanvas grafik dengan tema aplikasi aktif saat dinyalakan, atau membebaskan padanan tema saat dinonaktifkan (misal UI Shell gelap dengan kanvas grafik koran terang *Red Folder News*).
+- **Studio Preset Tema Pengguna & Fitur "Save As" (#149)**:
+  - **Simpan Tema Kustom Sebagai Preset**: Pengguna kini dapat menyimpan konfigurasi palet kustom sebagai preset tema baru milik sendiri (*User Theme Preset*) dengan nama unik, badge visual `[CUSTOM]`, dan identifikasi aman.
+  - **Manajemen Lengkap Preset Kustom**: Fitur ganti nama (*Rename*), hapus (*Delete*), ekspor ke berkas JSON atau teks clipboard, serta impor preset secara instan dari dialog Appearance Settings.
+  - **Injeksi Token CSS Dinamis**: Preset kustom otomatis menyuntikkan token warna `--bg-app`, `--bg-panel`, `--text-main`, dll. ke `:root` DOM host sehingga tampilan antarmuka selalu serasi.
+- **System Theme Bridge & Header Color Mode Switcher (#148)**:
+  - **Peralihan Mode Warna 1-Klik**: Tombol switcher cepat di bilah Header (`.color-mode-btn`) dengan ikon reaktif (*Moon* untuk Gelap, *Sun* untuk Terang, *Monitor* untuk Sistem).
+  - **Integrasi Preferensi Perangkat/OS**: Opsi mode `system` mendeteksi dan merespons perubahan mode sistem operasi secara *real-time* via `window.matchMedia('(prefers-color-scheme: dark)')`.
+  - **Asosiasi Preset Default Per-Mode**: Pengguna dapat menetapkan preset spesifik untuk mode gelap (`darkThemePreset`) dan mode terang (`lightThemePreset`) yang akan aktif otomatis saat berganti mode.
+- **Background Alert Engine & Dynamic Market Feed Ingestion (#146)**:
+  - **Evaluasi Alert Latar Belakang**: Alert harga tetap aktif dievaluasi dan memicu notifikasi visual serta suara meskipun instrumen/koin yang bersangkutan sedang tidak dibuka pada grafik aktif.
+  - **Ingesti Simbol Dinamis**: Metode `alertService.getActiveAlertSymbols()` otomatis menyuntikkan seluruh simbol alert yang aktif ke dalam putaran polling data pasar (`marketFeed.pollTick()`).
+  - **Kontinuitas Polling Tanpa Idle Prematur**: Mekanisme polling pasar tetap berjalan aktif dan otomatis kembali menyala (*resume from idle*) jika terdapat alert aktif baru, menjamin kesiapan sinkronisasi trading setup dan level harga penting.
+
+### 🔄 Diubah (Changed)
+- **Attribution Bar Screenshot Adaptif Terhadap Luminansi (#144, #147)**:
+  - Fungsi `resolveAttributionBarColors` pada modul snapshot komposit otomatis mengevaluasi kecerahan latar belakang bingkai grafik (`isDarkColor(frameBg)`).
+  - Pada tema latar terang (*Light Theme* seperti *Red Folder News*), seluruh elemen teks identitas (nama trader, handle, bio, instrumen, timestamp, URL, dan harga pasar) menggunakan warna kontras gelap pekat dari token tema, mencegah teks putih nabrak atau pudar.
+- **UI Menu Konteks Grafik Berbasis Token Semantik CSS (#147)**:
+  - Refactoring `ChartContextMenu.svelte` dari warna latar abu-abu gelap statis menjadi token semantik `--bg-panel`, `--text-main`, `--bg-hover`, dan `--border-medium`, memastikan tampilan menu klik kanan kontras tinggi dan rapi di tema terang maupun gelap.
+
+### 🐛 Diperbaiki (Fixed)
+- **Perbaikan Kursor & UX Pencarian Koin (Type-to-Search Cursor Guard) (#145)**:
+  - Membedakan pemicu pencarian simbol: pengetikan langsung (*keystroke type-to-search*) mengarahkan kursor ke akhir teks (`setSelectionRange(len, len)`), menyelesaikan masalah huruf pertama terhapus saat pengguna mengetik huruf kedua secara cepat.
+  - Pemanggilan eksplisit (via tombol pencarian atau `Ctrl+K`) tetap memblok seluruh teks input (`select()`) agar pengguna dapat langsung menimpa pencarian sebelumnya.
+
 ## [0.31.0] - 2026-11-02
 
 ### 🚀 Ditambahkan (Added)
