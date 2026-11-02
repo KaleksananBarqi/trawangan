@@ -86,6 +86,9 @@
     DENSITY_OPTIONS,
     resolveEffectiveThemeColors,
     resolveEffectiveThemePreset,
+    resolveEffectiveChartThemePreset,
+    resolveThemeConfig,
+    registerUserThemes,
     getNextColorMode
   } from '../lib/constants/themes';
   import {
@@ -131,6 +134,20 @@
       appSettings.activeLightPreset ?? 'red_folder'
     )
   );
+
+  // Tema kanvas grafik efektif (dapat didecouple dari tema aplikasi) (#149)
+  const effectiveChartThemePreset = $derived(
+    resolveEffectiveChartThemePreset(
+      appSettings.syncChartWithAppTheme ?? true,
+      effectiveThemePreset,
+      appSettings.chartThemePreset ?? 'signature'
+    )
+  );
+
+  // Daftarkan preset pengguna ke runtime tema secara reaktif (#149)
+  $effect(() => {
+    registerUserThemes(appSettings.savedUserThemes || []);
+  });
 
   function handleCycleColorMode() {
     const currentPreference = appSettings.colorModePreference ?? 'system';
@@ -1401,7 +1418,7 @@
    * Merangkum opsi snapshot lengkap untuk aksi cepat (quick copy & quick download) (#124, #125, #126, #127, #128)
    */
   function getQuickSnapshotOptions(scope: 'active' | 'all' = 'active'): SnapshotOptions {
-    const activeTheme = THEME_PRESETS[(effectiveThemePreset as ThemePresetId) || 'signature'] || THEME_PRESETS.signature;
+    const activeTheme = resolveThemeConfig(effectiveChartThemePreset, appSettings.savedUserThemes);
     const backgroundColor = activeTheme?.chart?.background || activeTheme?.tokens?.bgDarkest || '#0F0F0F';
     const metadata = getActiveSnapshotMetadata(scope);
     const scaleMultiplier = appSettings.snapshotScaleMultiplier ?? 2;
@@ -1694,7 +1711,7 @@
           defaultTimeframe={appSettings.defaultTimeframe || '15m'}
           layout={currentLayout}
           providerId={activeProviderId}
-          themePreset={(effectiveThemePreset as ThemePresetId) || 'signature'}
+          themePreset={effectiveChartThemePreset as any}
           customPalette={appSettings.customPalette}
           customBullColor={appSettings.customBullColor}
           customBearColor={appSettings.customBearColor}

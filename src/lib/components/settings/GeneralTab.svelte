@@ -14,7 +14,7 @@
     ExternalLink,
     Sparkles
   } from '@lucide/svelte';
-  import { THEME_PRESETS } from '../../constants/themes';
+  import { THEME_PRESETS, resolveThemeConfig } from '../../constants/themes';
   import { sendTestNotification } from '../../services/systemNotificationService';
   import type { AppSettings } from '../../types/market';
   import {
@@ -200,7 +200,7 @@
       title="Buka tab Tema & Tipografi"
     >
       <Palette size={13} />
-      <span>{THEME_PRESETS[settings.themePreset || 'signature']?.name || 'trawangan (Signature)'}</span>
+      <span>{resolveThemeConfig(settings.themePreset || 'signature', settings.savedUserThemes)?.name || 'trawangan (Signature)'}</span>
     </button>
   </div>
 
