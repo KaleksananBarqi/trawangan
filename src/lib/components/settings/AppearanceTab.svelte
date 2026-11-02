@@ -127,6 +127,29 @@
     onUpdateSettings({
       chartThemePreset: preset.id,
       customPalette: null as any,
+      customBullColor: undefined,
+      customBearColor: undefined,
+    });
+  }
+
+  function handleSelectAppThemeDropdown(selectedId: string) {
+    const target = allAvailablePresets.find((p) => p.id === selectedId);
+    const mode = target?.mode || 'dark';
+    onUpdateSettings({
+      themePreset: selectedId,
+      theme: selectedId as any,
+      colorModePreference: mode,
+      ...(mode === 'dark' ? { activeDarkPreset: selectedId } : { activeLightPreset: selectedId }),
+      customPalette: null as any,
+    });
+  }
+
+  function handleSelectChartThemeDropdown(selectedId: string) {
+    onUpdateSettings({
+      chartThemePreset: selectedId,
+      customPalette: null as any,
+      customBullColor: undefined,
+      customBearColor: undefined,
     });
   }
 
@@ -136,6 +159,7 @@
         themePreset: preset.id,
         chartThemePreset: preset.id,
         theme: preset.id as any,
+        colorModePreference: preset.mode,
         ...(preset.mode === 'dark' ? { activeDarkPreset: preset.id } : { activeLightPreset: preset.id }),
         customPalette: null as any,
         customBullColor: undefined,
@@ -146,6 +170,7 @@
         onUpdateSettings({
           themePreset: preset.id,
           theme: preset.id as any,
+          colorModePreference: preset.mode,
           ...(preset.mode === 'dark' ? { activeDarkPreset: preset.id } : { activeLightPreset: preset.id }),
           customPalette: null as any,
         });
@@ -549,12 +574,7 @@
           <select
             class="select-input"
             value={settings.themePreset || 'signature'}
-            onchange={(e) =>
-              onUpdateSettings({
-                themePreset: e.currentTarget.value,
-                theme: e.currentTarget.value as any,
-                customPalette: undefined,
-              })}
+            onchange={(e) => handleSelectAppThemeDropdown(e.currentTarget.value)}
           >
             {#each allAvailablePresets as p}
               <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ''}</option>
@@ -570,7 +590,7 @@
           <select
             class="select-input"
             value={settings.chartThemePreset || 'signature'}
-            onchange={(e) => onUpdateSettings({ chartThemePreset: e.currentTarget.value })}
+            onchange={(e) => handleSelectChartThemeDropdown(e.currentTarget.value)}
           >
             {#each allAvailablePresets as p}
               <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ''}</option>

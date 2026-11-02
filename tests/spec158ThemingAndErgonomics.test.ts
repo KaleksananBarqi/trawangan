@@ -80,5 +80,36 @@ describe('Spec #158: Theming, Context Menu, Watermark & Auto-Save Guard Suite', 
       );
     });
   });
+
+  describe('Ticket #161: Decoupled Live Theme Preview and Binary Mode Alignment', () => {
+    const appearancePath = path.resolve(process.cwd(), 'src/lib/components/settings/AppearanceTab.svelte');
+    const appearanceContent = fs.readFileSync(appearancePath, 'utf8');
+
+    test('1. AppearanceTab.svelte menyelaraskan colorModePreference saat memilih tema aplikasi lawan mode di kartu', () => {
+      // Saat targetThemeSelection === 'app' dan syncChartWithAppTheme === false:
+      assert.match(
+        appearanceContent,
+        /colorModePreference:\s*preset\.mode/,
+        'handleSelectPreset harus menyelaraskan colorModePreference ke preset.mode'
+      );
+    });
+
+    test('2. Dropdown Tema Aplikasi (Desktop Shell) menyelaraskan mode dan preset default aktif', () => {
+      assert.match(
+        appearanceContent,
+        /handleSelectAppThemeDropdown|handleSelectAppPresetDropdown/,
+        'AppearanceTab harus mendefinisikan handler dropdown tema aplikasi yang menyelaraskan mode biner'
+      );
+    });
+
+    test('3. Dropdown Tema Kanvas Chart membersihkan customPalette dan customBull/BearColor', () => {
+      assert.match(
+        appearanceContent,
+        /handleSelectChartDropdown|handleSelectChartThemeDropdown/,
+        'AppearanceTab harus mendefinisikan handler dropdown tema chart'
+      );
+    });
+  });
 });
+
 
