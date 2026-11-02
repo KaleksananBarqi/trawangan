@@ -5,6 +5,33 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.34.0] - 2026-11-02
+
+### 🚀 Ditambahkan (Added)
+- **Deep Module WorkspaceShell (`workspaceShellService.ts`) (#152, #154)**:
+  - Modul tunggal berarsitektur mendalam yang mengendalikan rel bilah gambar kiri (drawing toolbar), dock panel drawer kanan (watchlist, alerts, object tree), serta transisi mode workspace (`terminal` | `pine`).
+  - Menyatukan sistem persistensi `localStorage` (`trawangan_left_rail_collapsed` dan `trawangan_right_dock_state`) dengan validasi parsing JSON yang aman dan toleran terhadap kegagalan.
+  - Memberikan antarmuka reaktif tunggal untuk `+page.svelte` dan `RightDockRail.svelte`, mengeliminasi overhead pub/sub subscription ganda menjadi satu aliran state terpadu.
+- **Suite Pengujian Komprehensif WorkspaceShell (`tests/workspaceShell.test.ts`) (#154)**:
+  - Menguji siklus hidup rel bilah kiri, tab switching dock kanan (1-klik ganti tab, click-to-close, hider chevron toggle), transisi mode terminal/pine, serta pemulihan persistensi pada instansiasi baru.
+
+### 🔄 Diubah (Changed)
+- **Konsolidasi Single Source of Truth Keyboard Shortcuts (`commandDispatcher.ts`) (#152, #153)**:
+  - Glosarium pintasan keyboard lengkap (`SHORTCUT_GLOSSARY`) dan helper filter kategori dipindahkan langsung ke dalam `commandDispatcher.ts`.
+  - Mengeliminasi modul adapter dangkal `shortcutService.ts` dan menyerap seluruh unit test pintasan ke dalam `commandDispatcher.test.ts`.
+  - Konsumen modal cheatsheet (`ShortcutCheatsheetModal.svelte`) dan tab bantuan (`HelpTab.svelte`) kini langsung terhubung ke `commandDispatcher`.
+- **Penyatuan Engine Kompositor Snapshot Kanvas 2D (`chartSnapshotService.ts`) (#152, #155, #156)**:
+  - `chartSnapshotOverlayService.ts` diserap seutuhnya ke dalam `chartSnapshotService.ts`, membentuk deep module komposisi snapshot tunggal yang bebas ketergantungan fragmen eksternal.
+  - Penyatuan engine visual trading plan (lencana bias Bullish/Bearish, probabilitas setup, parameter entry, pills context zone FVG, skenario pembatalan bergaris putus-putus, target likuiditas berjenjang dengan lencana +R, dan catatan risiko) antara kartu mengambang (floating card) dan panel samping berdedikasi (side-panel).
+  - Helper 2D kanvas (`colorToRgba`, `wrapCanvasText`, `drawRoundedRect`, `drawGripDots`) dienkapitulasi secara internal di dalam modul snapshot dan dihentikan dari kebocoran re-export publik.
+  - `Chart.svelte` dan test suite snapshot kini mendelegasikan screenshot grafik langsung ke `chartSnapshotService`.
+
+### 🐛 Diperbaiki (Fixed)
+- **Pembersihan Dead Code & Pengetatan Seam Antarmuka (#154, #155)**:
+  - Menghapus method `handleKeydown` yang tidak terpakai dari service layer toolbar (event keyboard kini 100% diproses melalui binding deklaratif `commandDispatcher`).
+  - Mengeliminasi duplikasi implementasi `drawRoundedRect` antar-modul dan memperkuat ketahanan kanvas 2D dengan dukungan adaptif terhadap `ctx.roundRect`, `ctx.arcTo`, `ctx.quadraticCurveTo`, dan `ctx.rect`.
+  - Menghapus 4 berkas service dan tes lama yang terfragmentasi (`shortcutService.ts`, `leftToolbarService.ts`, `rightDockService.ts`, `chartSnapshotOverlayService.ts`).
+
 ## [0.33.0] - 2026-11-02
 
 ### 🚀 Ditambahkan (Added)
