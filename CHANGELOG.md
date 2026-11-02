@@ -5,6 +5,14 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.34.1] - 2026-11-02
+
+### 🐛 Diperbaiki (Fixed)
+- **Koreksi Parameter Ordinat `lineTo` pada Helper Kanvas `drawRoundedRect`**:
+  - Memperbaiki galat *runtime error* (`lineTo@[native code]: TypeError: Not enough arguments`) di WebView Tauri (WebKit) saat mengambil screenshot grafik dengan *price scale badges* atau *thesis cards*.
+  - Menyelaraskan panggilan `ctx.lineTo(x, y + radius.tl)` dengan kontrak spesifikasi W3C Canvas 2D pada kedua cabang kurva (`arcTo` dan fallback `quadraticCurveTo`).
+  - Menambahkan *strict mock test suite* pada `tests/screenshotCanvasRuntimeErrorBugRepro.test.ts` untuk memvalidasi pemenuhan jumlah argumen Web IDL canvas di lingkungan WebKit desktop.
+
 ## [0.34.0] - 2026-11-02
 
 ### 🚀 Ditambahkan (Added)
