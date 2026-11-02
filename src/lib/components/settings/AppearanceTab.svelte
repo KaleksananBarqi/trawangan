@@ -1,6 +1,6 @@
 <script lang="ts">
   import {
-    Check, Minus, Plus, RotateCcw, Copy, CheckCheck, Sun, Moon, Palette, FileText, Clipboard, X
+    Check, Minus, Plus, RotateCcw, Copy, CheckCheck, Sun, Moon, Palette, FileText, Clipboard, X, Monitor
   } from '@lucide/svelte';
   import {
     THEME_PRESETS,
@@ -18,6 +18,7 @@
   import { isDarkColor } from '../../utils/colorUtils';
   import type {
     AppSettings,
+    ColorModePreference,
     CustomChartBackgroundConfig,
     CustomThemePalette,
     CustomCandleColors,
@@ -40,6 +41,32 @@
 
   function setFilterMode(mode: 'all' | 'dark' | 'light') {
     onUpdateSettings({ themeFilterMode: mode });
+  }
+
+  const colorModePref = $derived<ColorModePreference>(settings.colorModePreference || 'system');
+  const darkPresets = $derived(Object.values(THEME_PRESETS).filter((p) => p.mode === 'dark'));
+  const lightPresets = $derived(Object.values(THEME_PRESETS).filter((p) => p.mode === 'light'));
+
+  function handleSetColorMode(mode: ColorModePreference) {
+    onUpdateSettings({
+      colorModePreference: mode,
+      ...(mode === 'dark' ? { themePreset: (settings.activeDarkPreset as any) || 'signature' } : {}),
+      ...(mode === 'light' ? { themePreset: (settings.activeLightPreset as any) || 'red_folder' } : {}),
+    });
+  }
+
+  function handleSetDarkPreset(presetId: string) {
+    onUpdateSettings({
+      activeDarkPreset: presetId,
+      ...(colorModePref === 'dark' ? { themePreset: presetId as any } : {}),
+    });
+  }
+
+  function handleSetLightPreset(presetId: string) {
+    onUpdateSettings({
+      activeLightPreset: presetId,
+      ...(colorModePref === 'light' ? { themePreset: presetId as any } : {}),
+    });
   }
 
   function handleSetFontSize(newSize: number) {
@@ -230,6 +257,84 @@
 </script>
 
 <div class="section-group">
+  <!-- System Theme Bridge & Color Mode Selector (#148) -->
+  <div class="system-bridge-section">
+    <div class="presets-header-row">
+      <div>
+        <h4 class="section-title">Mode Warna & Sinkronisasi Sistem</h4>
+        <p class="section-subtitle">
+          Pilih mode warna antarmuka: ikuti skema OS host secara dinamis via System Theme Bridge, atau kunci ke Mode Gelap / Mode Terang.
+        </p>
+      </div>
+
+      <!-- Segmented Control untuk colorModePreference -->
+      <div class="theme-mode-filters" role="radiogroup" aria-label="Preferensi Mode Warna">
+        <button
+          type="button"
+          class="filter-chip {colorModePref === 'system' ? 'active' : ''}"
+          onclick={() => handleSetColorMode('system')}
+          title="Ikuti preferensi tema sistem operasi secara otomatis"
+        >
+          <Monitor size={12} />
+          <span>Ikuti Sistem</span>
+        </button>
+        <button
+          type="button"
+          class="filter-chip {colorModePref === 'dark' ? 'active' : ''}"
+          onclick={() => handleSetColorMode('dark')}
+          title="Paksa antarmuka terminal ke Mode Gelap"
+        >
+          <Moon size={12} />
+          <span>Mode Gelap</span>
+        </button>
+        <button
+          type="button"
+          class="filter-chip {colorModePref === 'light' ? 'active' : ''}"
+          onclick={() => handleSetColorMode('light')}
+          title="Paksa antarmuka terminal ke Mode Terang"
+        >
+          <Sun size={12} />
+          <span>Mode Terang</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Dropdowns untuk Preset Default Gelap & Terang -->
+    <div class="theme-defaults-grid">
+      <div class="setting-row default-preset-item">
+        <div class="setting-info">
+          <span class="setting-label">Preset Default Mode Gelap (activeDarkPreset)</span>
+          <span class="setting-desc">Tema yang otomatis aktif saat berada di Mode Gelap</span>
+        </div>
+        <select
+          class="select-input"
+          value={settings.activeDarkPreset || 'signature'}
+          onchange={(e) => handleSetDarkPreset(e.currentTarget.value)}
+        >
+          {#each darkPresets as p}
+            <option value={p.id}>{p.name}</option>
+          {/each}
+        </select>
+      </div>
+
+      <div class="setting-row default-preset-item">
+        <div class="setting-info">
+          <span class="setting-label">Preset Default Mode Terang (activeLightPreset)</span>
+          <span class="setting-desc">Tema yang otomatis aktif saat berada di Mode Terang</span>
+        </div>
+        <select
+          class="select-input"
+          value={settings.activeLightPreset || 'red_folder'}
+          onchange={(e) => handleSetLightPreset(e.currentTarget.value)}
+        >
+          {#each lightPresets as p}
+            <option value={p.id}>{p.name}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+  </div>
+
   <div class="presets-header-row">
     <div>
       <h4 class="section-title">Preset Tema Tampilan & Candlestick</h4>
@@ -276,6 +381,7 @@
           onUpdateSettings({
             themePreset: preset.id,
             theme: preset.id as any,
+            ...(preset.mode === 'dark' ? { activeDarkPreset: preset.id } : { activeLightPreset: preset.id }),
             customPalette: undefined,
             customBullColor: undefined,
             customBearColor: undefined,
@@ -1091,6 +1197,29 @@
     color: var(--text-muted);
     line-height: 1.4;
     margin: -4px 0 2px 0;
+  }
+
+  /* System Theme Bridge & Color Mode Switcher (#148) */
+  .system-bridge-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .theme-defaults-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .default-preset-item {
+    background: var(--bg-surface);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-hairline);
   }
 
   .theme-presets-grid {

@@ -1,4 +1,4 @@
-import type { CustomThemePalette, ThemePresetId, UiDensity } from '../types/market';
+import type { ColorModePreference, CustomThemePalette, ThemePresetId, UiDensity } from '../types/market';
 import { deriveBorderColor, isDarkColor, withAlpha } from '../utils/colorUtils';
 
 export interface ThemeConfig {
@@ -509,4 +509,47 @@ export function resolveEffectiveThemeColors(
 
   return { background, foreground, textColor, isDark };
 }
+
+/**
+ * Menyelesaikan ThemePresetId efektif berdasarkan preferensi mode warna pengguna,
+ * status prefers-color-scheme OS, dan fallback preset (#148).
+ * - 'dark': Selalu mengembalikan darkPreset (fallback ke fallback || 'signature')
+ * - 'light': Selalu mengembalikan lightPreset (fallback ke 'red_folder')
+ * - 'system': Mengembalikan darkPreset jika systemIsDark bernilai true, sebaliknya lightPreset
+ */
+export function resolveEffectiveThemePreset(
+  preference: ColorModePreference = 'system',
+  systemIsDark: boolean = true,
+  fallback: ThemePresetId | string = 'signature',
+  darkPreset?: ThemePresetId | string,
+  lightPreset?: ThemePresetId | string
+): ThemePresetId | string {
+  const effectiveDark = darkPreset || fallback || 'signature';
+  const effectiveLight = lightPreset || (fallback === 'red_folder' ? fallback : 'red_folder');
+
+  if (preference === 'dark') {
+    return effectiveDark;
+  }
+  if (preference === 'light') {
+    return effectiveLight;
+  }
+  return systemIsDark ? effectiveDark : effectiveLight;
+}
+
+/**
+ * Menghitung mode warna berikutnya dalam siklus toggle satu-klik pada Header (#148):
+ * dark -> light -> system -> dark
+ */
+export function getNextColorMode(current: ColorModePreference): ColorModePreference {
+  switch (current) {
+    case 'dark':
+      return 'light';
+    case 'light':
+      return 'system';
+    case 'system':
+    default:
+      return 'dark';
+  }
+}
+
 
