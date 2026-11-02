@@ -181,6 +181,7 @@
   let isIndicatorModalOpen = $state(false);
   let isSymbolSearchOpen = $state(false);
   let symbolSearchInitialQuery = $state('');
+  let symbolSearchTriggerSource = $state<'keystroke' | 'explicit'>('explicit');
   let isTimeframeQuickBarOpen = $state(false);
   let timeframeQuickBarInitialInput = $state('');
   let isShortcutCheatsheetOpen = $state(false);
@@ -460,6 +461,7 @@
       }),
       commandDispatcher.bindHandler('search-symbol', () => {
         symbolSearchInitialQuery = '';
+        symbolSearchTriggerSource = 'explicit';
         isSymbolSearchOpen = true;
       }),
       commandDispatcher.bindHandler('help-cheatsheet-f1', () => {
@@ -674,6 +676,7 @@
     const unbindGlobalListener = commandDispatcher.attachGlobalListener(window);
     const unsubTypeToSearch = commandDispatcher.onTypeToSearch((char) => {
       symbolSearchInitialQuery = char;
+      symbolSearchTriggerSource = 'keystroke';
       isSymbolSearchOpen = true;
     });
     const unsubTypeTimeframe = commandDispatcher.onTypeTimeframe((digit) => {
@@ -1545,6 +1548,7 @@
     }}
     onOpenSymbolSearch={() => {
       symbolSearchInitialQuery = '';
+      symbolSearchTriggerSource = 'explicit';
       isSymbolSearchOpen = true;
     }}
     favoriteTimeframes={appSettings.favoriteTimeframes}
@@ -1730,6 +1734,7 @@
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
           onOpenSymbolSearch={() => {
             symbolSearchInitialQuery = '';
+            symbolSearchTriggerSource = 'explicit';
             isSymbolSearchOpen = true;
           }}
         />
@@ -1824,11 +1829,13 @@
     {activeProviderId}
     {watchlistSymbols}
     initialQuery={symbolSearchInitialQuery}
+    triggerSource={symbolSearchTriggerSource}
     onSelectSymbol={handleSymbolChange}
     onToggleWatchlistSymbol={handleToggleWatchlistSymbolFromSearch}
     onClose={() => {
       isSymbolSearchOpen = false;
       symbolSearchInitialQuery = '';
+      symbolSearchTriggerSource = 'explicit';
     }}
   />
 
