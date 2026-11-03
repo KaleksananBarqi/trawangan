@@ -207,6 +207,19 @@ export interface PriceAlert {
   createdAt: number;
   triggeredAt?: number;
   triggeredPrice?: number;
+  planId?: string;
+  planRole?: 'entry' | 'sl' | string;
+}
+
+export interface SavedTradingPlanRecord {
+  id: string;
+  symbol: string;
+  providerId?: string;
+  timeframe?: string;
+  createdAt: number;
+  updatedAt: number;
+  rawText?: string;
+  plan: any;
 }
 
 export interface ObjectTreeItem {
@@ -325,6 +338,8 @@ export interface AppSettings {
   colorModePreference?: ColorModePreference;
   activeDarkPreset?: ThemeId;
   activeLightPreset?: ThemeId;
+  activeDarkChartPreset?: ThemeId;
+  activeLightChartPreset?: ThemeId;
   themeFilterMode?: 'all' | 'dark' | 'light';
   customPalette?: CustomThemePalette | null;
   customBullColor?: string;

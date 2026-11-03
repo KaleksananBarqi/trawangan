@@ -5,6 +5,7 @@ import type {
   PriceAlert,
   QuickSymbolsConfig,
   AppSettings,
+  SavedTradingPlanRecord,
 } from '../../types/market';
 import type { IPersistenceService, PersistenceAdapter } from './types';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
@@ -339,6 +340,109 @@ export class PersistenceService implements IPersistenceService {
     }
   }
 
+  // ─── Trade Plan Vault (Riwayat Rencana Perdagangan Otomatis - ADR-0019) ───
+
+  async loadTradingPlanHistory(): Promise<SavedTradingPlanRecord[]> {
+    const raw = await this.adapter.loadLayoutSlot('user_trade_plan_vault');
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (_) {}
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const local = window.localStorage.getItem('trawangan_trade_plan_vault');
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (_) {}
+    }
+    return [];
+  }
+
+  private async persistTradingPlanVaultList(list: SavedTradingPlanRecord[]): Promise<void> {
+    const json = JSON.stringify(list);
+    await this.adapter.saveLayoutSlot('user_trade_plan_vault', 'User Trade Plan Vault', json);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem('trawangan_trade_plan_vault', json);
+      } catch (_) {}
+    }
+  }
+
+  async saveTradingPlanToHistory(
+    record: Omit<SavedTradingPlanRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string; createdAt?: number }
+  ): Promise<SavedTradingPlanRecord> {
+    const list = await this.loadTradingPlanHistory();
+    const now = Date.now();
+    const cleanSymbol = (record.symbol || record.plan?.symbol || 'BTCUSDT').trim().toUpperCase();
+    const normSym = cleanSymbol.replace(/\.P$|-PERP$|PERP$/i, '');
+    const targetSig = Array.isArray(record.plan?.targets)
+      ? record.plan.targets.map((t: any) => Number(t?.price || 0)).join(',')
+      : '';
+
+    // Cek deduplikasi berdasarkan ID atau kombinasi identik (Simbol + Bias + Entry + SL + Target)
+    const existingIdx = list.findIndex((item) => {
+      if (record.id && item.id === record.id) return true;
+      const itemNormSym = (item.symbol || '').trim().toUpperCase().replace(/\.P$|-PERP$|PERP$/i, '');
+      const itemTargetSig = Array.isArray(item.plan?.targets)
+        ? item.plan.targets.map((t: any) => Number(t?.price || 0)).join(',')
+        : '';
+      return (
+        itemNormSym === normSym &&
+        item.plan?.bias === record.plan?.bias &&
+        Number(item.plan?.entry) === Number(record.plan?.entry) &&
+        Number(item.plan?.stopLoss) === Number(record.plan?.stopLoss) &&
+        itemTargetSig === targetSig
+      );
+    });
+
+    if (existingIdx !== -1) {
+      const existing = list[existingIdx];
+      const updated: SavedTradingPlanRecord = {
+        ...existing,
+        ...record,
+        id: existing.id,
+        symbol: cleanSymbol,
+        createdAt: existing.createdAt || record.createdAt || now,
+        updatedAt: now,
+        plan: JSON.parse(JSON.stringify(record.plan)),
+      };
+      const remaining = list.filter((_, i) => i !== existingIdx);
+      const nextList = [updated, ...remaining].slice(0, 200);
+      await this.persistTradingPlanVaultList(nextList);
+      return updated;
+    }
+
+    const newRecord: SavedTradingPlanRecord = {
+      id: record.id || `vault_plan_${now}_${Math.random().toString(36).slice(2, 7)}`,
+      symbol: cleanSymbol,
+      providerId: record.providerId || 'binance',
+      timeframe: record.timeframe || '15m',
+      createdAt: record.createdAt || now,
+      updatedAt: now,
+      rawText: record.rawText || record.plan?.rawText || '',
+      plan: JSON.parse(JSON.stringify(record.plan)),
+    };
+
+    const nextList = [newRecord, ...list].slice(0, 200);
+    await this.persistTradingPlanVaultList(nextList);
+    return newRecord;
+  }
+
+  async deleteTradingPlanFromHistory(id: string): Promise<SavedTradingPlanRecord[]> {
+    const list = await this.loadTradingPlanHistory();
+    const filtered = list.filter((item) => item.id !== id);
+    await this.persistTradingPlanVaultList(filtered);
+    return filtered;
+  }
+
+  async clearTradingPlanHistory(): Promise<void> {
+    await this.persistTradingPlanVaultList([]);
+  }
+
   // ─── Layout Slot Direct Access ───
 
   async loadLayoutSlot(id: string): Promise<string | null> {
@@ -386,6 +490,13 @@ export { resolveAppSettings } from '../../constants/defaults';
 export const loadChartDefaultConfig = () => storage.loadChartDefaultConfig();
 export const saveChartDefaultConfig = (cfg: any) => storage.saveChartDefaultConfig(cfg);
 export const clearChartDefaultConfig = () => storage.clearChartDefaultConfig();
+
+export const loadTradingPlanHistory = () => storage.loadTradingPlanHistory();
+export const saveTradingPlanToHistory = (
+  record: Omit<SavedTradingPlanRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string; createdAt?: number }
+) => storage.saveTradingPlanToHistory(record);
+export const deleteTradingPlanFromHistory = (id: string) => storage.deleteTradingPlanFromHistory(id);
+export const clearTradingPlanHistory = () => storage.clearTradingPlanHistory();
 
 export const loadLayoutSlot = (id: string) => storage.loadLayoutSlot(id);
 export const saveLayoutSlot = (id: string, name: string, json: string) => storage.saveLayoutSlot(id, name, json);

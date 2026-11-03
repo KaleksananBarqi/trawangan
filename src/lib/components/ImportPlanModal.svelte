@@ -12,25 +12,49 @@
     Sparkles,
     Layers,
     Info,
-    Trash2
+    Trash2,
+    History,
+    Bell,
+    Play,
+    Edit3,
+    Filter
   } from '@lucide/svelte';
   import {
     parseTradingPlan,
     formatPlanPrice,
     type ParsedTradingPlan
   } from '../services/planParserService';
+  import {
+    loadTradingPlanHistory,
+    deleteTradingPlanFromHistory,
+    clearTradingPlanHistory
+  } from '../services/persistence';
+  import { isSameSymbol } from '../services/chartDrawingController';
+  import type { SavedTradingPlanRecord } from '../types/market';
+
+  export interface ApplyImportPlanOptions {
+    autoCreateAlerts?: boolean;
+    isFromHistory?: boolean;
+    savedRecord?: SavedTradingPlanRecord;
+  }
 
   interface Props {
     isOpen: boolean;
     initialText?: string;
+    initialTab?: 'import' | 'history';
+    activeSymbol?: string;
+    currentPrice?: number | null;
     tickSize?: number;
-    onApply: (plan: ParsedTradingPlan) => void;
+    onApply: (plan: ParsedTradingPlan, options?: ApplyImportPlanOptions) => void;
     onClose: () => void;
   }
 
   let {
     isOpen,
     initialText = '',
+    initialTab = 'import',
+    activeSymbol = 'BTCUSDT',
+    currentPrice = null,
     tickSize,
     onApply,
     onClose,
@@ -39,6 +63,11 @@
   let rawText = $state('');
   let textareaEl = $state<HTMLTextAreaElement | null>(null);
   let copyFeedback = $state(false);
+  let activeTab = $state<'import' | 'history'>('import');
+  let autoCreateAlerts = $state(true);
+  let historyRecords = $state<SavedTradingPlanRecord[]>([]);
+  let isLoadingHistory = $state(false);
+  let historyFilterMode = $state<'active_symbol' | 'all'>('active_symbol');
 
   const SAMPLE_MARKDOWN_PLAN = `|**Parameter**|**Nilai**|
 |---|---|
@@ -54,12 +83,14 @@
 |R multiple TP2|8.85R. Jarak TP2 = 1771.0|
 |Alasan TP2|Draw on liquidity SSL utama harian [SPEKULASI]|`;
 
-  // Sinkronisasi teks awal saat modal dibuka
+  // Sinkronisasi teks awal dan muat riwayat saat modal dibuka
   $effect(() => {
     if (isOpen) {
       rawText = initialText || '';
+      activeTab = initialTab || 'import';
+      refreshHistory();
       tick().then(() => {
-        if (textareaEl) {
+        if (activeTab === 'import' && textareaEl) {
           textareaEl.focus();
           if (initialText) {
             textareaEl.select();
@@ -68,6 +99,135 @@
       });
     }
   });
+
+  async function refreshHistory() {
+    isLoadingHistory = true;
+    try {
+      const list = await loadTradingPlanHistory();
+      historyRecords = Array.isArray(list) ? list : [];
+    } catch (_) {
+      historyRecords = [];
+    } finally {
+      isLoadingHistory = false;
+    }
+  }
+
+  let filteredHistory = $derived.by<SavedTradingPlanRecord[]>(() => {
+    if (historyFilterMode === 'all' || !activeSymbol) {
+      return historyRecords;
+    }
+    return historyRecords.filter((rec) => isSameSymbol(rec.symbol, activeSymbol));
+  });
+
+  function evaluateLiveComparison(rec: SavedTradingPlanRecord): {
+    label: string;
+    badgeClass: string;
+    diffPctText: string;
+  } | null {
+    if (
+      currentPrice === null ||
+      currentPrice === undefined ||
+      currentPrice <= 0 ||
+      !isSameSymbol(rec.symbol, activeSymbol)
+    ) {
+      return null;
+    }
+    const plan = rec.plan;
+    if (!plan || !plan.entry || !plan.stopLoss) return null;
+
+    const isBull = plan.bias !== 'bearish';
+    const diffPct = ((currentPrice - plan.entry) / plan.entry) * 100;
+    const sign = diffPct >= 0 ? '+' : '';
+    const diffPctText = `${sign}${diffPct.toFixed(2)}% dari Entry`;
+
+    const sortedTargets = [...(plan.targets || [])]
+      .filter((t) => typeof t.price === 'number' && !isNaN(t.price))
+      .sort((a, b) => (isBull ? b.price - a.price : a.price - b.price));
+
+    for (const t of sortedTargets) {
+      if ((isBull && currentPrice >= t.price) || (!isBull && currentPrice <= t.price)) {
+        return {
+          label: `Di Area / Lewat ${t.label || t.id.toUpperCase()}`,
+          badgeClass: 'status-tp',
+          diffPctText
+        };
+      }
+    }
+
+    if ((isBull && currentPrice <= plan.stopLoss) || (!isBull && currentPrice >= plan.stopLoss)) {
+      return {
+        label: 'Di Area / Lewat Stop Loss',
+        badgeClass: 'status-sl',
+        diffPctText
+      };
+    }
+
+    if (
+      (isBull && currentPrice >= plan.entry) ||
+      (!isBull && currentPrice <= plan.entry)
+    ) {
+      return {
+        label: 'Berjalan Menuju Target (In Profit)',
+        badgeClass: 'status-running',
+        diffPctText
+      };
+    }
+
+    return {
+      label: 'Antara Entry & SL / Menunggu Trigger',
+      badgeClass: 'status-waiting',
+      diffPctText
+    };
+  }
+
+  function formatTimestamp(ts: number): string {
+    if (!ts) return '--';
+    try {
+      return new Date(ts).toLocaleString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (_) {
+      return new Date(ts).toISOString();
+    }
+  }
+
+  async function handleDeleteHistoryItem(id: string) {
+    historyRecords = await deleteTradingPlanFromHistory(id);
+  }
+
+  async function handleClearAllHistory() {
+    await clearTradingPlanHistory();
+    historyRecords = [];
+  }
+
+  function handleLoadRecordToEditor(rec: SavedTradingPlanRecord) {
+    rawText = rec.rawText || rec.plan?.rawText || '';
+    activeTab = 'import';
+    tick().then(() => {
+      textareaEl?.focus();
+    });
+  }
+
+  function handleReplotFromHistory(rec: SavedTradingPlanRecord, withAlerts = false) {
+    if (!rec.plan) return;
+    onApply(
+      {
+        ...rec.plan,
+        symbol: rec.symbol || rec.plan.symbol || activeSymbol,
+        timeframe: rec.timeframe || rec.plan.timeframe
+      },
+      {
+        autoCreateAlerts: withAlerts,
+        isFromHistory: true,
+        savedRecord: rec
+      }
+    );
+    onClose();
+  }
 
   // Penguraian rencana reaktif
   let parsedPlan = $derived.by<ParsedTradingPlan>(() => {
@@ -104,7 +264,10 @@
 
   function handleApply() {
     if (parsedPlan.validation.valid) {
-      onApply(parsedPlan);
+      onApply(parsedPlan, {
+        autoCreateAlerts,
+        isFromHistory: false
+      });
       onClose();
     }
   }
@@ -152,16 +315,44 @@
             <Sparkles size={16} class="text-cyan" />
           </span>
           <div class="header-titles">
-            <h3 id="import-plan-title">Import Trading Plan</h3>
-            <span class="header-subtitle">Ingestion rencana posisi multi-target deterministik (Zero-LLM)</span>
+            <h3 id="import-plan-title">Trade Plan & Outlook Vault</h3>
+            <span class="header-subtitle">Ingestion rencana posisi multi-target deterministik & riwayat outlook</span>
           </div>
           <span class="shortcut-pill mono-nums">Ctrl+Shift+P</span>
         </div>
-        <button type="button" class="close-btn" onclick={onClose} title="Tutup (Esc)">
-          <X size={15} />
-        </button>
+
+        <div class="header-right">
+          <!-- Tab Switcher -->
+          <div class="modal-tab-switcher" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'import'}
+              class="modal-tab-btn {activeTab === 'import' ? 'active' : ''}"
+              onclick={() => (activeTab = 'import')}
+            >
+              <Sparkles size={12} />
+              <span>Impor Plan Baru</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'history'}
+              class="modal-tab-btn {activeTab === 'history' ? 'active' : ''}"
+              onclick={() => (activeTab = 'history')}
+            >
+              <History size={12} />
+              <span>Riwayat Plan ({historyRecords.length})</span>
+            </button>
+          </div>
+
+          <button type="button" class="close-btn" onclick={onClose} title="Tutup (Esc)">
+            <X size={15} />
+          </button>
+        </div>
       </div>
 
+      {#if activeTab === 'import'}
       <!-- Modal Body (Two-Column Flex/Grid) -->
       <div class="modal-body">
         <!-- Kolom Kiri: Input Teks / Markdown -->
@@ -382,8 +573,19 @@
 
       <!-- Modal Footer -->
       <div class="modal-footer">
-        <div class="footer-tip mono-nums">
-          <span>Tips: Tekan <kbd>Ctrl+Enter</kbd> untuk menerapkan langsung</span>
+        <div class="footer-left">
+          <label class="auto-alert-checkbox-label">
+            <input
+              type="checkbox"
+              bind:checked={autoCreateAlerts}
+              class="auto-alert-checkbox"
+            />
+            <Bell size={12} class={autoCreateAlerts ? 'text-cyan' : 'text-dim'} />
+            <span>Pasang Alert Otomatis (Entry, SL & TP)</span>
+          </label>
+          <div class="footer-tip mono-nums">
+            <span>Tips: Tekan <kbd>Ctrl+Enter</kbd> untuk menerapkan langsung</span>
+          </div>
         </div>
         <div class="footer-buttons">
           <button
@@ -405,6 +607,179 @@
           </button>
         </div>
       </div>
+      {:else}
+      <!-- Tab Riwayat Plan (Trade Plan Vault) -->
+      <div class="vault-body">
+        <div class="vault-toolbar">
+          <div class="vault-filter-group">
+            <Filter size={12} class="text-dim" />
+            <button
+              type="button"
+              class="vault-filter-btn {historyFilterMode === 'active_symbol' ? 'active' : ''}"
+              onclick={() => (historyFilterMode = 'active_symbol')}
+            >
+              Simbol Aktif ({activeSymbol})
+            </button>
+            <button
+              type="button"
+              class="vault-filter-btn {historyFilterMode === 'all' ? 'active' : ''}"
+              onclick={() => (historyFilterMode = 'all')}
+            >
+              Semua Simbol ({historyRecords.length})
+            </button>
+          </div>
+
+          <div class="vault-toolbar-right">
+            {#if currentPrice && currentPrice > 0}
+              <span class="live-price-pill mono-nums">
+                Harga {activeSymbol} Saat Ini: <strong>${formatPrice(currentPrice)}</strong>
+              </span>
+            {/if}
+            {#if historyRecords.length > 0}
+              <button
+                type="button"
+                class="btn-tool-action btn-clear"
+                onclick={handleClearAllHistory}
+                title="Bersihkan seluruh riwayat Trade Plan Vault"
+              >
+                <Trash2 size={11} />
+                <span>Hapus Semua</span>
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <div class="vault-list-container">
+          {#if isLoadingHistory}
+            <div class="vault-empty-state">Memuat riwayat Trade Plan...</div>
+          {:else if filteredHistory.length === 0}
+            <div class="vault-empty-state">
+              <History size={24} class="text-dim" />
+              <p>
+                {historyFilterMode === 'active_symbol'
+                  ? `Belum ada riwayat Trade Plan tersimpan untuk ${activeSymbol}.`
+                  : 'Belum ada riwayat Trade Plan yang tersimpan di Vault.'}
+              </p>
+              <span>Setiap Trade Plan yang Anda terapkan ke chart akan otomatis tersimpan di sini tanpa perlu klik simpan manual.</span>
+            </div>
+          {:else}
+            <div class="vault-cards-grid">
+              {#each filteredHistory as rec (rec.id)}
+                {@const liveComp = evaluateLiveComparison(rec)}
+                <div class="vault-plan-card bias-{rec.plan?.bias || 'neutral'}">
+                  <div class="vault-card-header">
+                    <div class="vault-card-title-row">
+                      <span class="vault-symbol-badge mono-nums">{rec.symbol}</span>
+                      {#if rec.timeframe}
+                        <span class="vault-tf-badge mono-nums">{rec.timeframe}</span>
+                      {/if}
+                      {#if rec.plan?.bias === 'bearish'}
+                        <span class="vault-bias-pill bear">
+                          <ArrowDownRight size={12} /> SHORT
+                        </span>
+                      {:else}
+                        <span class="vault-bias-pill bull">
+                          <ArrowUpRight size={12} /> LONG
+                        </span>
+                      {/if}
+                      <span class="vault-date mono-nums">{formatTimestamp(rec.createdAt)}</span>
+                    </div>
+
+                    {#if liveComp}
+                      <div class="vault-live-status {liveComp.badgeClass} mono-nums">
+                        <span class="live-dot"></span>
+                        <span>{liveComp.label} ({liveComp.diffPctText})</span>
+                      </div>
+                    {/if}
+                  </div>
+
+                  <div class="vault-metrics-row mono-nums">
+                    <div class="vault-metric">
+                      <span class="v-label">ENTRY</span>
+                      <span class="v-val">${formatPrice(rec.plan?.entry)}</span>
+                    </div>
+                    <div class="vault-metric">
+                      <span class="v-label">STOP LOSS</span>
+                      <span class="v-val sl-val">${formatPrice(rec.plan?.stopLoss)}</span>
+                    </div>
+                    <div class="vault-metric">
+                      <span class="v-label">TARGETS ({rec.plan?.targets?.length || 0})</span>
+                      <div class="v-targets-inline">
+                        {#each rec.plan?.targets || [] as t}
+                          <span class="v-tp-chip">
+                            {t.label || t.id.toUpperCase()}: ${formatPrice(t.price)}
+                            {#if t.rMultiple !== undefined}({t.rMultiple.toFixed(1)}R){/if}
+                          </span>
+                        {/each}
+                      </div>
+                    </div>
+                  </div>
+
+                  {#if rec.plan?.reasons && Object.keys(rec.plan.reasons).length > 0}
+                    <div class="vault-thesis-preview">
+                      {#each Object.entries(rec.plan.reasons).slice(0, 2) as [k, desc]}
+                        <div class="vault-reason-line">
+                          <strong>{k}:</strong> {desc}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  <div class="vault-card-actions">
+                    <button
+                      type="button"
+                      class="btn-vault-action primary"
+                      onclick={() => handleReplotFromHistory(rec, false)}
+                      title="Gambar ulang (proyeksikan) outlook lama ini ke candle terbaru untuk melihat posisi harga sekarang"
+                    >
+                      <Play size={11} />
+                      <span>Proyeksikan ke Chart</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-vault-action alert-btn"
+                      onclick={() => handleReplotFromHistory(rec, true)}
+                      title="Proyeksikan ke chart sekaligus pasang ulang Alert Entry, SL & TP"
+                    >
+                      <Bell size={11} />
+                      <span>Proyeksikan + Alert</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-vault-action"
+                      onclick={() => handleLoadRecordToEditor(rec)}
+                      title="Muat teks Markdown plan ini ke editor untuk dimodifikasi"
+                    >
+                      <Edit3 size={11} />
+                      <span>Edit Teks</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-vault-action delete-btn"
+                      onclick={() => handleDeleteHistoryItem(rec.id)}
+                      title="Hapus plan ini dari riwayat"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <div class="footer-tip mono-nums">
+          <span>Menampilkan {filteredHistory.length} dari {historyRecords.length} Trade Plan tersimpan</span>
+        </div>
+        <div class="footer-buttons">
+          <button type="button" class="btn-secondary" onclick={onClose}>
+            Tutup (Esc)
+          </button>
+        </div>
+      </div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -1054,5 +1429,406 @@
     opacity: 0.35;
     cursor: not-allowed;
     box-shadow: none;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .modal-tab-switcher {
+    display: inline-flex;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .modal-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted, #9ea3b0);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .modal-tab-btn:hover {
+    color: var(--text-main, #ffffff);
+  }
+
+  .modal-tab-btn.active {
+    background-color: rgba(0, 229, 255, 0.14);
+    color: var(--brand-cyan, #00e5ff);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  }
+
+  .footer-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .auto-alert-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-main, #e8e9ed);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .auto-alert-checkbox {
+    accent-color: var(--brand-cyan, #00e5ff);
+    cursor: pointer;
+  }
+
+  /* Vault Body & History Cards */
+  .vault-body {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 18px;
+    gap: 12px;
+    flex: 1;
+    min-height: 440px;
+    overflow: hidden;
+  }
+
+  .vault-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .vault-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .vault-filter-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 5px;
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-muted, #9ea3b0);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .vault-filter-btn.active {
+    background-color: rgba(0, 229, 255, 0.14);
+    border-color: rgba(0, 229, 255, 0.35);
+    color: var(--brand-cyan, #00e5ff);
+  }
+
+  .vault-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .live-price-pill {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-muted, #9ea3b0);
+  }
+
+  .live-price-pill strong {
+    color: var(--text-main, #ffffff);
+  }
+
+  .vault-list-container {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .vault-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 280px;
+    text-align: center;
+    color: var(--text-muted, #9ea3b0);
+    font-size: 12px;
+    background-color: rgba(255, 255, 255, 0.015);
+    border: 1px dashed rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 24px;
+  }
+
+  .vault-empty-state p {
+    margin: 4px 0 0;
+    font-weight: 600;
+    color: var(--text-main, #e8e9ed);
+  }
+
+  .vault-empty-state span {
+    font-size: 11px;
+    color: var(--text-dim, #717786);
+    max-width: 440px;
+  }
+
+  .vault-cards-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .vault-plan-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 7px;
+    background-color: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 3px solid var(--border-subtle, #444);
+  }
+
+  .vault-plan-card.bias-bullish {
+    border-left-color: #00ff88;
+  }
+
+  .vault-plan-card.bias-bearish {
+    border-left-color: #ff69b4;
+  }
+
+  .vault-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .vault-card-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .vault-symbol-badge {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main, #ffffff);
+    background-color: rgba(255, 255, 255, 0.08);
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+
+  .vault-tf-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--brand-cyan, #00e5ff);
+    background-color: rgba(0, 229, 255, 0.1);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .vault-bias-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .vault-bias-pill.bull {
+    background-color: rgba(0, 255, 136, 0.14);
+    color: #00ff88;
+  }
+
+  .vault-bias-pill.bear {
+    background-color: rgba(255, 105, 180, 0.14);
+    color: #ff69b4;
+  }
+
+  .vault-date {
+    font-size: 10px;
+    color: var(--text-dim, #717786);
+    margin-left: 4px;
+  }
+
+  .vault-live-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 9999px;
+  }
+
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: currentColor;
+  }
+
+  .vault-live-status.status-tp {
+    background-color: rgba(0, 255, 136, 0.14);
+    color: #00ff88;
+    border: 1px solid rgba(0, 255, 136, 0.3);
+  }
+
+  .vault-live-status.status-sl {
+    background-color: rgba(255, 68, 102, 0.14);
+    color: #ff4466;
+    border: 1px solid rgba(255, 68, 102, 0.3);
+  }
+
+  .vault-live-status.status-running {
+    background-color: rgba(0, 229, 255, 0.14);
+    color: #00e5ff;
+    border: 1px solid rgba(0, 229, 255, 0.3);
+  }
+
+  .vault-live-status.status-waiting {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--text-muted, #9ea3b0);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .vault-metrics-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 6px 10px;
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 5px;
+  }
+
+  .vault-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .v-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-dim, #717786);
+  }
+
+  .v-val {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main, #e8e9ed);
+  }
+
+  .v-targets-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .v-tp-chip {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #00ff88;
+    background-color: rgba(0, 255, 136, 0.08);
+    border: 1px solid rgba(0, 255, 136, 0.2);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .vault-thesis-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 10.5px;
+    color: var(--text-muted, #9ea3b0);
+  }
+
+  .vault-reason-line {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vault-reason-line strong {
+    color: var(--brand-cyan, #00e5ff);
+  }
+
+  .vault-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  .btn-vault-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted, #9ea3b0);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .btn-vault-action:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-main, #ffffff);
+  }
+
+  .btn-vault-action.primary {
+    background-color: rgba(0, 229, 255, 0.12);
+    border-color: rgba(0, 229, 255, 0.3);
+    color: var(--brand-cyan, #00e5ff);
+  }
+
+  .btn-vault-action.primary:hover {
+    background-color: rgba(0, 229, 255, 0.22);
+  }
+
+  .btn-vault-action.alert-btn {
+    background-color: rgba(0, 255, 136, 0.1);
+    border-color: rgba(0, 255, 136, 0.28);
+    color: #00ff88;
+  }
+
+  .btn-vault-action.alert-btn:hover {
+    background-color: rgba(0, 255, 136, 0.2);
+  }
+
+  .btn-vault-action.delete-btn {
+    margin-left: auto;
+  }
+
+  .btn-vault-action.delete-btn:hover {
+    color: #ff4466;
+    border-color: rgba(255, 68, 102, 0.3);
   }
 </style>

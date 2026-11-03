@@ -13,7 +13,7 @@ import type {
   SnapshotThesisLayout
 } from '../types/market';
 import { formatPlanPrice, type ParsedTradingPlan } from './planParserService';
-import { isDarkColor } from '../utils/colorUtils';
+import { deriveSurfaceColor, ensureReadableTextColor, isDarkColor } from '../utils/colorUtils';
 
 export type { PriceScaleBadge };
 
@@ -331,11 +331,18 @@ export function drawThesisCardOnCanvas(
   const tokens = activeTheme.tokens;
   const chartTokens = activeTheme.chart;
 
-  const bgSecondary = tokens.bgSecondary || tokens.bgContainer || tokens.bgPanel || '#171717';
-  const cardBgColor = colorToRgba(bgSecondary, 0.94);
+  const chartBg = chartTokens.background || tokens.bgDarkest || '#0F0F0F';
+  const isDarkChart = isDarkColor(chartBg);
+  const candidateSurface = tokens.bgSecondary || tokens.bgContainer || '#161616';
+  const safeSurface = isDarkColor(candidateSurface) === isDarkChart
+    ? candidateSurface
+    : deriveSurfaceColor(chartBg, 0.07);
+  const cardBgColor = colorToRgba(safeSurface, 0.94);
   const borderSubtle = tokens.borderSubtle || '#222222';
-  const textPrimary = tokens.textPrimary || tokens.textMain || '#F7F7F7';
-  const textMuted = tokens.textMuted || '#A3A3A3';
+  const textPrimary = ensureReadableTextColor(safeSurface, tokens.textPrimary || tokens.textMain || '#F7F7F7');
+  const textMuted = tokens.textMuted && isDarkColor(tokens.textMuted) !== isDarkChart
+    ? tokens.textMuted
+    : colorToRgba(textPrimary, 0.68);
 
   const isBearish = plan.bias === 'bearish';
   const bullColor = tokens.bullColor || chartTokens.upColor || '#F7F7F7';
@@ -1414,12 +1421,19 @@ export function renderDedicatedThesisSidePanel(
   const tokens = activeTheme.tokens;
   const chartTokens = activeTheme.chart;
 
-  // Latar belakang dan border panel sesuai token tema aktif
-  const bgSecondary = tokens.bgSecondary || tokens.bgContainer || tokens.bgPanel || '#171717';
-  const panelBgColor = colorToRgba(bgSecondary, 0.96);
+  // Latar belakang dan border panel diturunkan langsung dari warna latar Chart Canvas Theme aktif (ADR-0019)
+  const chartBg = chartTokens.background || tokens.bgDarkest || '#0F0F0F';
+  const isDarkChart = isDarkColor(chartBg);
+  const candidateSurface = tokens.bgSecondary || tokens.bgContainer || '#161616';
+  const safeSurface = isDarkColor(candidateSurface) === isDarkChart
+    ? candidateSurface
+    : deriveSurfaceColor(chartBg, 0.07);
+  const panelBgColor = colorToRgba(safeSurface, 0.96);
   const borderSubtle = tokens.borderSubtle || '#222222';
-  const textPrimary = tokens.textPrimary || tokens.textMain || '#F7F7F7';
-  const textMuted = tokens.textMuted || '#A3A3A3';
+  const textPrimary = ensureReadableTextColor(safeSurface, tokens.textPrimary || tokens.textMain || '#F7F7F7');
+  const textMuted = tokens.textMuted && isDarkColor(tokens.textMuted) !== isDarkChart
+    ? tokens.textMuted
+    : colorToRgba(textPrimary, 0.68);
 
   const isBearish = plan.bias === 'bearish';
   const bullColor = tokens.bullColor || chartTokens.upColor || '#F7F7F7';

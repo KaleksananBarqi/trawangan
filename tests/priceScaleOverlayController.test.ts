@@ -117,4 +117,60 @@ test('PriceScaleOverlayController Deep Module Suite', async (t) => {
 
     unsub();
   });
+
+  await t.test('5. Penyelarasan presisi: scene.panes.get("price") dan kompensasi vertical offset plot canvas', () => {
+    const controller = new PriceScaleOverlayController();
+
+    const mockContainer = {
+      getBoundingClientRect: () => ({ left: 0, top: 100, width: 800, height: 600 })
+    };
+
+    // Plot element berada 30px di bawah top container (misalnya ada toolbar atau margin cell)
+    const mockPlot = {
+      getBoundingClientRect: () => ({ left: 0, top: 130, width: 800, height: 570 })
+    };
+
+    const mockCoords = {
+      priceToY: (price: number) => {
+        return 500 - price * 2;
+      },
+      yToPrice: (localY: number) => {
+        return (500 - localY) / 2;
+      }
+    };
+
+    // Strukturnya persis Vela NativeRenderer: panes disimpan di Map scene.panes
+    const panesMap = new Map();
+    panesMap.set('price', {
+      scale: {},
+      bounds: { top: 0, height: 570 }
+    });
+
+    const mockChart = {
+      renderer: {
+        renderer: {
+          coords: mockCoords,
+          plot: mockPlot,
+          scene: {
+            panes: panesMap
+          }
+        }
+      }
+    };
+
+    const mockWorkspace = {
+      active: { chart: mockChart }
+    };
+
+    controller.attachChart(mockContainer as any, mockWorkspace as any);
+
+    // Harga 200 -> rawY = 500 - 400 = 100.
+    // Offset plotCanvas vs container: 130 - 100 = 30px.
+    // Hasil getPriceY harus dikompensasi: 100 + 30 = 130px.
+    assert.equal(controller.getPriceY(200), 130);
+
+    // Pengujian getPriceFromClientY saat dragging mouse pada clientY = 230:
+    // clientY (230) - plotRect.top (130) = localY (100) -> price = (500 - 100) / 2 = 200.
+    assert.equal(controller.getPriceFromClientY(230), 200);
+  });
 });

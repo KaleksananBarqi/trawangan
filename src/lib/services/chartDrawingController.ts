@@ -3,8 +3,10 @@ import {
   saveDrawingsDebounced,
   loadDrawings,
   clearDrawings,
-  flushDrawings
+  flushDrawings,
+  saveTradingPlanToHistory
 } from './persistence';
+import { alertService } from './alertService';
 import type { CommandDispatcher } from './commandDispatcher';
 import { roundToTickSize, getAdaptiveTickSize } from './priceSnapService';
 import type { ParsedTradingPlan } from './planParserService';
@@ -188,7 +190,8 @@ export type DrawingUndoAction =
       action: 'create_multi_position';
       drawings: any[];
       drawingIds: string[];
-      plan?: ParsedTradingPlan & { id: string };
+      plan?: ParsedTradingPlan & { id: string; symbol?: string };
+      autoCreateAlerts?: boolean;
     };
 
 /**
@@ -1170,6 +1173,7 @@ export class ChartDrawingController {
         if (lastAction.plan) {
           this.activePlans.delete(lastAction.plan.id);
           this.planDrawingIds.delete(lastAction.plan.id);
+          alertService.deleteAlertsByPlanId(lastAction.plan.id);
         }
         if (this.selectedDrawingId && ids.includes(this.selectedDrawingId)) {
           this.selectedDrawingId = null;
@@ -1244,6 +1248,10 @@ export class ChartDrawingController {
           this.activePlans.set(lastAction.plan.id, lastAction.plan);
           const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
           this.planDrawingIds.set(lastAction.plan.id, new Set(ids));
+          if (lastAction.autoCreateAlerts) {
+            const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+            alertService.addPlanAlerts(lastAction.plan, lastAction.plan.symbol || curSym);
+          }
         }
         handledInternal = true;
       }
@@ -1285,6 +1293,10 @@ export class ChartDrawingController {
     const curTf = (this.workspace?.active as any)?.timeframe || this.getTimeframe();
     await clearDrawings(curSym, curTf);
     await clearDrawings(curSym, 'GLOBAL');
+
+    for (const pid of this.activePlans.keys()) {
+      alertService.deleteAlertsByPlanId(pid);
+    }
 
     this.activeDrawings = [];
     this.selectedDrawingId = null;
@@ -1638,8 +1650,11 @@ export class ChartDrawingController {
       barSpanPerTarget?: number;
       paneId?: string;
       drawContextZones?: boolean;
+      autoCreateAlerts?: boolean;
+      skipVaultSave?: boolean;
+      createdAt?: number;
     }
-  ): { drawingIds: string[]; drawings: any[] } | null {
+  ): { planId: string; drawingIds: string[]; drawings: any[] } | null {
     if (!plan) return null;
     if (plan.validation && !plan.validation.valid) return null;
     if (!plan.entry || !plan.stopLoss || !plan.targets || plan.targets.length === 0) {
@@ -1761,10 +1776,10 @@ export class ChartDrawingController {
           const boxRecord = { ...boxSpec, ...createdBox, id: boxId };
           createdDrawings.push(boxRecord);
           if (boxId) {
-          createdDrawingIds.push(boxId);
-          this.drawingMetadata.set(boxId, boxSpec.metadata);
-          this.drawingPlanMap.set(boxId, planId);
-        }
+            createdDrawingIds.push(boxId);
+            this.drawingMetadata.set(boxId, boxSpec.metadata);
+            this.drawingPlanMap.set(boxId, planId);
+          }
         }
       }
     }
@@ -1780,18 +1795,47 @@ export class ChartDrawingController {
     this.activePlans.set(planId, planRecord);
     this.planDrawingIds.set(planId, new Set(createdDrawingIds));
 
+    // Simpan otomatis ke Trade Plan Vault (kecuali saat restore / re-plot dari vault)
+    if (!options?.skipVaultSave) {
+      try {
+        const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
+        saveTradingPlanToHistory({
+          id: planId,
+          symbol: targetSymbol,
+          providerId: curProv,
+          timeframe: plan.timeframe || currentTf,
+          createdAt: options?.createdAt || Date.now(),
+          rawText: plan.rawText || '',
+          plan: planRecord
+        });
+      } catch (err) {
+        console.warn('Gagal menyimpan Trade Plan ke Trade Plan Vault:', err);
+      }
+    }
+
+    // Pasang Plan-Linked Auto-Alerts jika diaktifkan
+    if (options?.autoCreateAlerts) {
+      try {
+        alertService.addPlanAlerts(planRecord, targetSymbol);
+      } catch (err) {
+        console.warn('Gagal membuat Plan-Linked Auto-Alerts:', err);
+      }
+    }
+
     // Catat seluruh ID drawing yang dibuat ke undoHistory sebagai aksi atomik tunggal
     this.undoHistory.push({
       action: 'create_multi_position',
       drawings: createdDrawings,
       drawingIds: createdDrawingIds,
-      plan: planRecord
+      plan: planRecord,
+      autoCreateAlerts: Boolean(options?.autoCreateAlerts)
     });
     this.redoHistory = [];
 
     this.notify();
 
     return {
+      planId,
       drawingIds: createdDrawingIds,
       drawings: createdDrawings
     };
@@ -1860,6 +1904,8 @@ export class ChartDrawingController {
       this.drawingMetadata.delete(id);
       this.drawingPlanMap.delete(id);
     }
+
+    alertService.deleteAlertsByPlanId(planId);
 
     if (idsToDelete.length > 0) {
       this.removeDrawingsFromChart(idsToDelete);
@@ -2051,7 +2097,9 @@ export class ChartDrawingController {
             },
             {
               planId: plan.id,
-              drawContextZones: true
+              drawContextZones: true,
+              skipVaultSave: true,
+              autoCreateAlerts: false
             }
           );
         }
@@ -2168,6 +2216,7 @@ export class ChartDrawingController {
 
               // Update riskAmount dan R-multiple jika ada harga yang berubah
               if (planChanged) {
+                alertService.syncPlanAlertPrices(plan);
                 const risk = Math.abs(plan.entry - plan.stopLoss);
                 plan.riskAmount = risk;
 
@@ -2220,11 +2269,13 @@ export class ChartDrawingController {
           if (!drawingIdSet || drawingIdSet.size === 0) {
             this.activePlans.delete(pid);
             this.planDrawingIds.delete(pid);
+            alertService.deleteAlertsByPlanId(pid);
           } else {
             const hasAnyDrawing = Array.from(drawingIdSet).some((did) => existingDrawingIds.has(did));
             if (!hasAnyDrawing) {
               this.activePlans.delete(pid);
               this.planDrawingIds.delete(pid);
+              alertService.deleteAlertsByPlanId(pid);
             }
           }
         }
@@ -2237,6 +2288,7 @@ export class ChartDrawingController {
           }
           if (!this.planDrawingIds.has(pid) && !activePlanIds.has(pid)) {
             this.activePlans.delete(pid);
+            alertService.deleteAlertsByPlanId(pid);
           }
         }
 

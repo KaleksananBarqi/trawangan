@@ -424,25 +424,25 @@
     align-items: center;
     gap: 6px;
     padding: 5px 8px;
-    background: var(--bg-secondary, rgba(20, 24, 35, 0.92));
+    background: var(--chart-thesis-bg, var(--bg-secondary, rgba(20, 24, 35, 0.92)));
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+    border: 1px solid var(--chart-thesis-border, var(--border-subtle, rgba(255, 255, 255, 0.12)));
     border-radius: 20px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--chart-thesis-shadow, 0 4px 16px rgba(0, 0, 0, 0.5));
     cursor: grab;
     user-select: none;
     transition: border-color 0.15s ease;
   }
 
   .thesis-collapsed-pill:hover {
-    border-color: var(--border-bright, rgba(255, 255, 255, 0.25));
+    border-color: var(--chart-thesis-border-hairline, var(--border-bright, rgba(255, 255, 255, 0.25)));
   }
 
   .pill-drag-handle {
     display: flex;
     align-items: center;
-    color: #64748b;
+    color: var(--chart-thesis-text-muted, var(--text-muted, #64748b));
   }
 
   .pill-badge {
@@ -454,27 +454,27 @@
   }
 
   .pill-badge.bearish {
-    background: var(--bear-glow, rgba(255, 105, 180, 0.15));
-    color: var(--bear-color, #ff69b4);
-    border: 1px solid var(--bear-color, rgba(255, 105, 180, 0.35));
+    background: var(--chart-thesis-bear-glow, var(--bear-glow, rgba(255, 105, 180, 0.15)));
+    color: var(--chart-thesis-bear, var(--bear-color, #ff69b4));
+    border: 1px solid var(--chart-thesis-bear, var(--bear-color, rgba(255, 105, 180, 0.35)));
   }
 
   .pill-badge.bullish {
-    background: var(--bull-glow, rgba(0, 255, 136, 0.15));
-    color: var(--bull-color, #00ff88);
-    border: 1px solid var(--bull-color, rgba(0, 255, 136, 0.35));
+    background: var(--chart-thesis-bull-glow, var(--bull-glow, rgba(0, 255, 136, 0.15)));
+    color: var(--chart-thesis-bull, var(--bull-color, #00ff88));
+    border: 1px solid var(--chart-thesis-bull, var(--bull-color, rgba(0, 255, 136, 0.35)));
   }
 
   .pill-title {
     font-size: 11px;
-    color: #94a3b8;
+    color: var(--chart-thesis-text-muted, var(--text-muted, #94a3b8));
     font-weight: 500;
   }
 
   .pill-btn {
     background: transparent;
     border: none;
-    color: #94a3b8;
+    color: var(--chart-thesis-text-muted, var(--text-muted, #94a3b8));
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -485,8 +485,8 @@
   }
 
   .pill-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #f1f5f9;
+    background: var(--chart-thesis-header-bg, rgba(255, 255, 255, 0.1));
+    color: var(--chart-thesis-text, var(--text-main, #f1f5f9));
   }
 
   .pill-btn.hide:hover {
@@ -499,18 +499,18 @@
     color: #ef4444;
   }
 
-  /* Full Glassmorphism Card */
+  /* Full Glassmorphism Card (Chart-Dominant Thesis Surface, ADR-0019) */
   .floating-thesis-card {
     position: absolute;
     z-index: 26;
     min-width: 300px;
     max-width: calc(100% - 32px);
-    background: var(--bg-secondary, rgba(20, 24, 35, 0.92));
+    background: var(--chart-thesis-bg, var(--bg-secondary, rgba(20, 24, 35, 0.92)));
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+    border: 1px solid var(--chart-thesis-border, var(--border-subtle, rgba(255, 255, 255, 0.12)));
     border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 1px var(--border-hairline, rgba(255, 255, 255, 0.2)) inset;
+    box-shadow: var(--chart-thesis-shadow, 0 10px 30px rgba(0, 0, 0, 0.65)), 0 0 1px var(--chart-thesis-border-hairline, var(--border-hairline, rgba(255, 255, 255, 0.2))) inset;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -524,8 +524,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 10px;
-    background: rgba(255, 255, 255, 0.03);
-    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    background: var(--chart-thesis-header-bg, rgba(255, 255, 255, 0.03));
+    border-bottom: 1px solid var(--chart-thesis-border, var(--border-subtle, rgba(255, 255, 255, 0.08)));
     cursor: grab;
     flex-shrink: 0;
   }
@@ -543,7 +543,7 @@
   .drag-icon {
     display: flex;
     align-items: center;
-    color: var(--text-muted, #64748b);
+    color: var(--chart-thesis-text-muted, var(--text-muted, #64748b));
   }
 
   .bias-tag {
@@ -555,15 +555,15 @@
   }
 
   .bias-tag.bearish {
-    background: var(--bear-glow, rgba(255, 105, 180, 0.16));
-    color: var(--bear-color, #ff69b4);
-    border: 1px solid var(--bear-color, rgba(255, 105, 180, 0.4));
+    background: var(--chart-thesis-bear-glow, var(--bear-glow, rgba(255, 105, 180, 0.16)));
+    color: var(--chart-thesis-bear, var(--bear-color, #ff69b4));
+    border: 1px solid var(--chart-thesis-bear, var(--bear-color, rgba(255, 105, 180, 0.4)));
   }
 
   .bias-tag.bullish {
-    background: var(--bull-glow, rgba(0, 255, 136, 0.16));
-    color: var(--bull-color, #00ff88);
-    border: 1px solid var(--bull-color, rgba(0, 255, 136, 0.4));
+    background: var(--chart-thesis-bull-glow, var(--bull-glow, rgba(0, 255, 136, 0.16)));
+    color: var(--chart-thesis-bull, var(--bull-color, #00ff88));
+    border: 1px solid var(--chart-thesis-bull, var(--bull-color, rgba(0, 255, 136, 0.4)));
   }
 
   .prob-tag {
@@ -572,7 +572,7 @@
     padding: 2px 5px;
     border-radius: 4px;
     background: rgba(56, 189, 248, 0.14);
-    color: #38bdf8;
+    color: var(--chart-thesis-cyan, #38bdf8);
     border: 1px solid rgba(56, 189, 248, 0.3);
   }
 
@@ -585,7 +585,7 @@
   .card-btn {
     background: transparent;
     border: none;
-    color: #94a3b8;
+    color: var(--chart-thesis-text-muted, var(--text-muted, #94a3b8));
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -596,12 +596,12 @@
   }
 
   .card-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #f1f5f9;
+    background: var(--chart-thesis-header-bg, rgba(255, 255, 255, 0.1));
+    color: var(--chart-thesis-text, var(--text-main, #f1f5f9));
   }
 
   .card-btn.active-wide {
-    color: #38bdf8;
+    color: var(--chart-thesis-cyan, #38bdf8);
     background: rgba(56, 189, 248, 0.15);
   }
 
@@ -661,7 +661,7 @@
   }
 
   .custom-scroll::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--chart-thesis-border-hairline, rgba(255, 255, 255, 0.15));
     border-radius: 4px;
   }
 
@@ -670,18 +670,18 @@
     align-items: flex-start;
     gap: 6px;
     padding: 6px 8px;
-    background: rgba(255, 255, 255, 0.03);
-    border-left: 2px solid #38bdf8;
+    background: var(--chart-thesis-header-bg, rgba(255, 255, 255, 0.03));
+    border-left: 2px solid var(--chart-thesis-cyan, #38bdf8);
     border-radius: 0 4px 4px 0;
     font-size: 11px;
-    color: #94a3b8;
+    color: var(--chart-thesis-text-muted, var(--text-muted, #94a3b8));
     font-style: italic;
     line-height: 1.4;
   }
 
   .def-icon {
     flex-shrink: 0;
-    color: #38bdf8;
+    color: var(--chart-thesis-cyan, #38bdf8);
     margin-top: 2px;
   }
 
@@ -691,7 +691,7 @@
     flex-direction: column;
     gap: 5px;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
+    border-bottom: 1px solid var(--chart-thesis-border, var(--border-subtle, rgba(255, 255, 255, 0.05)));
   }
 
   .thesis-section:last-child {
@@ -705,14 +705,14 @@
     gap: 6px;
     font-size: 10px;
     font-weight: 700;
-    color: var(--text-muted, #64748b);
+    color: var(--chart-thesis-text-muted, var(--text-muted, #64748b));
     letter-spacing: 0.06em;
   }
 
   .section-icon {
     display: flex;
     align-items: center;
-    color: #38bdf8;
+    color: var(--chart-thesis-cyan, #38bdf8);
   }
 
   .section-icon.sl {
@@ -720,7 +720,7 @@
   }
 
   .section-icon.tp {
-    color: #10b981;
+    color: var(--chart-thesis-bull, #10b981);
   }
 
   .section-label {
@@ -733,11 +733,11 @@
   }
 
   .price-val.bearish {
-    color: var(--bear-color, #ff69b4);
+    color: var(--chart-thesis-bear, var(--bear-color, #ff69b4));
   }
 
   .price-val.bullish {
-    color: var(--bull-color, #00ff88);
+    color: var(--chart-thesis-bull, var(--bull-color, #00ff88));
   }
 
   .price-val.sl {
@@ -761,21 +761,21 @@
   }
 
   .zone-pill.bearish {
-    background: var(--bear-glow, rgba(255, 105, 180, 0.1));
-    color: var(--bear-color, #ff69b4);
-    border: 1px solid var(--bear-color, rgba(255, 105, 180, 0.25));
+    background: var(--chart-thesis-bear-glow, var(--bear-glow, rgba(255, 105, 180, 0.1)));
+    color: var(--chart-thesis-bear, var(--bear-color, #ff69b4));
+    border: 1px solid var(--chart-thesis-bear, var(--bear-color, rgba(255, 105, 180, 0.25)));
   }
 
   .zone-pill.bullish {
-    background: var(--bull-glow, rgba(0, 255, 136, 0.1));
-    color: var(--bull-color, #00ff88);
-    border: 1px solid var(--bull-color, rgba(0, 255, 136, 0.25));
+    background: var(--chart-thesis-bull-glow, var(--bull-glow, rgba(0, 255, 136, 0.1)));
+    color: var(--chart-thesis-bull, var(--bull-color, #00ff88));
+    border: 1px solid var(--chart-thesis-bull, var(--bull-color, rgba(0, 255, 136, 0.25)));
   }
 
   .reason-text {
     font-size: 11px;
     line-height: 1.45;
-    color: var(--text-primary, var(--text-main, #cbd5e1));
+    color: var(--chart-thesis-text, var(--text-primary, var(--text-main, #cbd5e1)));
   }
 
   /* Invalidation Callout */
@@ -783,11 +783,11 @@
     margin-top: 4px;
     padding: 6px 8px;
     background: rgba(239, 68, 68, 0.08);
-    border: 1px dashed rgba(239, 68, 68, 0.3);
+    border: 1px dashed rgba(239, 68, 68, 0.35);
     border-radius: 6px;
     font-size: 11px;
     line-height: 1.4;
-    color: #fca5a5;
+    color: var(--chart-thesis-text, #fca5a5);
   }
 
   .inv-badge {
@@ -810,8 +810,8 @@
   }
 
   .target-item {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: var(--chart-thesis-item-bg, rgba(255, 255, 255, 0.02));
+    border: 1px solid var(--chart-thesis-border, rgba(255, 255, 255, 0.04));
     border-radius: 6px;
     padding: 5px 8px;
     display: flex;
@@ -828,8 +828,8 @@
   .target-badge {
     font-size: 10px;
     font-weight: 700;
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
+    background: var(--chart-thesis-bull-glow, rgba(16, 185, 129, 0.15));
+    color: var(--chart-thesis-bull, #10b981);
     padding: 1px 4px;
     border-radius: 3px;
   }
@@ -837,26 +837,26 @@
   .target-price {
     font-size: 11px;
     font-weight: 600;
-    color: var(--text-primary, var(--text-main, #f1f5f9));
+    color: var(--chart-thesis-text, var(--text-primary, var(--text-main, #f1f5f9)));
   }
 
   .r-badge {
     font-size: 10px;
     font-weight: 700;
-    color: #38bdf8;
-    background: rgba(56, 189, 248, 0.1);
+    color: var(--chart-thesis-cyan, #38bdf8);
+    background: rgba(56, 189, 248, 0.12);
     padding: 1px 4px;
     border-radius: 3px;
   }
 
   .r-badge.sl-r-badge {
-    color: var(--color-bearish, var(--bear-color, #ef4444));
-    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.14);
   }
 
   .target-reason {
     font-size: 10.5px;
-    color: var(--text-muted, #94a3b8);
+    color: var(--chart-thesis-text-muted, var(--text-muted, #94a3b8));
     line-height: 1.35;
   }
 
@@ -877,20 +877,20 @@
 
   :global(.epistemic-badge.inferensi) {
     background: rgba(250, 204, 21, 0.15);
-    color: #facc15;
+    color: #eab308;
     border: 1px solid rgba(250, 204, 21, 0.3);
   }
 
   :global(.epistemic-badge.spekulasi) {
     background: rgba(251, 146, 60, 0.15);
-    color: #fb923c;
+    color: #f97316;
     border: 1px solid rgba(251, 146, 60, 0.3);
   }
 
   /* Risk Summary Section */
   .risk-summary-section {
     font-size: 10.5px;
-    color: var(--text-muted, #94a3b8);
+    color: var(--chart-thesis-text-muted, var(--text-muted, #94a3b8));
   }
 
   .risk-meta-row {
@@ -901,18 +901,18 @@
   }
 
   .meta-lbl {
-    color: var(--text-muted, #64748b);
+    color: var(--chart-thesis-text-muted, var(--text-muted, #64748b));
   }
 
   .meta-val {
-    color: var(--text-primary, var(--text-main, #cbd5e1));
+    color: var(--chart-thesis-text, var(--text-primary, var(--text-main, #cbd5e1)));
     font-weight: 600;
   }
 
   .prob-notes {
     margin-top: 4px;
     line-height: 1.4;
-    color: var(--text-primary, var(--text-main, #cbd5e1));
+    color: var(--chart-thesis-text, var(--text-primary, var(--text-main, #cbd5e1)));
   }
 
   /* Drag Resize Corner Handle */

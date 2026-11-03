@@ -89,6 +89,7 @@
     resolveEffectiveThemePreset,
     resolveEffectiveChartThemePreset,
     resolveThemeConfig,
+    generateChartThesisThemeTokens,
     isBuiltInTheme,
     registerUserThemes,
     getNextColorMode
@@ -98,7 +99,12 @@
     DEFAULT_SYNC_CONFIG,
     resolveAppSettings
   } from '../lib/constants/defaults';
-  import { generateVelaThemeTokens, isDarkColor, withAlpha } from '../lib/utils/colorUtils';
+  import {
+    generateVelaThemeTokens,
+    isDarkColor,
+    withAlpha,
+    deriveSurfaceColor
+  } from '../lib/utils/colorUtils';
 
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
   import { updateService } from '../lib/services/updateService';
@@ -137,12 +143,16 @@
     )
   );
 
-  // Tema kanvas grafik efektif (dapat didecouple dari tema aplikasi) (#149)
+  // Tema kanvas grafik efektif (dapat didecouple dari tema aplikasi) (#149, ADR-0019)
   const effectiveChartThemePreset = $derived(
     resolveEffectiveChartThemePreset(
       appSettings.syncChartWithAppTheme ?? true,
       effectiveThemePreset,
-      appSettings.chartThemePreset ?? 'signature'
+      appSettings.chartThemePreset ?? 'signature',
+      appSettings.colorModePreference ?? 'system',
+      systemIsDark,
+      appSettings.activeDarkChartPreset,
+      appSettings.activeLightChartPreset
     )
   );
 
@@ -166,11 +176,30 @@
             : lightPreset;
     const isSynced = appSettings.syncChartWithAppTheme !== false;
 
+    const darkChartPreset =
+      appSettings.activeDarkChartPreset ||
+      appSettings.chartThemePreset ||
+      appSettings.activeDarkPreset ||
+      'signature';
+    const lightChartPreset =
+      appSettings.activeLightChartPreset ||
+      appSettings.activeLightPreset ||
+      'red_folder';
+    const targetChartPreset = isSynced
+      ? targetPreset
+      : nextPreference === 'dark'
+        ? darkChartPreset
+        : nextPreference === 'light'
+          ? lightChartPreset
+          : systemIsDark
+            ? darkChartPreset
+            : lightChartPreset;
+
     handleUpdateSettings({
       colorModePreference: nextPreference,
       themePreset: targetPreset,
       theme: targetPreset as any,
-      ...(isSynced ? { chartThemePreset: targetPreset } : {}),
+      chartThemePreset: targetChartPreset,
       customPalette: undefined,
       customBullColor: undefined,
       customBearColor: undefined,
@@ -204,12 +233,14 @@
       document.documentElement.style.setProperty('--base-font-size', `${currentFontSize}px`);
       document.documentElement.style.setProperty('--font-scale', `${fontScale}`);
 
-      // Sinkronisasi variabel CSS UI Shell saat Custom Palette atau User Preset aktif (#149 review)
+      // Sinkronisasi variabel CSS UI Shell saat Custom Palette atau User Preset aktif (#149 review, ADR-0019)
       if (isCustomActive && cp) {
+        const containerSurface = deriveSurfaceColor(effectiveBg, 0.045);
+        const panelSurface = deriveSurfaceColor(effectiveBg, 0.065);
         document.documentElement.style.setProperty('--bg-darkest', effectiveBg);
         document.documentElement.style.setProperty('--bg-surface', effectiveBg);
-        document.documentElement.style.setProperty('--bg-container', cp.general.foreground);
-        document.documentElement.style.setProperty('--bg-panel', cp.general.foreground);
+        document.documentElement.style.setProperty('--bg-container', containerSurface);
+        document.documentElement.style.setProperty('--bg-panel', panelSurface);
         document.documentElement.style.setProperty('--text-main', effectiveText);
         document.documentElement.style.setProperty('--text-primary', effectiveText);
         document.documentElement.style.setProperty('--bull-color', cp.candles.bullBody);
@@ -238,6 +269,16 @@
         document.documentElement.style.removeProperty('--brand-primary');
       }
 
+      // Suntikkan token Themed Thesis Overlay (--chart-thesis-*) berbasis tema kanvas grafik yang dominan (ADR-0019)
+      const activeChartThemeConfig = resolveThemeConfig(
+        effectiveChartThemePreset || 'signature',
+        appSettings.savedUserThemes
+      );
+      const thesisTokens = generateChartThesisThemeTokens(activeChartThemeConfig);
+      for (const [k, v] of Object.entries(thesisTokens)) {
+        document.documentElement.style.setProperty(k, v);
+      }
+
       // Injeksi token runtime kit WebGL2 Vela (--vela-*) ke elemen root DOM
       const velaTokens = generateVelaThemeTokens(
         effectiveBg,
@@ -264,6 +305,7 @@
   let isDrawByHoldingModalOpen = $state(false);
   let isImportPlanModalOpen = $state(false);
   let importPlanInitialText = $state('');
+  let importPlanInitialTab = $state<'import' | 'history'>('import');
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
 
@@ -297,19 +339,39 @@
     triggeredAlertsToasts = triggeredAlertsToasts.filter((a) => a.id !== id);
   }
 
-  function handleOpenImportPlanModal(initialText = '') {
+  function handleOpenImportPlanModal(initialText = '', initialTab: 'import' | 'history' = 'import') {
     importPlanInitialText = initialText;
+    importPlanInitialTab = initialTab;
     isImportPlanModalOpen = true;
   }
 
-  function handleApplyImportPlan(plan: ParsedTradingPlan) {
+  async function handleApplyImportPlan(
+    plan: ParsedTradingPlan,
+    options?: { autoCreateAlerts?: boolean; isFromHistory?: boolean }
+  ) {
+    const targetSym = plan.symbol || activeSymbol;
+    if (options?.isFromHistory && targetSym && targetSym !== activeSymbol) {
+      await handleSymbolChange(targetSym);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+
     const planWithSymbol = {
       ...plan,
-      symbol: plan.symbol || activeSymbol
+      symbol: targetSym
     };
-    const result = chartDrawingController.createMultiTargetPosition(planWithSymbol);
+    const autoCreateAlerts = options?.autoCreateAlerts ?? !options?.isFromHistory;
+    const result = chartDrawingController.createMultiTargetPosition(planWithSymbol, {
+      autoCreateAlerts,
+      skipVaultSave: Boolean(options?.isFromHistory)
+    });
     if (result) {
-      addSystemLog(`Trading Plan ${plan.bias.toUpperCase()} (${planWithSymbol.symbol}) berhasil diterapkan ke chart`, 'success');
+      const alertInfo = autoCreateAlerts
+        ? ` + ${2 + (plan.targets?.length || 0)} Price Alert otomatis`
+        : '';
+      addSystemLog(
+        `Trading Plan ${plan.bias.toUpperCase()} (${planWithSymbol.symbol}) diterapkan ke chart${alertInfo}`,
+        'success'
+      );
       isImportPlanModalOpen = false;
     }
   }
@@ -1859,7 +1921,8 @@
           {showThesisCards}
           onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
           onRemovePlan={(id) => chartDrawingController.removePlan(id)}
-          onOpenImportPlan={() => handleOpenImportPlanModal()}
+          onOpenImportPlan={() => handleOpenImportPlanModal('', 'import')}
+          onOpenPlanHistory={() => handleOpenImportPlanModal('', 'history')}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
           onOpenSymbolSearch={() => {
@@ -2119,10 +2182,13 @@
     onClose={() => (isDrawByHoldingModalOpen = false)}
   />
 
-  <!-- Modal Import Trading Plan Deterministik (#112) -->
+  <!-- Modal Import Trading Plan Deterministik & Outlook Vault (#112, ADR-0019) -->
   <ImportPlanModal
     isOpen={isImportPlanModalOpen}
     initialText={importPlanInitialText}
+    initialTab={importPlanInitialTab}
+    {activeSymbol}
+    currentPrice={ticker?.price ?? null}
     tickSize={ticker?.price ? getAdaptiveTickSize(ticker.price) : undefined}
     onApply={handleApplyImportPlan}
     onClose={() => (isImportPlanModalOpen = false)}

@@ -225,23 +225,43 @@
     onUpdateSettings({ themeFilterMode: mode });
   }
 
+  function isCurrentlyInLightMode(): boolean {
+    if (colorModePref === "light") return true;
+    if (colorModePref === "dark") return false;
+    if (typeof window !== "undefined" && window.matchMedia) {
+      return !window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    return activeAppPresetConfig.mode === "light";
+  }
+
   function handleSetColorMode(mode: ColorModePreference) {
+    const sysDark =
+      typeof window !== "undefined" && window.matchMedia
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        : true;
+    const isTargetLight = mode === "light" || (mode === "system" && !sysDark);
+
     const darkPreset = (settings.activeDarkPreset as any) || "signature";
     const lightPreset = (settings.activeLightPreset as any) || "red_folder";
-    const resolvedTarget =
-      mode === "dark"
-        ? darkPreset
-        : mode === "light"
-          ? lightPreset
-          : settings.themePreset || darkPreset;
+    const resolvedAppTarget = isTargetLight ? lightPreset : darkPreset;
+
+    const darkChartPreset =
+      (settings.activeDarkChartPreset as any) ||
+      settings.chartThemePreset ||
+      "signature";
+    const lightChartPreset =
+      (settings.activeLightChartPreset as any) || "red_folder";
+    const resolvedChartTarget = syncChartWithAppTheme
+      ? resolvedAppTarget
+      : isTargetLight
+        ? lightChartPreset
+        : darkChartPreset;
 
     onUpdateSettings({
       colorModePreference: mode,
-      ...(mode === "dark" ? { themePreset: darkPreset, theme: darkPreset } : {}),
-      ...(mode === "light"
-        ? { themePreset: lightPreset, theme: lightPreset }
-        : {}),
-      ...(syncChartWithAppTheme ? { chartThemePreset: resolvedTarget } : {}),
+      themePreset: resolvedAppTarget,
+      theme: resolvedAppTarget,
+      chartThemePreset: resolvedChartTarget,
       // Bersihkan sisa override palet kustom agar preset mode yang dipilih
       // benar-benar mengendalikan tampilan UI (mencegah layar putih akibat sisa palet lama).
       customPalette: undefined,
@@ -251,25 +271,55 @@
   }
 
   function handleSetDarkPreset(presetId: string) {
+    const isLight = isCurrentlyInLightMode();
     onUpdateSettings({
       activeDarkPreset: presetId,
-      ...(colorModePref === "dark"
+      ...(!isLight
         ? { themePreset: presetId as any, theme: presetId as any }
         : {}),
-      ...(syncChartWithAppTheme && colorModePref === "dark"
-        ? { chartThemePreset: presetId as any }
+      ...(syncChartWithAppTheme
+        ? {
+            activeDarkChartPreset: presetId,
+            ...(!isLight ? { chartThemePreset: presetId as any } : {}),
+          }
         : {}),
       customPalette: undefined,
     });
   }
 
   function handleSetLightPreset(presetId: string) {
+    const isLight = isCurrentlyInLightMode();
     onUpdateSettings({
       activeLightPreset: presetId,
-      ...(colorModePref === "light"
+      ...(isLight
         ? { themePreset: presetId as any, theme: presetId as any }
         : {}),
-      ...(syncChartWithAppTheme && colorModePref === "light"
+      ...(syncChartWithAppTheme
+        ? {
+            activeLightChartPreset: presetId,
+            ...(isLight ? { chartThemePreset: presetId as any } : {}),
+          }
+        : {}),
+      customPalette: undefined,
+    });
+  }
+
+  function handleSetDarkChartPreset(presetId: string) {
+    const isLight = isCurrentlyInLightMode();
+    onUpdateSettings({
+      activeDarkChartPreset: presetId,
+      ...(!isLight && !syncChartWithAppTheme
+        ? { chartThemePreset: presetId as any }
+        : {}),
+      customPalette: undefined,
+    });
+  }
+
+  function handleSetLightChartPreset(presetId: string) {
+    const isLight = isCurrentlyInLightMode();
+    onUpdateSettings({
+      activeLightChartPreset: presetId,
+      ...(isLight && !syncChartWithAppTheme
         ? { chartThemePreset: presetId as any }
         : {}),
       customPalette: undefined,
@@ -280,8 +330,12 @@
     id: string;
     mode: "dark" | "light";
   }) {
+    const isLight = isCurrentlyInLightMode();
     onUpdateSettings({
       chartThemePreset: preset.id,
+      ...(isLight
+        ? { activeLightChartPreset: preset.id }
+        : { activeDarkChartPreset: preset.id }),
       customPalette: undefined,
       customBullColor: undefined,
       customBearColor: undefined,
@@ -412,14 +466,18 @@
         chartThemePreset: newTheme.id,
         colorModePreference: saveAsThemeMode,
         ...(saveAsThemeMode === "dark"
-          ? { activeDarkPreset: newTheme.id }
-          : { activeLightPreset: newTheme.id }),
+          ? { activeDarkPreset: newTheme.id, activeDarkChartPreset: newTheme.id }
+          : { activeLightPreset: newTheme.id, activeLightChartPreset: newTheme.id }),
         customPalette: undefined,
       });
     } else if (targetThemeSelection === "chart") {
+      const isLight = isCurrentlyInLightMode();
       onUpdateSettings({
         savedUserThemes: updatedList,
         chartThemePreset: newTheme.id,
+        ...(isLight
+          ? { activeLightChartPreset: newTheme.id }
+          : { activeDarkChartPreset: newTheme.id }),
         customPalette: undefined,
       });
     } else {
@@ -511,11 +569,35 @@
         settings.chartThemePreset,
         "signature",
       );
+      const fallbackDarkApp = resolveDeletedThemeFallback(
+        themeId,
+        settings.activeDarkPreset,
+        "signature",
+      );
+      const fallbackLightApp = resolveDeletedThemeFallback(
+        themeId,
+        settings.activeLightPreset,
+        "red_folder",
+      );
+      const fallbackDarkChart = resolveDeletedThemeFallback(
+        themeId,
+        settings.activeDarkChartPreset,
+        "signature",
+      );
+      const fallbackLightChart = resolveDeletedThemeFallback(
+        themeId,
+        settings.activeLightChartPreset,
+        "red_folder",
+      );
 
       onUpdateSettings({
         savedUserThemes: updatedList,
         themePreset: fallbackApp,
         chartThemePreset: fallbackChart,
+        activeDarkPreset: fallbackDarkApp,
+        activeLightPreset: fallbackLightApp,
+        activeDarkChartPreset: fallbackDarkChart,
+        activeLightChartPreset: fallbackLightChart,
       });
       showToast(`Tema "${themeName}" berhasil dihapus.`);
     } catch (err: any) {
@@ -972,15 +1054,16 @@
       <div class="theme-defaults-grid">
         <div class="setting-row default-preset-item">
           <div class="setting-info">
-            <span class="setting-label">Tema Favorit Mode Gelap</span>
+            <span class="setting-label">Tema Aplikasi Favorit (Mode Gelap)</span>
             <span class="setting-desc">
-              Otomatis dipakai saat Anda menekan tombol Mode Gelap
+              Otomatis dipakai untuk menu & panel UI saat Mode Gelap aktif
             </span>
           </div>
           <select
             class="select-input"
             value={settings.activeDarkPreset || "signature"}
             onchange={(e) => handleSetDarkPreset(e.currentTarget.value)}
+            aria-label="Tema Aplikasi Favorit Mode Gelap"
           >
             {#each darkPresets as p}
               <option value={p.id}>{p.name}</option>
@@ -990,21 +1073,58 @@
 
         <div class="setting-row default-preset-item">
           <div class="setting-info">
-            <span class="setting-label">Tema Favorit Mode Terang</span>
+            <span class="setting-label">Tema Aplikasi Favorit (Mode Terang)</span>
             <span class="setting-desc">
-              Otomatis dipakai saat Anda menekan tombol Mode Terang
+              Otomatis dipakai untuk menu & panel UI saat Mode Terang aktif
             </span>
           </div>
           <select
             class="select-input"
             value={settings.activeLightPreset || "red_folder"}
             onchange={(e) => handleSetLightPreset(e.currentTarget.value)}
+            aria-label="Tema Aplikasi Favorit Mode Terang"
           >
             {#each lightPresets as p}
               <option value={p.id}>{p.name}</option>
             {/each}
           </select>
         </div>
+
+        {#if !syncChartWithAppTheme}
+          <div class="setting-row default-preset-item">
+            <div class="setting-info">
+              <span class="setting-label">Tema Kanvas Favorit (Mode Gelap)</span>
+              <span class="setting-desc">
+                Memori tema kanvas chart saat Mode Gelap aktif (Terpisah)
+              </span>
+            </div>
+            <select
+              class="select-input"
+              value={settings.activeDarkChartPreset || settings.chartThemePreset || "signature"}
+              onchange={(e) => handleSetDarkChartPreset(e.currentTarget.value)}
+              aria-label="Tema Kanvas Favorit Mode Gelap"
+            >
+              {@render themePresetOptions()}
+            </select>
+          </div>
+
+          <div class="setting-row default-preset-item">
+            <div class="setting-info">
+              <span class="setting-label">Tema Kanvas Favorit (Mode Terang)</span>
+              <span class="setting-desc">
+                Memori tema kanvas chart saat Mode Terang aktif (Terpisah)
+              </span>
+            </div>
+            <select
+              class="select-input"
+              value={settings.activeLightChartPreset || "red_folder"}
+              onchange={(e) => handleSetLightChartPreset(e.currentTarget.value)}
+              aria-label="Tema Kanvas Favorit Mode Terang"
+            >
+              {@render themePresetOptions()}
+            </select>
+          </div>
+        {/if}
       </div>
     {/if}
   </div>

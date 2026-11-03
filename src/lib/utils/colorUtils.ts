@@ -96,6 +96,36 @@ export function deriveBorderColor(hex: string, darkenRatio = 0.15): string {
 }
 
 /**
+ * Menurunkan warna permukaan kartu/panel (surface) secara harmonis dari warna latar dasar (background)
+ * menggunakan Adaptive Luminance:
+ * - Pada latar gelap: dicampur sedikit ke arah putih (#FFFFFF) sesuai elevationRatio
+ * - Pada latar terang: diteduhkan sedikit ke arah hitam (#000000) agar kartu tampak terpisah lembut tanpa menabrak teks gelap
+ */
+export function deriveSurfaceColor(background: string, elevationRatio = 0.07): string {
+  const dark = isDarkColor(background);
+  if (dark) {
+    return mixColors(background, '#FFFFFF', elevationRatio);
+  }
+  return mixColors(background, '#000000', elevationRatio * 0.75);
+}
+
+/**
+ * Menjamin warna teks memiliki polaritas kontras yang terbaca terhadap warna latar belakang.
+ * Jika latar gelap tetapi kandidat teks juga gelap (atau sebaliknya latar terang & teks terang),
+ * otomatis mengembalikan warna teks kontras yang aman.
+ */
+export function ensureReadableTextColor(background: string, candidateText?: string): string {
+  const bgIsDark = isDarkColor(background);
+  const fallback = bgIsDark ? '#F7F7F7' : '#1A1A1A';
+  if (!candidateText || typeof candidateText !== 'string') return fallback;
+  const textIsDark = isDarkColor(candidateText);
+  if (bgIsDark === textIsDark) {
+    return fallback;
+  }
+  return candidateText;
+}
+
+/**
  * Membuat paket token CSS lengkap untuk runtime Vela (`--vela-*`) agar seluruh dialog,
  * menu, dan panel bawaan kit WebGL2 Vela tampil selaras 100% dengan tema aplikasi.
  */

@@ -5,6 +5,7 @@ import type {
   PriceAlert,
   QuickSymbolsConfig,
   AppSettings,
+  SavedTradingPlanRecord,
 } from '../../types/market';
 
 /**
@@ -73,6 +74,14 @@ export interface IPersistenceService {
   loadChartDefaultConfig(): Promise<any | null>;
   saveChartDefaultConfig(config: any): Promise<void>;
   clearChartDefaultConfig(): Promise<void>;
+
+  // Trade Plan Vault (Riwayat Rencana Perdagangan Otomatis - ADR-0019)
+  loadTradingPlanHistory(): Promise<SavedTradingPlanRecord[]>;
+  saveTradingPlanToHistory(
+    record: Omit<SavedTradingPlanRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string; createdAt?: number }
+  ): Promise<SavedTradingPlanRecord>;
+  deleteTradingPlanFromHistory(id: string): Promise<SavedTradingPlanRecord[]>;
+  clearTradingPlanHistory(): Promise<void>;
 
   // Layout Slots
   loadLayoutSlot(id: string): Promise<string | null>;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import './chart.css';
   import { Scissors, Bell, X, WifiOff, Edit3 } from '@lucide/svelte';
   import { ChartSessionController } from '../services/chartSessionController';
@@ -101,6 +101,7 @@
   });
   let draggingAlertId = $state<string | null>(null);
   let draggingAlertPrice = $state<number | null>(null);
+  let overlayTick = $state(0);
   let drawingPriceBadges = $state<PriceScaleBadge[]>([]);
   let indicatorPriceBadges = $state<PriceScaleBadge[]>([]);
   let activePlans = $state<Array<any>>([]);
@@ -115,8 +116,26 @@
   let unsubFeedConnection: (() => void) | null = null;
 
   function scheduleBadgePositionUpdate() { priceScaleOverlayController.scheduleUpdate(); }
+
+  function handleChartWrapperPointerDown() {
+    scheduleBadgePositionUpdate();
+  }
+
+  function handleChartWrapperPointerMove(e: PointerEvent) {
+    if (e.buttons > 0) {
+      scheduleBadgePositionUpdate();
+    }
+  }
+
+  function handleChartWrapperPointerUp() {
+    priceScaleOverlayController.scheduleContinuousSync(200);
+  }
   function formatPrice(p: number | null): string { return priceScaleOverlayController.formatPrice(p); }
-  function getPriceY(p: number | null): number | null { return p !== null ? priceScaleOverlayController.getPriceY(p) : null; }
+  function getPriceY(p: number | null): number | null {
+    // Konsumsi overlayTick agar Svelte 5 me-recompute pemanggilan getPriceY saat viewport/skala harga berubah
+    void overlayTick;
+    return p !== null ? priceScaleOverlayController.getPriceY(p) : null;
+  }
 
   // Explicit prop read guarantees Svelte 5 dependency registration on initial run
   $effect(() => { const s = symbol, p = providerId; if (isMounted) controller.setSymbol(s, undefined, p); });
@@ -152,6 +171,16 @@
     }
   });
   $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
+  $effect(() => {
+    const s = symbol, a = allAlerts;
+    if (isMounted) {
+      // untrack: mencegah effect ikut berlangganan overlayTick (loop reaktif tak berujung)
+      untrack(() => {
+        priceScaleOverlayController.updateAlerts(a, s);
+        scheduleBadgePositionUpdate();
+      });
+    }
+  });
   $effect(() => { const v = showVolume; if (isMounted && v !== undefined) controller.setShowVolume(v); });
   $effect(() => {
     const wm = showWatermark;
@@ -187,7 +216,11 @@
       enableCutoffVisual: () => {},
       cancelCutoffVisual: () => {}
     });
-    unsubAlerts = alertService.subscribe((alerts) => { allAlerts = alerts; scheduleBadgePositionUpdate(); });
+    unsubAlerts = alertService.subscribe((alerts) => {
+      allAlerts = alerts;
+      priceScaleOverlayController.updateAlerts(alerts, symbol);
+      scheduleBadgePositionUpdate();
+    });
     unsubDrawingState = chartDrawingController.subscribe((st) => {
       isHandpullActive = st.activeTool === 'handpull';
       const prevGesture = isGestureActive;
@@ -202,6 +235,7 @@
       scheduleBadgePositionUpdate();
     });
     unsubOverlay = priceScaleOverlayController.subscribe((coords) => {
+      overlayTick = coords.tick;
       drawingPriceBadges = coords.drawingPriceBadges;
       indicatorPriceBadges = coords.indicatorPriceBadges;
     });
@@ -697,7 +731,9 @@
   style={chartBackgroundStyle}
   oncontextmenu={handleContainerContextMenu}
   onwheel={scheduleBadgePositionUpdate}
-  onpointerdown={scheduleBadgePositionUpdate}
+  onpointerdown={handleChartWrapperPointerDown}
+  onpointermove={handleChartWrapperPointerMove}
+  onpointerup={handleChartWrapperPointerUp}
   onpaste={handleCanvasPaste}
   ondblclick={handleContainerDblClick}
   role="region"

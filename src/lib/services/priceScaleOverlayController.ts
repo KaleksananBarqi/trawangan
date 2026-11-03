@@ -8,6 +8,7 @@ import {
 import { parseAdaptiveSymbol } from './market/symbolSearchService';
 
 export interface OverlayPositionsSnapshot {
+  tick: number;
   alertYPositions: Record<string, number | null>;
   drawingBadgeYPositions: Record<string, number | null>;
   indicatorBadgeYPositions: Record<string, number | null>;
@@ -41,6 +42,8 @@ export class PriceScaleOverlayController {
   private indicatorPriceBadges: PriceScaleBadge[] = [];
 
   private rafId: number | null = null;
+  private continuousSyncTimer: any = null;
+  private tick = 0;
   private subscribers = new Set<OverlaySubscriber>();
 
   /**
@@ -50,9 +53,12 @@ export class PriceScaleOverlayController {
     this.chartContainer = container;
     this.workspace = workspace;
 
+    // Pasang listener event workspace/chart jika tersedia
+    const cleanupEvents = this.wireWorkspaceEvents(workspace);
     this.scheduleUpdate();
 
     return () => {
+      cleanupEvents?.();
       if (this.chartContainer === container) {
         this.chartContainer = null;
       }
@@ -62,6 +68,50 @@ export class PriceScaleOverlayController {
       if (this.rafId !== null && typeof cancelAnimationFrame === 'function') {
         cancelAnimationFrame(this.rafId);
         this.rafId = null;
+      }
+    };
+  }
+
+  /**
+   * Daftarkan pendengar event viewport & drawing pada workspace Vela untuk menjaga
+   * koordinat overlay selalu tersinkronisasi 1:1 dengan sumbu harga kanvas
+   */
+  private wireWorkspaceEvents(workspace: any): (() => void) | null {
+    if (!workspace) return null;
+    const cleanups: Array<() => void> = [];
+
+    const onMotion = () => {
+      this.scheduleContinuousSync(150);
+    };
+
+    try {
+      if (typeof workspace.events?.on === 'function') {
+        const u1 = workspace.events.on('viewport:changed', onMotion);
+        const u2 = workspace.events.on('drawing:created', onMotion);
+        const u3 = workspace.events.on('drawing:edited', onMotion);
+        const u4 = workspace.events.on('cell:active', onMotion);
+        const u5 = workspace.events.on('layout:changed', onMotion);
+        if (typeof u1 === 'function') cleanups.push(u1);
+        if (typeof u2 === 'function') cleanups.push(u2);
+        if (typeof u3 === 'function') cleanups.push(u3);
+        if (typeof u4 === 'function') cleanups.push(u4);
+        if (typeof u5 === 'function') cleanups.push(u5);
+      }
+
+      const activeChart = workspace.active?.chart;
+      if (activeChart && typeof activeChart.on === 'function') {
+        const uChartVp = activeChart.on('viewport:changed', onMotion);
+        const uChartBar = activeChart.on('bar', onMotion);
+        const uChartPane = activeChart.on('pane:changed', onMotion);
+        if (typeof uChartVp === 'function') cleanups.push(uChartVp);
+        if (typeof uChartBar === 'function') cleanups.push(uChartBar);
+        if (typeof uChartPane === 'function') cleanups.push(uChartPane);
+      }
+    } catch (_) {}
+
+    return () => {
+      for (const fn of cleanups) {
+        try { fn(); } catch (_) {}
       }
     };
   }
@@ -82,6 +132,60 @@ export class PriceScaleOverlayController {
     if (p === null || p === undefined || isNaN(p)) return '--';
     const quote = quoteCurrency || this.getQuoteCurrency();
     return formatPriceLabel(p, quote);
+  }
+
+  /**
+   * Mengambil elemen plot kanvas utama tempat garis harga digambar untuk menghitung
+   * offset vertikal relatif terhadap chartContainer
+   */
+  private getPlotElement(activeChart: any): HTMLElement | null {
+    const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+    return (
+      renderer?.plot ||
+      renderer?.dataCanvas ||
+      renderer?.chromeCanvas ||
+      renderer?.wrapper ||
+      this.workspace?.active?.host ||
+      null
+    );
+  }
+
+  /**
+   * Menghitung offset vertikal (top offset) antara kanvas plot Vela dan container overlay (.chart-wrapper)
+   */
+  private getPlotVerticalOffset(activeChart: any): number {
+    if (!this.chartContainer) return 0;
+    try {
+      const plotEl = this.getPlotElement(activeChart);
+      if (
+        plotEl &&
+        typeof plotEl.getBoundingClientRect === 'function' &&
+        typeof this.chartContainer.getBoundingClientRect === 'function'
+      ) {
+        const plotRect = plotEl.getBoundingClientRect();
+        const containerRect = this.chartContainer.getBoundingClientRect();
+        if (plotRect && containerRect) {
+          return plotRect.top - containerRect.top;
+        }
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  /**
+   * Resolusi harga pane secara robust dari Vela scene atau renderer fallback
+   */
+  private getPricePane(activeChart: any, renderer: any): any {
+    if (!activeChart && !renderer) return null;
+    return (
+      renderer?.scene?.panes?.get?.('price') ||
+      renderer?.scene?.panes?.get?.('PRICE') ||
+      renderer?.scene?.orderedPanes?.()?.find?.((p: any) => p.kind === 'price') ||
+      renderer?.pricePane ||
+      (renderer?.panes && renderer.panes[0]) ||
+      (renderer?.paneNodeAtY ? renderer.paneNodeAtY(50) : null) ||
+      null
+    );
   }
 
   /**
@@ -109,22 +213,20 @@ export class PriceScaleOverlayController {
       const coords = this.getChartCoords(activeChart);
       const renderer =
         activeChart?.renderer?.renderer || activeChart?.renderer;
-      const pane =
-        renderer?.pricePane ||
-        (renderer?.panes && renderer.panes[0]) ||
-        (renderer?.paneNodeAtY ? renderer.paneNodeAtY(50) : null);
+      const pane = this.getPricePane(activeChart, renderer);
 
       if (coords && typeof coords.priceToY === 'function') {
         const scale = pane?.scale || activeChart.scale;
         const bounds = pane?.bounds || activeChart.bounds;
-        const y = coords.priceToY(targetPrice, scale, bounds);
-        if (typeof y === 'number' && !isNaN(y)) {
+        const rawY = coords.priceToY(targetPrice, scale, bounds);
+        if (typeof rawY === 'number' && !isNaN(rawY)) {
           const top = bounds?.top ?? 0;
           const height = bounds?.height ?? 9999;
-          if (y < top - 24 || y > top + height + 24) {
+          if (rawY < top - 24 || rawY > top + height + 24) {
             return null;
           }
-          return Math.round(y);
+          const plotOffset = this.getPlotVerticalOffset(activeChart);
+          return Math.round(rawY + plotOffset);
         }
       }
     } catch (_) {}
@@ -143,10 +245,7 @@ export class PriceScaleOverlayController {
       const coords = this.getChartCoords(activeChart);
       const renderer =
         activeChart?.renderer?.renderer || activeChart?.renderer;
-      const pane =
-        renderer?.pricePane ||
-        (renderer?.panes && renderer.panes[0]) ||
-        (renderer?.paneNodeAtY ? renderer.paneNodeAtY(50) : null);
+      const pane = this.getPricePane(activeChart, renderer);
 
       if (coords && typeof coords.timeToX === 'function') {
         const scale = activeChart.timeScale || activeChart.scale;
@@ -168,17 +267,17 @@ export class PriceScaleOverlayController {
       return null;
     }
     try {
-      const rect = this.chartContainer.getBoundingClientRect();
-      const localY = clientY - rect.top;
       const activeChart = this.workspace.active.chart as any;
+      const plotEl = this.getPlotElement(activeChart) || this.chartContainer;
+      const rect = plotEl.getBoundingClientRect();
+      const localY = clientY - rect.top;
+
       const coords = this.getChartCoords(activeChart);
       const renderer =
         activeChart?.renderer?.renderer || activeChart?.renderer;
       const pane =
-        renderer?.pricePane ||
-        (renderer?.paneNodeAtY
-          ? renderer.paneNodeAtY(localY)
-          : renderer?.panes?.[0]);
+        this.getPricePane(activeChart, renderer) ||
+        (renderer?.paneNodeAtY ? renderer.paneNodeAtY(localY) : null);
 
       if (coords && typeof coords.yToPrice === 'function' && pane) {
         const scale = pane.scale || activeChart.scale;
@@ -222,6 +321,38 @@ export class PriceScaleOverlayController {
     this.activeIndicators = indicators;
     this.showIndicatorLabels = showPriceLabels;
     this.scheduleUpdate();
+  }
+
+  /**
+   * Jadwalkan sinkronisasi berkelanjutan selama durasi ms tertentu (misal saat auto-scale/pan/zoom easing berjalan)
+   */
+  scheduleContinuousSync(durationMs = 200): void {
+    const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const loop = () => {
+      this.computeAllPositions();
+      this.notify();
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (now - startTime < durationMs) {
+        if (typeof requestAnimationFrame === 'function') {
+          this.continuousSyncTimer = requestAnimationFrame(loop);
+        }
+      } else {
+        this.continuousSyncTimer = null;
+      }
+    };
+
+    if (this.continuousSyncTimer) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(this.continuousSyncTimer);
+      }
+      this.continuousSyncTimer = null;
+    }
+
+    if (typeof requestAnimationFrame === 'function') {
+      this.continuousSyncTimer = requestAnimationFrame(loop);
+    } else {
+      this.scheduleUpdate();
+    }
   }
 
   /**
@@ -276,6 +407,7 @@ export class PriceScaleOverlayController {
 
     // 3. Alerts positions
     this.recomputeAlertPositions();
+    this.tick++;
   }
 
   private recomputeAlertPositions(): void {
@@ -296,6 +428,7 @@ export class PriceScaleOverlayController {
    */
   getSnapshot(): OverlayPositionsSnapshot {
     return {
+      tick: this.tick,
       alertYPositions: { ...this.alertYPositions },
       drawingBadgeYPositions: { ...this.drawingBadgeYPositions },
       indicatorBadgeYPositions: { ...this.indicatorBadgeYPositions },
@@ -333,6 +466,10 @@ export class PriceScaleOverlayController {
     if (this.rafId !== null && typeof cancelAnimationFrame === 'function') {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
+    }
+    if (this.continuousSyncTimer !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.continuousSyncTimer);
+      this.continuousSyncTimer = null;
     }
     this.subscribers.clear();
   }

@@ -35,6 +35,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   colorModePreference: 'system',
   activeDarkPreset: 'signature',
   activeLightPreset: 'red_folder',
+  activeDarkChartPreset: 'signature',
+  activeLightChartPreset: 'red_folder',
   fontFamilyUi: 'Plus Jakarta Sans',
   fontFamilyMono: 'JetBrains Mono',
   uiDensity: 'regular',
@@ -163,6 +165,16 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
       typeof saved.activeLightPreset === 'string' && saved.activeLightPreset
         ? saved.activeLightPreset
         : (DEFAULT_APP_SETTINGS.activeLightPreset ?? 'red_folder'),
+    activeDarkChartPreset:
+      typeof saved.activeDarkChartPreset === 'string' && saved.activeDarkChartPreset
+        ? saved.activeDarkChartPreset
+        : (typeof saved.chartThemePreset === 'string' && saved.chartThemePreset && saved.chartThemePreset !== 'red_folder'
+            ? saved.chartThemePreset
+            : (DEFAULT_APP_SETTINGS.activeDarkChartPreset ?? 'signature')),
+    activeLightChartPreset:
+      typeof saved.activeLightChartPreset === 'string' && saved.activeLightChartPreset
+        ? saved.activeLightChartPreset
+        : (DEFAULT_APP_SETTINGS.activeLightChartPreset ?? 'red_folder'),
     autoSaveWorkspace: saved.autoSaveWorkspace ?? DEFAULT_APP_SETTINGS.autoSaveWorkspace ?? true,
     autoLoadLastWorkspace: saved.autoLoadLastWorkspace ?? DEFAULT_APP_SETTINGS.autoLoadLastWorkspace ?? true,
     clipboardWatcherEnabled: saved.clipboardWatcherEnabled ?? DEFAULT_APP_SETTINGS.clipboardWatcherEnabled ?? true,

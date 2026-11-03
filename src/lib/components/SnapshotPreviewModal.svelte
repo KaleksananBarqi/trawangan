@@ -232,7 +232,11 @@
     const effectiveChartPreset = resolveEffectiveChartThemePreset(
       appSettings.syncChartWithAppTheme ?? true,
       effectiveAppPreset,
-      appSettings.chartThemePreset ?? 'signature'
+      appSettings.chartThemePreset ?? 'signature',
+      appSettings.colorModePreference ?? 'system',
+      systemIsDark,
+      appSettings.activeDarkChartPreset,
+      appSettings.activeLightChartPreset
     );
     return resolveThemeConfig(effectiveChartPreset, appSettings.savedUserThemes);
   }

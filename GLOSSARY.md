@@ -177,8 +177,8 @@ Lapisan latar visual kanvas grafik (warna solid kustom maupun gradien vertikal) 
 _Avoid_: Hardcoded theme background only, Fixed chart canvas fill
 
 **Themed Thesis Overlay**:
-Komponen visual kartu tesis trading plan (`FloatingThesisCard`) yang secara reaktif mengadopsi palet warna dan gaya visual Theme Preset aktif, menggantikan skema warna gelap kaku.
-_Avoid_: Hardcoded obsidian card, Desynced plan theme
+Komponen visual kartu tesis rencana perdagangan (`FloatingThesisCard` dan panel samping snapshot) yang secara reaktif menurunkan warna latar permukaan, batas, dan kontras tipografi dari latar **Chart Canvas Theme** aktif, menjamin keterbacaan penuh tanpa tabrakan warna meskipun tema aplikasi dan kanvas dipisahkan.
+_Avoid_: Hardcoded obsidian card, Desynced plan theme, App-bound thesis card, Foreground-filled card
 
 **Quick Snapshot Action**:
 Aksi satu klik atau pintasan keyboard (`Ctrl+Shift+S`) untuk menyalin grafik ke clipboard sistem atau menyimpannya langsung sebagai file PNG dengan umpan balik visual notifikasi toast.
@@ -212,6 +212,10 @@ _Avoid_: Global skin, Full app theme only
 Skema visual khusus lapisan kanvas grafik WebGL2 (warna badan lilin, wick, border, latar kanvas, garis kisi, crosshair, dan watermark pengenal).
 _Avoid_: Candle skin, Chart-only CSS
 
+**Chart Mode Preset Memory**:
+Pasangan preferensi tema kanvas mandiri untuk mode gelap dan mode terang (`activeDarkChartPreset` dan `activeLightChartPreset`) yang menjaga kanvas grafik tetap beralih ke tema kustom/preset pilihannya masing-masing saat mode tampilan berubah, meskipun sinkronisasi tema aplikasi dan kanvas dimatikan.
+_Avoid_: Single-slot chart preset, Overwritten canvas theme
+
 **System Theme Bridge**:
 Mekanisme sinkronisasi preferensi mode warna (Dark/Light) yang secara otomatis mendengarkan dan merespons perubahan skema warna sistem operasi pengguna.
 _Avoid_: OS color watcher, Desktop dark mode hook
@@ -235,6 +239,14 @@ _Avoid_: Hidden chart watermark toggle, Hardcoded symbol watermark
 **Workspace Auto-Save Guard**:
 Mekanisme pelindung persistensi otomatis yang memvalidasi perubahan nilai struktural (deep/value equality) parameter workspace sebelum menjadwalkan transaksi penulisan ke SQLite, mengeliminasi disk churn dan spam log terminal yang dipicu oleh mutasi referensi array berkala.
 _Avoid_: Blind effect auto-save, Reference-only change trigger
+
+**Trade Plan Vault**:
+Arsip persistensi lokal otomatis yang merekam setiap rencana perdagangan (`ParsedTradingPlan`) yang diterapkan beserta stempel waktu dan instrumennya tanpa memerlukan aksi simpan manual, memungkinkan proyeksi ulang (*re-plot*) rencana masa lalu hingga lilin harga terbaru untuk evaluasi lintas waktu.
+_Avoid_: Ephemeral session plan, Manual plan bookmark, Unarchived trading plan
+
+**Plan-Linked Auto-Alerts**:
+Sekumpulan sinyal batas harga (`PriceAlert`) pada titik Entry, Stop Loss, dan seluruh jenjang Target Profit (TP1..TPn) yang dibuat otomatis sesuai bias arah posisi saat rencana perdagangan baru diterapkan, serta terikat siklus hidupnya (`planId`) agar otomatis ikut dibersihkan ketika rencana dihapus atau dibatalkan dari grafik.
+_Avoid_: Orphan plan alerts, Manual level-by-level alert entry, Unlinked position alerts
 
 
 

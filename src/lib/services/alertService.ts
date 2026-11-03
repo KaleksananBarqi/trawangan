@@ -1,4 +1,5 @@
 import type { PriceAlert, AlertCondition, AlertFrequency } from '../types/market';
+import type { ParsedTradingPlan } from './planParserService';
 import { loadAlerts, saveAlerts } from './persistence';
 import { playAlertChime, playSuccessPip } from './soundService';
 import { sendWindowsAlertNotification } from './systemNotificationService';
@@ -110,6 +111,8 @@ class AlertService {
     condition?: AlertCondition;
     frequency?: AlertFrequency;
     label?: string;
+    planId?: string;
+    planRole?: 'entry' | 'sl' | string;
   }): Promise<PriceAlert> {
     const cleanTargetPrice = roundToTickSize(params.targetPrice);
     const newAlert: PriceAlert = {
@@ -122,12 +125,174 @@ class AlertService {
       active: true,
       triggered: false,
       createdAt: Date.now(),
+      ...(params.planId ? { planId: params.planId } : {}),
+      ...(params.planRole ? { planRole: params.planRole } : {}),
     };
 
     this.alerts = [newAlert, ...this.alerts];
     await this.save();
     playSuccessPip();
     return newAlert;
+  }
+
+  /**
+   * Provisikan sekumpulan Plan-Linked Auto-Alerts (Entry, SL, dan TP1..TPn) secara atomik
+   * ketika sebuah Trade Plan diterapkan ke grafik (ADR-0019)
+   */
+  public async addPlanAlerts(
+    plan: ParsedTradingPlan & { id?: string; symbol?: string },
+    fallbackSymbol = 'BTCUSDT'
+  ): Promise<PriceAlert[]> {
+    if (!plan || !plan.entry || !plan.stopLoss) return [];
+    const planId = plan.id || `plan_${Date.now()}`;
+    const symbol = (plan.symbol || fallbackSymbol || 'BTCUSDT').trim().toUpperCase();
+    const isBearish = plan.bias === 'bearish' || plan.stopLoss > plan.entry;
+    const biasTag = isBearish ? 'SHORT PLAN' : 'LONG PLAN';
+    const now = Date.now();
+
+    // Bersihkan alert aktif lama dengan planId yang sama agar tidak duplikat
+    this.alerts = this.alerts.filter((a) => !(a.planId === planId && !a.triggered));
+
+    const created: PriceAlert[] = [];
+
+    // 1. Alert Titik Entry
+    const cleanEntry = roundToTickSize(plan.entry);
+    created.push({
+      id: `alt_${now}_entry_${Math.random().toString(36).slice(2, 6)}`,
+      symbol,
+      targetPrice: cleanEntry,
+      condition: 'crossing',
+      frequency: 'once',
+      label: `⚡ [${biasTag}] Entry @ ${cleanEntry}`,
+      active: true,
+      triggered: false,
+      createdAt: now,
+      planId,
+      planRole: 'entry',
+    });
+
+    // 2. Alert Titik Stop Loss (SL)
+    const cleanSL = roundToTickSize(plan.stopLoss);
+    created.push({
+      id: `alt_${now}_sl_${Math.random().toString(36).slice(2, 6)}`,
+      symbol,
+      targetPrice: cleanSL,
+      condition: isBearish ? 'crossing_up' : 'crossing_down',
+      frequency: 'once',
+      label: `🛡️ [${biasTag}] Stop Loss (-1.00R) @ ${cleanSL}`,
+      active: true,
+      triggered: false,
+      createdAt: now + 1,
+      planId,
+      planRole: 'sl',
+    });
+
+    // 3. Alert Setiap Target Profit (TP1..TPn)
+    if (Array.isArray(plan.targets)) {
+      for (let i = 0; i < plan.targets.length; i++) {
+        const tgt = plan.targets[i];
+        if (!tgt || typeof tgt.price !== 'number' || isNaN(tgt.price) || tgt.price <= 0) continue;
+        const cleanTp = roundToTickSize(tgt.price);
+        const tpName = tgt.label || `TP${i + 1}`;
+        const rBadge =
+          typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)
+            ? ` (+${tgt.rMultiple.toFixed(2)}R)`
+            : '';
+
+        created.push({
+          id: `alt_${now}_tp${i + 1}_${Math.random().toString(36).slice(2, 6)}`,
+          symbol,
+          targetPrice: cleanTp,
+          condition: isBearish ? 'crossing_down' : 'crossing_up',
+          frequency: 'once',
+          label: `🎯 [${biasTag}] ${tpName}${rBadge} @ ${cleanTp}`,
+          active: true,
+          triggered: false,
+          createdAt: now + 2 + i,
+          planId,
+          planRole: `tp${i + 1}`,
+        });
+      }
+    }
+
+    this.alerts = [...created, ...this.alerts];
+    await this.save();
+    playSuccessPip();
+    return created;
+  }
+
+  /**
+   * Menghapus seluruh alert aktif (yang belum terpicu) yang terikat pada suatu Trade Plan (`planId`)
+   * Dipanggil otomatis ketika Trade Plan dihapus atau dibatalkan (Undo) dari kanvas (ADR-0019)
+   */
+  public async deleteAlertsByPlanId(planId: string): Promise<number> {
+    if (!planId) return 0;
+    const beforeCount = this.alerts.length;
+    this.alerts = this.alerts.filter((a) => !(a.planId === planId && !a.triggered));
+    const removedCount = beforeCount - this.alerts.length;
+    if (removedCount > 0) {
+      await this.save();
+    }
+    return removedCount;
+  }
+
+  /**
+   * Menyinkronkan harga target alert yang terikat pada Trade Plan jika pengguna menggeser kotak posisi di kanvas
+   */
+  public async syncPlanAlertPrices(plan: ParsedTradingPlan & { id: string }): Promise<void> {
+    if (!plan || !plan.id) return;
+    const isBearish = plan.bias === 'bearish' || plan.stopLoss > plan.entry;
+    const biasTag = isBearish ? 'SHORT PLAN' : 'LONG PLAN';
+    let changed = false;
+
+    this.alerts = this.alerts.map((a) => {
+      if (a.planId !== plan.id || a.triggered) return a;
+      if (a.planRole === 'entry' && typeof plan.entry === 'number') {
+        const cleanEntry = roundToTickSize(plan.entry);
+        if (a.targetPrice !== cleanEntry) {
+          changed = true;
+          return {
+            ...a,
+            targetPrice: cleanEntry,
+            label: `⚡ [${biasTag}] Entry @ ${cleanEntry}`,
+          };
+        }
+      } else if (a.planRole === 'sl' && typeof plan.stopLoss === 'number') {
+        const cleanSL = roundToTickSize(plan.stopLoss);
+        if (a.targetPrice !== cleanSL) {
+          changed = true;
+          return {
+            ...a,
+            targetPrice: cleanSL,
+            label: `🛡️ [${biasTag}] Stop Loss (-1.00R) @ ${cleanSL}`,
+          };
+        }
+      } else if (a.planRole?.startsWith('tp') && Array.isArray(plan.targets)) {
+        const idx = parseInt(a.planRole.slice(2), 10) - 1;
+        const tgt = plan.targets[idx];
+        if (tgt && typeof tgt.price === 'number') {
+          const cleanTp = roundToTickSize(tgt.price);
+          const tpName = tgt.label || `TP${idx + 1}`;
+          const rBadge =
+            typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)
+              ? ` (+${tgt.rMultiple.toFixed(2)}R)`
+              : '';
+          if (a.targetPrice !== cleanTp) {
+            changed = true;
+            return {
+              ...a,
+              targetPrice: cleanTp,
+              label: `🎯 [${biasTag}] ${tpName}${rBadge} @ ${cleanTp}`,
+            };
+          }
+        }
+      }
+      return a;
+    });
+
+    if (changed) {
+      await this.save();
+    }
   }
 
   /**
@@ -176,6 +341,15 @@ class AlertService {
    */
   public async deleteAlert(id: string): Promise<void> {
     this.alerts = this.alerts.filter((a) => a.id !== id);
+    await this.save();
+  }
+
+  /**
+   * Hapus seluruh alert (digunakan untuk reset total atau pengujian)
+   */
+  public async clearAllAlerts(): Promise<void> {
+    this.alerts = [];
+    this.previousPrices.clear();
     await this.save();
   }
 

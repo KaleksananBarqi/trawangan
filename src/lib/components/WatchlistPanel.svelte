@@ -39,7 +39,8 @@
     MoreHorizontal,
     Folder,
     GripVertical,
-    Sparkles
+    Sparkles,
+    History
   } from '@lucide/svelte';
   import { loadWatchlist, saveWatchlist } from '../services/persistence';
   import { marketFeed } from '../services/market';
@@ -100,6 +101,7 @@
     onToggleThesisCards?: () => void;
     onRemovePlan?: (id: string) => void;
     onOpenImportPlan?: () => void;
+    onOpenPlanHistory?: () => void;
   }
 
   let {
@@ -136,6 +138,7 @@
     onToggleThesisCards,
     onRemovePlan,
     onOpenImportPlan,
+    onOpenPlanHistory,
   }: Props = $props();
 
   let internalTab = $state<'watchlist' | 'alerts' | 'objects'>('watchlist');
@@ -1553,6 +1556,13 @@
             </div>
 
             <div class="group-bulk-actions">
+              <button
+                class="icon-action-btn"
+                title="Buka Riwayat Trade Plan (Vault)"
+                onclick={() => (onOpenPlanHistory ? onOpenPlanHistory() : onOpenImportPlan?.())}
+              >
+                <History size={12} />
+              </button>
               <button
                 class="icon-action-btn"
                 title="Input & Import Trading Plan (Ctrl+Shift+P)"

@@ -1,5 +1,5 @@
 import type { ColorModePreference, CustomThemeDefinition, CustomThemePalette, ThemePresetId, ThemeId, UiDensity } from '../types/market';
-import { deriveBorderColor, isDarkColor, withAlpha } from '../utils/colorUtils';
+import { deriveBorderColor, deriveSurfaceColor, ensureReadableTextColor, isDarkColor, withAlpha } from '../utils/colorUtils';
 
 export type { ThemeId };
 
@@ -517,14 +517,23 @@ export function getRegisteredUserThemes(): CustomThemeDefinition[] {
 }
 
 /**
- * Mengonversi CustomThemeDefinition menjadi ThemeConfig lengkap (#149)
+ * Mengonversi CustomThemeDefinition menjadi ThemeConfig lengkap (#149, ADR-0019)
+ * Menurunkan warna surface kartu/panel secara matematis dari background (Adaptive Luminance)
+ * dan menggunakan general.foreground sesuai filosofi chart untuk aksen garis grid/border halus.
  */
 export function buildThemeConfigFromUserTheme(def: CustomThemeDefinition): ThemeConfig {
   const { id, name, mode, palette } = def;
-  const isDark = mode === 'dark';
-  const bg = palette.general?.background || (isDark ? '#0F0F0F' : '#edede9');
-  const fg = palette.general?.foreground || (isDark ? '#171717' : '#dcdcd6');
-  const text = palette.general?.textColor || (isDark ? '#F7F7F7' : '#4A0E0F');
+  const fallbackIsDark = mode === 'dark';
+  const bg = palette.general?.background || (fallbackIsDark ? '#0F0F0F' : '#edede9');
+  const isDark = isDarkColor(bg);
+  const rawFg = palette.general?.foreground || (isDark ? '#FFFFFF' : '#4A0E0F');
+  const text = ensureReadableTextColor(bg, palette.general?.textColor || (isDark ? '#F7F7F7' : '#4A0E0F'));
+
+  // Surface diturunkan langsung dari background chart agar kartu/panel dan Thesis tidak pernah tabrakan warna
+  const bgContainer = deriveSurfaceColor(bg, 0.05);
+  const bgPanel = deriveSurfaceColor(bg, 0.08);
+  const bgElevated = deriveSurfaceColor(bg, 0.12);
+  const bgSecondary = deriveSurfaceColor(bg, 0.07);
 
   const up = palette.candles?.bullBody || (isDark ? '#F7F7F7' : '#D4A5A5');
   const down = palette.candles?.bearBody || (isDark ? '#FF69B4' : '#9B1D20');
@@ -535,8 +544,9 @@ export function buildThemeConfigFromUserTheme(def: CustomThemeDefinition): Theme
 
   const borderHairline = isDark ? withAlpha(text, 0.14) : deriveBorderColor(bg, 0.15);
   const borderSubtle = isDark ? withAlpha(text, 0.10) : deriveBorderColor(bg, 0.10);
-  const bgHover = isDark ? withAlpha(fg, 0.20) : withAlpha(fg, 0.15);
-  const textMuted = isDark ? withAlpha(text, 0.65) : withAlpha(text, 0.65);
+  const bgHover = deriveSurfaceColor(bg, 0.15);
+  const textMuted = withAlpha(text, 0.65);
+  const gridColor = withAlpha(rawFg, isDark ? 0.07 : 0.09);
 
   return {
     id,
@@ -548,11 +558,11 @@ export function buildThemeConfigFromUserTheme(def: CustomThemeDefinition): Theme
     tokens: {
       bgDarkest: bg,
       bgSurface: bg,
-      bgContainer: fg,
-      bgPanel: fg,
-      bgElevated: fg,
+      bgContainer,
+      bgPanel,
+      bgElevated,
       bgHover,
-      bgSecondary: fg,
+      bgSecondary,
       borderHairline,
       borderSubtle,
       brandPrimary: up,
@@ -567,7 +577,7 @@ export function buildThemeConfigFromUserTheme(def: CustomThemeDefinition): Theme
     },
     chart: {
       background: bg,
-      gridColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.06)',
+      gridColor,
       textColor: text,
       borderColor: borderHairline,
       upColor: up,
@@ -702,17 +712,71 @@ export function resolveDeletedThemeFallback(
 }
 
 /**
- * Menyelesaikan tema kanvas grafik efektif berdasarkan status sinkronisasi dengan aplikasi (#149)
+ * Menyelesaikan tema kanvas grafik efektif berdasarkan status sinkronisasi dengan aplikasi
+ * serta Chart Mode Preset Memory (`activeDarkChartPreset` & `activeLightChartPreset`) (#149, ADR-0019)
  */
 export function resolveEffectiveChartThemePreset(
   syncWithApp: boolean,
   effectiveAppPreset: ThemeId,
-  chartThemePreset?: ThemeId
+  chartThemePreset?: ThemeId,
+  preference?: ColorModePreference,
+  systemIsDark: boolean = true,
+  darkChartPreset?: ThemeId,
+  lightChartPreset?: ThemeId
 ): ThemeId {
   if (syncWithApp) {
     return effectiveAppPreset;
   }
+
+  // Jika parameter memori mode warna kanvas disertakan, selesaikan sesuai mode tampilan aktif
+  if (preference !== undefined && (darkChartPreset || lightChartPreset)) {
+    const isLightMode = preference === 'light' || (preference === 'system' && !systemIsDark);
+    if (isLightMode) {
+      return lightChartPreset || chartThemePreset || 'red_folder';
+    }
+    return darkChartPreset || chartThemePreset || 'signature';
+  }
+
   return chartThemePreset || 'signature';
+}
+
+/**
+ * Menghasilkan paket token CSS khusus Kartu Thesis (`--chart-thesis-*`) yang diturunkan
+ * langsung dari latar belakang Chart Canvas Theme aktif (Chart-Dominant Thesis Surface, ADR-0019)
+ */
+export function generateChartThesisThemeTokens(chartThemeConfig: ThemeConfig): Record<string, string> {
+  const chartBg = chartThemeConfig?.chart?.background || chartThemeConfig?.tokens?.bgDarkest || '#0F0F0F';
+  const isDark = isDarkColor(chartBg);
+  const surfaceHex = deriveSurfaceColor(chartBg, 0.07);
+  const elevatedHex = deriveSurfaceColor(chartBg, 0.11);
+  const rawText = chartThemeConfig?.tokens?.textMain || chartThemeConfig?.chart?.textColor;
+  const textMain = ensureReadableTextColor(chartBg, rawText);
+  const textMuted = withAlpha(textMain, 0.68);
+  const borderSubtle = isDark ? withAlpha(textMain, 0.12) : deriveBorderColor(chartBg, 0.14);
+  const borderHairline = isDark ? withAlpha(textMain, 0.18) : deriveBorderColor(chartBg, 0.18);
+  const bullColor = chartThemeConfig?.chart?.upColor || chartThemeConfig?.tokens?.bullColor || '#00FF88';
+  const bearColor = chartThemeConfig?.chart?.downColor || chartThemeConfig?.tokens?.bearColor || '#FF69B4';
+  const brandCyan = chartThemeConfig?.tokens?.brandCyan || '#38BDF8';
+
+  return {
+    '--chart-thesis-bg': withAlpha(surfaceHex, 0.94),
+    '--chart-thesis-bg-solid': surfaceHex,
+    '--chart-thesis-bg-elevated': withAlpha(elevatedHex, 0.65),
+    '--chart-thesis-header-bg': isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.04)',
+    '--chart-thesis-item-bg': isDark ? withAlpha(chartBg, 0.48) : withAlpha(chartBg, 0.55),
+    '--chart-thesis-border': borderSubtle,
+    '--chart-thesis-border-hairline': borderHairline,
+    '--chart-thesis-text': textMain,
+    '--chart-thesis-text-muted': textMuted,
+    '--chart-thesis-bull': bullColor,
+    '--chart-thesis-bull-glow': withAlpha(bullColor, 0.16),
+    '--chart-thesis-bear': bearColor,
+    '--chart-thesis-bear-glow': withAlpha(bearColor, 0.16),
+    '--chart-thesis-cyan': brandCyan,
+    '--chart-thesis-shadow': isDark
+      ? '0 10px 30px rgba(0, 0, 0, 0.65)'
+      : '0 10px 28px rgba(0, 0, 0, 0.18)',
+  };
 }
 
 /**
@@ -729,13 +793,17 @@ export function resolveEffectiveThemeColors(
   const background = isCustomActive && customPalette?.general?.background
     ? customPalette.general.background
     : (cfg.chart?.background || cfg.tokens?.bgDarkest || '#0F0F0F');
-  const foreground = isCustomActive && customPalette?.general?.foreground
+  const isDark = isDarkColor(background);
+  const rawForeground = isCustomActive && customPalette?.general?.foreground
     ? customPalette.general.foreground
-    : (cfg.tokens?.bgContainer || cfg.tokens?.bgPanel || '#171717');
-  const textColor = isCustomActive && customPalette?.general?.textColor
+    : (cfg.tokens?.bgContainer || cfg.tokens?.bgPanel || '#1A1A1A');
+  const foreground = isDarkColor(rawForeground) === isDark
+    ? rawForeground
+    : deriveSurfaceColor(background, 0.07);
+  const rawText = isCustomActive && customPalette?.general?.textColor
     ? customPalette.general.textColor
     : (cfg.chart?.textColor || cfg.tokens?.textMain || '#F7F7F7');
-  const isDark = isDarkColor(background);
+  const textColor = ensureReadableTextColor(background, rawText);
 
   return { background, foreground, textColor, isDark };
 }
