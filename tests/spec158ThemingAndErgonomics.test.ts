@@ -110,6 +110,62 @@ describe('Spec #158: Theming, Context Menu, Watermark & Auto-Save Guard Suite', 
       );
     });
   });
+
+  describe('Ticket #162: In-Place Theme Palette Editing and Safe Preset Forking', () => {
+    const appearancePath = path.resolve(process.cwd(), 'src/lib/components/settings/AppearanceTab.svelte');
+    const appearanceContent = fs.readFileSync(appearancePath, 'utf8');
+
+    test('1. AppearanceTab.svelte menyertakan tombol aksi Edit Warna pada kartu tema', () => {
+      assert.match(
+        appearanceContent,
+        /title="Edit warna tema"|handleStartEditThemeColors/,
+        'Kartu tema harus menyediakan tombol edit warna dengan handler handleStartEditThemeColors'
+      );
+    });
+
+    test('2. AppearanceTab.svelte mendukung penyimpanan in-place warna tema pengguna', () => {
+      assert.match(
+        appearanceContent,
+        /handleSaveInPlaceThemeColors/,
+        'AppearanceTab harus mendefinisikan handler handleSaveInPlaceThemeColors'
+      );
+      assert.match(
+        appearanceContent,
+        /Simpan Perubahan ke Tema Ini/,
+        'Wajib menampilkan tombol "Simpan Perubahan ke Tema Ini" saat dalam mode edit'
+      );
+    });
+
+    test('3. updateUserThemePalette memodifikasi palet tema pengguna secara immutably', async () => {
+      const { updateUserThemePalette } = await import('../src/lib/constants/themes');
+      assert.equal(typeof updateUserThemePalette, 'function', 'updateUserThemePalette harus diekspor sebagai fungsi');
+
+      const mockThemes = [
+        {
+          id: 'user_1',
+          name: 'Tema Keren',
+          mode: 'dark' as const,
+          palette: {
+            candles: { bullBody: '#00FF00', bearBody: '#FF0000', bullWick: '#00FF00', bearWick: '#FF0000', bullBorder: '#00FF00', bearBorder: '#FF0000' },
+            general: { background: '#111111', foreground: '#222222', textColor: '#FFFFFF' }
+          }
+        }
+      ];
+
+      const newPalette = {
+        candles: { bullBody: '#00FFFF', bearBody: '#FF00FF', bullWick: '#00FFFF', bearWick: '#FF00FF', bullBorder: '#00FFFF', bearBorder: '#FF00FF' },
+        general: { background: '#000000', foreground: '#1A1A1A', textColor: '#FFFFFF' }
+      };
+
+      const result = updateUserThemePalette(mockThemes, 'user_1', newPalette, 'dark');
+      assert.equal(result.length, 1);
+      assert.equal(result[0].palette.candles.bullBody, '#00FFFF');
+      assert.equal(result[0].palette.general.background, '#000000');
+      // Immutability check
+      assert.equal(mockThemes[0].palette.candles.bullBody, '#00FF00');
+    });
+  });
 });
+
 
 

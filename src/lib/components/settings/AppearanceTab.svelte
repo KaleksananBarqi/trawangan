@@ -1,8 +1,23 @@
 <script lang="ts">
   import {
-    Check, Minus, Plus, RotateCcw, Copy, CheckCheck, Sun, Moon, Palette, FileText, Clipboard, X, Monitor,
-    Save, Trash2, Edit2, Download
-  } from '@lucide/svelte';
+    Check,
+    Minus,
+    Plus,
+    RotateCcw,
+    Copy,
+    CheckCheck,
+    Sun,
+    Moon,
+    Palette,
+    FileText,
+    Clipboard,
+    X,
+    Monitor,
+    Save,
+    Trash2,
+    Edit2,
+    Download,
+  } from "@lucide/svelte";
   import {
     THEME_PRESETS,
     buildCustomPaletteFromPreset,
@@ -12,12 +27,13 @@
     createUserTheme,
     renameUserTheme,
     deleteUserTheme,
+    updateUserThemePalette,
     resolveDeletedThemeFallback,
     resolveThemeConfig,
     buildThemeConfigFromUserTheme,
     isBuiltInTheme,
-  } from '../../constants/themes';
-  import { isDarkColor } from '../../utils/colorUtils';
+  } from "../../constants/themes";
+  import { isDarkColor } from "../../utils/colorUtils";
   import type {
     AppSettings,
     ColorModePreference,
@@ -27,7 +43,7 @@
     CustomGeneralColors,
     CustomThemeDefinition,
     ThemePresetId,
-  } from '../../types/market';
+  } from "../../types/market";
 
   interface Props {
     settings: AppSettings;
@@ -36,94 +52,195 @@
 
   let { settings, onUpdateSettings }: Props = $props();
 
-  const filterMode = $derived<'all' | 'dark' | 'light'>(settings.themeFilterMode || 'all');
+  const filterMode = $derived<"all" | "dark" | "light">(
+    settings.themeFilterMode || "all",
+  );
   let copyFeedback = $state<string | null>(null);
   let isPasteModalOpen = $state(false);
-  let pasteInputText = $state('');
+  let pasteInputText = $state("");
   let pasteError = $state<string | null>(null);
 
   // Dual-Theme Decoupling & User Presets State (#149)
-  const syncChartWithAppTheme = $derived<boolean>(settings.syncChartWithAppTheme ?? true);
-  const savedUserThemes = $derived<CustomThemeDefinition[]>(settings.savedUserThemes || []);
-  let targetThemeSelection = $state<'app' | 'chart'>('app');
+  const syncChartWithAppTheme = $derived<boolean>(
+    settings.syncChartWithAppTheme ?? true,
+  );
+  const savedUserThemes = $derived<CustomThemeDefinition[]>(
+    settings.savedUserThemes || [],
+  );
+  let targetThemeSelection = $state<"app" | "chart">("app");
 
   // Modal Save As ("Simpan Sebagai Tema Baru")
   let isSaveAsModalOpen = $state(false);
-  let saveAsThemeName = $state('');
-  let saveAsThemeMode = $state<'dark' | 'light'>('dark');
+  let saveAsThemeName = $state("");
+  let saveAsThemeMode = $state<"dark" | "light">("dark");
   let saveAsError = $state<string | null>(null);
 
   // Modal Rename Preset Pengguna
   let isRenameModalOpen = $state(false);
   let renameTargetThemeId = $state<string | null>(null);
-  let renameThemeName = $state('');
+  let renameThemeName = $state("");
   let renameError = $state<string | null>(null);
 
-  function setFilterMode(mode: 'all' | 'dark' | 'light') {
+  // In-Place Theme Palette Editing State (#158, #162)
+  let editingUserThemeId = $state<string | null>(null);
+  let editingUserThemeName = $state<string | null>(null);
+
+  function handleStartEditThemeColors(preset: any, e?: MouseEvent) {
+    e?.stopPropagation();
+    const isUser = savedUserThemes.some((t) => t.id === preset.id);
+    let targetPalette: CustomThemePalette;
+
+    if (isUser) {
+      const userTheme = savedUserThemes.find((t) => t.id === preset.id);
+      targetPalette = userTheme?.palette
+        ? JSON.parse(JSON.stringify(userTheme.palette))
+        : buildCustomPaletteFromPreset(preset.id as any);
+      editingUserThemeId = preset.id;
+      editingUserThemeName = preset.name;
+    } else {
+      targetPalette = buildCustomPaletteFromPreset(preset.id as any);
+      editingUserThemeId = null;
+      editingUserThemeName = null;
+    }
+
+    targetPalette.enabled = true;
+    onUpdateSettings({ customPalette: targetPalette });
+
+    if (typeof document !== "undefined") {
+      const studioBox = document.querySelector(".custom-studio-box");
+      studioBox?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function handleSaveInPlaceThemeColors() {
+    if (!editingUserThemeId) return;
+    const targetId = editingUserThemeId;
+    const targetName = editingUserThemeName || "Tema";
+
+    const updatedThemes = updateUserThemePalette(
+      savedUserThemes,
+      targetId,
+      currentPalette,
+      isPaletteDark ? "dark" : "light",
+    );
+
+    onUpdateSettings({
+      savedUserThemes: updatedThemes,
+      customPalette: undefined,
+    });
+
+    copyFeedback = `Warna tema "${targetName}" berhasil diperbarui!`;
+    setTimeout(() => {
+      copyFeedback = null;
+    }, 2500);
+    editingUserThemeId = null;
+    editingUserThemeName = null;
+  }
+
+  function handleCancelEditThemeColors() {
+    editingUserThemeId = null;
+    editingUserThemeName = null;
+  }
+
+  function setFilterMode(mode: "all" | "dark" | "light") {
     onUpdateSettings({ themeFilterMode: mode });
   }
 
-  const colorModePref = $derived<ColorModePreference>(settings.colorModePreference || 'system');
+  const colorModePref = $derived<ColorModePreference>(
+    settings.colorModePreference || "system",
+  );
 
   // Koleksi seluruh preset yang tersedia (Preset Resmi Bawaan + Preset Pengguna Tersimpan) (#149)
   const allAvailablePresets = $derived.by(() => {
     const builtIns = Object.values(THEME_PRESETS);
-    const customPresets = savedUserThemes.map((u) => buildThemeConfigFromUserTheme(u));
+    const customPresets = savedUserThemes.map((u) =>
+      buildThemeConfigFromUserTheme(u),
+    );
     return [...builtIns, ...customPresets];
   });
 
-  const darkPresets = $derived(allAvailablePresets.filter((p) => p.mode === 'dark'));
-  const lightPresets = $derived(allAvailablePresets.filter((p) => p.mode === 'light'));
+  const darkPresets = $derived(
+    allAvailablePresets.filter((p) => p.mode === "dark"),
+  );
+  const lightPresets = $derived(
+    allAvailablePresets.filter((p) => p.mode === "light"),
+  );
 
   const filteredPresets = $derived.by(() => {
-    if (filterMode === 'dark') return darkPresets;
-    if (filterMode === 'light') return lightPresets;
+    if (filterMode === "dark") return darkPresets;
+    if (filterMode === "light") return lightPresets;
     return allAvailablePresets;
   });
 
   function handleSetColorMode(mode: ColorModePreference) {
     onUpdateSettings({
       colorModePreference: mode,
-      ...(mode === 'dark' ? { themePreset: (settings.activeDarkPreset as any) || 'signature' } : {}),
-      ...(mode === 'light' ? { themePreset: (settings.activeLightPreset as any) || 'red_folder' } : {}),
-      ...(syncChartWithAppTheme && mode === 'dark' ? { chartThemePreset: (settings.activeDarkPreset as any) || 'signature' } : {}),
-      ...(syncChartWithAppTheme && mode === 'light' ? { chartThemePreset: (settings.activeLightPreset as any) || 'red_folder' } : {}),
+      ...(mode === "dark"
+        ? { themePreset: (settings.activeDarkPreset as any) || "signature" }
+        : {}),
+      ...(mode === "light"
+        ? { themePreset: (settings.activeLightPreset as any) || "red_folder" }
+        : {}),
+      ...(syncChartWithAppTheme && mode === "dark"
+        ? {
+            chartThemePreset: (settings.activeDarkPreset as any) || "signature",
+          }
+        : {}),
+      ...(syncChartWithAppTheme && mode === "light"
+        ? {
+            chartThemePreset:
+              (settings.activeLightPreset as any) || "red_folder",
+          }
+        : {}),
     });
   }
 
   function handleSetDarkPreset(presetId: string) {
     onUpdateSettings({
       activeDarkPreset: presetId,
-      ...(colorModePref === 'dark' ? { themePreset: presetId as any } : {}),
-      ...(syncChartWithAppTheme && colorModePref === 'dark' ? { chartThemePreset: presetId as any } : {}),
+      ...(colorModePref === "dark" ? { themePreset: presetId as any } : {}),
+      ...(syncChartWithAppTheme && colorModePref === "dark"
+        ? { chartThemePreset: presetId as any }
+        : {}),
     });
   }
 
   function handleSetLightPreset(presetId: string) {
     onUpdateSettings({
       activeLightPreset: presetId,
-      ...(colorModePref === 'light' ? { themePreset: presetId as any } : {}),
-      ...(syncChartWithAppTheme && colorModePref === 'light' ? { chartThemePreset: presetId as any } : {}),
+      ...(colorModePref === "light" ? { themePreset: presetId as any } : {}),
+      ...(syncChartWithAppTheme && colorModePref === "light"
+        ? { chartThemePreset: presetId as any }
+        : {}),
     });
   }
 
   const activePreset = $derived(
-    resolveThemeConfig(settings.themePreset || 'signature', savedUserThemes)
+    resolveThemeConfig(settings.themePreset || "signature", savedUserThemes),
   );
   const defaultPalette = $derived<CustomThemePalette>(
-    buildCustomPaletteFromPreset((settings.themePreset as ThemePresetId) || 'signature')
+    buildCustomPaletteFromPreset(
+      (settings.themePreset as ThemePresetId) || "signature",
+    ),
   );
   const currentPalette = $derived<CustomThemePalette>(
-    settings.customPalette || defaultPalette
+    settings.customPalette || defaultPalette,
   );
   const isCustomActive = $derived(
-    Boolean(settings.customPalette && settings.customPalette.enabled !== false)
+    Boolean(settings.customPalette && settings.customPalette.enabled !== false),
   );
   const isPaletteDark = $derived(
-    isDarkColor(currentPalette.general?.background || activePreset.chart.background || '#0F0F0F')
+    isDarkColor(
+      currentPalette.general?.background ||
+        activePreset.chart.background ||
+        "#0F0F0F",
+    ),
   );
 
-  function handleSelectChartPreset(preset: { id: string; mode: 'dark' | 'light' }) {
+  function handleSelectChartPreset(preset: {
+    id: string;
+    mode: "dark" | "light";
+  }) {
     onUpdateSettings({
       chartThemePreset: preset.id,
       customPalette: null as any,
@@ -134,12 +251,14 @@
 
   function handleSelectAppThemeDropdown(selectedId: string) {
     const target = allAvailablePresets.find((p) => p.id === selectedId);
-    const mode = target?.mode || 'dark';
+    const mode = target?.mode || "dark";
     onUpdateSettings({
       themePreset: selectedId,
       theme: selectedId as any,
       colorModePreference: mode,
-      ...(mode === 'dark' ? { activeDarkPreset: selectedId } : { activeLightPreset: selectedId }),
+      ...(mode === "dark"
+        ? { activeDarkPreset: selectedId }
+        : { activeLightPreset: selectedId }),
       customPalette: null as any,
     });
   }
@@ -153,25 +272,29 @@
     });
   }
 
-  function handleSelectPreset(preset: { id: string; mode: 'dark' | 'light' }) {
+  function handleSelectPreset(preset: { id: string; mode: "dark" | "light" }) {
     if (syncChartWithAppTheme) {
       onUpdateSettings({
         themePreset: preset.id,
         chartThemePreset: preset.id,
         theme: preset.id as any,
         colorModePreference: preset.mode,
-        ...(preset.mode === 'dark' ? { activeDarkPreset: preset.id } : { activeLightPreset: preset.id }),
+        ...(preset.mode === "dark"
+          ? { activeDarkPreset: preset.id }
+          : { activeLightPreset: preset.id }),
         customPalette: null as any,
         customBullColor: undefined,
         customBearColor: undefined,
       });
     } else {
-      if (targetThemeSelection === 'app') {
+      if (targetThemeSelection === "app") {
         onUpdateSettings({
           themePreset: preset.id,
           theme: preset.id as any,
           colorModePreference: preset.mode,
-          ...(preset.mode === 'dark' ? { activeDarkPreset: preset.id } : { activeLightPreset: preset.id }),
+          ...(preset.mode === "dark"
+            ? { activeDarkPreset: preset.id }
+            : { activeLightPreset: preset.id }),
           customPalette: null as any,
         });
       } else {
@@ -181,8 +304,8 @@
   }
 
   function handleOpenSaveAs() {
-    saveAsThemeName = '';
-    saveAsThemeMode = isPaletteDark ? 'dark' : 'light';
+    saveAsThemeName = "";
+    saveAsThemeMode = isPaletteDark ? "dark" : "light";
     saveAsError = null;
     isSaveAsModalOpen = true;
   }
@@ -190,24 +313,30 @@
   function handleConfirmSaveAs() {
     const cleanName = saveAsThemeName.trim();
     if (!cleanName) {
-      saveAsError = 'Nama tema tidak boleh kosong.';
+      saveAsError = "Nama tema tidak boleh kosong.";
       return;
     }
 
     const lowerName = cleanName.toLowerCase();
     const isBuiltInDuplicate = Object.values(THEME_PRESETS).some(
-      (p) => p.name.trim().toLowerCase() === lowerName || p.id.toLowerCase() === lowerName
+      (p) =>
+        p.name.trim().toLowerCase() === lowerName ||
+        p.id.toLowerCase() === lowerName,
     );
     const isUserDuplicate = savedUserThemes.some(
-      (t) => t.name.trim().toLowerCase() === lowerName
+      (t) => t.name.trim().toLowerCase() === lowerName,
     );
 
     if (isBuiltInDuplicate || isUserDuplicate) {
-      saveAsError = 'Nama tema sudah digunakan, gunakan nama lain.';
+      saveAsError = "Nama tema sudah digunakan, gunakan nama lain.";
       return;
     }
 
-    const newTheme = createUserTheme(cleanName, saveAsThemeMode, currentPalette);
+    const newTheme = createUserTheme(
+      cleanName,
+      saveAsThemeMode,
+      currentPalette,
+    );
     const updatedList = [...savedUserThemes, newTheme];
 
     onUpdateSettings({
@@ -218,13 +347,19 @@
     });
 
     isSaveAsModalOpen = false;
-    saveAsThemeName = '';
+    saveAsThemeName = "";
     saveAsError = null;
     copyFeedback = `Tema "${newTheme.name}" berhasil disimpan!`;
-    setTimeout(() => { copyFeedback = null; }, 2500);
+    setTimeout(() => {
+      copyFeedback = null;
+    }, 2500);
   }
 
-  function handleOpenRename(themeId: string, currentName: string, e: MouseEvent) {
+  function handleOpenRename(
+    themeId: string,
+    currentName: string,
+    e: MouseEvent,
+  ) {
     e.stopPropagation();
     renameTargetThemeId = themeId;
     renameThemeName = currentName;
@@ -236,42 +371,64 @@
     if (!renameTargetThemeId) return;
     const cleanName = renameThemeName.trim();
     if (!cleanName) {
-      renameError = 'Nama tema tidak boleh kosong.';
+      renameError = "Nama tema tidak boleh kosong.";
       return;
     }
 
     const lowerName = cleanName.toLowerCase();
     const isBuiltInDuplicate = Object.values(THEME_PRESETS).some(
-      (p) => p.name.trim().toLowerCase() === lowerName || p.id.toLowerCase() === lowerName
+      (p) =>
+        p.name.trim().toLowerCase() === lowerName ||
+        p.id.toLowerCase() === lowerName,
     );
     const isUserDuplicate = savedUserThemes.some(
-      (t) => t.id !== renameTargetThemeId && t.name.trim().toLowerCase() === lowerName
+      (t) =>
+        t.id !== renameTargetThemeId &&
+        t.name.trim().toLowerCase() === lowerName,
     );
 
     if (isBuiltInDuplicate || isUserDuplicate) {
-      renameError = 'Nama tema sudah digunakan, gunakan nama lain.';
+      renameError = "Nama tema sudah digunakan, gunakan nama lain.";
       return;
     }
 
     try {
-      const updatedList = renameUserTheme(savedUserThemes, renameTargetThemeId, cleanName);
+      const updatedList = renameUserTheme(
+        savedUserThemes,
+        renameTargetThemeId,
+        cleanName,
+      );
       onUpdateSettings({ savedUserThemes: updatedList });
       isRenameModalOpen = false;
       renameTargetThemeId = null;
-      renameThemeName = '';
+      renameThemeName = "";
       copyFeedback = `Nama tema diperbarui menjadi "${cleanName}"!`;
-      setTimeout(() => { copyFeedback = null; }, 2500);
+      setTimeout(() => {
+        copyFeedback = null;
+      }, 2500);
     } catch (err: any) {
-      renameError = err?.message || 'Gagal mengubah nama tema.';
+      renameError = err?.message || "Gagal mengubah nama tema.";
     }
   }
 
-  function handleDeleteUserTheme(themeId: string, themeName: string, e: MouseEvent) {
+  function handleDeleteUserTheme(
+    themeId: string,
+    themeName: string,
+    e: MouseEvent,
+  ) {
     e.stopPropagation();
     try {
       const updatedList = deleteUserTheme(savedUserThemes, themeId);
-      const fallbackApp = resolveDeletedThemeFallback(themeId, settings.themePreset, 'signature');
-      const fallbackChart = resolveDeletedThemeFallback(themeId, settings.chartThemePreset, 'signature');
+      const fallbackApp = resolveDeletedThemeFallback(
+        themeId,
+        settings.themePreset,
+        "signature",
+      );
+      const fallbackChart = resolveDeletedThemeFallback(
+        themeId,
+        settings.chartThemePreset,
+        "signature",
+      );
 
       onUpdateSettings({
         savedUserThemes: updatedList,
@@ -279,32 +436,50 @@
         chartThemePreset: fallbackChart,
       });
       copyFeedback = `Tema "${themeName}" berhasil dihapus.`;
-      setTimeout(() => { copyFeedback = null; }, 2500);
+      setTimeout(() => {
+        copyFeedback = null;
+      }, 2500);
     } catch (err: any) {
-      copyFeedback = `Gagal menghapus: ${err?.message || 'Error'}`;
-      setTimeout(() => { copyFeedback = null; }, 3000);
+      copyFeedback = `Gagal menghapus: ${err?.message || "Error"}`;
+      setTimeout(() => {
+        copyFeedback = null;
+      }, 3000);
     }
   }
 
-  async function handleExportUserThemeText(themeId: string, themeName: string, e: MouseEvent) {
+  async function handleExportUserThemeText(
+    themeId: string,
+    themeName: string,
+    e: MouseEvent,
+  ) {
     e.stopPropagation();
     const userTheme = savedUserThemes.find((t) => t.id === themeId);
     if (!userTheme) return;
     try {
-      await navigator.clipboard.writeText(serializeCustomPaletteText(userTheme.palette));
+      await navigator.clipboard.writeText(
+        serializeCustomPaletteText(userTheme.palette),
+      );
       copyFeedback = `Palet teks "${themeName}" disalin ke clipboard!`;
-      setTimeout(() => { copyFeedback = null; }, 2500);
+      setTimeout(() => {
+        copyFeedback = null;
+      }, 2500);
     } catch (_) {}
   }
 
-  async function handleExportUserThemeJson(themeId: string, themeName: string, e: MouseEvent) {
+  async function handleExportUserThemeJson(
+    themeId: string,
+    themeName: string,
+    e: MouseEvent,
+  ) {
     e.stopPropagation();
     const userTheme = savedUserThemes.find((t) => t.id === themeId);
     if (!userTheme) return;
     try {
       await navigator.clipboard.writeText(JSON.stringify(userTheme, null, 2));
       copyFeedback = `Tema "${themeName}" disalin ke clipboard sebagai JSON!`;
-      setTimeout(() => { copyFeedback = null; }, 2500);
+      setTimeout(() => {
+        copyFeedback = null;
+      }, 2500);
     } catch (_) {}
   }
 
@@ -312,8 +487,8 @@
 
   function sanitizeHex(val: string): string | null {
     let v = val.trim();
-    if (!v.startsWith('#') && /^[0-9A-Fa-f]{3,8}$/.test(v)) {
-      v = '#' + v;
+    if (!v.startsWith("#") && /^[0-9A-Fa-f]{3,8}$/.test(v)) {
+      v = "#" + v;
     }
     if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(v)) {
       return v;
@@ -321,10 +496,12 @@
     return null;
   }
 
-  function handleUpdatePaletteColor<T extends 'candles' | 'general'>(
+  function handleUpdatePaletteColor<T extends "candles" | "general">(
     section: T,
-    key: T extends 'candles' ? keyof CustomCandleColors : keyof CustomGeneralColors,
-    val: string
+    key: T extends "candles"
+      ? keyof CustomCandleColors
+      : keyof CustomGeneralColors,
+    val: string,
   ) {
     const clean = sanitizeHex(val);
     if (!clean) return;
@@ -341,23 +518,31 @@
   }
 
   const handleUpdateCandle = (key: keyof CustomCandleColors, val: string) =>
-    handleUpdatePaletteColor('candles', key, val);
+    handleUpdatePaletteColor("candles", key, val);
   const handleUpdateGeneral = (key: keyof CustomGeneralColors, val: string) =>
-    handleUpdatePaletteColor('general', key, val);
+    handleUpdatePaletteColor("general", key, val);
 
   async function handleCopyJson() {
     try {
-      await navigator.clipboard.writeText(serializeCustomPaletteJson(currentPalette));
-      copyFeedback = 'JSON palet berhasil disalin!';
-      setTimeout(() => { copyFeedback = null; }, 2500);
+      await navigator.clipboard.writeText(
+        serializeCustomPaletteJson(currentPalette),
+      );
+      copyFeedback = "JSON palet berhasil disalin!";
+      setTimeout(() => {
+        copyFeedback = null;
+      }, 2500);
     } catch (_) {}
   }
 
   async function handleCopyText() {
     try {
-      await navigator.clipboard.writeText(serializeCustomPaletteText(currentPalette));
-      copyFeedback = 'Format teks Hex berhasil disalin!';
-      setTimeout(() => { copyFeedback = null; }, 2500);
+      await navigator.clipboard.writeText(
+        serializeCustomPaletteText(currentPalette),
+      );
+      copyFeedback = "Format teks Hex berhasil disalin!";
+      setTimeout(() => {
+        copyFeedback = null;
+      }, 2500);
     } catch (_) {}
   }
 
@@ -365,12 +550,14 @@
     try {
       await navigator.clipboard.writeText(hex);
       copyFeedback = `${label} (${hex}) disalin!`;
-      setTimeout(() => { copyFeedback = null; }, 2000);
+      setTimeout(() => {
+        copyFeedback = null;
+      }, 2000);
     } catch (_) {}
   }
 
   function handleOpenPaste() {
-    pasteInputText = '';
+    pasteInputText = "";
     pasteError = null;
     isPasteModalOpen = true;
   }
@@ -382,12 +569,15 @@
         customPalette: parsed,
       });
       isPasteModalOpen = false;
-      pasteInputText = '';
+      pasteInputText = "";
       pasteError = null;
-      copyFeedback = 'Palet kustom berhasil diterapkan!';
-      setTimeout(() => { copyFeedback = null; }, 2500);
+      copyFeedback = "Palet kustom berhasil diterapkan!";
+      setTimeout(() => {
+        copyFeedback = null;
+      }, 2500);
     } else {
-      pasteError = 'Format tidak dapat dikenali. Tempel JSON atau teks baris (misal: "Bullish body: #D4A5A5").';
+      pasteError =
+        'Format tidak dapat dikenali. Tempel JSON atau teks baris (misal: "Bullish body: #D4A5A5").';
     }
   }
 
@@ -402,19 +592,23 @@
   // Kustomisasi latar belakang grafik (solid & vertikal gradient) (#128)
   const customBg = $derived<CustomChartBackgroundConfig>(
     settings.customChartBackground || {
-      mode: 'theme',
-      solidColor: '#0F0F0F',
-      gradientTop: '#0F0F0F',
-      gradientBottom: '#181A20',
-    }
+      mode: "theme",
+      solidColor: "#0F0F0F",
+      gradientTop: "#0F0F0F",
+      gradientBottom: "#181A20",
+    },
   );
-  const bgMode = $derived(customBg.mode || 'theme');
-  const solidColorVal = $derived(customBg.solidColor || activePreset.chart.background || '#0F0F0F');
-  const gradientTopVal = $derived(customBg.gradientTop || activePreset.chart.background || '#0F0F0F');
-  const gradientBottomVal = $derived(customBg.gradientBottom || '#181A20');
-  const isCustomBgActive = $derived(bgMode !== 'theme');
+  const bgMode = $derived(customBg.mode || "theme");
+  const solidColorVal = $derived(
+    customBg.solidColor || activePreset.chart.background || "#0F0F0F",
+  );
+  const gradientTopVal = $derived(
+    customBg.gradientTop || activePreset.chart.background || "#0F0F0F",
+  );
+  const gradientBottomVal = $derived(customBg.gradientBottom || "#181A20");
+  const isCustomBgActive = $derived(bgMode !== "theme");
 
-  function handleSetBgMode(mode: 'theme' | 'solid' | 'gradient') {
+  function handleSetBgMode(mode: "theme" | "solid" | "gradient") {
     onUpdateSettings({
       customChartBackground: {
         ...customBg,
@@ -454,7 +648,7 @@
     onUpdateSettings({
       customChartBackground: {
         ...customBg,
-        mode: 'theme',
+        mode: "theme",
       },
     });
   }
@@ -467,16 +661,21 @@
       <div>
         <h4 class="section-title">Mode Warna & Sinkronisasi Sistem</h4>
         <p class="section-subtitle">
-          Pilih mode warna antarmuka: ikuti skema OS host secara dinamis via System Theme Bridge, atau kunci ke Mode Gelap / Mode Terang.
+          Pilih mode warna antarmuka: ikuti skema OS host secara dinamis via
+          System Theme Bridge, atau kunci ke Mode Gelap / Mode Terang.
         </p>
       </div>
 
       <!-- Segmented Control untuk colorModePreference -->
-      <div class="theme-mode-filters" role="radiogroup" aria-label="Preferensi Mode Warna">
+      <div
+        class="theme-mode-filters"
+        role="radiogroup"
+        aria-label="Preferensi Mode Warna"
+      >
         <button
           type="button"
           class="filter-chip {colorModePref === 'system' ? 'active' : ''}"
-          onclick={() => handleSetColorMode('system')}
+          onclick={() => handleSetColorMode("system")}
           title="Ikuti preferensi tema sistem operasi secara otomatis"
         >
           <Monitor size={12} />
@@ -485,7 +684,7 @@
         <button
           type="button"
           class="filter-chip {colorModePref === 'dark' ? 'active' : ''}"
-          onclick={() => handleSetColorMode('dark')}
+          onclick={() => handleSetColorMode("dark")}
           title="Paksa antarmuka terminal ke Mode Gelap"
         >
           <Moon size={12} />
@@ -494,7 +693,7 @@
         <button
           type="button"
           class="filter-chip {colorModePref === 'light' ? 'active' : ''}"
-          onclick={() => handleSetColorMode('light')}
+          onclick={() => handleSetColorMode("light")}
           title="Paksa antarmuka terminal ke Mode Terang"
         >
           <Sun size={12} />
@@ -507,12 +706,16 @@
     <div class="theme-defaults-grid">
       <div class="setting-row default-preset-item">
         <div class="setting-info">
-          <span class="setting-label">Preset Default Mode Gelap (activeDarkPreset)</span>
-          <span class="setting-desc">Tema yang otomatis aktif saat berada di Mode Gelap</span>
+          <span class="setting-label"
+            >Preset Default Mode Gelap (activeDarkPreset)</span
+          >
+          <span class="setting-desc"
+            >Tema yang otomatis aktif saat berada di Mode Gelap</span
+          >
         </div>
         <select
           class="select-input"
-          value={settings.activeDarkPreset || 'signature'}
+          value={settings.activeDarkPreset || "signature"}
           onchange={(e) => handleSetDarkPreset(e.currentTarget.value)}
         >
           {#each darkPresets as p}
@@ -523,12 +726,16 @@
 
       <div class="setting-row default-preset-item">
         <div class="setting-info">
-          <span class="setting-label">Preset Default Mode Terang (activeLightPreset)</span>
-          <span class="setting-desc">Tema yang otomatis aktif saat berada di Mode Terang</span>
+          <span class="setting-label"
+            >Preset Default Mode Terang (activeLightPreset)</span
+          >
+          <span class="setting-desc"
+            >Tema yang otomatis aktif saat berada di Mode Terang</span
+          >
         </div>
         <select
           class="select-input"
-          value={settings.activeLightPreset || 'red_folder'}
+          value={settings.activeLightPreset || "red_folder"}
           onchange={(e) => handleSetLightPreset(e.currentTarget.value)}
         >
           {#each lightPresets as p}
@@ -543,7 +750,9 @@
       <div class="setting-info">
         <span class="setting-label">Sinkronkan Tema Chart dengan Aplikasi</span>
         <span class="setting-desc">
-          Saat aktif, tema kanvas chart otomatis mengikuti tema aplikasi. Nonaktifkan untuk memilih tema aplikasi dan tema chart secara terpisah.
+          Saat aktif, tema kanvas chart otomatis mengikuti tema aplikasi.
+          Nonaktifkan untuk memilih tema aplikasi dan tema chart secara
+          terpisah.
         </span>
       </div>
       <label class="toggle-switch">
@@ -554,7 +763,9 @@
             const checked = e.currentTarget.checked;
             onUpdateSettings({
               syncChartWithAppTheme: checked,
-              ...(checked ? { chartThemePreset: settings.themePreset || 'signature' } : {}),
+              ...(checked
+                ? { chartThemePreset: settings.themePreset || "signature" }
+                : {}),
             });
           }}
           aria-label="Sinkronkan Tema Chart dengan Aplikasi"
@@ -569,50 +780,86 @@
         <div class="setting-row default-preset-item">
           <div class="setting-info">
             <span class="setting-label">Tema Aplikasi (Desktop Shell)</span>
-            <span class="setting-desc">Bilah header, sidebar, dock, status bar, dialog, dan Pine IDE</span>
+            <span class="setting-desc"
+              >Bilah header, sidebar, dock, status bar, dialog, dan Pine IDE</span
+            >
           </div>
           <select
             class="select-input"
-            value={settings.themePreset || 'signature'}
-            onchange={(e) => handleSelectAppThemeDropdown(e.currentTarget.value)}
+            value={settings.themePreset || "signature"}
+            onchange={(e) =>
+              handleSelectAppThemeDropdown(e.currentTarget.value)}
           >
             {#each allAvailablePresets as p}
-              <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ''}</option>
+              <option value={p.id}
+                >{p.name} {p.badge ? `(${p.badge})` : ""}</option
+              >
             {/each}
           </select>
         </div>
 
         <div class="setting-row default-preset-item">
           <div class="setting-info">
-            <span class="setting-label">Tema Kanvas Chart (chartThemePreset)</span>
-            <span class="setting-desc">Candlestick, gridline, crosshair, latar kanvas, dan watermark</span>
+            <span class="setting-label"
+              >Tema Kanvas Chart (chartThemePreset)</span
+            >
+            <span class="setting-desc"
+              >Candlestick, gridline, crosshair, latar kanvas, dan watermark</span
+            >
           </div>
           <select
             class="select-input"
-            value={settings.chartThemePreset || 'signature'}
-            onchange={(e) => handleSelectChartThemeDropdown(e.currentTarget.value)}
+            value={settings.chartThemePreset || "signature"}
+            onchange={(e) =>
+              handleSelectChartThemeDropdown(e.currentTarget.value)}
           >
             {#each allAvailablePresets as p}
-              <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ''}</option>
+              <option value={p.id}
+                >{p.name} {p.badge ? `(${p.badge})` : ""}</option
+              >
             {/each}
           </select>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Watermark Simbol di Kanvas</span>
+            <span class="setting-desc"
+              >Tampilkan simbol ticker besar di belakang grafik kanvas</span
+            >
+          </div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={settings.showWatermark !== false}
+              onchange={(e) =>
+                onUpdateSettings({ showWatermark: e.currentTarget.checked })}
+            />
+            <span class="slider round"></span>
+          </label>
         </div>
       </div>
 
       <div class="target-selection-strip">
         <span class="target-label">Target Penerapan Klik Kartu:</span>
-        <div class="target-chips" role="radiogroup" aria-label="Target Penerapan Klik Kartu">
+        <div
+          class="target-chips"
+          role="radiogroup"
+          aria-label="Target Penerapan Klik Kartu"
+        >
           <button
             type="button"
             class="filter-chip {targetThemeSelection === 'app' ? 'active' : ''}"
-            onclick={() => (targetThemeSelection = 'app')}
+            onclick={() => (targetThemeSelection = "app")}
           >
             Tema Aplikasi
           </button>
           <button
             type="button"
-            class="filter-chip {targetThemeSelection === 'chart' ? 'active' : ''}"
-            onclick={() => (targetThemeSelection = 'chart')}
+            class="filter-chip {targetThemeSelection === 'chart'
+              ? 'active'
+              : ''}"
+            onclick={() => (targetThemeSelection = "chart")}
           >
             Tema Kanvas Chart
           </button>
@@ -625,23 +872,29 @@
     <div>
       <h4 class="section-title">Preset Tema Tampilan & Candlestick</h4>
       <p class="section-subtitle">
-        Pilih skema warna antarmuka dan palet candlestick. Tersedia tema gelap (Dark) dan terang (Light) dengan sinkronisasi penuh ke WebGL2 Vela & Pine IDE.
+        Pilih skema warna antarmuka dan palet candlestick. Tersedia tema gelap
+        (Dark) dan terang (Light) dengan sinkronisasi penuh ke WebGL2 Vela &
+        Pine IDE.
       </p>
     </div>
 
     <!-- Mode Filter Chips -->
-    <div class="theme-mode-filters" role="radiogroup" aria-label="Filter Mode Tema">
+    <div
+      class="theme-mode-filters"
+      role="radiogroup"
+      aria-label="Filter Mode Tema"
+    >
       <button
         type="button"
         class="filter-chip {filterMode === 'all' ? 'active' : ''}"
-        onclick={() => setFilterMode('all')}
+        onclick={() => setFilterMode("all")}
       >
         <span>Semua ({allAvailablePresets.length})</span>
       </button>
       <button
         type="button"
         class="filter-chip {filterMode === 'dark' ? 'active' : ''}"
-        onclick={() => setFilterMode('dark')}
+        onclick={() => setFilterMode("dark")}
       >
         <Moon size={11} />
         <span>Gelap ({darkPresets.length})</span>
@@ -649,7 +902,7 @@
       <button
         type="button"
         class="filter-chip {filterMode === 'light' ? 'active' : ''}"
-        onclick={() => setFilterMode('light')}
+        onclick={() => setFilterMode("light")}
       >
         <Sun size={11} />
         <span>Terang ({lightPresets.length})</span>
@@ -659,13 +912,21 @@
 
   <div class="theme-presets-grid">
     {#each filteredPresets as preset}
-      {@const isSelectedApp = (settings.themePreset || 'signature') === preset.id}
-      {@const isSelectedChart = (settings.chartThemePreset || 'signature') === preset.id}
-      {@const isSelected = syncChartWithAppTheme ? isSelectedApp : (targetThemeSelection === 'app' ? isSelectedApp : isSelectedChart)}
+      {@const isSelectedApp =
+        (settings.themePreset || "signature") === preset.id}
+      {@const isSelectedChart =
+        (settings.chartThemePreset || "signature") === preset.id}
+      {@const isSelected = syncChartWithAppTheme
+        ? isSelectedApp
+        : targetThemeSelection === "app"
+          ? isSelectedApp
+          : isSelectedChart}
       {@const isCustom = !isBuiltInTheme(preset.id)}
       <button
         type="button"
-        class="theme-card {isSelected ? 'selected' : ''} {isCustom ? 'custom-theme-card' : ''}"
+        class="theme-card {isSelected ? 'selected' : ''} {isCustom
+          ? 'custom-theme-card'
+          : ''}"
         onclick={() => handleSelectPreset(preset)}
       >
         <div class="theme-card-header">
@@ -674,7 +935,7 @@
             {#if isCustom}
               <span class="mode-pill custom">[CUSTOM]</span>
             {/if}
-            {#if preset.mode === 'light'}
+            {#if preset.mode === "light"}
               <span class="mode-pill light"><Sun size={9} /> LIGHT</span>
             {:else}
               <span class="mode-pill dark"><Moon size={9} /> DARK</span>
@@ -687,20 +948,45 @@
 
         <!-- Preview Swatches -->
         <div class="theme-swatches">
-          <div class="swatch-item" title="Latar Kanvas ({preset.tokens.bgDarkest})">
-            <span class="swatch-color" style="background-color: {preset.tokens.bgDarkest}; border: 1px solid rgba(255,255,255,0.2);"></span>
+          <div
+            class="swatch-item"
+            title="Latar Kanvas ({preset.tokens.bgDarkest})"
+          >
+            <span
+              class="swatch-color"
+              style="background-color: {preset.tokens
+                .bgDarkest}; border: 1px solid rgba(255,255,255,0.2);"
+            ></span>
             <span class="swatch-label">Latar</span>
           </div>
-          <div class="swatch-item" title="Candlestick Bull ({preset.chart.upColor})">
-            <span class="swatch-color" style="background-color: {preset.chart.upColor};"></span>
+          <div
+            class="swatch-item"
+            title="Candlestick Bull ({preset.chart.upColor})"
+          >
+            <span
+              class="swatch-color"
+              style="background-color: {preset.chart.upColor};"
+            ></span>
             <span class="swatch-label">Bull</span>
           </div>
-          <div class="swatch-item" title="Candlestick Bear ({preset.chart.downColor})">
-            <span class="swatch-color" style="background-color: {preset.chart.downColor};"></span>
+          <div
+            class="swatch-item"
+            title="Candlestick Bear ({preset.chart.downColor})"
+          >
+            <span
+              class="swatch-color"
+              style="background-color: {preset.chart.downColor};"
+            ></span>
             <span class="swatch-label">Bear</span>
           </div>
-          <div class="swatch-item" title="Aksen Brand ({preset.tokens.brandPrimary})">
-            <span class="swatch-color" style="background-color: {preset.tokens.brandPrimary};"></span>
+          <div
+            class="swatch-item"
+            title="Aksen Brand ({preset.tokens.brandPrimary})"
+          >
+            <span
+              class="swatch-color"
+              style="background-color: {preset.tokens.brandPrimary};"
+            ></span>
             <span class="swatch-label">Aksen</span>
           </div>
         </div>
@@ -709,25 +995,48 @@
           <div class="theme-status">
             {#if syncChartWithAppTheme}
               {#if isSelectedApp}
-                <span class="status-active"><Check size={12} /> Sedang Digunakan</span>
+                <span class="status-active"
+                  ><Check size={12} /> Sedang Digunakan</span
+                >
               {:else}
                 <span class="status-inactive">Klik untuk Terapkan</span>
               {/if}
             {:else}
               {#if isSelectedApp && isSelectedChart}
-                <span class="status-active"><Check size={12} /> Aktif: Aplikasi & Chart</span>
+                <span class="status-active"
+                  ><Check size={12} /> Aktif: Aplikasi & Chart</span
+                >
               {:else if isSelectedApp}
-                <span class="status-active"><Check size={12} /> Aktif: Tema Aplikasi</span>
+                <span class="status-active"
+                  ><Check size={12} /> Aktif: Tema Aplikasi</span
+                >
               {:else if isSelectedChart}
-                <span class="status-active"><Check size={12} /> Aktif: Tema Chart</span>
+                <span class="status-active"
+                  ><Check size={12} /> Aktif: Tema Chart</span
+                >
               {:else}
-                <span class="status-inactive">Klik untuk {targetThemeSelection === 'app' ? 'Aplikasi' : 'Chart'}</span>
+                <span class="status-inactive"
+                  >Klik untuk {targetThemeSelection === "app"
+                    ? "Aplikasi"
+                    : "Chart"}</span
+                >
               {/if}
             {/if}
           </div>
 
           {#if isCustom}
-            <div class="custom-card-actions" onclick={(e) => e.stopPropagation()}>
+            <div
+              class="custom-card-actions"
+              onclick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                class="btn-card-action"
+                title="Edit warna tema"
+                onclick={(e) => handleStartEditThemeColors(preset, e)}
+              >
+                <Palette size={11} />
+              </button>
               <button
                 type="button"
                 class="btn-card-action"
@@ -740,7 +1049,8 @@
                 type="button"
                 class="btn-card-action"
                 title="Ekspor palet sebagai teks Hex"
-                onclick={(e) => handleExportUserThemeText(preset.id, preset.name, e)}
+                onclick={(e) =>
+                  handleExportUserThemeText(preset.id, preset.name, e)}
               >
                 <FileText size={11} />
               </button>
@@ -748,7 +1058,8 @@
                 type="button"
                 class="btn-card-action"
                 title="Ekspor tema sebagai JSON"
-                onclick={(e) => handleExportUserThemeJson(preset.id, preset.name, e)}
+                onclick={(e) =>
+                  handleExportUserThemeJson(preset.id, preset.name, e)}
               >
                 <Download size={11} />
               </button>
@@ -756,7 +1067,8 @@
                 type="button"
                 class="btn-card-action btn-card-delete"
                 title="Hapus tema"
-                onclick={(e) => handleDeleteUserTheme(preset.id, preset.name, e)}
+                onclick={(e) =>
+                  handleDeleteUserTheme(preset.id, preset.name, e)}
               >
                 <Trash2 size={11} />
               </button>
@@ -787,14 +1099,40 @@
             {/if}
           </span>
         </div>
+
+        {#if editingUserThemeId}
+          <div class="in-place-edit-banner">
+            <span>Sedang Mengedit Warna: {editingUserThemeName}</span>
+            <div class="in-place-actions">
+              <button
+                type="button"
+                class="btn-studio-action btn-save"
+                onclick={handleSaveInPlaceThemeColors}
+              >
+                <Save size={14} /> Simpan Perubahan ke Tema Ini
+              </button>
+              <button
+                type="button"
+                class="btn-studio-action btn-reset"
+                onclick={handleCancelEditThemeColors}
+              >
+                <X size={14} /> Batal
+              </button>
+            </div>
+          </div>
+        {/if}
         <span class="custom-studio-desc">
-          Kustomisasi 6 warna candlestick dan 3 warna umum. Perubahan langsung diaplikasikan serentak ke UI Trawangan, Pine IDE, kanvas WebGL2 Vela, dan dialog pengaturan bawaan Vela.
+          Kustomisasi 6 warna candlestick dan 3 warna umum. Perubahan langsung
+          diaplikasikan serentak ke UI Trawangan, Pine IDE, kanvas WebGL2 Vela,
+          dan dialog pengaturan bawaan Vela.
         </span>
       </div>
 
       <div class="custom-studio-actions">
         {#if copyFeedback}
-          <span class="feedback-toast"><CheckCheck size={12} /> {copyFeedback}</span>
+          <span class="feedback-toast"
+            ><CheckCheck size={12} /> {copyFeedback}</span
+          >
         {/if}
         <button
           type="button"
@@ -849,7 +1187,9 @@
     <div class="studio-category">
       <div class="category-header">
         <span class="category-title">Warna Candlestick (Candle Colors)</span>
-        <span class="category-sub">6 atribut lilin individual untuk kondisi Bullish dan Bearish</span>
+        <span class="category-sub"
+          >6 atribut lilin individual untuk kondisi Bullish dan Bearish</span
+        >
       </div>
 
       <div class="studio-pickers-grid">
@@ -860,7 +1200,11 @@
             <button
               type="button"
               class="btn-mini-copy"
-              onclick={() => handleCopySingle(currentPalette.candles.bearBody, 'Bearish body')}
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.candles.bearBody,
+                  "Bearish body",
+                )}
               title="Salin kode hex"
             >
               <Copy size={10} />
@@ -871,7 +1215,8 @@
               type="color"
               class="color-chip"
               value={currentPalette.candles.bearBody}
-              onchange={(e) => handleUpdateCandle('bearBody', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bearBody", e.currentTarget.value)}
               aria-label="Bearish body"
             />
             <input
@@ -879,7 +1224,8 @@
               class="hex-box mono-nums"
               value={currentPalette.candles.bearBody}
               maxlength="7"
-              onchange={(e) => handleUpdateCandle('bearBody', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bearBody", e.currentTarget.value)}
             />
           </div>
         </div>
@@ -891,7 +1237,11 @@
             <button
               type="button"
               class="btn-mini-copy"
-              onclick={() => handleCopySingle(currentPalette.candles.bearWick, 'Bearish wick')}
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.candles.bearWick,
+                  "Bearish wick",
+                )}
               title="Salin kode hex"
             >
               <Copy size={10} />
@@ -902,7 +1252,8 @@
               type="color"
               class="color-chip"
               value={currentPalette.candles.bearWick}
-              onchange={(e) => handleUpdateCandle('bearWick', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bearWick", e.currentTarget.value)}
               aria-label="Bearish wick"
             />
             <input
@@ -910,7 +1261,8 @@
               class="hex-box mono-nums"
               value={currentPalette.candles.bearWick}
               maxlength="7"
-              onchange={(e) => handleUpdateCandle('bearWick', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bearWick", e.currentTarget.value)}
             />
           </div>
         </div>
@@ -922,7 +1274,11 @@
             <button
               type="button"
               class="btn-mini-copy"
-              onclick={() => handleCopySingle(currentPalette.candles.bearBorder, 'Bearish border')}
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.candles.bearBorder,
+                  "Bearish border",
+                )}
               title="Salin kode hex"
             >
               <Copy size={10} />
@@ -933,7 +1289,8 @@
               type="color"
               class="color-chip"
               value={currentPalette.candles.bearBorder}
-              onchange={(e) => handleUpdateCandle('bearBorder', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bearBorder", e.currentTarget.value)}
               aria-label="Bearish border"
             />
             <input
@@ -941,7 +1298,8 @@
               class="hex-box mono-nums"
               value={currentPalette.candles.bearBorder}
               maxlength="7"
-              onchange={(e) => handleUpdateCandle('bearBorder', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bearBorder", e.currentTarget.value)}
             />
           </div>
         </div>
@@ -953,7 +1311,11 @@
             <button
               type="button"
               class="btn-mini-copy"
-              onclick={() => handleCopySingle(currentPalette.candles.bullBody, 'Bullish body')}
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.candles.bullBody,
+                  "Bullish body",
+                )}
               title="Salin kode hex"
             >
               <Copy size={10} />
@@ -964,7 +1326,8 @@
               type="color"
               class="color-chip"
               value={currentPalette.candles.bullBody}
-              onchange={(e) => handleUpdateCandle('bullBody', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bullBody", e.currentTarget.value)}
               aria-label="Bullish body"
             />
             <input
@@ -972,7 +1335,8 @@
               class="hex-box mono-nums"
               value={currentPalette.candles.bullBody}
               maxlength="7"
-              onchange={(e) => handleUpdateCandle('bullBody', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bullBody", e.currentTarget.value)}
             />
           </div>
         </div>
@@ -984,7 +1348,11 @@
             <button
               type="button"
               class="btn-mini-copy"
-              onclick={() => handleCopySingle(currentPalette.candles.bullWick, 'Bullish wick')}
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.candles.bullWick,
+                  "Bullish wick",
+                )}
               title="Salin kode hex"
             >
               <Copy size={10} />
@@ -995,7 +1363,8 @@
               type="color"
               class="color-chip"
               value={currentPalette.candles.bullWick}
-              onchange={(e) => handleUpdateCandle('bullWick', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bullWick", e.currentTarget.value)}
               aria-label="Bullish wick"
             />
             <input
@@ -1003,7 +1372,8 @@
               class="hex-box mono-nums"
               value={currentPalette.candles.bullWick}
               maxlength="7"
-              onchange={(e) => handleUpdateCandle('bullWick', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bullWick", e.currentTarget.value)}
             />
           </div>
         </div>
@@ -1015,7 +1385,11 @@
             <button
               type="button"
               class="btn-mini-copy"
-              onclick={() => handleCopySingle(currentPalette.candles.bullBorder, 'Bullish border')}
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.candles.bullBorder,
+                  "Bullish border",
+                )}
               title="Salin kode hex"
             >
               <Copy size={10} />
@@ -1026,7 +1400,8 @@
               type="color"
               class="color-chip"
               value={currentPalette.candles.bullBorder}
-              onchange={(e) => handleUpdateCandle('bullBorder', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bullBorder", e.currentTarget.value)}
               aria-label="Bullish border"
             />
             <input
@@ -1034,7 +1409,8 @@
               class="hex-box mono-nums"
               value={currentPalette.candles.bullBorder}
               maxlength="7"
-              onchange={(e) => handleUpdateCandle('bullBorder', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateCandle("bullBorder", e.currentTarget.value)}
             />
           </div>
         </div>
@@ -1045,7 +1421,10 @@
     <div class="studio-category">
       <div class="category-header">
         <span class="category-title">Warna Umum (General Colors)</span>
-        <span class="category-sub">3 atribut fondasi: latar kanvas & app, permukaan panel, dan tipografi teks</span>
+        <span class="category-sub"
+          >3 atribut fondasi: latar kanvas & app, permukaan panel, dan tipografi
+          teks</span
+        >
       </div>
 
       <div class="studio-pickers-grid general-grid">
@@ -1056,7 +1435,11 @@
             <button
               type="button"
               class="btn-mini-copy"
-              onclick={() => handleCopySingle(currentPalette.general.background, 'Background color')}
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.general.background,
+                  "Background color",
+                )}
               title="Salin kode hex"
             >
               <Copy size={10} />
@@ -1067,7 +1450,8 @@
               type="color"
               class="color-chip"
               value={currentPalette.general.background}
-              onchange={(e) => handleUpdateGeneral('background', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateGeneral("background", e.currentTarget.value)}
               aria-label="Background color"
             />
             <input
@@ -1075,7 +1459,8 @@
               class="hex-box mono-nums"
               value={currentPalette.general.background}
               maxlength="7"
-              onchange={(e) => handleUpdateGeneral('background', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateGeneral("background", e.currentTarget.value)}
             />
           </div>
         </div>
@@ -1087,7 +1472,11 @@
             <button
               type="button"
               class="btn-mini-copy"
-              onclick={() => handleCopySingle(currentPalette.general.foreground, 'Foreground')}
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.general.foreground,
+                  "Foreground",
+                )}
               title="Salin kode hex"
             >
               <Copy size={10} />
@@ -1098,7 +1487,8 @@
               type="color"
               class="color-chip"
               value={currentPalette.general.foreground}
-              onchange={(e) => handleUpdateGeneral('foreground', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateGeneral("foreground", e.currentTarget.value)}
               aria-label="Foreground"
             />
             <input
@@ -1106,7 +1496,8 @@
               class="hex-box mono-nums"
               value={currentPalette.general.foreground}
               maxlength="7"
-              onchange={(e) => handleUpdateGeneral('foreground', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateGeneral("foreground", e.currentTarget.value)}
             />
           </div>
         </div>
@@ -1118,7 +1509,11 @@
             <button
               type="button"
               class="btn-mini-copy"
-              onclick={() => handleCopySingle(currentPalette.general.textColor, 'Text color')}
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.general.textColor,
+                  "Text color",
+                )}
               title="Salin kode hex"
             >
               <Copy size={10} />
@@ -1129,7 +1524,8 @@
               type="color"
               class="color-chip"
               value={currentPalette.general.textColor}
-              onchange={(e) => handleUpdateGeneral('textColor', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateGeneral("textColor", e.currentTarget.value)}
               aria-label="Text color"
             />
             <input
@@ -1137,7 +1533,8 @@
               class="hex-box mono-nums"
               value={currentPalette.general.textColor}
               maxlength="7"
-              onchange={(e) => handleUpdateGeneral('textColor', e.currentTarget.value)}
+              onchange={(e) =>
+                handleUpdateGeneral("textColor", e.currentTarget.value)}
             />
           </div>
         </div>
@@ -1147,38 +1544,59 @@
 
   <!-- Modal Dialog Tempel Palet -->
   {#if isPasteModalOpen}
-    <div class="studio-modal-scrim" onclick={() => (isPasteModalOpen = false)} role="presentation">
-      <div class="studio-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div
+      class="studio-modal-scrim"
+      onclick={() => (isPasteModalOpen = false)}
+      role="presentation"
+    >
+      <div
+        class="studio-modal-card"
+        onclick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="modal-header">
           <div class="modal-title-row">
             <Clipboard size={16} />
             <span class="modal-title">Tempel Palet Tema</span>
           </div>
-          <button type="button" class="btn-modal-close" onclick={() => (isPasteModalOpen = false)}>
+          <button
+            type="button"
+            class="btn-modal-close"
+            onclick={() => (isPasteModalOpen = false)}
+          >
             <X size={14} />
           </button>
         </div>
 
         <p class="modal-desc">
-          Tempelkan konfigurasi JSON atau format teks daftar warna (seperti salinan dari situs tema atau format chartthemes.com):
+          Tempelkan konfigurasi JSON atau format teks daftar warna (seperti
+          salinan dari situs tema atau format chartthemes.com):
         </p>
 
         <textarea
           class="paste-textarea mono-nums"
           bind:value={pasteInputText}
           placeholder={`Contoh teks:\nBearish body: #9B1D20\nBearish wick: #7F4F4F\nBullish body: #D4A5A5\nBackground color: #edede9\nText color: #4A0E0F`}
-          rows="8"
-        ></textarea>
+          rows="8"></textarea>
 
         {#if pasteError}
           <div class="paste-error-msg">{pasteError}</div>
         {/if}
 
         <div class="modal-footer">
-          <button type="button" class="btn-cancel" onclick={() => (isPasteModalOpen = false)}>
+          <button
+            type="button"
+            class="btn-cancel"
+            onclick={() => (isPasteModalOpen = false)}
+          >
             Batal
           </button>
-          <button type="button" class="btn-apply-paste" onclick={handleApplyPaste}>
+          <button
+            type="button"
+            class="btn-apply-paste"
+            onclick={handleApplyPaste}
+          >
             Terapkan Palet
           </button>
         </div>
@@ -1188,42 +1606,64 @@
 
   <!-- Modal Dialog Simpan Sebagai Tema Baru (Save As) (#149) -->
   {#if isSaveAsModalOpen}
-    <div class="studio-modal-scrim" onclick={() => (isSaveAsModalOpen = false)} role="presentation">
-      <div class="studio-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div
+      class="studio-modal-scrim"
+      onclick={() => (isSaveAsModalOpen = false)}
+      role="presentation"
+    >
+      <div
+        class="studio-modal-card"
+        onclick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="modal-header">
           <div class="modal-title-row">
             <Save size={16} />
             <span class="modal-title">Simpan Sebagai Tema Baru (Save As)</span>
           </div>
-          <button type="button" class="btn-modal-close" onclick={() => (isSaveAsModalOpen = false)}>
+          <button
+            type="button"
+            class="btn-modal-close"
+            onclick={() => (isSaveAsModalOpen = false)}
+          >
             <X size={14} />
           </button>
         </div>
 
         <p class="modal-desc">
-          Simpan palet 9 dimensi saat ini ke dalam koleksi tema pengguna personal. Tema ini akan tersimpan berdampingan dengan preset resmi dan dapat diterapkan secara mandiri ke antarmuka aplikasi atau grafik chart.
+          Simpan palet 9 dimensi saat ini ke dalam koleksi tema pengguna
+          personal. Tema ini akan tersimpan berdampingan dengan preset resmi dan
+          dapat diterapkan secara mandiri ke antarmuka aplikasi atau grafik
+          chart.
         </p>
 
         <div class="modal-form-group">
-          <label class="modal-label" for="saveAsThemeName">Nama Preset Tema</label>
+          <label class="modal-label" for="saveAsThemeName"
+            >Nama Preset Tema</label
+          >
           <input
             id="saveAsThemeName"
             type="text"
             class="modal-input"
             placeholder="Contoh: Cyberpunk Neon, Coffee Paper"
             bind:value={saveAsThemeName}
-            onkeydown={(e) => e.key === 'Enter' && handleConfirmSaveAs()}
+            onkeydown={(e) => e.key === "Enter" && handleConfirmSaveAs()}
             autofocus
           />
         </div>
 
         <div class="modal-form-group">
           <span class="modal-label">Kategori Mode Warna</span>
-          <div class="modal-mode-options" role="radiogroup" aria-label="Mode Tema">
+          <div
+            class="modal-mode-options"
+            role="radiogroup"
+            aria-label="Mode Tema"
+          >
             <button
               type="button"
               class="filter-chip {saveAsThemeMode === 'dark' ? 'active' : ''}"
-              onclick={() => (saveAsThemeMode = 'dark')}
+              onclick={() => (saveAsThemeMode = "dark")}
             >
               <Moon size={11} />
               <span>Mode Gelap (Dark)</span>
@@ -1231,7 +1671,7 @@
             <button
               type="button"
               class="filter-chip {saveAsThemeMode === 'light' ? 'active' : ''}"
-              onclick={() => (saveAsThemeMode = 'light')}
+              onclick={() => (saveAsThemeMode = "light")}
             >
               <Sun size={11} />
               <span>Mode Terang (Light)</span>
@@ -1244,10 +1684,18 @@
         {/if}
 
         <div class="modal-footer">
-          <button type="button" class="btn-cancel" onclick={() => (isSaveAsModalOpen = false)}>
+          <button
+            type="button"
+            class="btn-cancel"
+            onclick={() => (isSaveAsModalOpen = false)}
+          >
             Batal
           </button>
-          <button type="button" class="btn-apply-paste" onclick={handleConfirmSaveAs}>
+          <button
+            type="button"
+            class="btn-apply-paste"
+            onclick={handleConfirmSaveAs}
+          >
             Simpan Tema
           </button>
         </div>
@@ -1257,14 +1705,27 @@
 
   <!-- Modal Dialog Ubah Nama Tema Pengguna (#149) -->
   {#if isRenameModalOpen}
-    <div class="studio-modal-scrim" onclick={() => (isRenameModalOpen = false)} role="presentation">
-      <div class="studio-modal-card" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div
+      class="studio-modal-scrim"
+      onclick={() => (isRenameModalOpen = false)}
+      role="presentation"
+    >
+      <div
+        class="studio-modal-card"
+        onclick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="modal-header">
           <div class="modal-title-row">
             <Edit2 size={16} />
             <span class="modal-title">Ubah Nama Tema Preset</span>
           </div>
-          <button type="button" class="btn-modal-close" onclick={() => (isRenameModalOpen = false)}>
+          <button
+            type="button"
+            class="btn-modal-close"
+            onclick={() => (isRenameModalOpen = false)}
+          >
             <X size={14} />
           </button>
         </div>
@@ -1276,7 +1737,7 @@
             type="text"
             class="modal-input"
             bind:value={renameThemeName}
-            onkeydown={(e) => e.key === 'Enter' && handleConfirmRename()}
+            onkeydown={(e) => e.key === "Enter" && handleConfirmRename()}
             autofocus
           />
         </div>
@@ -1286,10 +1747,18 @@
         {/if}
 
         <div class="modal-footer">
-          <button type="button" class="btn-cancel" onclick={() => (isRenameModalOpen = false)}>
+          <button
+            type="button"
+            class="btn-cancel"
+            onclick={() => (isRenameModalOpen = false)}
+          >
             Batal
           </button>
-          <button type="button" class="btn-apply-paste" onclick={handleConfirmRename}>
+          <button
+            type="button"
+            class="btn-apply-paste"
+            onclick={handleConfirmRename}
+          >
             Simpan Perubahan
           </button>
         </div>
@@ -1303,7 +1772,8 @@
       <div class="custom-candle-info">
         <span class="custom-candle-title">Latar Belakang Grafik</span>
         <span class="custom-candle-desc">
-          Sesuaikan latar kanvas grafik dengan warna solid atau gradien vertikal kustom tanpa mengubah elemen tema lainnya.
+          Sesuaikan latar kanvas grafik dengan warna solid atau gradien vertikal
+          kustom tanpa mengubah elemen tema lainnya.
         </span>
       </div>
       <div class="custom-candle-actions">
@@ -1326,13 +1796,17 @@
     </div>
 
     <!-- Mode Selector Chips / Radio Buttons -->
-    <div class="bg-mode-chips" role="radiogroup" aria-label="Mode Latar Belakang Grafik">
+    <div
+      class="bg-mode-chips"
+      role="radiogroup"
+      aria-label="Mode Latar Belakang Grafik"
+    >
       <button
         type="button"
         class="bg-mode-chip {bgMode === 'theme' ? 'active' : ''}"
         role="radio"
-        aria-checked={bgMode === 'theme'}
-        onclick={() => handleSetBgMode('theme')}
+        aria-checked={bgMode === "theme"}
+        onclick={() => handleSetBgMode("theme")}
       >
         <span>Bawaan Tema</span>
       </button>
@@ -1340,8 +1814,8 @@
         type="button"
         class="bg-mode-chip {bgMode === 'solid' ? 'active' : ''}"
         role="radio"
-        aria-checked={bgMode === 'solid'}
-        onclick={() => handleSetBgMode('solid')}
+        aria-checked={bgMode === "solid"}
+        onclick={() => handleSetBgMode("solid")}
       >
         <span>Warna Solid</span>
       </button>
@@ -1349,14 +1823,14 @@
         type="button"
         class="bg-mode-chip {bgMode === 'gradient' ? 'active' : ''}"
         role="radio"
-        aria-checked={bgMode === 'gradient'}
-        onclick={() => handleSetBgMode('gradient')}
+        aria-checked={bgMode === "gradient"}
+        onclick={() => handleSetBgMode("gradient")}
       >
         <span>Gradien Vertikal</span>
       </button>
     </div>
 
-    {#if bgMode === 'solid'}
+    {#if bgMode === "solid"}
       <div class="custom-candle-inputs">
         <div class="candle-picker-card">
           <div class="picker-label-row">
@@ -1378,8 +1852,8 @@
               maxlength="7"
               onchange={(e) => {
                 let val = e.currentTarget.value.trim();
-                if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
-                  val = '#' + val;
+                if (!val.startsWith("#") && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                  val = "#" + val;
                 }
                 if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
                   handleUpdateSolidColor(val);
@@ -1389,7 +1863,7 @@
           </div>
         </div>
       </div>
-    {:else if bgMode === 'gradient'}
+    {:else if bgMode === "gradient"}
       <div class="gradient-config-container">
         <!-- Live Preview Strip -->
         <div class="gradient-preview-wrap">
@@ -1423,8 +1897,8 @@
                 maxlength="7"
                 onchange={(e) => {
                   let val = e.currentTarget.value.trim();
-                  if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
-                    val = '#' + val;
+                  if (!val.startsWith("#") && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                    val = "#" + val;
                   }
                   if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
                     handleUpdateGradientTop(val);
@@ -1438,14 +1912,17 @@
           <div class="candle-picker-card">
             <div class="picker-label-row">
               <span class="picker-title">Warna Bawah (Bottom)</span>
-              <span class="picker-current-hex mono-nums">{gradientBottomVal}</span>
+              <span class="picker-current-hex mono-nums"
+                >{gradientBottomVal}</span
+              >
             </div>
             <div class="picker-controls">
               <input
                 type="color"
                 class="color-input"
                 value={gradientBottomVal}
-                onchange={(e) => handleUpdateGradientBottom(e.currentTarget.value)}
+                onchange={(e) =>
+                  handleUpdateGradientBottom(e.currentTarget.value)}
                 aria-label="Warna Bawah Gradien"
               />
               <input
@@ -1455,8 +1932,8 @@
                 maxlength="7"
                 onchange={(e) => {
                   let val = e.currentTarget.value.trim();
-                  if (!val.startsWith('#') && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
-                    val = '#' + val;
+                  if (!val.startsWith("#") && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
+                    val = "#" + val;
                   }
                   if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
                     handleUpdateGradientBottom(val);

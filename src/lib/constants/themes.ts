@@ -661,6 +661,27 @@ export function deleteUserTheme(
 }
 
 /**
+ * Memperbarui palet warna tema pengguna tertentu secara immutable (#158)
+ */
+export function updateUserThemePalette(
+  themes: CustomThemeDefinition[],
+  themeId: string,
+  newPalette: CustomThemePalette,
+  mode?: 'dark' | 'light'
+): CustomThemeDefinition[] {
+  return themes.map((t) => {
+    if (t.id === themeId) {
+      return {
+        ...t,
+        palette: JSON.parse(JSON.stringify(newPalette)),
+        ...(mode ? { mode } : {}),
+      };
+    }
+    return t;
+  });
+}
+
+/**
  * Menentukan fallback tema aktif yang aman jika tema yang dihapus sedang digunakan (#149)
  */
 export function resolveDeletedThemeFallback(
