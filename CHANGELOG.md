@@ -5,6 +5,24 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.35.0] - 2026-11-03
+
+### 🚀 Ditambahkan (Added)
+- **Live Theme Preview & Binary Mode Alignment (#161):**
+  - Saat `syncChartWithAppTheme` nonaktif, pemilihan tema aplikasi lawan mode otomatis menyelaraskan `colorModePreference` dan preset aktif, dengan live preview instan ke DOM dan kanvas WebGL2.
+- **In-Place Palette Editing & Safe Preset Forking (#162):**
+  - Tombol "Edit Warna" (ikon Palette) ditambahkan pada kartu tema di AppearanceTab. Untuk tema pengguna: mode *in-place update* dengan banner "Simpan Perubahan ke Tema Ini" + "Batal". Untuk tema resmi: *fork* ke Palet Kustom Studio.
+- **Canvas Watermark Control (#163):**
+  - Toggle "Watermark Simbol di Kanvas" ditambahkan di seksi Tema Kanvas Chart pada AppearanceTab, menyinkronkan prop `showWatermark` ke `setWatermarkVisible()` di engine WebGL2 Vela.
+
+### 🔄 Diubah (Changed)
+- **Chart Context Menu Pruning (#159):**
+  - Opsi "Pengaturan Grafik (Warna & Lilin)" dihapus dari klik kanan kanvas. Pengaturan visual lilin hanya diakses via `SettingsModal`. Menu konteks murni aksi analitikal (Alert, Garis Horizontal, Salin Harga, Reset Skala).
+- **Workspace Auto-Save Guard & Quiet Debounce (#160):**
+  - `computeWorkspaceFingerprint` (deep equality hash) ditambahkan ke `workspaceService.ts`. Debounce diperpanjang ke 3500ms. Log spam auto-save disenyapkan. Terminal kini tenang dan hemat I/O disk.
+- **ADR 0018 & Spec #158:**
+  - Dokumentasi keputusan desain live theme preview, context menu pruning, in-place palette editing, watermark control, dan auto-save guard.
+
 ## [0.34.1] - 2026-11-02
 
 ### 🐛 Diperbaiki (Fixed)
