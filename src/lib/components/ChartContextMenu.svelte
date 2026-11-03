@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Bell, Minus, Copy, RotateCcw, Check, SlidersHorizontal } from '@lucide/svelte';
+  import { Bell, Minus, Copy, RotateCcw, Check } from '@lucide/svelte';
 
   interface Props {
 
@@ -13,7 +13,6 @@
     onCreateAlert: (symbol: string, price: number) => void;
     onDrawHorizontalLine?: (price: number) => void;
     onResetChartScale?: () => void;
-    onOpenSettings?: () => void;
     onClose: () => void;
   }
 
@@ -27,7 +26,6 @@
     onCreateAlert,
     onDrawHorizontalLine,
     onResetChartScale,
-    onOpenSettings,
     onClose,
   }: Props = $props();
 
@@ -116,15 +114,6 @@
     e?.stopPropagation();
     onResetChartScale?.();
     onClose();
-  }
-
-  function handleOpenSettingsClick(e?: MouseEvent) {
-    e?.stopPropagation();
-    onClose();
-    // Beri jeda singkat agar context menu unmount bersih sebelum dialog Vela muncul
-    setTimeout(() => {
-      onOpenSettings?.();
-    }, 16);
   }
 
   function handleBackdropClick(e: MouseEvent) {
@@ -250,21 +239,6 @@
           <span class="item-label">Reset Skala Grafik</span>
         </div>
         <span class="shortcut-tag mono-nums">Alt+Z</span>
-      </button>
-
-      <div class="menu-divider"></div>
-
-      <!-- Pilihan 5: Pengaturan Grafik & Lilin -->
-      <button
-        type="button"
-        class="menu-item"
-        onclick={handleOpenSettingsClick}
-      >
-        <div class="item-left">
-          <span class="icon-wrap"><SlidersHorizontal size={13} /></span>
-          <span class="item-label">Pengaturan Grafik (Warna & Lilin)...</span>
-        </div>
-        <span class="shortcut-tag mono-nums">Vela</span>
       </button>
     </div>
   </div>

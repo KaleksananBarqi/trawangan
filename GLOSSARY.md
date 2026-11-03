@@ -224,5 +224,18 @@ _Avoid_: Custom skin slot, Unsaved palette
 Subsistem pengawasan pasar di balik layar yang secara otomatis mendaftarkan seluruh instrumen berstatus alert aktif ke siklus polling bursa, menjamin sinyal harga tetap terpicu meskipun grafik instrumen tersebut sedang tidak dibuka.
 _Avoid_: Inactive alert sleep, Active chart alert only
 
+**In-Place Theme Color Editing**:
+Kapabilitas modifikasi langsung skema warna palet 9 dimensi pada entitas User Theme Preset yang tersimpan tanpa mengharuskan pembuatan tema baru (Save As) dan penghapusan manual tema lama, dilengkapi mekanisme proteksi duplikasi (forking) jika diterapkan pada preset resmi bawaan.
+_Avoid_: Save-as only workflow, Destructive built-in override
+
+**Canvas Watermark Guard**:
+Subsistem kontrol visibilitas tanda air simbol besar pada kanvas WebGL2 yang dapat diakses langsung dari Tab Tampilan dan Tab Grafik secara tersentralisasi, menjamin penonaktifan watermark berlangsung instan di seluruh sel aktif dan persisten di preferensi pengguna.
+_Avoid_: Hidden chart watermark toggle, Hardcoded symbol watermark
+
+**Workspace Auto-Save Guard**:
+Mekanisme pelindung persistensi otomatis yang memvalidasi perubahan nilai struktural (deep/value equality) parameter workspace sebelum menjadwalkan transaksi penulisan ke SQLite, mengeliminasi disk churn dan spam log terminal yang dipicu oleh mutasi referensi array berkala.
+_Avoid_: Blind effect auto-save, Reference-only change trigger
+
+
 
 

@@ -76,6 +76,7 @@
     loadWorkspaces,
     getLastActiveWorkspaceId,
     setLastActiveWorkspaceId,
+    computeWorkspaceFingerprint,
     DEFAULT_QUICK_SYMBOLS_CONFIG,
     flushDrawings
   } from '../lib/services/persistence';
@@ -1147,6 +1148,14 @@
       const indTitles = w.indicators && w.indicators.length > 0
         ? w.indicators.map((i: any) => i.title).join(', ')
         : 'tanpa indikator';
+      lastSavedWorkspaceFingerprint = computeWorkspaceFingerprint(
+        w.id || w.name,
+        targetSym,
+        targetTf,
+        targetLayout,
+        targetProvider,
+        w.indicators || []
+      );
       addSystemLog(`Workspace "${w.name}" dimuat (${indCount} indikator: ${indTitles})`, 'success');
     } finally {
       setTimeout(() => {
@@ -1167,18 +1176,35 @@
     addSystemLog(`Auto-save workspace: ${isAutoSaveWorkspace ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
+  let lastSavedWorkspaceFingerprint = $state<string>('');
   let autoSaveTimer: any = null;
   function triggerWorkspaceAutoSave() {
     // KUNCI PENTING: Hanya jalankan auto-save jika ada activeWorkspace yang sedang dimuat!
     // Jika activeWorkspace === null (sedang membuat workspace baru/lepas), jangan auto-save untuk mencegah tabrakan/overwrite!
     if (!isAutoSaveWorkspace || !isPageMounted || isLoadingWorkspace || !chartComponent || !activeWorkspace) return;
+
+    const targetName = activeWorkspace.name;
+    const targetId = activeWorkspace.id;
+    const freshIndicators = chartComponent?.getActiveIndicators?.() || activeIndicators;
+    const currentFingerprint = computeWorkspaceFingerprint(
+      targetId || targetName,
+      activeSymbol,
+      activeTimeframe,
+      currentLayout,
+      activeProviderId,
+      freshIndicators
+    );
+
+    // KUNCI GUARD: Jika fingerprint nilai sama persis dengan yang sudah tersimpan, abaikan!
+    if (lastSavedWorkspaceFingerprint && lastSavedWorkspaceFingerprint === currentFingerprint) {
+      return;
+    }
+
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(async () => {
       if (!isAutoSaveWorkspace || isLoadingWorkspace || !activeWorkspace) return;
-      const targetName = activeWorkspace.name;
-      const targetId = activeWorkspace.id;
-      const freshIndicators = chartComponent?.getActiveIndicators?.() || activeIndicators;
-      const indicatorsData = freshIndicators.map((i: ActiveIndicatorInfo) => ({
+      const latestIndicators = chartComponent?.getActiveIndicators?.() || activeIndicators;
+      const indicatorsData = latestIndicators.map((i: ActiveIndicatorInfo) => ({
         title: i.title,
         source: i.source,
         visible: i.visible,
@@ -1209,11 +1235,11 @@
         if (saved && saved.id) {
           setLastActiveWorkspaceId(saved.id);
         }
-        addSystemLog(`Auto-save: "${targetName}" tersimpan otomatis`, 'info');
+        lastSavedWorkspaceFingerprint = currentFingerprint;
       } catch (err) {
         console.warn('Auto-save workspace gagal:', err);
       }
-    }, 1500);
+    }, 3500);
   }
 
   // Pantau perubahan parameter untuk auto-save workspace ber-debounce
