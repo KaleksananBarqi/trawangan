@@ -5,6 +5,22 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.36.0] - 2026-11-03
+
+### 🚀 Ditambahkan (Added)
+- **Memori Preset Tema per Mode, Thesis Card Dominan Chart, Trade Plan Vault & Auto-Alert (ADR-0019):**
+  - Menambahkan memori preset tema chart per mode (gelap/terang), penanganan palet kustom, dan utilitas warna (`themes.ts`, `defaults.ts`, `colorUtils.ts`, `AppearanceTab.svelte`).
+  - Memperluas tipe dan layanan persistensi agar Trade Plan Vault dan pengaturan bertahan setelah aplikasi dimulai ulang.
+  - Menambahkan alert harga otomatis dari rencana perdagangan (`alertService.ts`).
+
+### 🔄 Diubah (Changed)
+- Memperbarui `chartDrawingController`, `priceScaleOverlayController`, dan `chartSnapshotService` untuk thesis card, auto-alert, dan overlay snapshot.
+- Menyesuaikan `Chart.svelte`, `FloatingThesisCard`, `ImportPlanModal`, `SnapshotPreviewModal`, `WatchlistPanel`, dan `+page.svelte`.
+- Mendokumentasikan keputusan di `docs/adr/0019-*` dan memperbarui `GLOSSARY.md`.
+
+### 🐛 Diperbaiki (Fixed)
+- Memperbaiki `ReferenceError` di `Chart.svelte`: helper `scheduleBadgePositionUpdate` dipulihkan dan mendelegasikan ke `priceScaleOverlayController.scheduleUpdate()`.
+
 ## [0.35.1] - 2026-11-03
 
 ### 🔄 Diubah (Changed)

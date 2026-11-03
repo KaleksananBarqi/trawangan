@@ -192,7 +192,7 @@ describe('ADR-0019: Chart Mode Preset Memory, Chart-Dominant Thesis Surface, Tra
 
       // Permukaan kartu/panel (bgSecondary, bgContainer, bgPanel) HARUS tetap gelap karena diturunkan dari background (#0D1117), BUKAN memakai #E5E7EB mentah!
       assert.equal(
-        isDarkColor(cfg.tokens.bgSecondary),
+        isDarkColor(cfg.tokens.bgSecondary ?? ''),
         true,
         `bgSecondary (${cfg.tokens.bgSecondary}) harus tetap gelap selaras dengan chart background (#0D1117)`
       );
@@ -201,7 +201,7 @@ describe('ADR-0019: Chart Mode Preset Memory, Chart-Dominant Thesis Surface, Tra
         true,
         `bgContainer (${cfg.tokens.bgContainer}) harus tetap gelap`
       );
-      assert.notEqual(cfg.tokens.bgSecondary.toUpperCase(), '#E5E7EB');
+      assert.notEqual((cfg.tokens.bgSecondary ?? '').toUpperCase(), '#E5E7EB');
 
       // Token CSS --chart-thesis-* juga harus menghasilkan surface gelap dan teks terang yang terbaca jelas
       const thesisTokens = generateChartThesisThemeTokens(cfg);

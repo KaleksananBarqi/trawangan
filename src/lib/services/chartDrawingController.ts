@@ -1803,7 +1803,7 @@ export class ChartDrawingController {
           id: planId,
           symbol: targetSymbol,
           providerId: curProv,
-          timeframe: plan.timeframe || currentTf,
+          timeframe: currentTf,
           createdAt: options?.createdAt || Date.now(),
           rawText: plan.rawText || '',
           plan: planRecord
