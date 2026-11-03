@@ -145,6 +145,8 @@ describe('Spec #158: Theming, Context Menu, Watermark & Auto-Save Guard Suite', 
           id: 'user_1',
           name: 'Tema Keren',
           mode: 'dark' as const,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
           palette: {
             candles: { bullBody: '#00FF00', bearBody: '#FF0000', bullWick: '#00FF00', bearWick: '#FF0000', bullBorder: '#00FF00', bearBorder: '#FF0000' },
             general: { background: '#111111', foreground: '#222222', textColor: '#FFFFFF' }
@@ -165,7 +167,25 @@ describe('Spec #158: Theming, Context Menu, Watermark & Auto-Save Guard Suite', 
       assert.equal(mockThemes[0].palette.candles.bullBody, '#00FF00');
     });
   });
+
+  describe('Ticket #163 & Regression: Toggle Watermark Simbol di Kanvas tidak menutupi layar', () => {
+    const appearancePath = path.resolve(process.cwd(), 'src/lib/components/settings/AppearanceTab.svelte');
+    const appearanceContent = fs.readFileSync(appearancePath, 'utf8');
+
+    test('1. Seluruh elemen .slider wajib berada di dalam container .toggle-switch yang memiliki position: relative', () => {
+      assert.ok(
+        !appearanceContent.includes('<label class="switch">'),
+        'Jangan gunakan <label class="switch"> tanpa position: relative karena membuat .slider (position: absolute; inset: 0) menutupi seluruh modal/layar menjadi gelap'
+      );
+      const toggleMatches = appearanceContent.match(/<label class="toggle-switch">/g) || [];
+      assert.ok(
+        toggleMatches.length >= 2,
+        'Kedua toggle switch (Sinkronkan Tema Chart & Watermark Simbol di Kanvas) harus menggunakan class="toggle-switch"'
+      );
+    });
+  });
 });
+
 
 
 

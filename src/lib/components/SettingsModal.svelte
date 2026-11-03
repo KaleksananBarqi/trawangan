@@ -184,7 +184,11 @@
         <!-- Tab Content Viewport -->
         <div class="tab-content">
           {#if activeTab === 'general'}
-            <GeneralTab {settings} {onUpdateSettings} />
+            <GeneralTab
+              {settings}
+              {onUpdateSettings}
+              onNavigateTab={(tab) => (activeTab = tab as any)}
+            />
           {:else if activeTab === 'appearance'}
             <AppearanceTab {settings} {onUpdateSettings} />
           {:else if activeTab === 'typography'}

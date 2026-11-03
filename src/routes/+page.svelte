@@ -154,7 +154,27 @@
   function handleCycleColorMode() {
     const currentPreference = appSettings.colorModePreference ?? 'system';
     const nextPreference = getNextColorMode(currentPreference);
-    handleUpdateSettings({ colorModePreference: nextPreference });
+    const darkPreset = appSettings.activeDarkPreset || 'signature';
+    const lightPreset = appSettings.activeLightPreset || 'red_folder';
+    const targetPreset =
+      nextPreference === 'dark'
+        ? darkPreset
+        : nextPreference === 'light'
+          ? lightPreset
+          : systemIsDark
+            ? darkPreset
+            : lightPreset;
+    const isSynced = appSettings.syncChartWithAppTheme !== false;
+
+    handleUpdateSettings({
+      colorModePreference: nextPreference,
+      themePreset: targetPreset,
+      theme: targetPreset as any,
+      ...(isSynced ? { chartThemePreset: targetPreset } : {}),
+      customPalette: undefined,
+      customBullColor: undefined,
+      customBearColor: undefined,
+    });
   }
 
   // Reaktif Sinkronisasi Tema, Token Vela, & Tipografi ke Elemen Root DOM
@@ -162,8 +182,8 @@
     if (typeof document !== 'undefined') {
       const effectivePreset = effectiveThemePreset || 'signature';
       const activeThemeConfig = resolveThemeConfig(effectivePreset, appSettings.savedUserThemes);
-      const isCustomActive = Boolean(appSettings.customPalette && appSettings.customPalette.enabled !== false);
-      const cp = appSettings.customPalette;
+      const cp = appSettings.syncChartWithAppTheme !== false ? appSettings.customPalette : undefined;
+      const isCustomActive = Boolean(cp && cp.enabled !== false);
 
       document.documentElement.setAttribute('data-theme', effectivePreset);
 
@@ -445,7 +465,9 @@
             if (target) {
               // Beri jeda singkat agar WebGL container mount sempurna sebelum inject layout & indikator
               setTimeout(() => {
-                handleLoadWorkspace(target);
+                handleLoadWorkspace(target).catch((err) => {
+                  console.warn('[Startup] Gagal auto-load workspace terakhir:', err);
+                });
               }, 400);
             }
           }).catch((err) => {
@@ -914,7 +936,11 @@
   }
 
   function handleUpdateSettings(newSettings: Partial<AppSettings>) {
-    appSettings = { ...appSettings, ...newSettings };
+    const nextSettings: AppSettings = { ...appSettings, ...newSettings };
+    if ('customPalette' in newSettings && !newSettings.customPalette) {
+      nextSettings.customPalette = undefined;
+    }
+    appSettings = nextSettings;
     if (newSettings.syncConfig !== undefined) {
       syncConfig = { ...newSettings.syncConfig };
     }
@@ -1065,9 +1091,9 @@
 
       // 2. Terapkan konfigurasi provider, simbol, timeframe, dan layout baru
       if (w.providerId && w.providerId !== activeProviderId) {
-        handleProviderChange(w.providerId);
+        await handleProviderChange(w.providerId);
       }
-      handleSymbolChange(w.symbol);
+      await handleSymbolChange(w.symbol);
       handleTimeframeChange(w.timeframe as Timeframe);
       handleLayoutChange(w.layout);
 
@@ -1150,13 +1176,16 @@
         : 'tanpa indikator';
       lastSavedWorkspaceFingerprint = computeWorkspaceFingerprint(
         w.id || w.name,
-        targetSym,
-        targetTf,
-        targetLayout,
-        targetProvider,
+        w.symbol,
+        w.timeframe,
+        w.layout,
+        w.providerId || activeProviderId,
         w.indicators || []
       );
       addSystemLog(`Workspace "${w.name}" dimuat (${indCount} indikator: ${indTitles})`, 'success');
+    } catch (e) {
+      console.warn('Gagal memuat workspace:', e);
+      addSystemLog(`Gagal memuat workspace: ${e instanceof Error ? e.message : String(e)}`, 'warn');
     } finally {
       setTimeout(() => {
         isLoadingWorkspace = false;
@@ -1748,7 +1777,7 @@
           workspaceId={activeWorkspace?.id || 'default_workspace'}
           gridMode={appSettings.gridMode || 'normal'}
           themePreset={effectiveChartThemePreset as any}
-          customPalette={appSettings.customPalette}
+          customPalette={appSettings.syncChartWithAppTheme !== false ? appSettings.customPalette : undefined}
           customBullColor={appSettings.customBullColor}
           customBearColor={appSettings.customBearColor}
           customChartBackground={appSettings.customChartBackground}

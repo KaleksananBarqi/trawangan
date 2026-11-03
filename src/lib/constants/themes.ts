@@ -321,8 +321,11 @@ export interface EffectiveVolumeColors {
 /**
  * Membangun konfigurasi Palet Kustom dari Theme Preset tertentu sebagai titik mula (template)
  */
-export function buildCustomPaletteFromPreset(presetId: ThemePresetId = 'signature'): CustomThemePalette {
-  const p = THEME_PRESETS[presetId] || THEME_PRESETS.signature;
+export function buildCustomPaletteFromPreset(
+  presetId: ThemeId = 'signature',
+  savedUserThemes?: CustomThemeDefinition[]
+): CustomThemePalette {
+  const p = resolveThemeConfig(presetId, savedUserThemes);
   return {
     enabled: true,
     candles: {
@@ -584,6 +587,9 @@ export function resolveThemeConfig(
   themeId: ThemeId = 'signature',
   savedUserThemes?: CustomThemeDefinition[]
 ): ThemeConfig {
+  if (!themeId || typeof themeId !== 'string') {
+    return THEME_PRESETS.signature;
+  }
   if (isBuiltInTheme(themeId)) {
     return THEME_PRESETS[themeId as ThemePresetId];
   }
@@ -748,8 +754,9 @@ export function resolveEffectiveThemePreset(
   darkPreset?: ThemeId,
   lightPreset?: ThemeId
 ): ThemeId {
-  const effectiveDark = darkPreset || fallback || 'signature';
-  const effectiveLight = lightPreset || (fallback === 'red_folder' ? fallback : 'red_folder');
+  const safeFallback = fallback && typeof fallback === 'string' ? fallback : 'signature';
+  const effectiveDark = (darkPreset && typeof darkPreset === 'string' ? darkPreset : safeFallback) || 'signature';
+  const effectiveLight = (lightPreset && typeof lightPreset === 'string' ? lightPreset : (safeFallback === 'red_folder' ? safeFallback : 'red_folder')) || 'red_folder';
 
   if (preference === 'dark') {
     return effectiveDark;

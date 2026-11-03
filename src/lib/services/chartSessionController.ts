@@ -31,7 +31,7 @@ import {
   saveChartDefaultConfig,
   clearChartDefaultConfig
 } from './persistence';
-import { deriveBorderColor, isDarkColor, withAlpha } from '../utils/colorUtils';
+import { deriveBorderColor, generateVelaThemeTokens, isDarkColor, withAlpha } from '../utils/colorUtils';
 
 export interface ChartSessionOptions {
   symbol: string;
@@ -604,6 +604,7 @@ export class ChartSessionController {
               this.setTimezone(this.timezone);
             }
           }
+          this.applyBackground();
         });
 
         this.workspace.on('cell:active', () => {
@@ -1178,16 +1179,14 @@ export class ChartSessionController {
     fontSize?: number,
     customCandleColors?: { bullColor?: string; bearColor?: string },
     customBackground?: CustomChartBackgroundConfig,
-    customPalette?: CustomThemePalette
+    customPalette?: CustomThemePalette | null
   ): void {
     this.themePreset = preset;
     if (fontSize) this.fontSize = fontSize;
     if (customCandleColors !== undefined) {
       this.customCandleColors = customCandleColors;
     }
-    if (customPalette !== undefined) {
-      this.customPalette = customPalette;
-    }
+    this.customPalette = customPalette !== undefined ? customPalette : null;
     if (customBackground !== undefined) {
       this.customChartBackground = customBackground;
     }
@@ -1297,8 +1296,30 @@ export class ChartSessionController {
             try { chart.setSurfaceBackground(effectiveBg); } catch (_) {}
           }
           const r = chart?.renderer?.renderer || chart?.renderer;
-          if (r && typeof r.applyConfig === 'function') {
-            r.applyConfig(candleConfig);
+          if (r) {
+            if (typeof r.setTheme === 'function') {
+              try { r.setTheme(themeObj); } catch (_) {}
+            }
+            if (typeof r.applyConfig === 'function') {
+              r.applyConfig({
+                ...candleConfig,
+                layout: {
+                  background: isCustomBg ? 'transparent' : effectiveBg,
+                  textColor: effectiveText,
+                  borderColor: effectiveBorder,
+                },
+                crosshair: {
+                  color: effectiveCrosshair,
+                }
+              });
+            }
+            if (r.scene) {
+              r.scene.background = isCustomBg ? 'transparent' : effectiveBg;
+              r.scene.textColor = effectiveText;
+              r.scene.borderColor = effectiveBorder;
+              r.scene.gridColor = effectiveGrid;
+            }
+            r.scheduler?.invalidate?.(7);
           }
         }
         this.syncNativeVolumeColors();
@@ -1316,6 +1337,9 @@ export class ChartSessionController {
         this.activeChartDefaultConfig = candleConfig;
       }
     }
+
+    // Pastikan latar belakang dan transparansi wrapper internal Vela tetap terjaga setelah workspace.setTheme selesai
+    this.applyBackground();
 
     this.notify();
   }
@@ -1340,26 +1364,53 @@ export class ChartSessionController {
       backgroundValue = cfg.chart.background;
     }
 
-    // Setel latar belakang pada container grafik
+    // Hitung warna latar belakang, teks, dan mode gelap efektif untuk grafik
+    const {
+      background: chartBg,
+      textColor: chartText,
+      isDark: chartIsDark
+    } = resolveEffectiveThemeColors(
+      this.themePreset,
+      this.customPalette
+    );
+    const effectiveChartBg = isCustom
+      ? (custom?.mode === 'solid' ? (custom.solidColor || '#0F0F0F') : '#0F0F0F')
+      : chartBg;
+
+    // Setel latar belakang dan isolasi penuh seluruh 26 token CSS Vela lokal (--vela-*) pada container grafik
     if (this.container.style) {
       this.container.style.background = backgroundValue;
+      if (typeof this.container.style.setProperty === 'function') {
+        const velaTokens = generateVelaThemeTokens(
+          effectiveChartBg,
+          chartText,
+          chartIsDark ? withAlpha(chartText, 0.14) : withAlpha(chartText, 0.18)
+        );
+        for (const [tokenKey, tokenVal] of Object.entries(velaTokens)) {
+          this.container.style.setProperty(tokenKey, tokenVal);
+        }
+      }
     }
 
-    // Paksa seluruh elemen wrapper internal Vela menjadi transparan saat mode kustom aktif
+    // Paksa seluruh elemen wrapper internal Vela menjadi transparan agar tidak menutupi kanvas WebGL2
+    const forceTransparent = (el: Element) => {
+      if (typeof (el as any)?.style?.setProperty === 'function') {
+        (el as HTMLElement).style.setProperty('background', 'transparent', 'important');
+      } else if ((el as HTMLElement)?.style) {
+        (el as HTMLElement).style.background = 'transparent';
+      }
+    };
+
     try {
-      const internalWrappers = this.container.querySelectorAll('.vela-container, .vela-container > div, [data-vela-wrapper], .vela-plot');
-      internalWrappers.forEach((el) => {
-        if (isCustom) {
-          (el as HTMLElement).style.setProperty('background', 'transparent', 'important');
-        } else {
-          (el as HTMLElement).style.removeProperty('background');
-        }
-      });
-      for (const child of Array.from(this.container.children)) {
-        if (isCustom) {
-          (child as HTMLElement).style.setProperty('background', 'transparent', 'important');
-        } else {
-          (child as HTMLElement).style.removeProperty('background');
+      if (typeof this.container.querySelectorAll === 'function') {
+        const internalWrappers = this.container.querySelectorAll(
+          '.vela-container, .vela-container > div, [data-vela-wrapper], .vela-plot'
+        );
+        internalWrappers.forEach(forceTransparent);
+      }
+      if (this.container.children) {
+        for (const child of Array.from(this.container.children)) {
+          forceTransparent(child);
         }
       }
     } catch (_) {}

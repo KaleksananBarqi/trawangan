@@ -1,8 +1,6 @@
 <script lang="ts">
   import {
     Check,
-    Minus,
-    Plus,
     RotateCcw,
     Copy,
     CheckCheck,
@@ -17,6 +15,13 @@
     Trash2,
     Edit2,
     Download,
+    Link2,
+    Unlink,
+    Sparkles,
+    BarChart2,
+    Sliders,
+    ChevronDown,
+    ChevronUp,
   } from "@lucide/svelte";
   import {
     THEME_PRESETS,
@@ -59,6 +64,7 @@
   let isPasteModalOpen = $state(false);
   let pasteInputText = $state("");
   let pasteError = $state<string | null>(null);
+  let showAdvancedModeDefaults = $state(false);
 
   // Dual-Theme Decoupling & User Presets State (#149)
   const syncChartWithAppTheme = $derived<boolean>(
@@ -85,6 +91,79 @@
   let editingUserThemeId = $state<string | null>(null);
   let editingUserThemeName = $state<string | null>(null);
 
+  // Koleksi seluruh preset yang tersedia (Preset Resmi Bawaan + Preset Pengguna Tersimpan) (#149)
+  const allAvailablePresets = $derived.by(() => {
+    const builtIns = Object.values(THEME_PRESETS);
+    const customPresets = savedUserThemes.map((u) =>
+      buildThemeConfigFromUserTheme(u),
+    );
+    return [...builtIns, ...customPresets];
+  });
+
+  const darkPresets = $derived(
+    allAvailablePresets.filter((p) => p.mode === "dark"),
+  );
+  const lightPresets = $derived(
+    allAvailablePresets.filter((p) => p.mode === "light"),
+  );
+
+  const filteredPresets = $derived.by(() => {
+    if (filterMode === "dark") return darkPresets;
+    if (filterMode === "light") return lightPresets;
+    return allAvailablePresets;
+  });
+
+  const colorModePref = $derived<ColorModePreference>(
+    settings.colorModePreference || "system",
+  );
+
+  const activeAppPresetConfig = $derived(
+    resolveThemeConfig(settings.themePreset || "signature", savedUserThemes),
+  );
+  const activeChartPresetConfig = $derived(
+    resolveThemeConfig(
+      syncChartWithAppTheme
+        ? settings.themePreset || "signature"
+        : settings.chartThemePreset || "signature",
+      savedUserThemes,
+    ),
+  );
+
+  const activePreset = $derived(
+    targetThemeSelection === "chart" && !syncChartWithAppTheme
+      ? activeChartPresetConfig
+      : activeAppPresetConfig,
+  );
+
+  const defaultPalette = $derived<CustomThemePalette>(
+    buildCustomPaletteFromPreset(
+      (targetThemeSelection === "chart" && !syncChartWithAppTheme
+        ? settings.chartThemePreset || "signature"
+        : settings.themePreset || "signature") as ThemePresetId,
+      savedUserThemes,
+    ),
+  );
+  const currentPalette = $derived<CustomThemePalette>(
+    settings.customPalette || defaultPalette,
+  );
+  const isCustomActive = $derived(
+    Boolean(settings.customPalette && settings.customPalette.enabled !== false),
+  );
+  const isPaletteDark = $derived(
+    isDarkColor(
+      currentPalette.general?.background ||
+        activePreset.chart.background ||
+        "#0F0F0F",
+    ),
+  );
+
+  function showToast(msg: string) {
+    copyFeedback = msg;
+    setTimeout(() => {
+      copyFeedback = null;
+    }, 2600);
+  }
+
   function handleStartEditThemeColors(preset: any, e?: MouseEvent) {
     e?.stopPropagation();
     const isUser = savedUserThemes.some((t) => t.id === preset.id);
@@ -94,11 +173,14 @@
       const userTheme = savedUserThemes.find((t) => t.id === preset.id);
       targetPalette = userTheme?.palette
         ? JSON.parse(JSON.stringify(userTheme.palette))
-        : buildCustomPaletteFromPreset(preset.id as any);
+        : buildCustomPaletteFromPreset(preset.id as any, savedUserThemes);
       editingUserThemeId = preset.id;
       editingUserThemeName = preset.name;
     } else {
-      targetPalette = buildCustomPaletteFromPreset(preset.id as any);
+      targetPalette = buildCustomPaletteFromPreset(
+        preset.id as any,
+        savedUserThemes,
+      );
       editingUserThemeId = null;
       editingUserThemeName = null;
     }
@@ -129,10 +211,7 @@
       customPalette: undefined,
     });
 
-    copyFeedback = `Warna tema "${targetName}" berhasil diperbarui!`;
-    setTimeout(() => {
-      copyFeedback = null;
-    }, 2500);
+    showToast(`Warna tema "${targetName}" berhasil diperbarui!`);
     editingUserThemeId = null;
     editingUserThemeName = null;
   }
@@ -146,96 +225,56 @@
     onUpdateSettings({ themeFilterMode: mode });
   }
 
-  const colorModePref = $derived<ColorModePreference>(
-    settings.colorModePreference || "system",
-  );
-
-  // Koleksi seluruh preset yang tersedia (Preset Resmi Bawaan + Preset Pengguna Tersimpan) (#149)
-  const allAvailablePresets = $derived.by(() => {
-    const builtIns = Object.values(THEME_PRESETS);
-    const customPresets = savedUserThemes.map((u) =>
-      buildThemeConfigFromUserTheme(u),
-    );
-    return [...builtIns, ...customPresets];
-  });
-
-  const darkPresets = $derived(
-    allAvailablePresets.filter((p) => p.mode === "dark"),
-  );
-  const lightPresets = $derived(
-    allAvailablePresets.filter((p) => p.mode === "light"),
-  );
-
-  const filteredPresets = $derived.by(() => {
-    if (filterMode === "dark") return darkPresets;
-    if (filterMode === "light") return lightPresets;
-    return allAvailablePresets;
-  });
-
   function handleSetColorMode(mode: ColorModePreference) {
+    const darkPreset = (settings.activeDarkPreset as any) || "signature";
+    const lightPreset = (settings.activeLightPreset as any) || "red_folder";
+    const resolvedTarget =
+      mode === "dark"
+        ? darkPreset
+        : mode === "light"
+          ? lightPreset
+          : settings.themePreset || darkPreset;
+
     onUpdateSettings({
       colorModePreference: mode,
-      ...(mode === "dark"
-        ? { themePreset: (settings.activeDarkPreset as any) || "signature" }
-        : {}),
+      ...(mode === "dark" ? { themePreset: darkPreset, theme: darkPreset } : {}),
       ...(mode === "light"
-        ? { themePreset: (settings.activeLightPreset as any) || "red_folder" }
+        ? { themePreset: lightPreset, theme: lightPreset }
         : {}),
-      ...(syncChartWithAppTheme && mode === "dark"
-        ? {
-            chartThemePreset: (settings.activeDarkPreset as any) || "signature",
-          }
-        : {}),
-      ...(syncChartWithAppTheme && mode === "light"
-        ? {
-            chartThemePreset:
-              (settings.activeLightPreset as any) || "red_folder",
-          }
-        : {}),
+      ...(syncChartWithAppTheme ? { chartThemePreset: resolvedTarget } : {}),
+      // Bersihkan sisa override palet kustom agar preset mode yang dipilih
+      // benar-benar mengendalikan tampilan UI (mencegah layar putih akibat sisa palet lama).
+      customPalette: undefined,
+      customBullColor: undefined,
+      customBearColor: undefined,
     });
   }
 
   function handleSetDarkPreset(presetId: string) {
     onUpdateSettings({
       activeDarkPreset: presetId,
-      ...(colorModePref === "dark" ? { themePreset: presetId as any } : {}),
+      ...(colorModePref === "dark"
+        ? { themePreset: presetId as any, theme: presetId as any }
+        : {}),
       ...(syncChartWithAppTheme && colorModePref === "dark"
         ? { chartThemePreset: presetId as any }
         : {}),
+      customPalette: undefined,
     });
   }
 
   function handleSetLightPreset(presetId: string) {
     onUpdateSettings({
       activeLightPreset: presetId,
-      ...(colorModePref === "light" ? { themePreset: presetId as any } : {}),
+      ...(colorModePref === "light"
+        ? { themePreset: presetId as any, theme: presetId as any }
+        : {}),
       ...(syncChartWithAppTheme && colorModePref === "light"
         ? { chartThemePreset: presetId as any }
         : {}),
+      customPalette: undefined,
     });
   }
-
-  const activePreset = $derived(
-    resolveThemeConfig(settings.themePreset || "signature", savedUserThemes),
-  );
-  const defaultPalette = $derived<CustomThemePalette>(
-    buildCustomPaletteFromPreset(
-      (settings.themePreset as ThemePresetId) || "signature",
-    ),
-  );
-  const currentPalette = $derived<CustomThemePalette>(
-    settings.customPalette || defaultPalette,
-  );
-  const isCustomActive = $derived(
-    Boolean(settings.customPalette && settings.customPalette.enabled !== false),
-  );
-  const isPaletteDark = $derived(
-    isDarkColor(
-      currentPalette.general?.background ||
-        activePreset.chart.background ||
-        "#0F0F0F",
-    ),
-  );
 
   function handleSelectChartPreset(preset: {
     id: string;
@@ -243,7 +282,43 @@
   }) {
     onUpdateSettings({
       chartThemePreset: preset.id,
-      customPalette: null as any,
+      customPalette: undefined,
+      customBullColor: undefined,
+      customBearColor: undefined,
+    });
+  }
+
+  function handleSelectAppPreset(preset: {
+    id: string;
+    mode: "dark" | "light";
+  }) {
+    onUpdateSettings({
+      themePreset: preset.id,
+      theme: preset.id as any,
+      colorModePreference: preset.mode,
+      ...(preset.mode === "dark"
+        ? { activeDarkPreset: preset.id }
+        : { activeLightPreset: preset.id }),
+      ...(syncChartWithAppTheme ? { chartThemePreset: preset.id } : {}),
+      customPalette: undefined,
+      customBullColor: undefined,
+      customBearColor: undefined,
+    });
+  }
+
+  function handleSelectBothPreset(preset: {
+    id: string;
+    mode: "dark" | "light";
+  }) {
+    onUpdateSettings({
+      themePreset: preset.id,
+      chartThemePreset: preset.id,
+      theme: preset.id as any,
+      colorModePreference: preset.mode,
+      ...(preset.mode === "dark"
+        ? { activeDarkPreset: preset.id }
+        : { activeLightPreset: preset.id }),
+      customPalette: undefined,
       customBullColor: undefined,
       customBearColor: undefined,
     });
@@ -252,40 +327,18 @@
   function handleSelectAppThemeDropdown(selectedId: string) {
     const target = allAvailablePresets.find((p) => p.id === selectedId);
     const mode = target?.mode || "dark";
-    onUpdateSettings({
-      themePreset: selectedId,
-      theme: selectedId as any,
-      colorModePreference: mode,
-      ...(mode === "dark"
-        ? { activeDarkPreset: selectedId }
-        : { activeLightPreset: selectedId }),
-      customPalette: null as any,
-    });
+    handleSelectAppPreset({ id: selectedId, mode });
   }
 
   function handleSelectChartThemeDropdown(selectedId: string) {
-    onUpdateSettings({
-      chartThemePreset: selectedId,
-      customPalette: null as any,
-      customBullColor: undefined,
-      customBearColor: undefined,
-    });
+    const target = allAvailablePresets.find((p) => p.id === selectedId);
+    const mode = target?.mode || "dark";
+    handleSelectChartPreset({ id: selectedId, mode });
   }
 
   function handleSelectPreset(preset: { id: string; mode: "dark" | "light" }) {
     if (syncChartWithAppTheme) {
-      onUpdateSettings({
-        themePreset: preset.id,
-        chartThemePreset: preset.id,
-        theme: preset.id as any,
-        colorModePreference: preset.mode,
-        ...(preset.mode === "dark"
-          ? { activeDarkPreset: preset.id }
-          : { activeLightPreset: preset.id }),
-        customPalette: null as any,
-        customBullColor: undefined,
-        customBearColor: undefined,
-      });
+      handleSelectBothPreset(preset);
     } else {
       if (targetThemeSelection === "app") {
         onUpdateSettings({
@@ -295,11 +348,24 @@
           ...(preset.mode === "dark"
             ? { activeDarkPreset: preset.id }
             : { activeLightPreset: preset.id }),
-          customPalette: null as any,
+          customPalette: undefined,
         });
       } else {
         handleSelectChartPreset(preset);
       }
+    }
+  }
+
+  function handleToggleSyncChart(checked: boolean) {
+    onUpdateSettings({
+      syncChartWithAppTheme: checked,
+      ...(checked
+        ? { chartThemePreset: settings.themePreset || "signature" }
+        : {}),
+      customPalette: undefined,
+    });
+    if (checked) {
+      targetThemeSelection = "app";
     }
   }
 
@@ -339,20 +405,39 @@
     );
     const updatedList = [...savedUserThemes, newTheme];
 
-    onUpdateSettings({
-      savedUserThemes: updatedList,
-      themePreset: newTheme.id,
-      ...(syncChartWithAppTheme ? { chartThemePreset: newTheme.id } : {}),
-      customPalette: undefined,
-    });
+    if (syncChartWithAppTheme) {
+      onUpdateSettings({
+        savedUserThemes: updatedList,
+        themePreset: newTheme.id,
+        chartThemePreset: newTheme.id,
+        colorModePreference: saveAsThemeMode,
+        ...(saveAsThemeMode === "dark"
+          ? { activeDarkPreset: newTheme.id }
+          : { activeLightPreset: newTheme.id }),
+        customPalette: undefined,
+      });
+    } else if (targetThemeSelection === "chart") {
+      onUpdateSettings({
+        savedUserThemes: updatedList,
+        chartThemePreset: newTheme.id,
+        customPalette: undefined,
+      });
+    } else {
+      onUpdateSettings({
+        savedUserThemes: updatedList,
+        themePreset: newTheme.id,
+        colorModePreference: saveAsThemeMode,
+        ...(saveAsThemeMode === "dark"
+          ? { activeDarkPreset: newTheme.id }
+          : { activeLightPreset: newTheme.id }),
+        customPalette: undefined,
+      });
+    }
 
     isSaveAsModalOpen = false;
     saveAsThemeName = "";
     saveAsError = null;
-    copyFeedback = `Tema "${newTheme.name}" berhasil disimpan!`;
-    setTimeout(() => {
-      copyFeedback = null;
-    }, 2500);
+    showToast(`Tema "${newTheme.name}" berhasil disimpan!`);
   }
 
   function handleOpenRename(
@@ -402,10 +487,7 @@
       isRenameModalOpen = false;
       renameTargetThemeId = null;
       renameThemeName = "";
-      copyFeedback = `Nama tema diperbarui menjadi "${cleanName}"!`;
-      setTimeout(() => {
-        copyFeedback = null;
-      }, 2500);
+      showToast(`Nama tema diperbarui menjadi "${cleanName}"!`);
     } catch (err: any) {
       renameError = err?.message || "Gagal mengubah nama tema.";
     }
@@ -435,15 +517,9 @@
         themePreset: fallbackApp,
         chartThemePreset: fallbackChart,
       });
-      copyFeedback = `Tema "${themeName}" berhasil dihapus.`;
-      setTimeout(() => {
-        copyFeedback = null;
-      }, 2500);
+      showToast(`Tema "${themeName}" berhasil dihapus.`);
     } catch (err: any) {
-      copyFeedback = `Gagal menghapus: ${err?.message || "Error"}`;
-      setTimeout(() => {
-        copyFeedback = null;
-      }, 3000);
+      showToast(`Gagal menghapus: ${err?.message || "Error"}`);
     }
   }
 
@@ -459,10 +535,7 @@
       await navigator.clipboard.writeText(
         serializeCustomPaletteText(userTheme.palette),
       );
-      copyFeedback = `Palet teks "${themeName}" disalin ke clipboard!`;
-      setTimeout(() => {
-        copyFeedback = null;
-      }, 2500);
+      showToast(`Palet teks "${themeName}" disalin ke clipboard!`);
     } catch (_) {}
   }
 
@@ -476,14 +549,9 @@
     if (!userTheme) return;
     try {
       await navigator.clipboard.writeText(JSON.stringify(userTheme, null, 2));
-      copyFeedback = `Tema "${themeName}" disalin ke clipboard sebagai JSON!`;
-      setTimeout(() => {
-        copyFeedback = null;
-      }, 2500);
+      showToast(`Tema "${themeName}" disalin ke clipboard sebagai JSON!`);
     } catch (_) {}
   }
-
-  const handleExportUserTheme = handleExportUserThemeJson;
 
   function sanitizeHex(val: string): string | null {
     let v = val.trim();
@@ -527,10 +595,7 @@
       await navigator.clipboard.writeText(
         serializeCustomPaletteJson(currentPalette),
       );
-      copyFeedback = "JSON palet berhasil disalin!";
-      setTimeout(() => {
-        copyFeedback = null;
-      }, 2500);
+      showToast("JSON palet berhasil disalin!");
     } catch (_) {}
   }
 
@@ -539,20 +604,14 @@
       await navigator.clipboard.writeText(
         serializeCustomPaletteText(currentPalette),
       );
-      copyFeedback = "Format teks Hex berhasil disalin!";
-      setTimeout(() => {
-        copyFeedback = null;
-      }, 2500);
+      showToast("Format teks Hex berhasil disalin!");
     } catch (_) {}
   }
 
   async function handleCopySingle(hex: string, label: string) {
     try {
       await navigator.clipboard.writeText(hex);
-      copyFeedback = `${label} (${hex}) disalin!`;
-      setTimeout(() => {
-        copyFeedback = null;
-      }, 2000);
+      showToast(`${label} (${hex}) disalin!`);
     } catch (_) {}
   }
 
@@ -571,10 +630,7 @@
       isPasteModalOpen = false;
       pasteInputText = "";
       pasteError = null;
-      copyFeedback = "Palet kustom berhasil diterapkan!";
-      setTimeout(() => {
-        copyFeedback = null;
-      }, 2500);
+      showToast("Palet kustom berhasil diterapkan!");
     } else {
       pasteError =
         'Format tidak dapat dikenali. Tempel JSON atau teks baris (misal: "Bullish body: #D4A5A5").';
@@ -587,6 +643,8 @@
       customBullColor: undefined,
       customBearColor: undefined,
     });
+    editingUserThemeId = null;
+    editingUserThemeName = null;
   }
 
   // Kustomisasi latar belakang grafik (solid & vertikal gradient) (#128)
@@ -600,10 +658,10 @@
   );
   const bgMode = $derived(customBg.mode || "theme");
   const solidColorVal = $derived(
-    customBg.solidColor || activePreset.chart.background || "#0F0F0F",
+    customBg.solidColor || activeChartPresetConfig.chart.background || "#0F0F0F",
   );
   const gradientTopVal = $derived(
-    customBg.gradientTop || activePreset.chart.background || "#0F0F0F",
+    customBg.gradientTop || activeChartPresetConfig.chart.background || "#0F0F0F",
   );
   const gradientBottomVal = $derived(customBg.gradientBottom || "#181A20");
   const isCustomBgActive = $derived(bgMode !== "theme");
@@ -654,231 +712,319 @@
   }
 </script>
 
+{#snippet themePresetOptions()}
+  <optgroup label="Tema Gelap (Dark)">
+    {#each darkPresets as p}
+      <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ""}</option>
+    {/each}
+  </optgroup>
+  <optgroup label="Tema Terang (Light)">
+    {#each lightPresets as p}
+      <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ""}</option>
+    {/each}
+  </optgroup>
+{/snippet}
+
 <div class="section-group">
-  <!-- System Theme Bridge & Color Mode Selector (#148) -->
-  <div class="system-bridge-section">
-    <div class="presets-header-row">
-      <div>
-        <h4 class="section-title">Mode Warna & Sinkronisasi Sistem</h4>
-        <p class="section-subtitle">
-          Pilih mode warna antarmuka: ikuti skema OS host secara dinamis via
-          System Theme Bridge, atau kunci ke Mode Gelap / Mode Terang.
-        </p>
+  <!-- ═════════════════════════════════════════════════════════════════════════ -->
+  <!-- BAGIAN 1: PUSAT KENDALI TEMA APLIKASI VS TEMA KANVAS CHART (DUAL HUB)     -->
+  <!-- ═════════════════════════════════════════════════════════════════════════ -->
+  <div class="theme-hub-box">
+    <!-- Baris Atas: Mode Warna Cepat + Toggle Sinkronisasi -->
+    <div class="hub-top-bar">
+      <div class="hub-mode-group">
+        <span class="hub-group-label">Mode Tampilan:</span>
+        <div
+          class="theme-mode-filters"
+          role="radiogroup"
+          aria-label="Preferensi Mode Warna"
+        >
+          <button
+            type="button"
+            class="filter-chip {colorModePref === 'system' ? 'active' : ''}"
+            onclick={() => handleSetColorMode("system")}
+            title="Ikuti tema sistem operasi secara otomatis"
+          >
+            <Monitor size={12} />
+            <span>Ikuti Sistem</span>
+          </button>
+          <button
+            type="button"
+            class="filter-chip {colorModePref === 'dark' ? 'active' : ''}"
+            onclick={() => handleSetColorMode("dark")}
+            title="Gunakan Mode Gelap"
+          >
+            <Moon size={12} />
+            <span>Mode Gelap</span>
+          </button>
+          <button
+            type="button"
+            class="filter-chip {colorModePref === 'light' ? 'active' : ''}"
+            onclick={() => handleSetColorMode("light")}
+            title="Gunakan Mode Terang"
+          >
+            <Sun size={12} />
+            <span>Mode Terang</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Segmented Control untuk colorModePreference -->
+      <!-- Sakelar Utama: Sinkronkan Tema Chart dengan Aplikasi -->
+      <div class="hub-sync-pill {syncChartWithAppTheme ? 'synced' : 'decoupled'}">
+        <div class="sync-pill-text">
+          {#if syncChartWithAppTheme}
+            <Link2 size={13} class="sync-icon-linked" />
+            <span>Sinkronkan Tema Chart dengan Aplikasi</span>
+          {:else}
+            <Unlink size={13} class="sync-icon-unlinked" />
+            <span>Sinkronkan Tema Chart dengan Aplikasi (Terpisah)</span>
+          {/if}
+        </div>
+        <label class="toggle-switch">
+          <input
+            type="checkbox"
+            checked={syncChartWithAppTheme}
+            onchange={(e) => handleToggleSyncChart(e.currentTarget.checked)}
+            aria-label="Sinkronkan Tema Chart dengan Aplikasi"
+          />
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 2 Kartu Status Utama: [1] Tema Aplikasi (UI Shell) & [2] Tema Kanvas Chart -->
+    <div class="dual-domain-cards">
+      <!-- KARTU DOMAIN 1: TEMA APLIKASI (UI SHELL) -->
       <div
-        class="theme-mode-filters"
-        role="radiogroup"
-        aria-label="Preferensi Mode Warna"
+        class="domain-card {!syncChartWithAppTheme && targetThemeSelection === 'app' ? 'active-target' : ''}"
+        onclick={() => {
+          if (!syncChartWithAppTheme) targetThemeSelection = "app";
+        }}
+        role="button"
+        tabindex="0"
+        onkeydown={(e) => {
+          if (!syncChartWithAppTheme && (e.key === "Enter" || e.key === " ")) {
+            targetThemeSelection = "app";
+          }
+        }}
       >
-        <button
-          type="button"
-          class="filter-chip {colorModePref === 'system' ? 'active' : ''}"
-          onclick={() => handleSetColorMode("system")}
-          title="Ikuti preferensi tema sistem operasi secara otomatis"
-        >
-          <Monitor size={12} />
-          <span>Ikuti Sistem</span>
-        </button>
-        <button
-          type="button"
-          class="filter-chip {colorModePref === 'dark' ? 'active' : ''}"
-          onclick={() => handleSetColorMode("dark")}
-          title="Paksa antarmuka terminal ke Mode Gelap"
-        >
-          <Moon size={12} />
-          <span>Mode Gelap</span>
-        </button>
-        <button
-          type="button"
-          class="filter-chip {colorModePref === 'light' ? 'active' : ''}"
-          onclick={() => handleSetColorMode("light")}
-          title="Paksa antarmuka terminal ke Mode Terang"
-        >
-          <Sun size={12} />
-          <span>Mode Terang</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Dropdowns untuk Preset Default Gelap & Terang -->
-    <div class="theme-defaults-grid">
-      <div class="setting-row default-preset-item">
-        <div class="setting-info">
-          <span class="setting-label"
-            >Preset Default Mode Gelap (activeDarkPreset)</span
-          >
-          <span class="setting-desc"
-            >Tema yang otomatis aktif saat berada di Mode Gelap</span
-          >
-        </div>
-        <select
-          class="select-input"
-          value={settings.activeDarkPreset || "signature"}
-          onchange={(e) => handleSetDarkPreset(e.currentTarget.value)}
-        >
-          {#each darkPresets as p}
-            <option value={p.id}>{p.name}</option>
-          {/each}
-        </select>
-      </div>
-
-      <div class="setting-row default-preset-item">
-        <div class="setting-info">
-          <span class="setting-label"
-            >Preset Default Mode Terang (activeLightPreset)</span
-          >
-          <span class="setting-desc"
-            >Tema yang otomatis aktif saat berada di Mode Terang</span
-          >
-        </div>
-        <select
-          class="select-input"
-          value={settings.activeLightPreset || "red_folder"}
-          onchange={(e) => handleSetLightPreset(e.currentTarget.value)}
-        >
-          {#each lightPresets as p}
-            <option value={p.id}>{p.name}</option>
-          {/each}
-        </select>
-      </div>
-    </div>
-
-    <!-- Dual-Theme Decoupling Toggle (#149) -->
-    <div class="setting-row sync-chart-row">
-      <div class="setting-info">
-        <span class="setting-label">Sinkronkan Tema Chart dengan Aplikasi</span>
-        <span class="setting-desc">
-          Saat aktif, tema kanvas chart otomatis mengikuti tema aplikasi.
-          Nonaktifkan untuk memilih tema aplikasi dan tema chart secara
-          terpisah.
-        </span>
-      </div>
-      <label class="toggle-switch">
-        <input
-          type="checkbox"
-          checked={syncChartWithAppTheme}
-          onchange={(e) => {
-            const checked = e.currentTarget.checked;
-            onUpdateSettings({
-              syncChartWithAppTheme: checked,
-              ...(checked
-                ? { chartThemePreset: settings.themePreset || "signature" }
-                : {}),
-            });
-          }}
-          aria-label="Sinkronkan Tema Chart dengan Aplikasi"
-        />
-        <span class="slider"></span>
-      </label>
-    </div>
-
-    <!-- Pemilih Independen Tema Aplikasi & Tema Chart saat Un-Synced (#149) -->
-    {#if !syncChartWithAppTheme}
-      <div class="decoupled-selectors-grid">
-        <div class="setting-row default-preset-item">
-          <div class="setting-info">
-            <span class="setting-label">Tema Aplikasi (Desktop Shell)</span>
-            <span class="setting-desc"
-              >Bilah header, sidebar, dock, status bar, dialog, dan Pine IDE</span
+        <div class="domain-card-top">
+          <div class="domain-title-wrap">
+            <Monitor size={15} class="domain-icon" />
+            <div>
+              <div class="domain-title">Tema Aplikasi (Menu & Panel UI)</div>
+              <div class="domain-subtitle">
+                Header, Watchlist, Sidebar, Dialog & Pine IDE
+              </div>
+            </div>
+          </div>
+          {#if !syncChartWithAppTheme}
+            <span
+              class="target-focus-badge {targetThemeSelection === 'app' ? 'active' : ''}"
             >
+              {targetThemeSelection === "app" ? "✓ Sedang Diatur" : "Klik untuk Atur"}
+            </span>
+          {/if}
+        </div>
+
+        <div class="domain-selector-row" onclick={(e) => e.stopPropagation()}>
+          <div class="domain-mini-swatches">
+            <span
+              class="mini-dot"
+              style="background: {activeAppPresetConfig.tokens.bgDarkest};"
+              title="Latar UI"
+            ></span>
+            <span
+              class="mini-dot"
+              style="background: {activeAppPresetConfig.tokens.brandPrimary};"
+              title="Aksen UI"
+            ></span>
           </div>
           <select
-            class="select-input"
+            class="select-input domain-select"
             value={settings.themePreset || "signature"}
             onchange={(e) =>
               handleSelectAppThemeDropdown(e.currentTarget.value)}
+            aria-label="Pilih Tema Aplikasi"
           >
-            {#each allAvailablePresets as p}
-              <option value={p.id}
-                >{p.name} {p.badge ? `(${p.badge})` : ""}</option
-              >
+            {@render themePresetOptions()}
+          </select>
+        </div>
+      </div>
+
+      <!-- KARTU DOMAIN 2: TEMA KANVAS CHART (GRAFIK & LILIN) -->
+      <div
+        class="domain-card {!syncChartWithAppTheme && targetThemeSelection === 'chart' ? 'active-target' : ''} {syncChartWithAppTheme ? 'is-synced-card' : ''}"
+        onclick={() => {
+          if (!syncChartWithAppTheme) targetThemeSelection = "chart";
+        }}
+        role="button"
+        tabindex="0"
+        onkeydown={(e) => {
+          if (!syncChartWithAppTheme && (e.key === "Enter" || e.key === " ")) {
+            targetThemeSelection = "chart";
+          }
+        }}
+      >
+        <div class="domain-card-top">
+          <div class="domain-title-wrap">
+            <BarChart2 size={15} class="domain-icon" />
+            <div>
+              <div class="domain-title">Tema Kanvas Chart (Grafik & Lilin)</div>
+              <div class="domain-subtitle">
+                Latar grafik, candlestick bull/bear, grid & crosshair
+              </div>
+            </div>
+          </div>
+          {#if syncChartWithAppTheme}
+            <button
+              type="button"
+              class="btn-unlink-quick"
+              onclick={(e) => {
+                e.stopPropagation();
+                handleToggleSyncChart(false);
+                targetThemeSelection = "chart";
+              }}
+              title="Pisahkan tema chart agar bisa berbeda dari tema aplikasi"
+            >
+              <Unlink size={11} />
+              <span>Bedakan dari Aplikasi</span>
+            </button>
+          {:else}
+            <span
+              class="target-focus-badge {targetThemeSelection === 'chart' ? 'active' : ''}"
+            >
+              {targetThemeSelection === "chart" ? "✓ Sedang Diatur" : "Klik untuk Atur"}
+            </span>
+          {/if}
+        </div>
+
+        <div class="domain-selector-row" onclick={(e) => e.stopPropagation()}>
+          <div class="domain-mini-swatches">
+            <span
+              class="mini-dot"
+              style="background: {activeChartPresetConfig.chart.background};"
+              title="Latar Chart"
+            ></span>
+            <span
+              class="mini-dot"
+              style="background: {activeChartPresetConfig.chart.upColor};"
+              title="Bullish Candle"
+            ></span>
+            <span
+              class="mini-dot"
+              style="background: {activeChartPresetConfig.chart.downColor};"
+              title="Bearish Candle"
+            ></span>
+          </div>
+          {#if syncChartWithAppTheme}
+            <div class="synced-chart-readout">
+              <Link2 size={12} />
+              <span>Mengikuti Tema Aplikasi ({activeAppPresetConfig.name})</span>
+            </div>
+          {:else}
+            <select
+              class="select-input domain-select"
+              value={settings.chartThemePreset || "signature"}
+              onchange={(e) =>
+                handleSelectChartThemeDropdown(e.currentTarget.value)}
+              aria-label="Pilih Tema Kanvas Chart"
+            >
+              {@render themePresetOptions()}
+            </select>
+          {/if}
+        </div>
+      </div>
+    </div>
+
+    <!-- Baris Tambahan: Watermark Simbol & Opsi Lanjutan Default Gelap/Terang -->
+    <div class="hub-bottom-bar">
+      <div class="watermark-inline-row">
+        <span class="watermark-inline-label">Watermark Simbol di Kanvas:</span>
+        <label class="toggle-switch">
+          <input
+            type="checkbox"
+            checked={settings.showWatermark !== false}
+            onchange={(e) =>
+              onUpdateSettings({ showWatermark: e.currentTarget.checked })}
+            aria-label="Watermark Simbol di Kanvas"
+          />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <button
+        type="button"
+        class="btn-advanced-defaults"
+        onclick={() => (showAdvancedModeDefaults = !showAdvancedModeDefaults)}
+      >
+        <Sliders size={11} />
+        <span>Atur Tema Favorit Saat Pindah Gelap/Terang</span>
+        {#if showAdvancedModeDefaults}
+          <ChevronUp size={12} />
+        {:else}
+          <ChevronDown size={12} />
+        {/if}
+      </button>
+    </div>
+
+    {#if showAdvancedModeDefaults}
+      <div class="theme-defaults-grid">
+        <div class="setting-row default-preset-item">
+          <div class="setting-info">
+            <span class="setting-label">Tema Favorit Mode Gelap</span>
+            <span class="setting-desc">
+              Otomatis dipakai saat Anda menekan tombol Mode Gelap
+            </span>
+          </div>
+          <select
+            class="select-input"
+            value={settings.activeDarkPreset || "signature"}
+            onchange={(e) => handleSetDarkPreset(e.currentTarget.value)}
+          >
+            {#each darkPresets as p}
+              <option value={p.id}>{p.name}</option>
             {/each}
           </select>
         </div>
 
         <div class="setting-row default-preset-item">
           <div class="setting-info">
-            <span class="setting-label"
-              >Tema Kanvas Chart (chartThemePreset)</span
-            >
-            <span class="setting-desc"
-              >Candlestick, gridline, crosshair, latar kanvas, dan watermark</span
-            >
+            <span class="setting-label">Tema Favorit Mode Terang</span>
+            <span class="setting-desc">
+              Otomatis dipakai saat Anda menekan tombol Mode Terang
+            </span>
           </div>
           <select
             class="select-input"
-            value={settings.chartThemePreset || "signature"}
-            onchange={(e) =>
-              handleSelectChartThemeDropdown(e.currentTarget.value)}
+            value={settings.activeLightPreset || "red_folder"}
+            onchange={(e) => handleSetLightPreset(e.currentTarget.value)}
           >
-            {#each allAvailablePresets as p}
-              <option value={p.id}
-                >{p.name} {p.badge ? `(${p.badge})` : ""}</option
-              >
+            {#each lightPresets as p}
+              <option value={p.id}>{p.name}</option>
             {/each}
           </select>
-        </div>
-
-        <div class="setting-row">
-          <div class="setting-info">
-            <span class="setting-label">Watermark Simbol di Kanvas</span>
-            <span class="setting-desc"
-              >Tampilkan simbol ticker besar di belakang grafik kanvas</span
-            >
-          </div>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={settings.showWatermark !== false}
-              onchange={(e) =>
-                onUpdateSettings({ showWatermark: e.currentTarget.checked })}
-            />
-            <span class="slider round"></span>
-          </label>
-        </div>
-      </div>
-
-      <div class="target-selection-strip">
-        <span class="target-label">Target Penerapan Klik Kartu:</span>
-        <div
-          class="target-chips"
-          role="radiogroup"
-          aria-label="Target Penerapan Klik Kartu"
-        >
-          <button
-            type="button"
-            class="filter-chip {targetThemeSelection === 'app' ? 'active' : ''}"
-            onclick={() => (targetThemeSelection = "app")}
-          >
-            Tema Aplikasi
-          </button>
-          <button
-            type="button"
-            class="filter-chip {targetThemeSelection === 'chart'
-              ? 'active'
-              : ''}"
-            onclick={() => (targetThemeSelection = "chart")}
-          >
-            Tema Kanvas Chart
-          </button>
         </div>
       </div>
     {/if}
   </div>
 
+  <!-- ═════════════════════════════════════════════════════════════════════════ -->
+  <!-- BAGIAN 2: GALERI PRESET TEMA (BAWAAN & KUSTOM PENGGUNA)                   -->
+  <!-- ═════════════════════════════════════════════════════════════════════════ -->
   <div class="presets-header-row">
     <div>
-      <h4 class="section-title">Preset Tema Tampilan & Candlestick</h4>
+      <h4 class="section-title">Galeri Preset Tema & Candlestick</h4>
       <p class="section-subtitle">
-        Pilih skema warna antarmuka dan palet candlestick. Tersedia tema gelap
-        (Dark) dan terang (Light) dengan sinkronisasi penuh ke WebGL2 Vela &
-        Pine IDE.
+        {#if syncChartWithAppTheme}
+          Klik kartu tema di bawah untuk menerapkan sekaligus ke <b>Aplikasi & Kanvas Chart</b>.
+        {:else}
+          Mode terpisah aktif: klik kartu untuk menerapkan ke <b>{targetThemeSelection === "app" ? "Tema Aplikasi" : "Tema Kanvas Chart"}</b>, atau gunakan tombol langsung pada kartu.
+        {/if}
       </p>
     </div>
 
-    <!-- Mode Filter Chips -->
+    <!-- Filter Mode Tema -->
     <div
       class="theme-mode-filters"
       role="radiogroup"
@@ -914,20 +1060,25 @@
     {#each filteredPresets as preset}
       {@const isSelectedApp =
         (settings.themePreset || "signature") === preset.id}
-      {@const isSelectedChart =
-        (settings.chartThemePreset || "signature") === preset.id}
+      {@const isSelectedChart = syncChartWithAppTheme
+        ? isSelectedApp
+        : (settings.chartThemePreset || "signature") === preset.id}
       {@const isSelected = syncChartWithAppTheme
         ? isSelectedApp
-        : targetThemeSelection === "app"
-          ? isSelectedApp
-          : isSelectedChart}
+        : isSelectedApp || isSelectedChart}
       {@const isCustom = !isBuiltInTheme(preset.id)}
-      <button
-        type="button"
+      <div
         class="theme-card {isSelected ? 'selected' : ''} {isCustom
           ? 'custom-theme-card'
           : ''}"
         onclick={() => handleSelectPreset(preset)}
+        role="button"
+        tabindex="0"
+        onkeydown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            handleSelectPreset(preset);
+          }
+        }}
       >
         <div class="theme-card-header">
           <span class="theme-name">{preset.name}</span>
@@ -940,7 +1091,6 @@
             {:else}
               <span class="mode-pill dark"><Moon size={9} /> DARK</span>
             {/if}
-            <span class="theme-badge">{preset.badge}</span>
           </div>
         </div>
 
@@ -991,52 +1141,64 @@
           </div>
         </div>
 
-        <div class="theme-card-footer">
-          <div class="theme-status">
-            {#if syncChartWithAppTheme}
+        <!-- Status & Tombol Aksi Langsung (Tidak Membingungkan) -->
+        <div class="theme-card-footer" onclick={(e) => e.stopPropagation()}>
+          {#if syncChartWithAppTheme}
+            <div class="theme-status">
               {#if isSelectedApp}
-                <span class="status-active"
-                  ><Check size={12} /> Sedang Digunakan</span
-                >
+                <span class="status-active">
+                  <Check size={12} /> Aktif (Aplikasi & Chart)
+                </span>
               {:else}
-                <span class="status-inactive">Klik untuk Terapkan</span>
+                <button
+                  type="button"
+                  class="btn-apply-direct"
+                  onclick={() => handleSelectBothPreset(preset)}
+                >
+                  Pakai Tema Ini
+                </button>
               {/if}
-            {:else}
-              {#if isSelectedApp && isSelectedChart}
-                <span class="status-active"
-                  ><Check size={12} /> Aktif: Aplikasi & Chart</span
-                >
-              {:else if isSelectedApp}
-                <span class="status-active"
-                  ><Check size={12} /> Aktif: Tema Aplikasi</span
-                >
-              {:else if isSelectedChart}
-                <span class="status-active"
-                  ><Check size={12} /> Aktif: Tema Chart</span
-                >
-              {:else}
-                <span class="status-inactive"
-                  >Klik untuk {targetThemeSelection === "app"
-                    ? "Aplikasi"
-                    : "Chart"}</span
-                >
-              {/if}
-            {/if}
-          </div>
-
-          {#if isCustom}
-            <div
-              class="custom-card-actions"
-              onclick={(e) => e.stopPropagation()}
-            >
+            </div>
+          {:else}
+            <!-- Saat mode terpisah, tampilkan 2 tombol langsung: [Aplikasi] dan [Chart] -->
+            <div class="decoupled-card-buttons">
               <button
                 type="button"
-                class="btn-card-action"
-                title="Edit warna tema"
-                onclick={(e) => handleStartEditThemeColors(preset, e)}
+                class="btn-domain-apply {isSelectedApp ? 'active' : ''}"
+                onclick={() => handleSelectAppPreset(preset)}
+                title="Terapkan tema ini ke antarmuka Aplikasi"
               >
-                <Palette size={11} />
+                {#if isSelectedApp}
+                  <Check size={10} /> Aplikasi
+                {:else}
+                  Pakai di Aplikasi
+                {/if}
               </button>
+              <button
+                type="button"
+                class="btn-domain-apply {isSelectedChart ? 'active' : ''}"
+                onclick={() => handleSelectChartPreset(preset)}
+                title="Terapkan tema ini ke Kanvas Chart"
+              >
+                {#if isSelectedChart}
+                  <Check size={10} /> Chart
+                {:else}
+                  Pakai di Chart
+                {/if}
+              </button>
+            </div>
+          {/if}
+
+          <div class="custom-card-actions">
+            <button
+              type="button"
+              class="btn-card-action"
+              title="Edit warna tema"
+              onclick={(e) => handleStartEditThemeColors(preset, e)}
+            >
+              <Palette size={11} />
+            </button>
+            {#if isCustom}
               <button
                 type="button"
                 class="btn-card-action"
@@ -1072,85 +1234,77 @@
               >
                 <Trash2 size={11} />
               </button>
-            </div>
-          {/if}
+            {/if}
+          </div>
         </div>
-      </button>
+      </div>
     {/each}
   </div>
 
-  <!-- Palet Kustom Studio (9 Dimensi - Sesuai Referensi chartthemes.com) -->
+  <!-- ═════════════════════════════════════════════════════════════════════════ -->
+  <!-- BAGIAN 3: STUDIO KUSTOMISASI TEMA & LATAR KANVAS                          -->
+  <!-- ═════════════════════════════════════════════════════════════════════════ -->
   <div class="custom-studio-box">
     <div class="custom-studio-header">
       <div class="custom-studio-info">
         <div class="studio-title-row">
-          <Palette size={16} class="studio-icon" />
-          <span class="custom-studio-title">Palet Kustom Studio</span>
+          <Sparkles size={16} class="studio-icon" />
+          <span class="custom-studio-title">Studio Kustomisasi Tema (Custom Theme Builder)</span>
           {#if isCustomActive}
-            <span class="custom-active-badge">Custom Aktif</span>
+            <span class="custom-active-badge">Live Preview Aktif</span>
           {:else}
-            <span class="custom-theme-badge">Mengikuti Preset</span>
+            <span class="custom-theme-badge">Basis: {activePreset.name}</span>
           {/if}
           <span class="mode-indicator {isPaletteDark ? 'dark' : 'light'}">
             {#if isPaletteDark}
-              <Moon size={10} /> Mode Gelap Terdeteksi
+              <Moon size={10} /> Mode Gelap
             {:else}
-              <Sun size={10} /> Mode Terang Terdeteksi
+              <Sun size={10} /> Mode Terang
             {/if}
           </span>
         </div>
 
         {#if editingUserThemeId}
           <div class="in-place-edit-banner">
-            <span>Sedang Mengedit Warna: {editingUserThemeName}</span>
+            <span>Sedang Mengedit Warna: <b>{editingUserThemeName}</b></span>
             <div class="in-place-actions">
               <button
                 type="button"
-                class="btn-studio-action btn-save"
+                class="btn-studio-action btn-save-as"
                 onclick={handleSaveInPlaceThemeColors}
               >
-                <Save size={14} /> Simpan Perubahan ke Tema Ini
+                <Save size={13} /> Simpan Perubahan ke Tema Ini
               </button>
               <button
                 type="button"
                 class="btn-studio-action btn-reset"
                 onclick={handleCancelEditThemeColors}
               >
-                <X size={14} /> Batal
+                <X size={13} /> Batal
               </button>
             </div>
           </div>
         {/if}
+
         <span class="custom-studio-desc">
-          Kustomisasi 6 warna candlestick dan 3 warna umum. Perubahan langsung
-          diaplikasikan serentak ke UI Trawangan, Pine IDE, kanvas WebGL2 Vela,
-          dan dialog pengaturan bawaan Vela.
+          Ubah warna lilin candlestick atau warna latar di bawah untuk melihat hasilnya secara langsung, lalu klik <b>"Simpan Sebagai Tema Baru"</b> agar tersimpan di galeri tema Anda.
         </span>
       </div>
 
       <div class="custom-studio-actions">
         {#if copyFeedback}
-          <span class="feedback-toast"
-            ><CheckCheck size={12} /> {copyFeedback}</span
-          >
+          <span class="feedback-toast">
+            <CheckCheck size={12} /> {copyFeedback}
+          </span>
         {/if}
         <button
           type="button"
-          class="btn-studio-action"
-          onclick={handleCopyJson}
-          title="Salin konfigurasi palet dalam format JSON ke clipboard"
+          class="btn-studio-action btn-save-as"
+          onclick={handleOpenSaveAs}
+          title="Simpan racikan warna saat ini sebagai preset tema pribadi baru"
         >
-          <Copy size={12} />
-          <span>Salin JSON</span>
-        </button>
-        <button
-          type="button"
-          class="btn-studio-action"
-          onclick={handleCopyText}
-          title="Salin ringkasan palet dalam format teks Hex (ala chartthemes.com)"
-        >
-          <FileText size={12} />
-          <span>Salin Teks Hex</span>
+          <Save size={12} />
+          <span>Simpan Sebagai Tema Baru</span>
         </button>
         <button
           type="button"
@@ -1159,16 +1313,25 @@
           title="Tempel palet dari JSON atau teks daftar warna"
         >
           <Clipboard size={12} />
-          <span>Tempel Palet</span>
+          <span>Impor / Tempel Palet</span>
         </button>
         <button
           type="button"
-          class="btn-studio-action btn-save-as"
-          onclick={handleOpenSaveAs}
-          title="Simpan konfigurasi palet saat ini sebagai preset tema pengguna baru"
+          class="btn-studio-action"
+          onclick={handleCopyText}
+          title="Salin ringkasan palet dalam format teks Hex"
         >
-          <Save size={12} />
-          <span>Simpan Sebagai Tema Baru</span>
+          <FileText size={12} />
+          <span>Salin Hex</span>
+        </button>
+        <button
+          type="button"
+          class="btn-studio-action"
+          onclick={handleCopyJson}
+          title="Salin konfigurasi palet dalam format JSON"
+        >
+          <Copy size={12} />
+          <span>Salin JSON</span>
         </button>
         <button
           type="button"
@@ -1178,7 +1341,7 @@
           title="Kembalikan semua warna kustom ke setelan bawaan preset aktif"
         >
           <RotateCcw size={12} />
-          <span>Reset ke Preset</span>
+          <span>Reset</span>
         </button>
       </div>
     </div>
@@ -1186,128 +1349,17 @@
     <!-- Kategori 1: Warna Candlestick -->
     <div class="studio-category">
       <div class="category-header">
-        <span class="category-title">Warna Candlestick (Candle Colors)</span>
-        <span class="category-sub"
-          >6 atribut lilin individual untuk kondisi Bullish dan Bearish</span
-        >
+        <span class="category-title">1. Warna Lilin Candlestick (Bullish & Bearish)</span>
+        <span class="category-sub">
+          Atur warna badan lilin (Body), sumbu (Wick), dan garis tepi (Border)
+        </span>
       </div>
 
       <div class="studio-pickers-grid">
-        <!-- Bearish Body -->
-        <div class="studio-picker-card">
-          <div class="picker-top">
-            <span class="picker-name">Bearish body</span>
-            <button
-              type="button"
-              class="btn-mini-copy"
-              onclick={() =>
-                handleCopySingle(
-                  currentPalette.candles.bearBody,
-                  "Bearish body",
-                )}
-              title="Salin kode hex"
-            >
-              <Copy size={10} />
-            </button>
-          </div>
-          <div class="picker-bottom">
-            <input
-              type="color"
-              class="color-chip"
-              value={currentPalette.candles.bearBody}
-              onchange={(e) =>
-                handleUpdateCandle("bearBody", e.currentTarget.value)}
-              aria-label="Bearish body"
-            />
-            <input
-              type="text"
-              class="hex-box mono-nums"
-              value={currentPalette.candles.bearBody}
-              maxlength="7"
-              onchange={(e) =>
-                handleUpdateCandle("bearBody", e.currentTarget.value)}
-            />
-          </div>
-        </div>
-
-        <!-- Bearish Wick -->
-        <div class="studio-picker-card">
-          <div class="picker-top">
-            <span class="picker-name">Bearish wick</span>
-            <button
-              type="button"
-              class="btn-mini-copy"
-              onclick={() =>
-                handleCopySingle(
-                  currentPalette.candles.bearWick,
-                  "Bearish wick",
-                )}
-              title="Salin kode hex"
-            >
-              <Copy size={10} />
-            </button>
-          </div>
-          <div class="picker-bottom">
-            <input
-              type="color"
-              class="color-chip"
-              value={currentPalette.candles.bearWick}
-              onchange={(e) =>
-                handleUpdateCandle("bearWick", e.currentTarget.value)}
-              aria-label="Bearish wick"
-            />
-            <input
-              type="text"
-              class="hex-box mono-nums"
-              value={currentPalette.candles.bearWick}
-              maxlength="7"
-              onchange={(e) =>
-                handleUpdateCandle("bearWick", e.currentTarget.value)}
-            />
-          </div>
-        </div>
-
-        <!-- Bearish Border -->
-        <div class="studio-picker-card">
-          <div class="picker-top">
-            <span class="picker-name">Bearish border</span>
-            <button
-              type="button"
-              class="btn-mini-copy"
-              onclick={() =>
-                handleCopySingle(
-                  currentPalette.candles.bearBorder,
-                  "Bearish border",
-                )}
-              title="Salin kode hex"
-            >
-              <Copy size={10} />
-            </button>
-          </div>
-          <div class="picker-bottom">
-            <input
-              type="color"
-              class="color-chip"
-              value={currentPalette.candles.bearBorder}
-              onchange={(e) =>
-                handleUpdateCandle("bearBorder", e.currentTarget.value)}
-              aria-label="Bearish border"
-            />
-            <input
-              type="text"
-              class="hex-box mono-nums"
-              value={currentPalette.candles.bearBorder}
-              maxlength="7"
-              onchange={(e) =>
-                handleUpdateCandle("bearBorder", e.currentTarget.value)}
-            />
-          </div>
-        </div>
-
         <!-- Bullish Body -->
         <div class="studio-picker-card">
           <div class="picker-top">
-            <span class="picker-name">Bullish body</span>
+            <span class="picker-name">Bullish Body (Naik)</span>
             <button
               type="button"
               class="btn-mini-copy"
@@ -1344,7 +1396,7 @@
         <!-- Bullish Wick -->
         <div class="studio-picker-card">
           <div class="picker-top">
-            <span class="picker-name">Bullish wick</span>
+            <span class="picker-name">Bullish Wick (Sumbu Naik)</span>
             <button
               type="button"
               class="btn-mini-copy"
@@ -1381,7 +1433,7 @@
         <!-- Bullish Border -->
         <div class="studio-picker-card">
           <div class="picker-top">
-            <span class="picker-name">Bullish border</span>
+            <span class="picker-name">Bullish Border (Tepi Naik)</span>
             <button
               type="button"
               class="btn-mini-copy"
@@ -1414,24 +1466,134 @@
             />
           </div>
         </div>
+
+        <!-- Bearish Body -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Bearish Body (Turun)</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.candles.bearBody,
+                  "Bearish body",
+                )}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.candles.bearBody}
+              onchange={(e) =>
+                handleUpdateCandle("bearBody", e.currentTarget.value)}
+              aria-label="Bearish body"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.candles.bearBody}
+              maxlength="7"
+              onchange={(e) =>
+                handleUpdateCandle("bearBody", e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <!-- Bearish Wick -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Bearish Wick (Sumbu Turun)</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.candles.bearWick,
+                  "Bearish wick",
+                )}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.candles.bearWick}
+              onchange={(e) =>
+                handleUpdateCandle("bearWick", e.currentTarget.value)}
+              aria-label="Bearish wick"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.candles.bearWick}
+              maxlength="7"
+              onchange={(e) =>
+                handleUpdateCandle("bearWick", e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <!-- Bearish Border -->
+        <div class="studio-picker-card">
+          <div class="picker-top">
+            <span class="picker-name">Bearish Border (Tepi Turun)</span>
+            <button
+              type="button"
+              class="btn-mini-copy"
+              onclick={() =>
+                handleCopySingle(
+                  currentPalette.candles.bearBorder,
+                  "Bearish border",
+                )}
+              title="Salin kode hex"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+          <div class="picker-bottom">
+            <input
+              type="color"
+              class="color-chip"
+              value={currentPalette.candles.bearBorder}
+              onchange={(e) =>
+                handleUpdateCandle("bearBorder", e.currentTarget.value)}
+              aria-label="Bearish border"
+            />
+            <input
+              type="text"
+              class="hex-box mono-nums"
+              value={currentPalette.candles.bearBorder}
+              maxlength="7"
+              onchange={(e) =>
+                handleUpdateCandle("bearBorder", e.currentTarget.value)}
+            />
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Kategori 2: Warna Umum (General Colors) -->
+    <!-- Kategori 2: Warna Fondasi (Latar, Panel, Teks) -->
     <div class="studio-category">
       <div class="category-header">
-        <span class="category-title">Warna Umum (General Colors)</span>
-        <span class="category-sub"
-          >3 atribut fondasi: latar kanvas & app, permukaan panel, dan tipografi
-          teks</span
-        >
+        <span class="category-title">2. Warna Fondasi Tema (Latar, Panel & Teks)</span>
+        <span class="category-sub">
+          Mengatur warna dasar kanvas/aplikasi, permukaan panel, dan teks sumbu
+        </span>
       </div>
 
       <div class="studio-pickers-grid general-grid">
         <!-- Background Color -->
         <div class="studio-picker-card">
           <div class="picker-top">
-            <span class="picker-name">Background color</span>
+            <span class="picker-name">Background (Latar Utama)</span>
             <button
               type="button"
               class="btn-mini-copy"
@@ -1468,7 +1630,7 @@
         <!-- Foreground -->
         <div class="studio-picker-card">
           <div class="picker-top">
-            <span class="picker-name">Foreground (Panel/Border)</span>
+            <span class="picker-name">Foreground (Permukaan Panel)</span>
             <button
               type="button"
               class="btn-mini-copy"
@@ -1505,7 +1667,7 @@
         <!-- Text color -->
         <div class="studio-picker-card">
           <div class="picker-top">
-            <span class="picker-name">Text color (Teks & Sumbu)</span>
+            <span class="picker-name">Text Color (Teks & Angka Sumbu)</span>
             <button
               type="button"
               class="btn-mini-copy"
@@ -1540,6 +1702,165 @@
         </div>
       </div>
     </div>
+
+    <!-- Kategori 3: Efek Latar Belakang Khusus Kanvas Chart (Solid / Gradien) -->
+    <div class="studio-category studio-bg-override">
+      <div class="custom-candle-header">
+        <div class="custom-candle-info">
+          <span class="category-title">3. Efek Latar Kanvas Chart Khusus (Solid / Gradien Vertikal)</span>
+          <span class="category-sub">
+            Opsional: Timpa khusus latar belakang kanvas chart dengan gradien atau warna solid tanpa mengubah tema utama.
+          </span>
+        </div>
+        <div class="custom-candle-actions">
+          {#if isCustomBgActive}
+            <span class="custom-active-badge">Override Aktif</span>
+          {:else}
+            <span class="custom-theme-badge">Mengikuti Tema Chart</span>
+          {/if}
+          <button
+            type="button"
+            class="btn-reset-candle"
+            onclick={handleResetCustomBg}
+            disabled={!isCustomBgActive}
+            title="Kembalikan latar belakang grafik ke setelan bawaan tema chart"
+          >
+            <RotateCcw size={12} />
+            <span>Ikuti Tema</span>
+          </button>
+        </div>
+      </div>
+
+      <div
+        class="bg-mode-chips"
+        role="radiogroup"
+        aria-label="Mode Latar Belakang Grafik"
+      >
+        <button
+          type="button"
+          class="bg-mode-chip {bgMode === 'theme' ? 'active' : ''}"
+          role="radio"
+          aria-checked={bgMode === "theme"}
+          onclick={() => handleSetBgMode("theme")}
+        >
+          <span>Bawaan Tema Chart</span>
+        </button>
+        <button
+          type="button"
+          class="bg-mode-chip {bgMode === 'solid' ? 'active' : ''}"
+          role="radio"
+          aria-checked={bgMode === "solid"}
+          onclick={() => handleSetBgMode("solid")}
+        >
+          <span>Warna Solid Khusus</span>
+        </button>
+        <button
+          type="button"
+          class="bg-mode-chip {bgMode === 'gradient' ? 'active' : ''}"
+          role="radio"
+          aria-checked={bgMode === "gradient"}
+          onclick={() => handleSetBgMode("gradient")}
+        >
+          <span>Gradien Vertikal</span>
+        </button>
+      </div>
+
+      {#if bgMode === "solid"}
+        <div class="custom-candle-inputs">
+          <div class="candle-picker-card">
+            <div class="picker-label-row">
+              <span class="picker-title">Warna Latar Solid</span>
+              <span class="picker-current-hex mono-nums">{solidColorVal}</span>
+            </div>
+            <div class="picker-controls">
+              <input
+                type="color"
+                class="color-input"
+                value={solidColorVal}
+                onchange={(e) => handleUpdateSolidColor(e.currentTarget.value)}
+                aria-label="Warna Latar Solid"
+              />
+              <input
+                type="text"
+                class="hex-text-input mono-nums"
+                value={solidColorVal}
+                maxlength="7"
+                onchange={(e) => {
+                  const clean = sanitizeHex(e.currentTarget.value);
+                  if (clean) handleUpdateSolidColor(clean);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      {:else if bgMode === "gradient"}
+        <div class="gradient-config-container">
+          <div class="gradient-preview-wrap">
+            <span class="preview-strip-label">Pratinjau Gradien Vertikal</span>
+            <div
+              class="gradient-live-strip"
+              style="background: linear-gradient(180deg, {gradientTopVal}, {gradientBottomVal});"
+              title="Pratinjau Gradien Vertikal: {gradientTopVal} -> {gradientBottomVal}"
+            ></div>
+          </div>
+
+          <div class="custom-candle-inputs">
+            <div class="candle-picker-card">
+              <div class="picker-label-row">
+                <span class="picker-title">Warna Atas (Top)</span>
+                <span class="picker-current-hex mono-nums">{gradientTopVal}</span>
+              </div>
+              <div class="picker-controls">
+                <input
+                  type="color"
+                  class="color-input"
+                  value={gradientTopVal}
+                  onchange={(e) => handleUpdateGradientTop(e.currentTarget.value)}
+                  aria-label="Warna Atas Gradien"
+                />
+                <input
+                  type="text"
+                  class="hex-text-input mono-nums"
+                  value={gradientTopVal}
+                  maxlength="7"
+                  onchange={(e) => {
+                    const clean = sanitizeHex(e.currentTarget.value);
+                    if (clean) handleUpdateGradientTop(clean);
+                  }}
+                />
+              </div>
+            </div>
+
+            <div class="candle-picker-card">
+              <div class="picker-label-row">
+                <span class="picker-title">Warna Bawah (Bottom)</span>
+                <span class="picker-current-hex mono-nums">{gradientBottomVal}</span>
+              </div>
+              <div class="picker-controls">
+                <input
+                  type="color"
+                  class="color-input"
+                  value={gradientBottomVal}
+                  onchange={(e) =>
+                    handleUpdateGradientBottom(e.currentTarget.value)}
+                  aria-label="Warna Bawah Gradien"
+                />
+                <input
+                  type="text"
+                  class="hex-text-input mono-nums"
+                  value={gradientBottomVal}
+                  maxlength="7"
+                  onchange={(e) => {
+                    const clean = sanitizeHex(e.currentTarget.value);
+                    if (clean) handleUpdateGradientBottom(clean);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      {/if}
+    </div>
   </div>
 
   <!-- Modal Dialog Tempel Palet -->
@@ -1558,7 +1879,7 @@
         <div class="modal-header">
           <div class="modal-title-row">
             <Clipboard size={16} />
-            <span class="modal-title">Tempel Palet Tema</span>
+            <span class="modal-title">Impor / Tempel Palet Tema</span>
           </div>
           <button
             type="button"
@@ -1578,7 +1899,8 @@
           class="paste-textarea mono-nums"
           bind:value={pasteInputText}
           placeholder={`Contoh teks:\nBearish body: #9B1D20\nBearish wick: #7F4F4F\nBullish body: #D4A5A5\nBackground color: #edede9\nText color: #4A0E0F`}
-          rows="8"></textarea>
+          rows="8"
+        ></textarea>
 
         {#if pasteError}
           <div class="paste-error-msg">{pasteError}</div>
@@ -1632,24 +1954,20 @@
         </div>
 
         <p class="modal-desc">
-          Simpan palet 9 dimensi saat ini ke dalam koleksi tema pengguna
-          personal. Tema ini akan tersimpan berdampingan dengan preset resmi dan
-          dapat diterapkan secara mandiri ke antarmuka aplikasi atau grafik
-          chart.
+          Simpan racikan warna saat ini ke dalam koleksi tema pribadi Anda. Tema
+          ini akan muncul di Galeri Preset dan dapat digunakan untuk Aplikasi
+          maupun Kanvas Chart.
         </p>
 
         <div class="modal-form-group">
-          <label class="modal-label" for="saveAsThemeName"
-            >Nama Preset Tema</label
-          >
+          <label class="modal-label" for="saveAsThemeName">Nama Tema Baru</label>
           <input
             id="saveAsThemeName"
             type="text"
             class="modal-input"
-            placeholder="Contoh: Cyberpunk Neon, Coffee Paper"
+            placeholder="Contoh: Cyberpunk Neon, Kopi Sore"
             bind:value={saveAsThemeName}
             onkeydown={(e) => e.key === "Enter" && handleConfirmSaveAs()}
-            autofocus
           />
         </div>
 
@@ -1719,7 +2037,7 @@
         <div class="modal-header">
           <div class="modal-title-row">
             <Edit2 size={16} />
-            <span class="modal-title">Ubah Nama Tema Preset</span>
+            <span class="modal-title">Ubah Nama Tema</span>
           </div>
           <button
             type="button"
@@ -1738,7 +2056,6 @@
             class="modal-input"
             bind:value={renameThemeName}
             onkeydown={(e) => e.key === "Enter" && handleConfirmRename()}
-            autofocus
           />
         </div>
 
@@ -1765,194 +2082,13 @@
       </div>
     </div>
   {/if}
-
-  <!-- Kustomisasi Latar Belakang Grafik (Solid & Vertical Gradient) (#128) -->
-  <div class="custom-candle-box custom-bg-box">
-    <div class="custom-candle-header">
-      <div class="custom-candle-info">
-        <span class="custom-candle-title">Latar Belakang Grafik</span>
-        <span class="custom-candle-desc">
-          Sesuaikan latar kanvas grafik dengan warna solid atau gradien vertikal
-          kustom tanpa mengubah elemen tema lainnya.
-        </span>
-      </div>
-      <div class="custom-candle-actions">
-        {#if isCustomBgActive}
-          <span class="custom-active-badge">Custom Aktif</span>
-        {:else}
-          <span class="custom-theme-badge">Mengikuti Tema</span>
-        {/if}
-        <button
-          type="button"
-          class="btn-reset-candle"
-          onclick={handleResetCustomBg}
-          disabled={!isCustomBgActive}
-          title="Kembalikan latar belakang grafik ke setelan bawaan tema aktif"
-        >
-          <RotateCcw size={12} />
-          <span>Reset ke Bawaan Tema</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Mode Selector Chips / Radio Buttons -->
-    <div
-      class="bg-mode-chips"
-      role="radiogroup"
-      aria-label="Mode Latar Belakang Grafik"
-    >
-      <button
-        type="button"
-        class="bg-mode-chip {bgMode === 'theme' ? 'active' : ''}"
-        role="radio"
-        aria-checked={bgMode === "theme"}
-        onclick={() => handleSetBgMode("theme")}
-      >
-        <span>Bawaan Tema</span>
-      </button>
-      <button
-        type="button"
-        class="bg-mode-chip {bgMode === 'solid' ? 'active' : ''}"
-        role="radio"
-        aria-checked={bgMode === "solid"}
-        onclick={() => handleSetBgMode("solid")}
-      >
-        <span>Warna Solid</span>
-      </button>
-      <button
-        type="button"
-        class="bg-mode-chip {bgMode === 'gradient' ? 'active' : ''}"
-        role="radio"
-        aria-checked={bgMode === "gradient"}
-        onclick={() => handleSetBgMode("gradient")}
-      >
-        <span>Gradien Vertikal</span>
-      </button>
-    </div>
-
-    {#if bgMode === "solid"}
-      <div class="custom-candle-inputs">
-        <div class="candle-picker-card">
-          <div class="picker-label-row">
-            <span class="picker-title">Warna Latar Solid</span>
-            <span class="picker-current-hex mono-nums">{solidColorVal}</span>
-          </div>
-          <div class="picker-controls">
-            <input
-              type="color"
-              class="color-input"
-              value={solidColorVal}
-              onchange={(e) => handleUpdateSolidColor(e.currentTarget.value)}
-              aria-label="Warna Latar Solid"
-            />
-            <input
-              type="text"
-              class="hex-text-input mono-nums"
-              value={solidColorVal}
-              maxlength="7"
-              onchange={(e) => {
-                let val = e.currentTarget.value.trim();
-                if (!val.startsWith("#") && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
-                  val = "#" + val;
-                }
-                if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
-                  handleUpdateSolidColor(val);
-                }
-              }}
-            />
-          </div>
-        </div>
-      </div>
-    {:else if bgMode === "gradient"}
-      <div class="gradient-config-container">
-        <!-- Live Preview Strip -->
-        <div class="gradient-preview-wrap">
-          <span class="preview-strip-label">Pratinjau Gradien Vertikal</span>
-          <div
-            class="gradient-live-strip"
-            style="background: linear-gradient(180deg, {gradientTopVal}, {gradientBottomVal});"
-            title="Pratinjau Gradien Vertikal: {gradientTopVal} -> {gradientBottomVal}"
-          ></div>
-        </div>
-
-        <div class="custom-candle-inputs">
-          <!-- Gradient Top Picker -->
-          <div class="candle-picker-card">
-            <div class="picker-label-row">
-              <span class="picker-title">Warna Atas (Top)</span>
-              <span class="picker-current-hex mono-nums">{gradientTopVal}</span>
-            </div>
-            <div class="picker-controls">
-              <input
-                type="color"
-                class="color-input"
-                value={gradientTopVal}
-                onchange={(e) => handleUpdateGradientTop(e.currentTarget.value)}
-                aria-label="Warna Atas Gradien"
-              />
-              <input
-                type="text"
-                class="hex-text-input mono-nums"
-                value={gradientTopVal}
-                maxlength="7"
-                onchange={(e) => {
-                  let val = e.currentTarget.value.trim();
-                  if (!val.startsWith("#") && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
-                    val = "#" + val;
-                  }
-                  if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
-                    handleUpdateGradientTop(val);
-                  }
-                }}
-              />
-            </div>
-          </div>
-
-          <!-- Gradient Bottom Picker -->
-          <div class="candle-picker-card">
-            <div class="picker-label-row">
-              <span class="picker-title">Warna Bawah (Bottom)</span>
-              <span class="picker-current-hex mono-nums"
-                >{gradientBottomVal}</span
-              >
-            </div>
-            <div class="picker-controls">
-              <input
-                type="color"
-                class="color-input"
-                value={gradientBottomVal}
-                onchange={(e) =>
-                  handleUpdateGradientBottom(e.currentTarget.value)}
-                aria-label="Warna Bawah Gradien"
-              />
-              <input
-                type="text"
-                class="hex-text-input mono-nums"
-                value={gradientBottomVal}
-                maxlength="7"
-                onchange={(e) => {
-                  let val = e.currentTarget.value.trim();
-                  if (!val.startsWith("#") && /^[0-9A-Fa-f]{3,6}$/.test(val)) {
-                    val = "#" + val;
-                  }
-                  if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(val)) {
-                    handleUpdateGradientBottom(val);
-                  }
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    {/if}
-  </div>
 </div>
 
 <style>
   .section-group {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
   }
 
   .section-title {
@@ -1960,7 +2096,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-muted);
+    color: var(--text-main);
     margin: 0;
   }
 
@@ -1968,23 +2104,254 @@
     font-size: 11.5px;
     color: var(--text-muted);
     line-height: 1.4;
-    margin: -4px 0 2px 0;
+    margin: 2px 0 0 0;
   }
 
-  /* System Theme Bridge & Color Mode Switcher (#148) */
-  .system-bridge-section {
+  /* ─── BAGIAN 1: THEME HUB BOX (DUAL DOMAIN CARDS) ─── */
+  .theme-hub-box {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding-bottom: 16px;
-    margin-bottom: 16px;
+    padding: 14px 16px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+  }
+
+  .hub-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-bottom: 10px;
     border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .hub-mode-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .hub-group-label {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .hub-sync-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .hub-sync-pill.decoupled {
+    border-color: var(--brand-primary);
+    background: rgba(255, 105, 180, 0.06);
+  }
+
+  .sync-pill-text {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .dual-domain-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 12px;
+  }
+
+  .domain-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--bg-surface);
+    border: 1.5px solid var(--border-hairline);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .domain-card:hover {
+    border-color: var(--border-bright);
+  }
+
+  .domain-card.active-target {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 12px rgba(255, 105, 180, 0.14);
+  }
+
+  .domain-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .domain-title-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .domain-title-wrap :global(.domain-icon) {
+    color: var(--brand-primary);
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+
+  .domain-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .domain-subtitle {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+
+  .target-focus-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    border: 1px solid var(--border-hairline);
+    white-space: nowrap;
+  }
+
+  .target-focus-badge.active {
+    background: rgba(255, 105, 180, 0.15);
+    color: var(--brand-primary);
+    border-color: var(--brand-primary);
+  }
+
+  .btn-unlink-quick {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-main);
+    border: 1px solid var(--border-subtle);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .btn-unlink-quick:hover {
+    border-color: var(--brand-primary);
+    color: var(--brand-primary);
+  }
+
+  .domain-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: auto;
+  }
+
+  .domain-mini-swatches {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    background: var(--bg-darkest);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+  }
+
+  .mini-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    display: inline-block;
+  }
+
+  .domain-select {
+    flex: 1;
+    width: 100%;
+    font-weight: 600;
+  }
+
+  .synced-chart-readout {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--bg-darkest);
+    border: 1px dashed var(--border-subtle);
+    padding: 6px 10px;
+    border-radius: 4px;
+  }
+
+  .hub-bottom-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-hairline);
+  }
+
+  .watermark-inline-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .watermark-inline-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .btn-advanced-defaults {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .btn-advanced-defaults:hover {
+    color: var(--text-main);
+    background: var(--bg-hover);
   }
 
   .theme-defaults-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+    padding-top: 6px;
   }
 
   .default-preset-item {
@@ -1994,11 +2361,54 @@
     border: 1px solid var(--border-hairline);
   }
 
+  /* ─── BAGIAN 2: GALERI PRESET TEMA ─── */
+  .presets-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .theme-mode-filters {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-surface);
+    padding: 3px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-hairline);
+  }
+
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .filter-chip:hover {
+    color: var(--text-main);
+  }
+
+  .filter-chip.active {
+    background: var(--bg-elevated);
+    color: var(--brand-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
   .theme-presets-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
     gap: 10px;
-    margin-top: 6px;
   }
 
   .theme-card {
@@ -2029,6 +2439,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 6px;
   }
 
   .theme-name {
@@ -2037,14 +2448,39 @@
     color: var(--text-main);
   }
 
-  .theme-card .theme-badge {
-    font-size: 9px;
+  .card-badges {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .mode-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 8.5px;
     font-weight: 700;
     padding: 1px 5px;
     border-radius: var(--radius-xs);
-    background: rgba(255, 105, 180, 0.12);
-    color: var(--brand-primary);
-    border: 1px solid rgba(255, 105, 180, 0.25);
+  }
+
+  .mode-pill.light {
+    background: rgba(234, 179, 8, 0.14);
+    color: #eab308;
+    border: 1px solid rgba(234, 179, 8, 0.3);
+  }
+
+  .mode-pill.dark {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+  }
+
+  .mode-pill.custom {
+    background: rgba(255, 105, 180, 0.15);
+    color: #ff69b4;
+    border: 1px solid rgba(255, 105, 180, 0.35);
   }
 
   .theme-desc {
@@ -2052,6 +2488,7 @@
     color: var(--text-muted);
     line-height: 1.35;
     min-height: 28px;
+    margin: 0;
   }
 
   .theme-swatches {
@@ -2084,8 +2521,18 @@
     font-weight: 600;
   }
 
+  .theme-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-hairline);
+    width: 100%;
+  }
+
   .theme-status {
-    margin-top: 4px;
     font-size: 10px;
     font-weight: 600;
   }
@@ -2097,102 +2544,55 @@
     color: var(--brand-primary);
   }
 
-  .status-inactive {
-    color: var(--text-dim);
-  }
-
-  /* Header Preset dengan Filter */
-  .presets-header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .theme-mode-filters {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+  .btn-apply-direct {
     background: var(--bg-surface);
-    padding: 3px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-hairline);
-  }
-
-  .filter-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-xs);
-    color: var(--text-muted);
-    font-size: 11px;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-main);
+    font-size: 10px;
     font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
-  .filter-chip:hover {
-    color: var(--text-main);
-  }
-
-  .filter-chip.active {
-    background: var(--bg-elevated);
+  .btn-apply-direct:hover {
+    border-color: var(--brand-primary);
     color: var(--brand-primary);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   }
 
-  .card-badges {
+  .decoupled-card-buttons {
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-wrap: wrap;
   }
 
-  .mode-pill {
+  .btn-domain-apply {
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    font-size: 8.5px;
+    font-size: 9.5px;
+    font-weight: 600;
+    padding: 3px 7px;
+    border-radius: 4px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .btn-domain-apply:hover {
+    color: var(--text-main);
+    border-color: var(--brand-primary);
+  }
+
+  .btn-domain-apply.active {
+    background: rgba(255, 105, 180, 0.14);
+    color: var(--brand-primary);
+    border-color: var(--brand-primary);
     font-weight: 700;
-    padding: 1px 5px;
-    border-radius: var(--radius-xs);
-  }
-
-  .mode-pill.light {
-    background: rgba(234, 179, 8, 0.14);
-    color: #eab308;
-    border: 1px solid rgba(234, 179, 8, 0.3);
-  }
-
-  .mode-pill.dark {
-    background: rgba(56, 189, 248, 0.12);
-    color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.25);
-  }
-
-  .mode-pill.custom {
-    background: rgba(255, 105, 180, 0.15);
-    color: #ff69b4;
-    border: 1px solid rgba(255, 105, 180, 0.35);
-  }
-
-  .theme-badge.custom-badge {
-    background: rgba(255, 105, 180, 0.15);
-    color: #ff69b4;
-    border: 1px solid rgba(255, 105, 180, 0.35);
-  }
-
-  .theme-card-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: auto;
-    padding-top: 6px;
-    border-top: 1px solid var(--border-hairline);
-    width: 100%;
   }
 
   .custom-card-actions {
@@ -2227,52 +2627,14 @@
     border-color: #ef4444;
   }
 
-  .sync-chart-row {
-    padding: 10px 0;
-    border-top: 1px solid var(--border-hairline);
-    margin-top: 8px;
-  }
-
-  .decoupled-selectors-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-top: 8px;
-    padding: 10px 12px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-  }
-
-  .target-selection-strip {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
-    padding: 6px 10px;
-    background: var(--bg-darkest);
-    border: 1px dashed var(--border-subtle);
-    border-radius: var(--radius-xs);
-  }
-
-  .target-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
-  }
-
-  .target-chips {
-    display: flex;
-    gap: 6px;
-  }
-
-  /* Toggle Switch */
+  /* ─── TOGGLE SWITCH (DENGAN POSITION RELATIVE WAJIB) ─── */
   .toggle-switch {
     position: relative;
     display: inline-block;
     width: 36px;
     height: 20px;
     cursor: pointer;
+    flex-shrink: 0;
   }
 
   .toggle-switch input {
@@ -2316,43 +2678,8 @@
     background-color: #ff69b4;
   }
 
-  /* Form controls for modals */
-  .modal-form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .modal-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
-  }
-
-  .modal-input {
-    width: 100%;
-    background: var(--bg-darkest);
-    border: 1px solid var(--border-hairline);
-    color: var(--text-main);
-    font-size: 12px;
-    padding: 7px 10px;
-    border-radius: 4px;
-    outline: none;
-    transition: border-color 0.15s ease;
-  }
-
-  .modal-input:focus {
-    border-color: var(--brand-primary);
-  }
-
-  .modal-mode-options {
-    display: flex;
-    gap: 8px;
-  }
-
-  /* Palet Kustom Studio */
+  /* ─── BAGIAN 3: STUDIO KUSTOMISASI TEMA ─── */
   .custom-studio-box {
-    margin-top: 14px;
     padding: 16px;
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
@@ -2376,8 +2703,8 @@
   .custom-studio-info {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    max-width: 600px;
+    gap: 6px;
+    max-width: 620px;
   }
 
   .studio-title-row {
@@ -2396,6 +2723,26 @@
     font-weight: 800;
     color: var(--text-main);
     letter-spacing: 0.02em;
+  }
+
+  .in-place-edit-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    background: rgba(255, 105, 180, 0.1);
+    border: 1px solid var(--brand-primary);
+    border-radius: 6px;
+    font-size: 11.5px;
+    color: var(--text-main);
+  }
+
+  .in-place-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .mode-indicator {
@@ -2465,6 +2812,18 @@
     color: var(--text-primary);
   }
 
+  .btn-studio-action.btn-save-as {
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+    color: #000000;
+    font-weight: 700;
+  }
+
+  .btn-studio-action.btn-save-as:hover {
+    filter: brightness(1.08);
+    color: #000000;
+  }
+
   .btn-studio-action:disabled {
     opacity: 0.4;
     cursor: not-allowed;
@@ -2474,11 +2833,15 @@
     color: var(--bear-color);
   }
 
-  /* Kategori */
   .studio-category {
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .studio-bg-override {
+    padding-top: 12px;
+    border-top: 1px solid var(--border-hairline);
   }
 
   .category-header {
@@ -2600,7 +2963,7 @@
     border-color: var(--brand-primary);
   }
 
-  /* Modal Tempel Palet */
+  /* ─── MODALS ─── */
   .studio-modal-scrim {
     position: fixed;
     inset: 0;
@@ -2662,6 +3025,39 @@
     margin: 0;
   }
 
+  .modal-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .modal-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .modal-input {
+    width: 100%;
+    background: var(--bg-darkest);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    font-size: 12px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .modal-input:focus {
+    border-color: var(--brand-primary);
+  }
+
+  .modal-mode-options {
+    display: flex;
+    gap: 8px;
+  }
+
   .paste-textarea {
     width: 100%;
     background: var(--bg-darkest);
@@ -2716,7 +3112,7 @@
     background: var(--brand-primary);
     border: none;
     border-radius: 5px;
-    color: #ffffff;
+    color: #000000;
     font-size: 11px;
     font-weight: 700;
     cursor: pointer;
@@ -2724,17 +3120,6 @@
 
   .btn-apply-paste:hover {
     filter: brightness(1.1);
-  }
-
-  .custom-candle-box {
-    margin-top: 14px;
-    padding: 14px 16px;
-    background: var(--bg-surface, #141414);
-    border: 1px solid var(--border-subtle, #242424);
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
   }
 
   .custom-candle-header {
@@ -2749,20 +3134,6 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-  }
-
-  .custom-candle-title {
-    font-size: 11.5px;
-    font-weight: 700;
-    color: var(--text-main, #f7f7f7);
-    letter-spacing: 0.02em;
-  }
-
-  .custom-candle-desc {
-    font-size: 11px;
-    color: var(--text-muted, #a3a3a3);
-    max-width: 480px;
-    line-height: 1.4;
   }
 
   .custom-candle-actions {
@@ -2990,328 +3361,5 @@
 
   .select-input:focus {
     border-color: var(--brand-primary);
-  }
-
-  .setting-box-column {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .custom-font-section {
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm);
-    padding: 14px;
-    gap: 12px;
-  }
-
-  .setting-info-header {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .setting-title-with-badge {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .font-current-badge {
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: var(--radius-xs);
-    background: rgba(255, 105, 180, 0.15);
-    color: var(--brand-primary);
-    border: 1px solid rgba(255, 105, 180, 0.3);
-  }
-
-  .font-controls-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background-color: var(--bg-container);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    padding: 8px 12px;
-  }
-
-  .font-step-btn {
-    width: 26px;
-    height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    color: var(--text-main);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-  }
-
-  .font-step-btn:hover {
-    border-color: var(--brand-primary);
-    color: var(--brand-primary);
-    background-color: var(--bg-hover);
-  }
-
-  .slider-wrapper {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .font-range-slider {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-hairline);
-    outline: none;
-    cursor: pointer;
-  }
-
-  .font-range-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--brand-primary);
-    cursor: pointer;
-    box-shadow: 0 0 8px rgba(255, 105, 180, 0.5);
-    transition: transform 0.1s ease;
-  }
-
-  .font-range-slider::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border: none;
-    border-radius: 50%;
-    background: var(--brand-primary);
-    cursor: pointer;
-    box-shadow: 0 0 8px rgba(255, 105, 180, 0.5);
-  }
-
-  .slider-ticks {
-    display: flex;
-    justify-content: space-between;
-    font-size: 9px;
-    color: var(--text-dim);
-  }
-
-  .font-direct-input-box {
-    display: flex;
-    align-items: center;
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    padding: 0 6px;
-    height: 26px;
-    flex-shrink: 0;
-  }
-
-  .font-number-input {
-    width: 44px;
-    background: transparent;
-    border: none;
-    color: var(--text-main);
-    font-size: 11.5px;
-    font-weight: 600;
-    text-align: right;
-    outline: none;
-  }
-
-  .font-unit {
-    font-size: 10px;
-    color: var(--text-muted);
-    margin-left: 2px;
-  }
-
-  .btn-reset-font {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    height: 26px;
-    padding: 0 8px;
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    color: var(--text-muted);
-    font-size: 10.5px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-  }
-
-  .btn-reset-font:hover {
-    border-color: var(--border-bright);
-    color: var(--text-main);
-  }
-
-  .font-presets-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .presets-row-label {
-    font-size: 10.5px;
-    color: var(--text-muted);
-  }
-
-  .font-presets-chips {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .preset-size-chip {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    background-color: var(--bg-container);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    color: var(--text-muted);
-    font-size: 10.5px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .preset-size-chip:hover {
-    color: var(--text-main);
-    border-color: var(--border-bright);
-  }
-
-  .preset-size-chip.active {
-    background-color: rgba(255, 105, 180, 0.12);
-    border-color: var(--brand-primary);
-    color: var(--brand-primary);
-    font-weight: 600;
-  }
-
-  .preset-size-chip .chip-size {
-    font-weight: 700;
-  }
-
-  .preset-size-chip .chip-label {
-    font-size: 9.5px;
-    color: var(--text-dim);
-  }
-
-  .preset-size-chip.active .chip-label {
-    color: var(--brand-primary);
-    opacity: 0.85;
-  }
-
-  .font-preview-box {
-    background-color: var(--bg-darkest);
-    border: 1px dashed var(--border-bright);
-    border-radius: var(--radius-xs);
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .preview-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid var(--border-subtle);
-    padding-bottom: 6px;
-  }
-
-  .preview-title {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-dim);
-    font-weight: 600;
-  }
-
-  .preview-badge {
-    font-size: 10px;
-    color: var(--brand-primary);
-    font-weight: 700;
-  }
-
-  .preview-content {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .preview-ui-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: var(--preview-font-size, 12px);
-    color: var(--text-main);
-  }
-
-  .preview-symbol {
-    font-weight: 800;
-    color: var(--text-main);
-  }
-
-  .preview-tf {
-    font-weight: 700;
-    color: var(--brand-primary);
-    background: rgba(255, 105, 180, 0.12);
-    padding: 1px 5px;
-    border-radius: 2px;
-    font-size: 0.85em;
-  }
-
-  .preview-title-app {
-    color: var(--text-muted);
-  }
-
-  .preview-status-pill {
-    margin-left: auto;
-    font-size: 0.75em;
-    font-weight: 700;
-    color: var(--bull-color);
-    background: rgba(247, 247, 247, 0.08);
-    padding: 1px 6px;
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-  }
-
-  .preview-numbers-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: calc(var(--preview-font-size, 12px) * 0.95);
-    color: var(--text-muted);
-    flex-wrap: wrap;
-  }
-
-  .preview-metric {
-    font-size: 0.9em;
-  }
-
-  .text-bull {
-    color: var(--bull-color);
-  }
-
-  .text-bear {
-    color: var(--bear-color);
-  }
-
-  .preview-pnl {
-    margin-left: auto;
-    font-weight: 700;
   }
 </style>

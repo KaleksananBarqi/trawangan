@@ -223,4 +223,38 @@ Text color: #4A0E0F
     assert.equal(customRes.textColor, '#ABCDEF');
     assert.equal(customRes.isDark, true);
   });
+
+  test('buildCustomPaletteFromPreset mendukung preset bawaan maupun preset kustom pengguna', () => {
+    const userThemes = [
+      {
+        id: 'user_theme_custom_1',
+        name: 'Custom Ocean',
+        mode: 'dark' as const,
+        createdAt: 1000,
+        updatedAt: 1000,
+        palette: {
+          enabled: true,
+          candles: {
+            bullBody: '#11AAFF',
+            bullWick: '#11AAFF',
+            bullBorder: '#0088CC',
+            bearBody: '#FF4466',
+            bearWick: '#FF4466',
+            bearBorder: '#CC2244',
+          },
+          general: {
+            background: '#050A14',
+            foreground: '#0D1626',
+            textColor: '#D0E0F0',
+          },
+        },
+      },
+    ];
+
+    const builtPalette = buildCustomPaletteFromPreset('user_theme_custom_1', userThemes);
+    assert.equal(builtPalette.candles.bullBody, '#11AAFF');
+    assert.equal(builtPalette.candles.bearBody, '#FF4466');
+    assert.equal(builtPalette.general.background, '#050A14');
+    assert.equal(builtPalette.general.textColor, '#D0E0F0');
+  });
 });

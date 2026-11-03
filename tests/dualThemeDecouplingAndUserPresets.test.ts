@@ -387,7 +387,7 @@ describe('Tiket #149: Dual-Theme Decoupling & User Theme Presets ("Save As") Stu
       );
     });
 
-    test('4. AppearanceTab.svelte membersihkan customPalette: null saat memilih preset di mode decoupled', () => {
+    test('4. AppearanceTab.svelte membersihkan customPalette: undefined saat memilih preset di mode decoupled', () => {
       assert.match(
         appearanceContent,
         /handleSelectChartPreset/,
@@ -395,8 +395,8 @@ describe('Tiket #149: Dual-Theme Decoupling & User Theme Presets ("Save As") Stu
       );
       assert.match(
         appearanceContent,
-        /customPalette:\s*null/,
-        'handleSelectPreset / handleSelectChartPreset harus menyetel customPalette: null'
+        /customPalette:\s*undefined/,
+        'handleSelectPreset / handleSelectChartPreset harus menyetel customPalette: undefined'
       );
     });
 

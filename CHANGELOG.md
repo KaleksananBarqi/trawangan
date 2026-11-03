@@ -5,6 +5,19 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.35.1] - 2026-11-03
+
+### 🔄 Diubah (Changed)
+- **Perombakan UI/UX Pengaturan Tema & Pemisahan Domain Aplikasi vs Chart (`AppearanceTab.svelte`):**
+  - Menyederhanakan menu pengaturan tema menjadi 3 bagian terstruktur: **Pusat Kendali Tema** (2 kartu domain berdampingan untuk Tema Aplikasi dan Tema Kanvas Chart), **Galeri Preset Tema & Candlestick** dengan tombol aksi langsung (`Pakai di Aplikasi` & `Pakai di Chart`), serta **Studio Kustomisasi Tema** terpadu.
+  - Menghapus kontrol "Target Penerapan Klik Kartu" yang membingungkan dan menggabungkan pengaturan warna candlestick, warna dasar permukaan UI, serta latar belakang kanvas chart ke dalam satu studio kustomisasi.
+
+### 🐛 Diperbaiki (Fixed)
+- **Sinkronisasi Repaint Kanvas WebGL2 & Pemulihan Warna Tema Gelap/Terang (`chartSessionController.ts`, `+page.svelte`):**
+  - Memperbaiki bug warna tema terang pada kanvas chart yang tertinggal saat berpindah kembali ke tema gelap dengan memperbarui `layout` (`background`, `textColor`, `borderColor`), `crosshair`, properti `r.scene`, serta memicu `r.scheduler.invalidate(7)` pada `setTheme()`.
+  - Memperbaiki `handleCycleColorMode()` di Header agar menyinkronkan `chartThemePreset` saat mode sinkron aktif dan membersihkan override `customPalette` yang menahan warna lama.
+  - Memperluas `buildCustomPaletteFromPreset()` di `themes.ts` agar mendukung ID preset tema kustom pengguna (`user:*`).
+
 ## [0.35.0] - 2026-11-03
 
 ### 🚀 Ditambahkan (Added)

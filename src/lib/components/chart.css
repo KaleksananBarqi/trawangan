@@ -632,11 +632,11 @@
   z-index: 2;
 }
 
-/* Transparansi Vela Container saat Custom Background Aktif (#128) */
-.chart-wrapper[data-custom-bg="true"] .vela-container,
-.chart-wrapper[data-custom-bg="true"] .vela-container > div,
-.chart-wrapper[data-custom-bg="true"] .vela-container [data-vela-wrapper],
-.chart-wrapper[data-custom-bg="true"] .vela-container .vela-plot {
+/* Transparansi Vela Container agar kanvas WebGL2 tidak tertutup lapisan solid (#128, #149) */
+.chart-wrapper .vela-container,
+.chart-wrapper .vela-container > div,
+.chart-wrapper .vela-container [data-vela-wrapper],
+.chart-wrapper .vela-container .vela-plot {
   background: transparent !important;
 }
 

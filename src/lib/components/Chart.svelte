@@ -137,7 +137,7 @@
   });
   $effect(() => {
     const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor, cp = customPalette;
-    if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp || undefined);
+    if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp !== undefined ? cp : null);
   });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
   $effect(() => {
