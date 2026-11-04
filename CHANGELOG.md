@@ -5,6 +5,27 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.37.0] - 2026-11-04
+
+### 🚀 Ditambahkan (Added)
+- **Ekstraksi POI-Only Context Zone & Polaritas Warna Mandiri (Zone Polarity):**
+  - Mesin parser `planParserService.ts` kini memindai zona FVG, Order Block (OB), Inducement (IDM), Demand, dan Supply berbasis klausa anchor POI dan mengabaikan rentang non-POI (seperti Dealing Range makro dan teks narasi trigger).
+  - Standarisasi format penamaan label ringkas pada Context Zone: `<TF> <kind> <polarity>` (contoh: `4H OB Bear`, `1H FVG Bull`, `15m OB Bull`, `IDM`).
+  - Menambahkan tipe `ZonePolarity` (`bull` / `bear` / `neutral`) dan fungsi inferensi `inferZonePolarity()`.
+- **Transparansi Optik Ultra-Rendah pada Objek Gambar Zona:**
+  - Mengurangi opasitas isian (*fill alpha*) menjadi `0.04` dan garis batas (*border alpha*) menjadi `0.25` pada `chartDrawingController.ts`, mencegah tabrakan visual dan blok warna padat saat banyak zona bertumpuk (*stacked*).
+  - Pewarnaan kotak zona mengikuti polaritas mandirinya (Bullish/Demand hijau `#00FF88`, Bearish/Supply pink `#FF69B4`, IDM/Netral abu-abu `#A0A0A0`), terlepas dari bias arah posisi induk.
+- **Ekstraksi Status Setup & Kesimpulan Komprehensif:**
+  - Menangkap atribut `Status Setup` (misalnya `PENDING (Conditional)`) dan menampilkannya sebagai lencana visual di header `FloatingThesisCard` dan dialog `ImportPlanModal`.
+  - Memperluas ekstraksi kesimpulan untuk mengenali `Confidence Level` (beserta catatan narasi) dan `Invalidasi & Skenario Flip`.
+  - Mendukung blok multiline `Definisi & Kalkulasi R`.
+
+### 🔄 Diubah (Changed)
+- **Sanitasi Tipografi Markdown pada Tesis & Snapshot:**
+  - Fungsi `stripInlineMarkdown()` membersihkan karakter asterisk formatting (`**`) dan backtick tanpa merusak penanda epistemik `[FAKTA]`, `[INFERENSI]`, dan `[SPEKULASI]`.
+  - Memperbarui `FloatingThesisCard.svelte`, `ImportPlanModal.svelte`, dan `chartSnapshotService.ts` agar badge dan pill zona menggunakan warna polaritas mandiri masing-masing zona.
+  - Memperbarui kamus kanonikal `GLOSSARY.md` dengan entri `Context Zone` dan `Zone Polarity`.
+
 ## [0.36.0] - 2026-11-03
 
 ### 🚀 Ditambahkan (Added)
