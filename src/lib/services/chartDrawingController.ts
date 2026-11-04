@@ -9,7 +9,25 @@ import {
 import { alertService } from './alertService';
 import type { CommandDispatcher } from './commandDispatcher';
 import { roundToTickSize, getAdaptiveTickSize } from './priceSnapService';
-import type { ParsedTradingPlan } from './planParserService';
+import { type ParsedTradingPlan, type ZonePolarity, inferZonePolarity } from './planParserService';
+
+export const CONTEXT_ZONE_STYLES = {
+  bull: {
+    fillColor: 'rgba(0, 255, 136, 0.04)',
+    lineColor: 'rgba(0, 255, 136, 0.25)',
+    textColor: '#00FF88'
+  },
+  bear: {
+    fillColor: 'rgba(255, 105, 180, 0.04)',
+    lineColor: 'rgba(255, 105, 180, 0.25)',
+    textColor: '#FF69B4'
+  },
+  neutral: {
+    fillColor: 'rgba(160, 160, 160, 0.04)',
+    lineColor: 'rgba(160, 160, 160, 0.25)',
+    textColor: '#A0A0A0'
+  }
+} as const;
 import {
   recognizeGesture,
   type GesturePoint,
@@ -1735,15 +1753,17 @@ export class ChartDrawingController {
       }
     }
 
-    // 2. Gambar kotak zona FVG / Context Zone semi-transparan otomatis (#115)
+    // 2. Gambar kotak zona FVG / Context Zone transparan otomatis (#115)
     if (options?.drawContextZones !== false && Array.isArray(plan.contextZones) && plan.contextZones.length > 0) {
-      const isBearish = plan.bias === 'bearish';
       const lastEndTime = t0 + plan.targets.length * span * deltaT;
 
       for (const zone of plan.contextZones) {
         if (typeof zone.low !== 'number' || typeof zone.high !== 'number' || isNaN(zone.low) || isNaN(zone.high)) {
           continue;
         }
+
+        const zonePol: ZonePolarity = zone.polarity || inferZonePolarity(zone.label);
+        const zoneStyle = CONTEXT_ZONE_STYLES[zonePol] || CONTEXT_ZONE_STYLES.neutral;
 
         const boxSpec: any = {
           type: 'box',
@@ -1753,20 +1773,21 @@ export class ChartDrawingController {
             { time: lastEndTime, price: zone.low }
           ],
           style: {
-            fillColor: isBearish ? 'rgba(255, 105, 180, 0.12)' : 'rgba(0, 255, 136, 0.12)',
-            lineColor: isBearish ? 'rgba(255, 105, 180, 0.45)' : 'rgba(0, 255, 136, 0.45)',
+            fillColor: zoneStyle.fillColor,
+            lineColor: zoneStyle.lineColor,
             lineWidth: 1
           },
           text: {
             value: zone.label || 'FVG Zone',
-            color: isBearish ? '#FF69B4' : '#00FF88'
+            color: zoneStyle.textColor
           },
           metadata: {
             planId,
             role: 'context_zone',
             zoneLabel: zone.label,
             low: zone.low,
-            high: zone.high
+            high: zone.high,
+            polarity: zonePol
           }
         };
 
@@ -2042,12 +2063,14 @@ export class ChartDrawingController {
             } else {
               matchedZoneIndices.add(i);
               if (d.id) matchedDrawingIds.push(d.id);
+              const zonePol: ZonePolarity = zone.polarity || inferZonePolarity(zone.label);
               const meta = {
                 planId,
                 role: 'context_zone',
                 zoneLabel: zone.label,
                 low: zone.low,
-                high: zone.high
+                high: zone.high,
+                polarity: zonePol
               };
               d.metadata = meta;
               if (d.id) {

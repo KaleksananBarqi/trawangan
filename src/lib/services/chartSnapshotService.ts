@@ -12,7 +12,7 @@ import type {
   SecurityWatermarkConfig,
   SnapshotThesisLayout
 } from '../types/market';
-import { formatPlanPrice, type ParsedTradingPlan } from './planParserService';
+import { formatPlanPrice, inferZonePolarity, type ParsedTradingPlan } from './planParserService';
 import { deriveSurfaceColor, ensureReadableTextColor, isDarkColor } from '../utils/colorUtils';
 
 export type { PriceScaleBadge };
@@ -472,6 +472,20 @@ export function drawThesisCardOnCanvas(
     ctx.stroke();
     ctx.fillStyle = brandCyan;
     ctx.fillText(probText, cursorX + biasPad / 2, headerCenterY);
+    cursorX += probTextW + biasPad + Math.round(8 * scaleX);
+  }
+
+  if (plan.setupStatus) {
+    const statusText = String(plan.setupStatus);
+    const statusTextW = ctx.measureText ? ctx.measureText(statusText).width : statusText.length * 6 * scaleX;
+    drawRoundedRect(ctx, cursorX, headerCenterY - Math.round(8 * scaleY), statusTextW + biasPad, Math.round(16 * scaleY), 3 * scaleX);
+    ctx.fillStyle = 'rgba(250, 204, 21, 0.16)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#facc15';
+    ctx.fillText(statusText, cursorX + biasPad / 2, headerCenterY);
   }
 
   // 3. Body Content
@@ -525,13 +539,16 @@ export function drawThesisCardOnCanvas(
         currentY += pillH + Math.round(4 * scaleY);
       }
 
+      const pol = zone.polarity || inferZonePolarity(zone.label);
+      const zoneColor = pol === 'bull' ? bullColor : pol === 'bear' ? bearColor : '#94a3b8';
+
       drawRoundedRect(ctx, pillX, currentY - pillH / 2, pillW, pillH, 3 * scaleX);
-      ctx.fillStyle = colorToRgba(biasBadgeColor, 0.12);
+      ctx.fillStyle = colorToRgba(zoneColor, 0.12);
       ctx.fill();
-      ctx.strokeStyle = colorToRgba(biasBadgeColor, 0.3);
+      ctx.strokeStyle = colorToRgba(zoneColor, 0.3);
       ctx.stroke();
 
-      ctx.fillStyle = biasBadgeColor;
+      ctx.fillStyle = zoneColor;
       ctx.fillText(zoneStr, pillX + Math.round(5 * scaleX), currentY);
       pillX += pillW + Math.round(5 * scaleX);
     }
@@ -1574,7 +1591,7 @@ export function renderDedicatedThesisSidePanel(
   const tfMatches = Array.from(
     new Set((plan.reasons?.entry || '').match(/\b(?:1m|3m|5m|15m|30m|45m|1h|2h|4h|1d|daily|weekly|m5|m15|h1|h4)\b/gi) || [])
   );
-  const pills: Array<{ text: string; isZone?: boolean }> = [];
+  const pills: Array<{ text: string; isZone?: boolean; zoneColor?: string }> = [];
   if (tfMatches.length > 0) {
     for (const tf of tfMatches) {
       pills.push({ text: `TF ${tf.toUpperCase()}` });
@@ -1582,9 +1599,12 @@ export function renderDedicatedThesisSidePanel(
   }
   if (plan.contextZones && plan.contextZones.length > 0) {
     for (const zone of plan.contextZones) {
+      const pol = zone.polarity || inferZonePolarity(zone.label);
+      const zoneColor = pol === 'bull' ? bullColor : pol === 'bear' ? bearColor : '#94a3b8';
       pills.push({
         text: `${zone.label || 'FVG'}: ${formatPlanPrice(zone.low)} - ${formatPlanPrice(zone.high)}`,
         isZone: true,
+        zoneColor
       });
     }
   }
@@ -1602,14 +1622,15 @@ export function renderDedicatedThesisSidePanel(
         currentY += pillH + Math.round(4 * scale);
       }
 
+      const activePillColor = pill.isZone ? (pill.zoneColor || biasColor) : brandCyan;
       drawRoundedRect(ctx, pillX, currentY - pillH / 2, pillW, pillH, 3 * scale);
-      ctx.fillStyle = pill.isZone ? colorToRgba(biasColor, 0.12) : colorToRgba(brandCyan, 0.14);
+      ctx.fillStyle = colorToRgba(activePillColor, 0.12);
       ctx.fill();
-      ctx.strokeStyle = pill.isZone ? colorToRgba(biasColor, 0.3) : colorToRgba(brandCyan, 0.35);
+      ctx.strokeStyle = colorToRgba(activePillColor, 0.3);
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      ctx.fillStyle = pill.isZone ? biasColor : brandCyan;
+      ctx.fillStyle = activePillColor;
       ctx.fillText(pill.text, pillX + Math.round(5 * scale), currentY);
       pillX += pillW + Math.round(6 * scale);
     }

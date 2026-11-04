@@ -188,6 +188,14 @@ _Avoid_: Snipping tool, Print screen, Screen grabber
 Mekanisme penguraian teks rencana perdagangan berbasis aturan luring (*zero-LLM*) yang mengekstrak arah posisi (Bias), tingkat harga (Entry, Stop Loss, Target Profit bertingkat), dan rasio risiko/imbalan (R-multiple) secara instan dan deterministik dari format tabel Markdown maupun teks terstruktur.
 _Avoid_: OCR plan parser, LLM plan extractor, AI signal reader
 
+**Context Zone**:
+Area likuiditas institusional (FVG, Order Block, Inducement, Demand, Supply) yang diekstrak secara otomatis dari rencana trading dan digambar ke kanvas grafik sebagai kotak berdensitas optik ultra-rendah (fill opacity 0.04 dan border 0.25) guna mengeliminasi tabrakan visual saat banyak zona bertumpuk (*stacked*), serta secara tegas membedakan POI mitigasi dari kotak Dealing Range makro.
+_Avoid_: Opaque zone, Dealing range box, Blind FVG overlay
+
+**Zone Polarity**:
+Atribut polaritas visual mandiri pada setiap Context Zone (Bullish hijau `#00FF88`, Bearish pink `#FF69B4`, atau Neutral abu-abu `#A0A0A0` untuk Inducement) yang ditentukan langsung oleh karakteristik struktural zona terkait, bukan mengikuti bias posisi trading plan induk, menjaga kejelasan konfluensi saat mitigasi zona berlawanan arah terjadi.
+_Avoid_: Bias-locked zone color, Monochromatic zone fill
+
 **Multi-Target Position Plan**:
 Visualisasi gambar terpadu pada kanvas grafik yang memetakan rencana posisi trading dengan titik masuk tunggal, tingkat batas risiko (Stop Loss), dan target keuntungan bertingkat (TP1, TP2, dst.) yang dilengkapi label harga serta metrik R-multiple untuk tiap jenjang target.
 _Avoid_: Single-target position only, Disjointed position boxes, Cluttered trade lines

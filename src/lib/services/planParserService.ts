@@ -7,6 +7,7 @@
 import { roundToTickSize } from './priceSnapService';
 
 export type TradeBias = 'bullish' | 'bearish' | 'neutral';
+export type ZonePolarity = 'bull' | 'bear' | 'neutral';
 
 export interface ParsedTarget {
   id: string; // e.g. "tp1", "tp2"
@@ -21,6 +22,9 @@ export interface ContextZone {
   label: string;
   low: number;
   high: number;
+  polarity?: ZonePolarity;
+  kind?: 'FVG' | 'OB' | 'IDM' | 'Demand' | 'Supply' | 'Imbalance' | string;
+  timeframe?: string;
 }
 
 export interface PlanValidationResult {
@@ -48,10 +52,47 @@ export interface ParsedTradingPlan {
   conclusion?: PlanConclusion;
   definition?: string;
   symbol?: string;
+  setupStatus?: string;
 }
 
 export interface ParseTradingPlanOptions {
   tickSize?: number;
+}
+
+/**
+ * Menyimpulkan polaritas zona (bull / bear / neutral) berdasarkan kata kunci dalam label.
+ */
+export function inferZonePolarity(label: string): ZonePolarity {
+  if (!label) return 'neutral';
+  const l = label.toLowerCase();
+  if (l.includes('idm') || l.includes('inducement')) {
+    return 'neutral';
+  }
+  if (/\b(?:bull|bullish|demand)\b/i.test(l)) {
+    return 'bull';
+  }
+  if (/\b(?:bear|bearish|supply)\b/i.test(l)) {
+    return 'bear';
+  }
+  return 'neutral';
+}
+
+/**
+ * Membersihkan tanda pemformatan Markdown (bold, italic, backtick code) dari narasi teks
+ * dengan tetap mempertahankan tag epistemik ([FAKTA], [INFERENSI], [SPEKULASI]) dan angka harga.
+ */
+export function stripInlineMarkdown(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/\*\*/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/`/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -202,31 +243,64 @@ function extractContextZones(
   const zones: ContextZone[] = [];
   if (!text) return zones;
 
-  // Pola rentang harga: angka - angka
-  // Memeriksa konteks apakah memuat kata kunci seperti FVG, OB, Imbalance, Zona, Area, dll.
-  // Mendukung label dengan format Markdown tebal/miring atau jeda kurung/titik dua
-  const regex = /(?:(?:di dalam|tunggu harga masuk|masuk|area|zona)?\s*([a-zA-Z0-9_\s*`~]{0,45}?(?:FVG|OB|Order Block|Imbalance|Demand|Supply|Zone|Area|Rentang|Range)[a-zA-Z0-9_\s*`~]{0,25}?)\s*(?:\(\s*|:\s*|\s+))?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|s\/d|to)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)/gi;
+  // 1. Normalisasikan pemformatan markdown (ganti _ di BULL_OB jadi spasi, bersihkan backticks dan asterisks)
+  const normalizedText = text
+    .replace(/(BULL|BEAR)_(OB|FVG)/gi, '$1 $2')
+    .replace(/[`*]/g, '');
+
+  // 2. Regex rentang angka: num1 - num2 (mendukung berbagai dash dan s/d / to)
+  const rangeRegex = /([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|\bs\/d\b|\bto\b)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)/gi;
 
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const rawLabel = match[1]?.trim() || '';
+  while ((match = rangeRegex.exec(normalizedText)) !== null) {
     const fullMatch = match[0];
-    const matchIndex = match.index;
-    const num1Str = match[2];
-    const num2Str = match[3];
-    const afterMatch = text.substring(matchIndex + fullMatch.length, matchIndex + fullMatch.length + 20);
-    const beforeMatch = text.substring(Math.max(0, matchIndex - 30), matchIndex);
-    const surrounding = text.substring(Math.max(0, matchIndex - 20), matchIndex + fullMatch.length + 20);
+    const matchIdx = match.index;
+    const num1Str = match[1];
+    const num2Str = match[2];
+    const afterMatch = normalizedText.substring(matchIdx + fullMatch.length, matchIdx + fullMatch.length + 30);
+    const beforeMatch = normalizedText.substring(Math.max(0, matchIdx - 30), matchIdx);
+    const surrounding = normalizedText.substring(Math.max(0, matchIdx - 20), matchIdx + fullMatch.length + 20);
+
+    const num1 = parseFloat(num1Str.replace(/,/g, ''));
+    const num2 = parseFloat(num2Str.replace(/,/g, ''));
+    if (isNaN(num1) || isNaN(num2)) continue;
 
     // Abaikan kalkulasi rumus matematika seperti |78300 - 78900| atau R = |...|
     if (/R\s*=|\|\s*[+-]?\d+(?:\.\d+)?\s*[-–—]\s*[+-]?\d+(?:\.\d+)?\s*\|/.test(surrounding)) {
       continue;
     }
 
-    const num1 = parseFloat(num1Str.replace(/,/g, ''));
-    const num2 = parseFloat(num2Str.replace(/,/g, ''));
+    // Abaikan jika bagian dari Dealing Range
+    const contextBefore = normalizedText.substring(Math.max(0, matchIdx - 140), matchIdx);
+    if (
+      /(?:dealing\s+range|range\s+recent)\s*$/i.test(contextBefore.trimEnd()) ||
+      /(?:dealing\s+range)/i.test(contextBefore.slice(-40))
+    ) {
+      continue;
+    }
 
-    if (isNaN(num1) || isNaN(num2)) continue;
+    // Cari POI Anchor di contextBefore (maksimal 140 karakter ke belakang)
+    const anchorRegex = /(?:((?:[0-9]{1,3}\s*[mhdHDwW]|daily|weekly|macro|htf|mtf|ltf)\s+)?(?:unmitigated\s+|unfilled\s+)?((?:bullish|bearish|bull|bear)\s+)?(FVG|OB|Order\s*Block|IDM|Inducement|Demand|Supply|Imbalance)(?:\s+((?:[0-9]{1,3}\s*[mhdHDwW]|daily|weekly|macro|htf|mtf|ltf)))?)|(?:(IDM|Inducement))/gi;
+
+    let lastAnchor: RegExpExecArray | null = null;
+    let aMatch: RegExpExecArray | null;
+    while ((aMatch = anchorRegex.exec(contextBefore)) !== null) {
+      lastAnchor = aMatch;
+    }
+
+    // Jika tidak ada anchor di contextBefore, cek contextAfter (misal format "600.00 - 601.50 (15m Bullish FVG)")
+    let isAnchorFromAfter = false;
+    const contextAfter = normalizedText.substring(matchIdx + fullMatch.length, Math.min(normalizedText.length, matchIdx + fullMatch.length + 80));
+    if (!lastAnchor) {
+      const afterAnchorRegex = /^\s*[([]\s*(?:((?:[0-9]{1,3}\s*[mhdHDwW]|daily|weekly|macro|htf|mtf|ltf)\s+)?(?:unmitigated\s+|unfilled\s+)?((?:bullish|bearish|bull|bear)\s+)?(FVG|OB|Order\s*Block|IDM|Inducement|Demand|Supply|Imbalance))/i;
+      const afterM = afterAnchorRegex.exec(contextAfter);
+      if (afterM) {
+        lastAnchor = afterM;
+        isAnchorFromAfter = true;
+      }
+    }
+
+    if (!lastAnchor) continue;
 
     // Abaikan format tanggal / timestamp kalender via validator mandiri
     if (
@@ -235,17 +309,63 @@ function extractContextZones(
         num2Str,
         beforeMatch,
         afterMatch,
-        rawLabel,
+        lastAnchor ? lastAnchor[0] : '',
         referencePrice
       )
     ) {
       continue;
     }
 
-    // Jika tidak ada kata kunci struktural di label atau sekitar, abaikan
-    if (!rawLabel && !/(?:fvg|ob|order block|imbalance|zona|area|demand|supply|range)/i.test(surrounding)) {
-      continue;
+    // Pastikan anchor tidak terkurung dalam kurung tutup sebelum rentang angka (misal "(sweep IDM) dan menyentuh area 2261.90-2268.19")
+    if (!isAnchorFromAfter) {
+      const textBetween = contextBefore.substring(lastAnchor.index + lastAnchor[0].length);
+      if (textBetween.includes(')') && !textBetween.includes('(')) {
+        continue;
+      }
+      // Jika ada tanda titik kalimat baru mayor sebelum rentang tercapai
+      if (/[.!?]\s+[A-Z]/.test(textBetween)) {
+        continue;
+      }
+      // Jika teks perantara memuat narasi aksi pergerakan harga seperti "masuk ke zona/area" atau "menyentuh area"
+      if (/(?:masuk\s+ke\s+(?:zona|area)|menyentuh\s+(?:zona|area))\s*$/i.test(textBetween.trimEnd())) {
+        continue;
+      }
+      // Khusus IDM: jika di antara anchor IDM dan rentang harga sudah ada angka harga lain
+      if (/IDM|INDUCEMENT/i.test(lastAnchor[0]) && /\d+(?:\.\d+)?/.test(textBetween)) {
+        continue;
+      }
     }
+
+    // Ekstrak komponen anchor
+    const tf = (lastAnchor[1] || lastAnchor[4] || '').trim();
+    const polStr = (lastAnchor[2] || '').trim().toLowerCase();
+    const kindStr = (lastAnchor[3] || lastAnchor[5] || '').trim().toUpperCase();
+
+    let kind = 'Context Zone';
+    if (/FVG|IMBALANCE/i.test(kindStr)) kind = 'FVG';
+    else if (/OB|ORDER\s*BLOCK/i.test(kindStr)) kind = 'OB';
+    else if (/IDM|INDUCEMENT/i.test(kindStr)) kind = 'IDM';
+    else if (/DEMAND/i.test(kindStr)) kind = 'Demand';
+    else if (/SUPPLY/i.test(kindStr)) kind = 'Supply';
+
+    let polarity: ZonePolarity = 'neutral';
+    if (kind === 'Demand') polarity = 'bull';
+    else if (kind === 'Supply') polarity = 'bear';
+    else if (kind === 'IDM') polarity = 'neutral';
+    else if (/bull/i.test(polStr)) polarity = 'bull';
+    else if (/bear/i.test(polStr)) polarity = 'bear';
+
+    // Format label ringkas: <TF> <kind> <polarity>
+    let label = '';
+    if (kind === 'IDM') {
+      label = 'IDM';
+    } else if (kind === 'Demand' || kind === 'Supply') {
+      label = tf ? `${tf} ${kind}` : `${kind} Zone`;
+    } else {
+      const polLabel = polarity === 'bull' ? 'Bull' : polarity === 'bear' ? 'Bear' : '';
+      label = [tf, kind, polLabel].filter(Boolean).join(' ');
+    }
+    if (!label) label = 'Context Zone';
 
     let low = Math.min(num1, num2);
     let high = Math.max(num1, num2);
@@ -255,36 +375,24 @@ function extractContextZones(
       high = roundToTickSize(high, tickSize);
     }
 
-    // Bersihkan label zona (ekstrak frase institusional terdekat seperti "4H Bearish FVG" atau "1H Bearish OB")
-    let cleanLabel = '';
-    if (rawLabel) {
-      // Bersihkan karakter pemformatan Markdown (seperti bold **, italic *, underscore __)
-      const sanitizedLabel = rawLabel.replace(/[*_`~]/g, ' ').replace(/\s+/g, ' ').trim();
-      const labelRegex =
-        /\b((?:[0-9]{1,3}\s*[mhdHDwW]|daily|weekly|macro|htf|mtf|ltf)\s+)?(?:unmitigated\s+)?(?:(?:bullish|bearish)\s+)?(?:FVG|OB|Order\s*Block|Imbalance|Demand|Supply)(?:\s+(?:Zone|Area))?\b/gi;
-      let lastMatch: string | null = null;
-      let labelMatch: RegExpExecArray | null;
-      while ((labelMatch = labelRegex.exec(sanitizedLabel)) !== null) {
-        lastMatch = labelMatch[0];
-      }
-      if (lastMatch) {
-        cleanLabel = lastMatch.trim();
-      } else {
-        cleanLabel = sanitizedLabel
-          .replace(
-            /^(?:serta|dan|di\s+area|di\s+zona|zona\s+mitigasi|area\s+mitigasi|di\s+dalam|tunggu\s+harga\s+masuk|masuk|area|zona)\s+/i,
-            ''
-          )
-          .trim();
-      }
-    }
-    if (!cleanLabel) cleanLabel = 'Context Zone';
-
-    // Hindari duplikasi zona yang sama persis
+    // Cek duplikasi persis
     const exists = zones.some((z) => Math.abs(z.low - low) < 1e-6 && Math.abs(z.high - high) < 1e-6);
-    if (!exists) {
-      zones.push({ label: cleanLabel, low, high });
+    if (exists) continue;
+
+    // Untuk IDM: buang IDM kedua jika overlap dengan IDM yang sudah tercatat
+    if (kind === 'IDM') {
+      const idmOverlap = zones.some((z) => z.kind === 'IDM' && low <= z.high && high >= z.low);
+      if (idmOverlap) continue;
     }
+
+    zones.push({
+      label,
+      low,
+      high,
+      polarity,
+      kind,
+      ...(tf ? { timeframe: tf } : {})
+    });
   }
 
   return zones;
@@ -300,10 +408,15 @@ function extractConclusionAndDefinition(text: string): {
   let definition: string | undefined;
   let conclusion: PlanConclusion | undefined;
 
-  // 1. Ekstraksi Definisi (misal: *Definisi: ...*)
-  const defMatch = text.match(/(?:\*|_)?(?:Definisi|Definition)\s*:\s*([^\n\r]+)/i);
-  if (defMatch) {
-    definition = defMatch[1].replace(/[*_]/g, '').trim();
+  // 1. Ekstraksi Definisi (misal: *Definisi: ...* atau **Definisi & Kalkulasi R:**)
+  const singleLineMatch = text.match(/(?:Definisi[^\n\r:*]*|Definition)[*_\s]*:[*_\s]*([^\n\r]+)/i);
+  if (singleLineMatch && singleLineMatch[1].trim()) {
+    definition = stripInlineMarkdown(singleLineMatch[1]);
+  } else {
+    const multiLineMatch = text.match(/(?:Definisi[^\n\r:*]*|Definition)[*_\s]*:[*_\s]*(?:\r?\n)+([\s\S]+?)(?=\r?\n\s*\||\r?\n\s*#{1,4}\s+|$)/i);
+    if (multiLineMatch && multiLineMatch[1].trim()) {
+      definition = stripInlineMarkdown(multiLineMatch[1]);
+    }
   }
 
   // 2. Ekstraksi Kesimpulan / Confidence Level / Skenario Invalidasi
@@ -311,23 +424,23 @@ function extractConclusionAndDefinition(text: string): {
   let probNotes: string | undefined;
   let invalidation: string | undefined;
 
-  // Pencocokan Probabilitas Setup
-  const probMatch = text.match(/(?:Probabilitas(?:\s+Setup)?|Probability)\s*:\s*\*?\*?([^\n\r]+)/i);
+  // Pencocokan Probabilitas / Confidence Level
+  const probMatch = text.match(/(?:(?:Confidence(?:\s+Level)?|Probabilitas(?:\s+Setup)?|Probability))\s*[:=]\s*\*?\*?([^\n\r]+)/i);
   if (probMatch) {
-    const rawProb = probMatch[1].trim();
-    const dotIndex = rawProb.indexOf('.');
-    if (dotIndex !== -1 && dotIndex < 30) {
-      prob = rawProb.substring(0, dotIndex).replace(/[*_]/g, '').trim();
-      probNotes = rawProb.substring(dotIndex + 1).replace(/^[*_\s]+/, '').trim();
+    const raw = probMatch[1].trim();
+    const dashMatch = raw.match(/^(.*?)\s*(?:[—–]|\s+-\s+|\.\s+)\s*(.*)$/);
+    if (dashMatch) {
+      prob = stripInlineMarkdown(dashMatch[1]);
+      probNotes = stripInlineMarkdown(dashMatch[2]);
     } else {
-      prob = rawProb.replace(/[*_]/g, '').trim();
+      prob = stripInlineMarkdown(raw);
     }
   }
 
   // Pencocokan Skenario Invalidasi
-  const invMatch = text.match(/(?:Skenario\s+Invalidasi|Invalidation(?:\s+Scenario)?)\s*:\s*\*?\*?([^\n\r]+)/i);
+  const invMatch = text.match(/(?:Skenario\s+Invalidasi|Invalidation(?:\s+Scenario)?|Invalidasi[^\n\r:]*)\s*[:=]\s*\*?\*?([^\n\r]+)/i);
   if (invMatch) {
-    invalidation = invMatch[1].replace(/^[*_\s]+/, '').trim();
+    invalidation = stripInlineMarkdown(invMatch[1]);
   }
 
   if (prob || invalidation || probNotes) {
@@ -529,6 +642,7 @@ export function parseTradingPlan(
   let rawEntry = 0;
   let rawStopLoss = 0;
   let parsedSymbol: string | undefined;
+  let parsedSetupStatus: string | undefined;
   const reasons: Record<string, string> = {};
 
   interface TargetEntry {
@@ -632,6 +746,16 @@ export function parseTradingPlan(
       continue;
     }
 
+    // 1c. Status Setup (misal "Status Setup", "Setup Status", "Status")
+    if (
+      cleanKey === 'status setup' ||
+      cleanKey === 'setup status' ||
+      cleanKey === 'status'
+    ) {
+      parsedSetupStatus = stripInlineMarkdown(cleanVal);
+      continue;
+    }
+
     // 2. Alasan Entry
     if (
       cleanKey === 'alasan entry' ||
@@ -722,6 +846,19 @@ export function parseTradingPlan(
     }
   }
 
+  // Bersihkan karakter Markdown inline pada narasi reasons
+  for (const key of Object.keys(reasons)) {
+    reasons[key] = stripInlineMarkdown(reasons[key]);
+  }
+
+  // Fallback status setup dari teks jika belum ada di tabel parameter
+  if (!parsedSetupStatus) {
+    const statusMatch = text.match(/(?:\*|_)?(?:Status\s+Setup|Setup\s+Status)\s*[:=]\s*\*?\*?([^\n\r]+)/i);
+    if (statusMatch) {
+      parsedSetupStatus = stripInlineMarkdown(statusMatch[1]);
+    }
+  }
+
   // Jika bias belum ditentukan tapi di rawText ada kata kunci eksplisit
   if (bias === 'neutral') {
     const lowerAll = text.toLowerCase();
@@ -779,7 +916,8 @@ export function parseTradingPlan(
       rMultiple = parseFloat((distance / riskAmount).toFixed(2));
     }
 
-    const reason = t.reason || reasons[t.id];
+    const rawReason = t.reason || reasons[t.id];
+    const reason = rawReason ? stripInlineMarkdown(rawReason) : undefined;
 
     return {
       id: t.id,
@@ -819,6 +957,7 @@ export function parseTradingPlan(
     ...(conclusion ? { conclusion } : {}),
     ...(definition ? { definition } : {}),
     ...(parsedSymbol ? { symbol: parsedSymbol } : {}),
+    ...(parsedSetupStatus ? { setupStatus: parsedSetupStatus } : {}),
   };
 }
 

@@ -527,15 +527,15 @@ Struktur tren Bearish.
       // 4. Label Context Zone harus bersih dan spesifik (bukan "Context Zone" generik jika ada nama institusional)
       const htfFvg = plan.contextZones.find((z) => z.low === 78242.4 && z.high === 80549.9);
       assert.ok(htfFvg, 'Zona 4H Bearish FVG harus terdeteksi');
-      assert.equal(htfFvg?.label, '4H Bearish FVG');
+      assert.equal(htfFvg?.label, '4H FVG Bear');
 
       const mtfOb = plan.contextZones.find((z) => z.low === 78377.9 && z.high === 78776.5);
       assert.ok(mtfOb, 'Zona 1H Bearish Order Block harus terdeteksi');
-      assert.equal(mtfOb?.label, '1H Bearish Order Block');
+      assert.equal(mtfOb?.label, '1H OB Bear');
 
       const ltfOb = plan.contextZones.find((z) => z.low === 77462.2 && z.high === 77522.7);
       assert.ok(ltfOb, 'Zona 15m unmitigated Bullish OB harus terdeteksi');
-      assert.equal(ltfOb?.label, '15m unmitigated Bullish OB');
+      assert.equal(ltfOb?.label, '15m OB Bull');
     });
   });
 
@@ -586,15 +586,15 @@ Katalis zona:
 
       const ob = plan.contextZones.find((z) => z.low === 78377.9 && z.high === 78776.5);
       assert.ok(ob, 'Zona 1H Bearish OB berformat tebal harus terdeteksi');
-      assert.equal(ob?.label, '1H Bearish OB');
+      assert.equal(ob?.label, '1H OB Bear');
 
       const fvg = plan.contextZones.find((z) => z.low === 78242.4 && z.high === 80549.9);
       assert.ok(fvg, 'Zona 4H Bearish FVG berformat miring harus terdeteksi');
-      assert.equal(fvg?.label, '4H Bearish FVG');
+      assert.equal(fvg?.label, '4H FVG Bear');
 
       const ltf = plan.contextZones.find((z) => z.low === 77462.2 && z.high === 77522.7);
       assert.ok(ltf, 'Zona 15m Bullish OB berformat underscore harus terdeteksi');
-      assert.equal(ltf?.label, '15m Bullish OB');
+      assert.equal(ltf?.label, '15m OB Bull');
     });
 
     it('Slice 3: mempertahankan rentang harga bulat valid pada aset bernilai rendah (< $100)', () => {

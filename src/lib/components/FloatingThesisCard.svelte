@@ -14,7 +14,7 @@
     Layers,
     EyeOff
   } from '@lucide/svelte';
-  import { formatPlanPrice, type ParsedTradingPlan } from '../services/planParserService';
+  import { formatPlanPrice, inferZonePolarity, type ParsedTradingPlan } from '../services/planParserService';
 
   export interface ThesisCardGeometry {
     planId: string;
@@ -240,6 +240,11 @@
             {plan.conclusion.probability}
           </span>
         {/if}
+        {#if plan.setupStatus}
+          <span class="status-tag mono-nums" title="Status Setup">
+            {plan.setupStatus}
+          </span>
+        {/if}
       </div>
 
       <div class="header-actions">
@@ -311,7 +316,8 @@
         {#if plan.contextZones && plan.contextZones.length > 0}
           <div class="zones-container">
             {#each plan.contextZones as zone}
-              <div class="zone-pill {isBearish ? 'bearish' : 'bullish'} mono-nums">
+              {@const pol = zone.polarity || inferZonePolarity(zone.label)}
+              <div class="zone-pill {pol === 'bull' ? 'bullish' : pol === 'bear' ? 'bearish' : 'neutral'} mono-nums">
                 <Layers size={10} />
                 <span>{zone.label || 'FVG'}: {formatPrice(zone.low)} - {formatPrice(zone.high)}</span>
               </div>
@@ -576,6 +582,17 @@
     border: 1px solid rgba(56, 189, 248, 0.3);
   }
 
+  .status-tag {
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: rgba(250, 204, 21, 0.12);
+    color: #facc15;
+    border: 1px solid rgba(250, 204, 21, 0.3);
+    letter-spacing: 0.3px;
+  }
+
   .header-actions {
     display: flex;
     align-items: center;
@@ -770,6 +787,12 @@
     background: var(--chart-thesis-bull-glow, var(--bull-glow, rgba(0, 255, 136, 0.1)));
     color: var(--chart-thesis-bull, var(--bull-color, #00ff88));
     border: 1px solid var(--chart-thesis-bull, var(--bull-color, rgba(0, 255, 136, 0.25)));
+  }
+
+  .zone-pill.neutral {
+    background: rgba(160, 160, 160, 0.1);
+    color: var(--text-secondary, #94a3b8);
+    border: 1px solid rgba(160, 160, 160, 0.25);
   }
 
   .reason-text {

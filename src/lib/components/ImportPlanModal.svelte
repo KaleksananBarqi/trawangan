@@ -22,6 +22,7 @@
   import {
     parseTradingPlan,
     formatPlanPrice,
+    inferZonePolarity,
     type ParsedTradingPlan
   } from '../services/planParserService';
   import {
@@ -452,6 +453,11 @@
                       NEUTRAL / BELUM DITENTUKAN
                     </span>
                   {/if}
+                  {#if parsedPlan.setupStatus}
+                    <span class="status-preview-pill mono-nums">
+                      {parsedPlan.setupStatus}
+                    </span>
+                  {/if}
                 </div>
               </div>
             </div>
@@ -542,9 +548,10 @@
                 </div>
                 <div class="zones-chip-row">
                   {#each parsedPlan.contextZones as z}
-                    <div class="zone-chip mono-nums">
+                    {@const pol = z.polarity || inferZonePolarity(z.label)}
+                    <div class="zone-chip mono-nums {pol === 'bull' ? 'bullish' : pol === 'bear' ? 'bearish' : 'neutral'}">
                       <span class="zone-label">{z.label}:</span>
-                      <span class="zone-range">${z.low} – ${z.high}</span>
+                      <span class="zone-range">{formatPlanPrice(z.low)} – {formatPlanPrice(z.high)}</span>
                     </div>
                   {/each}
                 </div>
@@ -1295,6 +1302,17 @@
   }
 
   /* Zones & Reasons */
+  .status-preview-pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(250, 204, 21, 0.12);
+    color: #facc15;
+    border: 1px solid rgba(250, 204, 21, 0.35);
+    letter-spacing: 0.3px;
+  }
+
   .zones-chip-row {
     display: flex;
     flex-wrap: wrap;
@@ -1303,16 +1321,40 @@
 
   .zone-chip {
     font-size: 10px;
-    background-color: rgba(0, 229, 255, 0.08);
-    border: 1px solid rgba(0, 229, 255, 0.2);
+    background-color: rgba(160, 160, 160, 0.08);
+    border: 1px solid rgba(160, 160, 160, 0.2);
     border-radius: 4px;
     padding: 3px 8px;
     display: flex;
     gap: 4px;
   }
 
+  .zone-chip.bullish {
+    background-color: rgba(0, 255, 136, 0.08);
+    border-color: rgba(0, 255, 136, 0.25);
+  }
+  .zone-chip.bullish .zone-label {
+    color: #00ff88;
+  }
+
+  .zone-chip.bearish {
+    background-color: rgba(255, 105, 180, 0.08);
+    border-color: rgba(255, 105, 180, 0.25);
+  }
+  .zone-chip.bearish .zone-label {
+    color: #ff69b4;
+  }
+
+  .zone-chip.neutral {
+    background-color: rgba(160, 160, 160, 0.08);
+    border-color: rgba(160, 160, 160, 0.25);
+  }
+  .zone-chip.neutral .zone-label {
+    color: #94a3b8;
+  }
+
   .zone-label {
-    color: #00e5ff;
+    color: var(--text-dim, #94a3b8);
     font-weight: 600;
   }
 

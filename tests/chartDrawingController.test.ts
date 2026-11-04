@@ -1136,6 +1136,99 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
 
     unsub();
   });
+
+  await t.test('21. Transparansi Tinggi & Pewarnaan Kotak Context Zone Berdasarkan Polaritas (Fill 0.04 & Border 0.25)', () => {
+    let drawingsList: any[] = [];
+    const calls: string[] = [];
+
+    const mockDrawings = {
+      all: () => [...drawingsList],
+      create: (spec: any) => {
+        const id = spec.id || `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const item = { ...spec, id };
+        drawingsList.push(item);
+        calls.push(`create:${id}`);
+        return item;
+      },
+      remove: (id: string) => {
+        drawingsList = drawingsList.filter((d) => d.id !== id);
+      },
+      removeMany: (ids: string[]) => {
+        drawingsList = drawingsList.filter((d) => !ids.includes(d.id));
+      },
+      select: () => {},
+      deselect: () => {},
+      undo: () => {},
+      on: () => {},
+      off: () => {}
+    };
+
+    const baseTime = 1700000000000;
+    const interval15m = 15 * 60 * 1000;
+    const mockChart = {
+      drawings: mockDrawings,
+      data: () => [
+        { time: baseTime - interval15m, close: 2260 },
+        { time: baseTime, close: 2266.8 }
+      ],
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: { chart: mockChart, symbol: 'ETHUSDT', timeframe: '15m' },
+      cells: () => [{ chart: mockChart }]
+    };
+
+    const controller = new ChartDrawingController();
+    controller.attachWorkspace(
+      mockWorkspace as any,
+      () => 'ETHUSDT',
+      () => '15m',
+      () => 'binance'
+    );
+
+    const testPlan: any = {
+      id: 'plan_transparency_test',
+      symbol: 'ETHUSDT',
+      bias: 'bullish',
+      entry: 2266.8,
+      stopLoss: 2247.5,
+      targets: [
+        { price: 2308.52, label: 'TP1', rMultiple: 2.16 }
+      ],
+      contextZones: [
+        { low: 2281.62, high: 2303.5, label: '4H OB Bear', polarity: 'bear' },
+        { low: 2249.77, high: 2275.99, label: '1H FVG Bull', polarity: 'bull' },
+        { low: 2275.99, high: 2278.67, label: 'IDM', polarity: 'neutral' }
+      ]
+    };
+
+    const res = controller.createMultiTargetPosition(testPlan);
+    assert.ok(res);
+    assert.equal(res.drawingIds.length, 4, '1 Target stage + 3 context zones = 4 drawing items');
+
+    const bearBox = drawingsList.find((d) => d.metadata?.zoneLabel === '4H OB Bear');
+    assert.ok(bearBox, 'Kotak 4H OB Bear harus terbuat');
+    assert.equal(bearBox.style.fillColor, 'rgba(255, 105, 180, 0.04)', 'Bearish fill harus alpha 0.04');
+    assert.equal(bearBox.style.lineColor, 'rgba(255, 105, 180, 0.25)', 'Bearish border harus alpha 0.25');
+    assert.equal(bearBox.text.color, '#FF69B4');
+    assert.equal(bearBox.metadata.polarity, 'bear');
+
+    const bullBox = drawingsList.find((d) => d.metadata?.zoneLabel === '1H FVG Bull');
+    assert.ok(bullBox, 'Kotak 1H FVG Bull harus terbuat');
+    assert.equal(bullBox.style.fillColor, 'rgba(0, 255, 136, 0.04)', 'Bullish fill harus alpha 0.04');
+    assert.equal(bullBox.style.lineColor, 'rgba(0, 255, 136, 0.25)', 'Bullish border harus alpha 0.25');
+    assert.equal(bullBox.text.color, '#00FF88');
+    assert.equal(bullBox.metadata.polarity, 'bull');
+
+    const neutralBox = drawingsList.find((d) => d.metadata?.zoneLabel === 'IDM');
+    assert.ok(neutralBox, 'Kotak IDM harus terbuat');
+    assert.equal(neutralBox.style.fillColor, 'rgba(160, 160, 160, 0.04)', 'Neutral fill harus alpha 0.04');
+    assert.equal(neutralBox.style.lineColor, 'rgba(160, 160, 160, 0.25)', 'Neutral border harus alpha 0.25');
+    assert.equal(neutralBox.text.color, '#A0A0A0');
+    assert.equal(neutralBox.metadata.polarity, 'neutral');
+  });
 });
 
 
