@@ -454,4 +454,41 @@ TP3: 3100 (6.00R)
     assert.equal(drawings[0].anchors[0].price, 81100.0);
     assert.equal(drawings[1].anchors[0].price, 81100.0);
   });
+
+  it('10. ADR-0020: Dual-Entry menghasilkan kotak arsiran Entry Zone otomatis dan auto-alerts untuk E1, E2, & Blended', async () => {
+    const dualEntryPlanText = `
+|**Parameter**|**Nilai**|
+|---|---|
+|**Bias**|**Bullish**|
+|**Entry 1 (Aggressive)**|**1.584**|
+|**Entry 2 (Moderate)**|**1.576**|
+|**Entry**|**1.579** _(Blended Entry)_|
+|**Stop Loss**|**1.560**|
+|**TP1**|**1.630**|
+|**TP2**|**1.640**|
+    `.trim();
+
+    const plan = parseTradingPlan(dualEntryPlanText, { tickSize: 0.001 });
+    const { controller, getDrawings } = createMockChartWorkspace();
+
+    const res = controller.createMultiTargetPosition(plan, { autoCreateAlerts: true });
+    assert.ok(res, 'Posisi harus berhasil dibuat');
+
+    const drawings = getDrawings();
+    // 2 position stages (TP1, TP2) + 1 entry zone box
+    assert.ok(drawings.length >= 3, `Minimal 3 drawing (2 stage + 1 entry zone), aktual: ${drawings.length}`);
+
+    const entryZoneDrawing = drawings.find((d) => d.metadata?.role === 'entry_zone');
+    assert.ok(entryZoneDrawing, 'Drawing kotak Entry Zone harus tercipta');
+    assert.equal(entryZoneDrawing.type, 'box');
+    assert.equal(entryZoneDrawing.metadata.minEntry, 1.576);
+    assert.equal(entryZoneDrawing.metadata.maxEntry, 1.584);
+    assert.match(entryZoneDrawing.text.value, /Entry Zone/);
+    assert.match(entryZoneDrawing.text.value, /1.576/);
+    assert.match(entryZoneDrawing.text.value, /1.584/);
+
+    // Hapus plan -> seluruh drawing termasuk Entry Zone harus ikut terhapus
+    controller.removePlan(res.planId);
+    assert.equal(getDrawings().length, 0, 'Seluruh drawing termasuk Entry Zone harus terhapus saat plan dihapus');
+  });
 });

@@ -28,6 +28,24 @@ export const CONTEXT_ZONE_STYLES = {
     textColor: '#A0A0A0'
   }
 } as const;
+
+export const ENTRY_ZONE_STYLES = {
+  bull: {
+    fillColor: 'rgba(0, 255, 136, 0.08)',
+    lineColor: 'rgba(0, 255, 136, 0.5)',
+    textColor: '#00FF88'
+  },
+  bear: {
+    fillColor: 'rgba(255, 105, 180, 0.08)',
+    lineColor: 'rgba(255, 105, 180, 0.5)',
+    textColor: '#FF69B4'
+  },
+  neutral: {
+    fillColor: 'rgba(255, 204, 0, 0.08)',
+    lineColor: 'rgba(255, 204, 0, 0.5)',
+    textColor: '#FFCC00'
+  }
+} as const;
 import {
   recognizeGesture,
   type GesturePoint,
@@ -1749,6 +1767,64 @@ export class ChartDrawingController {
           createdDrawingIds.push(id);
           this.drawingMetadata.set(id, stageDrawingSpec.metadata);
           this.drawingPlanMap.set(id, planId);
+        }
+      }
+    }
+
+    // 1b. Gambar kotak arsiran zona entry (Dual-Entry Zone) jika ada beberapa level entry (ADR-0020)
+    if (Array.isArray(plan.entries) && plan.entries.length > 1) {
+      const entryPrices = plan.entries
+        .map((e) => e.price)
+        .filter((p) => typeof p === 'number' && !isNaN(p) && p > 0);
+      if (entryPrices.length >= 2) {
+        const minEntry = Math.min(...entryPrices);
+        const maxEntry = Math.max(...entryPrices);
+        const lastEndTime = t0 + plan.targets.length * span * deltaT;
+        const isBear = plan.bias === 'bearish' || plan.stopLoss > plan.entry;
+        const zoneStyle = isBear ? ENTRY_ZONE_STYLES.bear : ENTRY_ZONE_STYLES.bull;
+
+        const e1 = plan.entries.find((e) => e.id === 'e1');
+        const e2 = plan.entries.find((e) => e.id === 'e2');
+        const labelText =
+          e1 && e2
+            ? `Entry Zone: ${minEntry} - ${maxEntry} (E1: ${e1.price} · E2: ${e2.price})`
+            : `Entry Zone: ${minEntry} - ${maxEntry}`;
+
+        const entryBoxSpec: any = {
+          type: 'box',
+          paneId,
+          anchors: [
+            { time: t0, price: maxEntry },
+            { time: lastEndTime, price: minEntry }
+          ],
+          style: {
+            fillColor: zoneStyle.fillColor,
+            lineColor: zoneStyle.lineColor,
+            lineWidth: 1
+          },
+          text: {
+            value: labelText,
+            color: zoneStyle.textColor
+          },
+          metadata: {
+            planId,
+            role: 'entry_zone',
+            entries: plan.entries,
+            minEntry,
+            maxEntry
+          }
+        };
+
+        const createdEntryBox = this.createDrawing(entryBoxSpec);
+        if (createdEntryBox) {
+          const boxId = createdEntryBox.id || entryBoxSpec.id;
+          const boxRecord = { ...entryBoxSpec, ...createdEntryBox, id: boxId };
+          createdDrawings.push(boxRecord);
+          if (boxId) {
+            createdDrawingIds.push(boxId);
+            this.drawingMetadata.set(boxId, entryBoxSpec.metadata);
+            this.drawingPlanMap.set(boxId, planId);
+          }
         }
       }
     }

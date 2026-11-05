@@ -645,4 +645,109 @@ Catatan Tambahan:
       assert.equal(plan.targets[0].price, 77400.0);
     });
   });
+
+  describe('ADR-0020: Dual-Entry (E1 Aggressive/E2 Moderate) & Blended Entry Support', () => {
+    it('mengurai tabel Dual-Entry lengkap dengan formula Blended Entry, bobot, dan R-multiple multi-acuan', () => {
+      const markdown = `
+|**Parameter**|**Nilai**|
+|---|---|
+|**Bias**|**Bullish**|
+|**Status Setup**|**PENDING (Conditional) — [Mode Sweep]**|
+|**Entry 1 (Aggressive)**|**1.584** *(Proximal Edge BULL FVG 1.583 + buffer 0.10x ATR LTF 0.0010)*|
+|**Entry 2 (Moderate)**|**1.576** *(50% Mean Threshold mt Unmitigated BULL_OB LTF 1.572–1.580 pasca-sweep IDM 1.581)*|
+|**Entry**|**1.579** _(Blended Entry: \`(0.4 × 1.584) + (0.6 × 1.576) = 1.5792\` dibulatkan \`1.579\` — acuan 1R & RRR)_|
+|**Stop Loss**|**1.560**|
+|**Jarak Risiko (1R)**|**\`0.019\` poin (\`1.20%\` dari Blended Entry \`1.579\`) → Pos Size = \`Risk($) / 1.20%\`**|
+|**TP1**|**1.630**|
+|**R multiple TP1**|**2.68R (Blended) / 1.92R (E1)**|
+|**TP2**|**1.640**|
+|**R multiple TP2**|**3.21R (Blended) / 2.33R (E1)**|
+
+## 6. Kesimpulan, Rubrik Confidence & Invalidasi
+- **Skor Konfluensi (4 / 5 Poin):**
+    1. (+1) Skenario Mode Sweep terdefinisi jelas
+- **Confidence Level:** **High (4 Poin)** — Setup solid
+- **Invalidasi & Skenario Flip (1 Kalimat):** Batal jika candle 15m close di bawah 1.560.
+      `.trim();
+
+      const plan = parseTradingPlan(markdown, { tickSize: 0.001 });
+
+      assert.equal(plan.bias, 'bullish');
+      assert.equal(plan.entry, 1.579);
+      assert.equal(plan.stopLoss, 1.560);
+      assert.equal(plan.riskAmount, 0.019);
+      assert.equal(plan.riskPercent, 1.2);
+      assert.deepEqual(plan.confluenceScore, { score: 4, max: 5 });
+      assert.equal(plan.setupStatus, 'PENDING (Conditional) — [Mode Sweep]');
+      assert.equal(plan.definition, undefined, 'Kata "terdefinisi jelas" di list skor tidak boleh dianggap sebagai Definisi');
+
+      // Validasi array entries
+      assert.ok(plan.entries, 'Array entries harus terbentuk');
+      assert.equal(plan.entries.length, 2);
+
+      const e1 = plan.entries.find((e) => e.id === 'e1');
+      assert.ok(e1, 'E1 harus ada');
+      assert.equal(e1?.price, 1.584);
+      assert.equal(e1?.weight, 0.4);
+      assert.equal(e1?.style, 'aggressive');
+      assert.equal(e1?.riskAmount, 0.024);
+
+      const e2 = plan.entries.find((e) => e.id === 'e2');
+      assert.ok(e2, 'E2 harus ada');
+      assert.equal(e2?.price, 1.576);
+      assert.equal(e2?.weight, 0.6);
+      assert.equal(e2?.style, 'moderate');
+      assert.equal(e2?.riskAmount, 0.016);
+
+      // Validasi targets & R-multiples
+      assert.equal(plan.targets.length, 2);
+      assert.equal(plan.targets[0].price, 1.630);
+      assert.equal(plan.targets[0].rMultiple, 2.68);
+      assert.equal(plan.targets[0].rMultipleByEntry?.blended, 2.68);
+      assert.equal(plan.targets[0].rMultipleByEntry?.e1, 1.92);
+
+      assert.equal(plan.targets[1].price, 1.640);
+      assert.equal(plan.targets[1].rMultiple, 3.21);
+      assert.equal(plan.targets[1].rMultipleByEntry?.blended, 3.21);
+      assert.equal(plan.targets[1].rMultipleByEntry?.e1, 2.33);
+
+      assert.equal(plan.validation.valid, true);
+      assert.equal(plan.validation.errors.length, 0);
+    });
+
+    it('menghitung otomatis Blended Entry jika baris Entry tidak dicantumkan namun E1 dan E2 tersedia', () => {
+      const text = `
+Bias: Bullish
+Entry 1 (Aggressive): 200.0 (40%)
+Entry 2 (Moderate): 190.0 (60%)
+Stop Loss: 180.0
+TP1: 220.0
+      `.trim();
+
+      const plan = parseTradingPlan(text);
+
+      assert.equal(plan.bias, 'bullish');
+      assert.equal(plan.entry, 194.0); // 0.4*200 + 0.6*190 = 80 + 114 = 194
+      assert.equal(plan.riskAmount, 14.0);
+      assert.equal(plan.validation.valid, true);
+    });
+
+    it('memberikan peringatan Sanity Guard jika urutan harga E1 dan E2 tidak konsisten dengan arah setup', () => {
+      const text = `
+Bias: Bullish
+Entry 1 (Aggressive): 100.0
+Entry 2 (Moderate): 110.0
+Stop Loss: 90.0
+TP1: 130.0
+      `.trim();
+
+      const plan = parseTradingPlan(text);
+
+      assert.equal(plan.validation.valid, true);
+      assert.ok(
+        plan.validation.warnings.some((w) => w.includes('Entry 1') && w.includes('lebih rendah')),
+        'Harus memberikan warning jika E1 lebih rendah dari E2 pada Bullish pullback'
+      );
+    });
+  });
 });

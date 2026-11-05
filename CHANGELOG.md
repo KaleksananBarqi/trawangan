@@ -5,6 +5,34 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.38.0] - 2026-11-05
+
+### 🚀 Ditambahkan (Added)
+- **Dukungan Skema Dual-Entry (E1 Aggressive & E2 Moderate) dan Blended Entry (ADR-0020):**
+  - Mengurai struktur rencana perdagangan SMC v2 / Anti-Front-Run (`Render-1.md`) dengan dua level masuk terpisah: `Entry 1 (Aggressive)` (proximal edge POI dengan front-run buffer) dan `Entry 2 (Moderate)` (50% CE/MT atau area pasca-sapuan likuiditas IDM).
+  - Ekstraksi bobot posisi per entri (misal `0.4` dan `0.6`) dari formula baris `Entry` atau persentase alokasi, serta perhitungan otomatis harga *Blended Entry* tertimbang jika baris Entry tidak dicantumkan.
+  - Dukungan parsing R-multiple multi-acuan (`rMultipleByEntry`) untuk pelaporan R terpisah pada level Blended vs Entry 1.
+  - Ekstraksi persentase risiko `riskPercent` (`1.20%`) dan skor konfluensi `confluenceScore` (`4/5`).
+- **Proyeksi Kotak Arsiran Entry Zone pada Kanvas Grafik:**
+  - Menggambar kotak arsiran transparan (*Entry Zone Box*) di antara `min(E1, E2)` dan `max(E1, E2)` dengan palet warna terisolasi yang selaras dengan bias posisi (`ENTRY_ZONE_STYLES.bull` atau `.bear`).
+  - Mengikat siklus hidup kotak Entry Zone ke dalam `planId` dan transaksi undo/redo atomik (`Ctrl+Z`).
+- **Plan-Linked Auto-Alerts Komprehensif untuk Seluruh Level Entri:**
+  - Memasang alert otomatis seketika untuk titik Blended Entry, Level Entry 1, dan Level Entry 2, berdampingan dengan Stop Loss dan seluruh Target Profit (TP1..TPn).
+  - Sinkronisasi otomatis nilai target alert saat pengguna menggeser kotak posisi di kanvas.
+- **Peningkatan Visual Floating Thesis Card & Import Plan Modal:**
+  - `FloatingThesisCard.svelte`: Menampilkan pil level E1 & E2 beserta bobot dan harga, lencana skor konfluensi setup (`4/5`), dan persentase risiko (`1.20%`).
+  - `ImportPlanModal.svelte`: Menampilkan kartu mini preview E1 & E2 dan mendeteksi status pasar *"Di Dalam Entry Zone (Menjemput Limit)"*.
+  - `chartSnapshotService.ts`: Menyertakan pil level E1 & E2 serta lencana skor konfluensi pada kartu tesis snapshot canvas ultra-HD.
+- **Pencatatan Dokumen Arsitektur & Kamus Domain:**
+  - Menambahkan ADR resmi `docs/adr/0020-dual-entry-blended-trading-plan-and-entry-zone-projection.md`.
+  - Menambahkan definisi istilah kanonikal *Dual-Entry Plan* dan *Blended Entry* pada `GLOSSARY.md`.
+
+### 🐛 Diperbaiki (Fixed)
+- **Pembersihan False Positive Parser Rencana Perdagangan:**
+  - Membatasi pencocokan kata kunci `Definisi` agar tidak lagi salah menangkap kata turunan seperti *"terdefinisi jelas"* pada daftar skor konfluensi.
+  - Memperbaiki regex `stripInlineMarkdown()` agar tidak memotong konstanta bergaris bawah seperti `BULL_OB` dan `BEAR_OB`.
+  - Menyaring zona konteks fiktif yang berasal dari narasi aksi harga ("turun ke") atau bagian kesimpulan/invalidasi.
+
 ## [0.37.0] - 2026-11-04
 
 ### 🚀 Ditambahkan (Added)

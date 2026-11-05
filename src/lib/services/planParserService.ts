@@ -9,6 +9,16 @@ import { roundToTickSize } from './priceSnapService';
 export type TradeBias = 'bullish' | 'bearish' | 'neutral';
 export type ZonePolarity = 'bull' | 'bear' | 'neutral';
 
+export interface PlanEntryLevel {
+  id: 'e1' | 'e2' | string;
+  label: string;
+  style?: 'aggressive' | 'moderate' | string;
+  price: number;
+  weight?: number;
+  riskAmount?: number;
+  reason?: string;
+}
+
 export interface ParsedTarget {
   id: string; // e.g. "tp1", "tp2"
   label: string; // e.g. "TP1", "TP2"
@@ -16,6 +26,7 @@ export interface ParsedTarget {
   rMultiple?: number;
   distance?: number;
   reason?: string;
+  rMultipleByEntry?: Record<string, number>;
 }
 
 export interface ContextZone {
@@ -42,9 +53,12 @@ export interface PlanConclusion {
 export interface ParsedTradingPlan {
   bias: TradeBias;
   entry: number;
+  entries?: PlanEntryLevel[];
   stopLoss: number;
   targets: ParsedTarget[];
   riskAmount: number;
+  riskPercent?: number;
+  confluenceScore?: { score: number; max: number };
   reasons: Record<string, string>;
   contextZones: ContextZone[];
   rawText: string;
@@ -87,7 +101,8 @@ export function stripInlineMarkdown(text: string): string {
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/__(.*?)__/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
+    .replace(/(?<=^|[\s(])_([^_]+)_(?=$|[\s),.:;!?])/g, '$1')
+    .replace(/(?<![a-zA-Z0-9])_|_(?![a-zA-Z0-9])/g, '')
     .replace(/\*\*/g, '')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/`/g, '')
@@ -244,7 +259,11 @@ function extractContextZones(
   if (!text) return zones;
 
   // 1. Normalisasikan pemformatan markdown (ganti _ di BULL_OB jadi spasi, bersihkan backticks dan asterisks)
-  const normalizedText = text
+  // Abaikan pemindaian zona konteks pada seksi Kesimpulan / Invalidasi (#6)
+  const conclusionIdx = text.search(/\n\s*#{1,3}\s+(?:6\.|kesimpulan|conclusion)/i);
+  const scopedText = conclusionIdx !== -1 ? text.substring(0, conclusionIdx) : text;
+
+  const normalizedText = scopedText
     .replace(/(BULL|BEAR)_(OB|FVG)/gi, '$1 $2')
     .replace(/[`*]/g, '');
 
@@ -322,12 +341,20 @@ function extractContextZones(
       if (textBetween.includes(')') && !textBetween.includes('(')) {
         continue;
       }
+      // Jika di antara anchor dan angka ini sudah ada rentang harga terkurung lain (anchor sudah memiliki zona sendiri)
+      if (/\(\s*\d+(?:,\d{3})*(?:\.\d+)?\s*[-–—]\s*\d+(?:,\d{3})*(?:\.\d+)?\s*\)/.test(textBetween)) {
+        continue;
+      }
       // Jika ada tanda titik kalimat baru mayor sebelum rentang tercapai
       if (/[.!?]\s+[A-Z]/.test(textBetween)) {
         continue;
       }
-      // Jika teks perantara memuat narasi aksi pergerakan harga seperti "masuk ke zona/area" atau "menyentuh area"
-      if (/(?:masuk\s+ke\s+(?:zona|area)|menyentuh\s+(?:zona|area))\s*$/i.test(textBetween.trimEnd())) {
+      // Jika teks perantara memuat narasi aksi pergerakan harga seperti "masuk ke zona/area", "turun ke", atau "menyentuh area"
+      if (
+        /(?:masuk\s+ke(?:\s+zona|\s+area)?|menyentuh(?:\s+area|\s+zona)?|turun\s+ke|naik\s+ke|kembali\s+(?:turun|naik)\s+ke|menjemput\s+(?:zona|area)|terkoreksi\s+(?:turun\s+)?ke)\s*$/i.test(
+          textBetween.trimEnd()
+        )
+      ) {
         continue;
       }
       // Khusus IDM: jika di antara anchor IDM dan rentang harga sudah ada angka harga lain
@@ -409,11 +436,11 @@ function extractConclusionAndDefinition(text: string): {
   let conclusion: PlanConclusion | undefined;
 
   // 1. Ekstraksi Definisi (misal: *Definisi: ...* atau **Definisi & Kalkulasi R:**)
-  const singleLineMatch = text.match(/(?:Definisi[^\n\r:*]*|Definition)[*_\s]*:[*_\s]*([^\n\r]+)/i);
+  const singleLineMatch = text.match(/(?:^|\n|\r)\s*(?:[-*]\s*)?(?:\*\*)?(?:Definisi|Definition)(?:\s+(?:&\s+Kalkulasi\s+R|Umum|Setup))?(?:\*\*)?[*_\s]*:[*_\s]*([^\n\r]+)/i);
   if (singleLineMatch && singleLineMatch[1].trim()) {
     definition = stripInlineMarkdown(singleLineMatch[1]);
   } else {
-    const multiLineMatch = text.match(/(?:Definisi[^\n\r:*]*|Definition)[*_\s]*:[*_\s]*(?:\r?\n)+([\s\S]+?)(?=\r?\n\s*\||\r?\n\s*#{1,4}\s+|$)/i);
+    const multiLineMatch = text.match(/(?:^|\n|\r)\s*(?:[-*]\s*)?(?:\*\*)?(?:Definisi|Definition)(?:\s+(?:&\s+Kalkulasi\s+R|Umum|Setup))?(?:\*\*)?[*_\s]*:[*_\s]*(?:\r?\n)+([\s\S]+?)(?=\r?\n\s*\||\r?\n\s*#{1,4}\s+|$)/i);
     if (multiLineMatch && multiLineMatch[1].trim()) {
       definition = stripInlineMarkdown(multiLineMatch[1]);
     }
@@ -461,7 +488,8 @@ export function validatePlanSanity(
   bias: TradeBias,
   entry: number,
   stopLoss: number,
-  targets: ParsedTarget[]
+  targets: ParsedTarget[],
+  entries?: PlanEntryLevel[]
 ): PlanValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -488,6 +516,30 @@ export function validatePlanSanity(
     for (const t of targets) {
       if (!t.price || isNaN(t.price) || t.price <= 0) {
         errors.push(`Target ${t.label || t.id} price must be greater than 0.`);
+      }
+    }
+  }
+
+  // Validasi level Dual-Entry jika ada
+  if (Array.isArray(entries) && entries.length > 0) {
+    for (const e of entries) {
+      if (typeof e.price !== 'number' || isNaN(e.price) || e.price <= 0) {
+        errors.push(`Level entry ${e.label || e.id} harga harus lebih besar dari 0.`);
+      } else if (stopLoss > 0) {
+        if (bias === 'bullish' && e.price <= stopLoss) {
+          errors.push(`Level entry ${e.label || e.id} (${e.price}) harus di atas Stop Loss (${stopLoss}) untuk bias Bullish.`);
+        } else if (bias === 'bearish' && e.price >= stopLoss) {
+          errors.push(`Level entry ${e.label || e.id} (${e.price}) harus di bawah Stop Loss (${stopLoss}) untuk bias Bearish.`);
+        }
+      }
+    }
+    const e1 = entries.find((e) => e.id === 'e1');
+    const e2 = entries.find((e) => e.id === 'e2');
+    if (e1 && e2) {
+      if (bias === 'bullish' && e1.price < e2.price) {
+        warnings.push(`Entry 1 (${e1.price}) lebih rendah dari Entry 2 (${e2.price}) untuk setup pullback Bullish.`);
+      } else if (bias === 'bearish' && e1.price > e2.price) {
+        warnings.push(`Entry 1 (${e1.price}) lebih tinggi dari Entry 2 (${e2.price}) untuk setup pullback Bearish.`);
       }
     }
   }
@@ -641,6 +693,15 @@ export function parseTradingPlan(
   let bias: TradeBias = 'neutral';
   let rawEntry = 0;
   let rawStopLoss = 0;
+  let rawEntry1: number | null = null;
+  let rawEntry2: number | null = null;
+  let entry1Label = 'Entry 1 (Aggressive)';
+  let entry2Label = 'Entry 2 (Moderate)';
+  let entry1Val = '';
+  let entry2Val = '';
+  let entry1Weight: number | undefined;
+  let entry2Weight: number | undefined;
+  let parsedRiskPercent: number | undefined;
   let parsedSymbol: string | undefined;
   let parsedSetupStatus: string | undefined;
   const reasons: Record<string, string> = {};
@@ -653,6 +714,7 @@ export function parseTradingPlan(
     rMultiple?: number;
     distance?: number;
     reason?: string;
+    rMultipleByEntry?: Record<string, number>;
   }
   const targetsMap = new Map<number, TargetEntry>();
 
@@ -756,6 +818,15 @@ export function parseTradingPlan(
       continue;
     }
 
+    // 1d. Jarak Risiko Persentase (misal "Jarak Risiko (1R)", "Risk %", "Risk Percentage")
+    if (/^(?:jarak\s*risiko|risk\s*(?:percent|percentage|\(1r\))|1r\s*risk)\b/i.test(cleanKey)) {
+      const pctMatch = cleanVal.match(/([+-]?\d+(?:\.\d+)?)\s*%/);
+      if (pctMatch) {
+        parsedRiskPercent = parseFloat(pctMatch[1]);
+      }
+      continue;
+    }
+
     // 2. Alasan Entry
     if (
       cleanKey === 'alasan entry' ||
@@ -802,13 +873,67 @@ export function parseTradingPlan(
       if (extractedDist !== null) {
         target.distance = extractedDist;
       }
+
+      // Ekstraksi multi-acuan R-multiple (misal: "2.68R (Blended) / 1.92R (E1)")
+      const rByEntry: Record<string, number> = {};
+      const multiRRegex = /([+-]?\d+(?:\.\d+)?)\s*[rR]\s*\(\s*([A-Za-z0-9\s_-]+)\s*\)/g;
+      let rM: RegExpExecArray | null;
+      while ((rM = multiRRegex.exec(cleanVal)) !== null) {
+        const rVal = parseFloat(rM[1]);
+        const refName = rM[2].trim().toLowerCase();
+        if (!isNaN(rVal)) {
+          if (refName.includes('blend')) {
+            rByEntry.blended = rVal;
+          } else if (refName.includes('e1') || refName.includes('entry 1') || refName.includes('agg')) {
+            rByEntry.e1 = rVal;
+          } else if (refName.includes('e2') || refName.includes('entry 2') || refName.includes('mod')) {
+            rByEntry.e2 = rVal;
+          } else {
+            rByEntry[refName] = rVal;
+          }
+        }
+      }
+      if (Object.keys(rByEntry).length > 0) {
+        target.rMultipleByEntry = rByEntry;
+      }
       continue;
     }
 
-    // 6. Entry Price
+    // 5b. Dual-Entry Level: Entry 1 (Aggressive) / E1
+    if (/^(?:entry\s*1|e1)\b/i.test(cleanKey)) {
+      const p = extractFirstPrice(cleanVal);
+      if (p !== null) {
+        rawEntry1 = p;
+        entry1Val = cleanVal;
+        entry1Label = stripInlineMarkdown(key) || 'Entry 1 (Aggressive)';
+        const wMatch = (cleanKey + ' ' + cleanVal).match(/(?:bobot|weight|alokasi|size|posisi|\()\s*(\d+(?:\.\d+)?)\s*%(?:\s*(?:size|posisi|bobot|alokasi|\)))?/i);
+        if (wMatch && !cleanVal.toLowerCase().includes('mean threshold') && !cleanVal.toLowerCase().includes('consequent')) {
+          entry1Weight = parseFloat(wMatch[1]) / 100;
+        }
+      }
+      continue;
+    }
+
+    // 5c. Dual-Entry Level: Entry 2 (Moderate) / E2
+    if (/^(?:entry\s*2|e2)\b/i.test(cleanKey)) {
+      const p = extractFirstPrice(cleanVal);
+      if (p !== null) {
+        rawEntry2 = p;
+        entry2Val = cleanVal;
+        entry2Label = stripInlineMarkdown(key) || 'Entry 2 (Moderate)';
+        const wMatch = (cleanKey + ' ' + cleanVal).match(/(?:bobot|weight|alokasi|size|posisi|\()\s*(\d+(?:\.\d+)?)\s*%(?:\s*(?:size|posisi|bobot|alokasi|\)))?/i);
+        if (wMatch && !cleanVal.toLowerCase().includes('mean threshold') && !cleanVal.toLowerCase().includes('consequent')) {
+          entry2Weight = parseFloat(wMatch[1]) / 100;
+        }
+      }
+      continue;
+    }
+
+    // 6. Entry Price (Blended / Utama)
     if (
       cleanKey === 'entry' ||
       cleanKey === 'entry price' ||
+      cleanKey === 'blended entry' ||
       cleanKey === 'open' ||
       cleanKey === 'open price' ||
       cleanKey === 'titik masuk' ||
@@ -816,6 +941,24 @@ export function parseTradingPlan(
     ) {
       const p = extractFirstPrice(cleanVal);
       if (p !== null) rawEntry = p;
+
+      // Ekstraksi bobot dari formula Blended Entry, misal: `(0.4 × 1.584) + (0.6 × 1.576)`
+      const formulaRegex = /([0-9.]+)\s*(?:×|\*)\s*([0-9.]+)/g;
+      let fMatch: RegExpExecArray | null;
+      const formulaPairs: Array<{ w: number; p: number }> = [];
+      while ((fMatch = formulaRegex.exec(cleanVal)) !== null) {
+        const w = parseFloat(fMatch[1]);
+        const price = parseFloat(fMatch[2]);
+        if (!isNaN(w) && !isNaN(price)) {
+          formulaPairs.push({ w: w > 1 ? w / 100 : w, p: price });
+        }
+      }
+      if (formulaPairs.length >= 2) {
+        entry1Weight = formulaPairs[0].w;
+        if (rawEntry1 === null) rawEntry1 = formulaPairs[0].p;
+        entry2Weight = formulaPairs[1].w;
+        if (rawEntry2 === null) rawEntry2 = formulaPairs[1].p;
+      }
       continue;
     }
 
@@ -877,10 +1020,56 @@ export function parseTradingPlan(
     if (stopLoss > 0) stopLoss = roundToTickSize(stopLoss, tickSize);
   }
 
+  // Bentuk array level entry (Dual-Entry E1 & E2) jika terdeteksi
+  const entries: PlanEntryLevel[] = [];
+  if (rawEntry1 !== null) {
+    let p1 = rawEntry1;
+    if (typeof tickSize === 'number' && tickSize > 0) {
+      p1 = roundToTickSize(p1, tickSize);
+    }
+    const w1 = entry1Weight ?? (rawEntry2 !== null ? 0.4 : 1.0);
+    const r1 = stopLoss > 0 ? parseFloat(Math.abs(p1 - stopLoss).toFixed(8)) : undefined;
+    entries.push({
+      id: 'e1',
+      label: entry1Label,
+      style: 'aggressive',
+      price: p1,
+      weight: w1,
+      ...(r1 !== undefined ? { riskAmount: r1 } : {})
+    });
+  }
+  if (rawEntry2 !== null) {
+    let p2 = rawEntry2;
+    if (typeof tickSize === 'number' && tickSize > 0) {
+      p2 = roundToTickSize(p2, tickSize);
+    }
+    const w2 = entry2Weight ?? (rawEntry1 !== null ? 0.6 : 1.0);
+    const r2 = stopLoss > 0 ? parseFloat(Math.abs(p2 - stopLoss).toFixed(8)) : undefined;
+    entries.push({
+      id: 'e2',
+      label: entry2Label,
+      style: 'moderate',
+      price: p2,
+      weight: w2,
+      ...(r2 !== undefined ? { riskAmount: r2 } : {})
+    });
+  }
+
+  // Jika entry utama belum diisi tapi entries ada, hitung weighted blended entry
+  if (entry <= 0 && entries.length > 0) {
+    const totalW = entries.reduce((acc, e) => acc + (e.weight || 0), 0) || 1;
+    entry = entries.reduce((acc, e) => acc + e.price * (e.weight || (1 / entries.length)), 0) / (totalW > 0 ? totalW : 1);
+    if (typeof tickSize === 'number' && tickSize > 0) {
+      entry = roundToTickSize(entry, tickSize);
+    } else {
+      entry = parseFloat(entry.toFixed(8));
+    }
+  }
+
   // Ekstraksi zona konteks dengan referensi harga untuk mencegah false context zone
   const contextZones = extractContextZones(text, tickSize, entry || stopLoss);
 
-  // Hitung riskAmount
+  // Hitung riskAmount acuan (dari Entry utama / Blended)
   let riskAmount = 0;
   if (entry > 0 && stopLoss > 0) {
     riskAmount = Math.abs(entry - stopLoss);
@@ -916,6 +1105,26 @@ export function parseTradingPlan(
       rMultiple = parseFloat((distance / riskAmount).toFixed(2));
     }
 
+    // Susun rMultipleByEntry jika ada level entry tambahan
+    let rMultipleByEntry = t.rMultipleByEntry;
+    if (entries.length > 0) {
+      const rByEntry: Record<string, number> = { ...(rMultipleByEntry || {}) };
+      if (typeof rMultiple === 'number' && rByEntry.blended === undefined) {
+        rByEntry.blended = rMultiple;
+      }
+      const e1 = entries.find((e) => e.id === 'e1');
+      if (e1 && e1.riskAmount && e1.riskAmount > 0 && rByEntry.e1 === undefined) {
+        rByEntry.e1 = parseFloat((Math.abs(price - e1.price) / e1.riskAmount).toFixed(2));
+      }
+      const e2 = entries.find((e) => e.id === 'e2');
+      if (e2 && e2.riskAmount && e2.riskAmount > 0 && rByEntry.e2 === undefined) {
+        rByEntry.e2 = parseFloat((Math.abs(price - e2.price) / e2.riskAmount).toFixed(2));
+      }
+      if (Object.keys(rByEntry).length > 0) {
+        rMultipleByEntry = rByEntry;
+      }
+    }
+
     const rawReason = t.reason || reasons[t.id];
     const reason = rawReason ? stripInlineMarkdown(rawReason) : undefined;
 
@@ -925,15 +1134,26 @@ export function parseTradingPlan(
       price,
       distance,
       ...(typeof rMultiple === 'number' ? { rMultiple } : {}),
+      ...(rMultipleByEntry ? { rMultipleByEntry } : {}),
       ...(reason ? { reason } : {}),
     };
   });
 
   // Validasi Sanity Guard
-  const validation = validatePlanSanity(bias, entry, stopLoss, targets);
+  const validation = validatePlanSanity(bias, entry, stopLoss, targets, entries);
 
   // Ekstraksi Kesimpulan dan Definisi (#115)
   const { conclusion, definition } = extractConclusionAndDefinition(text);
+
+  // Ekstraksi Skor Konfluensi (misal "Skor Konfluensi (4 / 5 Poin)")
+  let parsedConfluenceScore: { score: number; max: number } | undefined;
+  const confMatch = text.match(/(?:Skor\s+Konfluensi|Confluence\s+Score)[^:\n\r]*\(\s*(\d+)\s*\/\s*(\d+)\s*(?:poin|pts|points)?\s*\)/i);
+  if (confMatch) {
+    parsedConfluenceScore = {
+      score: parseInt(confMatch[1], 10),
+      max: parseInt(confMatch[2], 10),
+    };
+  }
 
   // Fallback deteksi simbol koin dari teks jika belum ada di tabel parameter
   if (!parsedSymbol) {
@@ -947,9 +1167,12 @@ export function parseTradingPlan(
   return {
     bias,
     entry,
+    ...(entries.length > 0 ? { entries } : {}),
     stopLoss,
     targets,
     riskAmount,
+    ...(typeof parsedRiskPercent === 'number' ? { riskPercent: parsedRiskPercent } : {}),
+    ...(parsedConfluenceScore ? { confluenceScore: parsedConfluenceScore } : {}),
     reasons,
     contextZones,
     rawText: text,

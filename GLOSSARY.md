@@ -256,6 +256,15 @@ _Avoid_: Ephemeral session plan, Manual plan bookmark, Unarchived trading plan
 Sekumpulan sinyal batas harga (`PriceAlert`) pada titik Entry, Stop Loss, dan seluruh jenjang Target Profit (TP1..TPn) yang dibuat otomatis sesuai bias arah posisi saat rencana perdagangan baru diterapkan, serta terikat siklus hidupnya (`planId`) agar otomatis ikut dibersihkan ketika rencana dihapus atau dibatalkan dari grafik.
 _Avoid_: Orphan plan alerts, Manual level-by-level alert entry, Unlinked position alerts
 
+**Dual-Entry Plan**:
+Skema eksekusi rencana perdagangan berbasis batas ganda yang membagi entri menjadi dua tingkat terpisah: Entry 1 (Agresif / Proximal Edge POI dengan front-run buffer) dan Entry 2 (Moderat / 50% Consequent Encroachment / Mean Threshold / pasca-sapuan IDM), yang diproyeksikan sebagai zona arsiran rentang masuk (*Entry Zone*) transparan pada grafik.
+_Avoid_: Single-point rigid entry, Manual dual limit drawing
+
+**Blended Entry**:
+Harga rata-rata tertimbang (*weighted average price*) dari kombinasi level Dual-Entry (`0.4×E1 + 0.6×E2`) yang berfungsi sebagai acuan tunggal deterministik kalkulasi risiko 1R dan rasio RRR multi-target, menjaga kompatibilitas penuh dengan sistem posisi bertingkat dan Trade Plan Vault.
+_Avoid_: Unweighted average entry, Arbitrary multi-risk basis
+
+
 
 
 

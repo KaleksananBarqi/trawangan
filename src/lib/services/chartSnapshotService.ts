@@ -486,6 +486,20 @@ export function drawThesisCardOnCanvas(
     ctx.stroke();
     ctx.fillStyle = '#facc15';
     ctx.fillText(statusText, cursorX + biasPad / 2, headerCenterY);
+    cursorX += statusTextW + biasPad + Math.round(8 * scaleX);
+  }
+
+  if (plan.confluenceScore) {
+    const confText = `Skor ${plan.confluenceScore.score}/${plan.confluenceScore.max}`;
+    const confTextW = ctx.measureText ? ctx.measureText(confText).width : confText.length * 6 * scaleX;
+    drawRoundedRect(ctx, cursorX, headerCenterY - Math.round(8 * scaleY), confTextW + biasPad, Math.round(16 * scaleY), 3 * scaleX);
+    ctx.fillStyle = 'rgba(168, 85, 247, 0.16)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(168, 85, 247, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#c084fc';
+    ctx.fillText(confText, cursorX + biasPad / 2, headerCenterY);
   }
 
   // 3. Body Content
@@ -518,13 +532,42 @@ export function drawThesisCardOnCanvas(
   // Seksi 1: KATALIS ENTRY
   ctx.font = `bold ${Math.round(9.5 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
   ctx.fillStyle = textMuted;
-  ctx.fillText('⚡ KATALIS ENTRY', contentLeft, currentY);
+  const entryHeader = plan.entries && plan.entries.length > 0 ? '⚡ BLENDED ENTRY' : '⚡ KATALIS ENTRY';
+  ctx.fillText(entryHeader, contentLeft, currentY);
 
   ctx.fillStyle = biasBadgeColor;
   ctx.textAlign = 'right';
   ctx.fillText(`${formatPrice(plan.entry)}`, contentLeft + contentW, currentY);
   ctx.textAlign = 'left';
   currentY += Math.round(14 * scaleY);
+
+  if (plan.entries && plan.entries.length > 0) {
+    let ePillX = contentLeft;
+    for (const e of plan.entries) {
+      const wStr = typeof e.weight === 'number' ? ` (${Math.round(e.weight * 100)}%)` : '';
+      const eStr = `${e.label}: ${formatPrice(e.price)}${wStr}`;
+      ctx.font = `600 ${Math.round(8 * scaleY)}px "JetBrains Mono", monospace, sans-serif`;
+      const pillW = (ctx.measureText ? ctx.measureText(eStr).width : eStr.length * 6 * scaleX) + Math.round(10 * scaleX);
+      const pillH = Math.round(14 * scaleY);
+
+      if (ePillX + pillW > contentLeft + contentW) {
+        ePillX = contentLeft;
+        currentY += pillH + Math.round(4 * scaleY);
+      }
+
+      const eColor = e.style === 'aggressive' ? '#fbbf24' : '#38bdf8';
+      drawRoundedRect(ctx, ePillX, currentY - pillH / 2, pillW, pillH, 3 * scaleX);
+      ctx.fillStyle = colorToRgba(eColor, 0.12);
+      ctx.fill();
+      ctx.strokeStyle = colorToRgba(eColor, 0.3);
+      ctx.stroke();
+
+      ctx.fillStyle = eColor;
+      ctx.fillText(eStr, ePillX + Math.round(5 * scaleX), currentY);
+      ePillX += pillW + Math.round(5 * scaleX);
+    }
+    currentY += Math.round(12 * scaleY);
+  }
 
   if (plan.contextZones && plan.contextZones.length > 0) {
     let pillX = contentLeft;
@@ -1049,6 +1092,9 @@ export function calculateThesisPanelHeight(
 
   // Seksi Katalis & Alasan Entry
   height += 28;
+  if (plan.entries && plan.entries.length > 0) {
+    height += 24;
+  }
   if (plan.contextZones && plan.contextZones.length > 0) {
     height += 24;
   }

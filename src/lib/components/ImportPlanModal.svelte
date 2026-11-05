@@ -163,6 +163,24 @@
       };
     }
 
+    // Jika ada Dual-Entry, periksa apakah harga saat ini berada di dalam zona entry
+    if (Array.isArray(plan.entries) && plan.entries.length > 1) {
+      const entryPrices = plan.entries
+        .map((e: any) => e.price)
+        .filter((p: any) => typeof p === 'number' && !isNaN(p) && p > 0);
+      if (entryPrices.length >= 2) {
+        const minE = Math.min(...entryPrices);
+        const maxE = Math.max(...entryPrices);
+        if (currentPrice >= minE && currentPrice <= maxE) {
+          return {
+            label: 'Di Dalam Entry Zone (Menjemput Limit)',
+            badgeClass: 'status-waiting',
+            diffPctText
+          };
+        }
+      }
+    }
+
     if (
       (isBull && currentPrice >= plan.entry) ||
       (!isBull && currentPrice <= plan.entry)
@@ -458,6 +476,11 @@
                       {parsedPlan.setupStatus}
                     </span>
                   {/if}
+                  {#if parsedPlan.confluenceScore}
+                    <span class="status-preview-pill conf-pill mono-nums">
+                      Konfluensi {parsedPlan.confluenceScore.score}/{parsedPlan.confluenceScore.max}
+                    </span>
+                  {/if}
                 </div>
               </div>
             </div>
@@ -495,7 +518,7 @@
             <!-- Metrics Card: Entry, SL, Risk -->
             <div class="metrics-grid">
               <div class="metric-card entry-card">
-                <span class="metric-label">Entry Price</span>
+                <span class="metric-label">{parsedPlan.entries && parsedPlan.entries.length > 0 ? 'Blended Entry' : 'Entry Price'}</span>
                 <span class="metric-value mono-nums">${formatPrice(parsedPlan.entry)}</span>
               </div>
               <div class="metric-card sl-card">
@@ -504,9 +527,31 @@
               </div>
               <div class="metric-card risk-card">
                 <span class="metric-label">Jarak Risiko (R)</span>
-                <span class="metric-value mono-nums risk-val">${formatPrice(parsedPlan.riskAmount)}</span>
+                <span class="metric-value mono-nums risk-val">
+                  ${formatPrice(parsedPlan.riskAmount)}
+                  {#if parsedPlan.riskPercent}
+                    <span class="risk-sub-pct">({parsedPlan.riskPercent}%)</span>
+                  {/if}
+                </span>
               </div>
             </div>
+
+            <!-- Dual-Entry Levels Preview (E1 & E2) -->
+            {#if parsedPlan.entries && parsedPlan.entries.length > 0}
+              <div class="dual-entries-preview-grid">
+                {#each parsedPlan.entries as e}
+                  <div class="dual-entry-mini-card {e.style || 'neutral'}">
+                    <div class="mini-entry-top">
+                      <span class="mini-entry-lbl">{e.label}</span>
+                      {#if typeof e.weight === 'number'}
+                        <span class="mini-entry-w mono-nums">{Math.round(e.weight * 100)}% Size</span>
+                      {/if}
+                    </div>
+                    <span class="mini-entry-price mono-nums">${formatPrice(e.price)}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
 
             <!-- Target Berjenjang (Multi-Target Stages) -->
             <div class="section-block">
@@ -523,7 +568,12 @@
                         <span class="target-badge mono-nums">{t.label || t.id.toUpperCase()}</span>
                         <span class="target-price mono-nums">${formatPrice(t.price)}</span>
                         {#if t.rMultiple !== undefined}
-                          <span class="target-r-badge mono-nums">{t.rMultiple.toFixed(2)} R</span>
+                          <span class="target-r-badge mono-nums">
+                            {t.rMultiple.toFixed(2)} R
+                            {#if t.rMultipleByEntry?.e1}
+                              <span class="target-sub-r">({t.rMultipleByEntry.e1}R E1)</span>
+                            {/if}
+                          </span>
                         {/if}
                       </div>
                       <div class="target-sub-row">
@@ -1200,6 +1250,79 @@
 
   .risk-val {
     color: #00e5ff;
+  }
+
+  .risk-sub-pct {
+    font-size: 10px;
+    color: var(--text-dim, #717786);
+    font-weight: 500;
+    margin-left: 3px;
+  }
+
+  .status-preview-pill.conf-pill {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border-color: rgba(168, 85, 247, 0.3);
+  }
+
+  /* Dual Entries Preview Grid */
+  .dual-entries-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .dual-entry-mini-card {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .dual-entry-mini-card.aggressive {
+    border-left: 3px solid #fbbf24;
+    background: rgba(245, 158, 11, 0.05);
+  }
+
+  .dual-entry-mini-card.moderate {
+    border-left: 3px solid #38bdf8;
+    background: rgba(56, 189, 248, 0.05);
+  }
+
+  .mini-entry-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 9.5px;
+  }
+
+  .mini-entry-lbl {
+    font-weight: 600;
+    color: var(--text-muted, #9ea3b0);
+  }
+
+  .mini-entry-w {
+    font-size: 9px;
+    color: var(--text-dim, #717786);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .mini-entry-price {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main, #e8e9ed);
+  }
+
+  .target-sub-r {
+    font-size: 8.5px;
+    opacity: 0.85;
+    margin-left: 3px;
   }
 
   /* Section Block */

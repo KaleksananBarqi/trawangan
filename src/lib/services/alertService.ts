@@ -155,21 +155,46 @@ class AlertService {
 
     const created: PriceAlert[] = [];
 
-    // 1. Alert Titik Entry
+    // 1. Alert Titik Entry (Blended / Utama)
     const cleanEntry = roundToTickSize(plan.entry);
+    const hasEntries = Array.isArray(plan.entries) && plan.entries.length > 0;
+    const entryLabel = hasEntries ? `⚡ [${biasTag}] Blended Entry @ ${cleanEntry}` : `⚡ [${biasTag}] Entry @ ${cleanEntry}`;
     created.push({
       id: `alt_${now}_entry_${Math.random().toString(36).slice(2, 6)}`,
       symbol,
       targetPrice: cleanEntry,
       condition: 'crossing',
       frequency: 'once',
-      label: `⚡ [${biasTag}] Entry @ ${cleanEntry}`,
+      label: entryLabel,
       active: true,
       triggered: false,
       createdAt: now,
       planId,
       planRole: 'entry',
     });
+
+    // 1b. Alert Level-Level Entry (E1, E2, dst.) jika tersedia (ADR-0020)
+    if (hasEntries) {
+      plan.entries!.forEach((e, idx) => {
+        if (typeof e.price !== 'number' || isNaN(e.price) || e.price <= 0) return;
+        const cleanPrice = roundToTickSize(e.price);
+        const weightBadge = typeof e.weight === 'number' ? ` (${Math.round(e.weight * 100)}%)` : '';
+        const levelLabel = e.label || `Entry ${idx + 1}`;
+        created.push({
+          id: `alt_${now}_${e.id}_${Math.random().toString(36).slice(2, 6)}`,
+          symbol,
+          targetPrice: cleanPrice,
+          condition: 'crossing',
+          frequency: 'once',
+          label: `⚡ [${biasTag}] ${levelLabel}${weightBadge} @ ${cleanPrice}`,
+          active: true,
+          triggered: false,
+          createdAt: now + idx + 1,
+          planId,
+          planRole: e.id,
+        });
+      });
+    }
 
     // 2. Alert Titik Stop Loss (SL)
     const cleanSL = roundToTickSize(plan.stopLoss);
@@ -249,13 +274,30 @@ class AlertService {
       if (a.planId !== plan.id || a.triggered) return a;
       if (a.planRole === 'entry' && typeof plan.entry === 'number') {
         const cleanEntry = roundToTickSize(plan.entry);
+        const hasEntries = Array.isArray(plan.entries) && plan.entries.length > 0;
+        const entryLabel = hasEntries ? `⚡ [${biasTag}] Blended Entry @ ${cleanEntry}` : `⚡ [${biasTag}] Entry @ ${cleanEntry}`;
         if (a.targetPrice !== cleanEntry) {
           changed = true;
           return {
             ...a,
             targetPrice: cleanEntry,
-            label: `⚡ [${biasTag}] Entry @ ${cleanEntry}`,
+            label: entryLabel,
           };
+        }
+      } else if (Array.isArray(plan.entries) && (a.planRole === 'e1' || a.planRole === 'e2')) {
+        const matched = plan.entries.find((e) => e.id === a.planRole);
+        if (matched && typeof matched.price === 'number') {
+          const cleanPrice = roundToTickSize(matched.price);
+          const weightBadge = typeof matched.weight === 'number' ? ` (${Math.round(matched.weight * 100)}%)` : '';
+          const levelLabel = matched.label || a.planRole.toUpperCase();
+          if (a.targetPrice !== cleanPrice) {
+            changed = true;
+            return {
+              ...a,
+              targetPrice: cleanPrice,
+              label: `⚡ [${biasTag}] ${levelLabel}${weightBadge} @ ${cleanPrice}`,
+            };
+          }
         }
       } else if (a.planRole === 'sl' && typeof plan.stopLoss === 'number') {
         const cleanSL = roundToTickSize(plan.stopLoss);

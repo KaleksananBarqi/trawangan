@@ -245,6 +245,11 @@
             {plan.setupStatus}
           </span>
         {/if}
+        {#if plan.confluenceScore}
+          <span class="status-tag conf-tag mono-nums" title="Skor Konfluensi Setup">
+            {plan.confluenceScore.score}/{plan.confluenceScore.max}
+          </span>
+        {/if}
       </div>
 
       <div class="header-actions">
@@ -307,11 +312,27 @@
       <div class="thesis-section entry-section">
         <div class="section-title-row">
           <span class="section-icon"><Zap size={11} /></span>
-          <span class="section-label">KATALIS ENTRY</span>
+          <span class="section-label">
+            {plan.entries && plan.entries.length > 0 ? 'BLENDED ENTRY' : 'KATALIS ENTRY'}
+          </span>
           <span class="price-val mono-nums {isBearish ? 'bearish' : 'bullish'}">
             {formatPrice(plan.entry)}
           </span>
         </div>
+
+        {#if plan.entries && plan.entries.length > 0}
+          <div class="entry-levels-container">
+            {#each plan.entries as e}
+              <div class="entry-level-pill mono-nums {e.style || 'neutral'}">
+                <span class="level-lbl">{e.label}</span>
+                <span class="level-price">{formatPrice(e.price)}</span>
+                {#if typeof e.weight === 'number'}
+                  <span class="level-weight">({Math.round(e.weight * 100)}%)</span>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
 
         {#if plan.contextZones && plan.contextZones.length > 0}
           <div class="zones-container">
@@ -375,7 +396,12 @@
                 <span class="target-badge mono-nums">TP{idx + 1}</span>
                 <span class="target-price mono-nums">{formatPrice(tgt.price)}</span>
                 {#if typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)}
-                  <span class="r-badge mono-nums {tgt.rMultiple < 0 ? 'sl-r-badge' : ''}">{tgt.rMultiple >= 0 ? '+' : ''}{tgt.rMultiple.toFixed(2)}R</span>
+                  <span class="r-badge mono-nums {tgt.rMultiple < 0 ? 'sl-r-badge' : ''}">
+                    {tgt.rMultiple >= 0 ? '+' : ''}{tgt.rMultiple.toFixed(2)}R
+                    {#if tgt.rMultipleByEntry?.e1}
+                      <span class="r-sub">({tgt.rMultipleByEntry.e1}R E1)</span>
+                    {/if}
+                  </span>
                 {/if}
               </div>
               {#if reason}
@@ -394,7 +420,12 @@
           {#if plan.riskAmount}
             <div class="risk-meta-row mono-nums">
               <span class="meta-lbl">Unit Risiko (R):</span>
-              <span class="meta-val">{formatPrice(plan.riskAmount)}</span>
+              <span class="meta-val">
+                {formatPrice(plan.riskAmount)}
+                {#if plan.riskPercent}
+                  <span class="risk-pct-badge">({plan.riskPercent}%)</span>
+                {/if}
+              </span>
             </div>
           {/if}
           {#if plan.conclusion?.probabilityNotes}
@@ -875,6 +906,71 @@
   .r-badge.sl-r-badge {
     color: #ef4444;
     background: rgba(239, 68, 68, 0.14);
+  }
+
+  .r-sub {
+    font-size: 9px;
+    font-weight: 500;
+    opacity: 0.85;
+    margin-left: 3px;
+  }
+
+  .risk-pct-badge {
+    font-size: 10px;
+    color: var(--chart-thesis-cyan, #38bdf8);
+    margin-left: 4px;
+    font-weight: 600;
+  }
+
+  .status-tag.conf-tag {
+    background: rgba(168, 85, 247, 0.16);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.3);
+  }
+
+  /* Dual-Entry Pills */
+  .entry-levels-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 3px;
+  }
+
+  .entry-level-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .entry-level-pill.aggressive {
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+
+  .entry-level-pill.moderate {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.3);
+  }
+
+  .level-lbl {
+    font-weight: 600;
+    opacity: 0.9;
+  }
+
+  .level-price {
+    font-weight: 700;
+  }
+
+  .level-weight {
+    font-size: 9px;
+    opacity: 0.8;
   }
 
   .target-reason {
