@@ -1210,23 +1210,32 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
 
     const bearBox = drawingsList.find((d) => d.metadata?.zoneLabel === '4H OB Bear');
     assert.ok(bearBox, 'Kotak 4H OB Bear harus terbuat');
-    assert.equal(bearBox.style.fillColor, 'rgba(255, 105, 180, 0.04)', 'Bearish fill harus alpha 0.04');
-    assert.equal(bearBox.style.lineColor, 'rgba(255, 105, 180, 0.25)', 'Bearish border harus alpha 0.25');
+    assert.equal(bearBox.style.fillColor, 'transparent', 'Bearish box fill harus 100% transparan');
+    assert.equal(bearBox.style.lineColor, 'rgba(255, 105, 180, 0.4)', 'Bearish border harus alpha 0.4');
     assert.equal(bearBox.text.color, '#FF69B4');
+    assert.equal(bearBox.text.align, 'center');
+    assert.equal(bearBox.text.valign, 'middle');
+    assert.equal(bearBox.text.halign, 'center');
     assert.equal(bearBox.metadata.polarity, 'bear');
 
     const bullBox = drawingsList.find((d) => d.metadata?.zoneLabel === '1H FVG Bull');
     assert.ok(bullBox, 'Kotak 1H FVG Bull harus terbuat');
-    assert.equal(bullBox.style.fillColor, 'rgba(0, 255, 136, 0.04)', 'Bullish fill harus alpha 0.04');
-    assert.equal(bullBox.style.lineColor, 'rgba(0, 255, 136, 0.25)', 'Bullish border harus alpha 0.25');
+    assert.equal(bullBox.style.fillColor, 'transparent', 'Bullish box fill harus 100% transparan');
+    assert.equal(bullBox.style.lineColor, 'rgba(0, 255, 136, 0.4)', 'Bullish border harus alpha 0.4');
     assert.equal(bullBox.text.color, '#00FF88');
+    assert.equal(bullBox.text.align, 'center');
+    assert.equal(bullBox.text.valign, 'middle');
+    assert.equal(bullBox.text.halign, 'center');
     assert.equal(bullBox.metadata.polarity, 'bull');
 
     const neutralBox = drawingsList.find((d) => d.metadata?.zoneLabel === 'IDM');
     assert.ok(neutralBox, 'Kotak IDM harus terbuat');
-    assert.equal(neutralBox.style.fillColor, 'rgba(160, 160, 160, 0.04)', 'Neutral fill harus alpha 0.04');
-    assert.equal(neutralBox.style.lineColor, 'rgba(160, 160, 160, 0.25)', 'Neutral border harus alpha 0.25');
+    assert.equal(neutralBox.style.fillColor, 'transparent', 'Neutral box fill harus 100% transparan');
+    assert.equal(neutralBox.style.lineColor, 'rgba(160, 160, 160, 0.4)', 'Neutral border harus alpha 0.4');
     assert.equal(neutralBox.text.color, '#A0A0A0');
+    assert.equal(neutralBox.text.align, 'center');
+    assert.equal(neutralBox.text.valign, 'middle');
+    assert.equal(neutralBox.text.halign, 'center');
     assert.equal(neutralBox.metadata.polarity, 'neutral');
   });
 });

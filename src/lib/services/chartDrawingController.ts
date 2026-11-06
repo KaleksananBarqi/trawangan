@@ -13,36 +13,36 @@ import { type ParsedTradingPlan, type ZonePolarity, inferZonePolarity } from './
 
 export const CONTEXT_ZONE_STYLES = {
   bull: {
-    fillColor: 'rgba(0, 255, 136, 0.04)',
-    lineColor: 'rgba(0, 255, 136, 0.25)',
+    fillColor: 'transparent',
+    lineColor: 'rgba(0, 255, 136, 0.4)',
     textColor: '#00FF88'
   },
   bear: {
-    fillColor: 'rgba(255, 105, 180, 0.04)',
-    lineColor: 'rgba(255, 105, 180, 0.25)',
+    fillColor: 'transparent',
+    lineColor: 'rgba(255, 105, 180, 0.4)',
     textColor: '#FF69B4'
   },
   neutral: {
-    fillColor: 'rgba(160, 160, 160, 0.04)',
-    lineColor: 'rgba(160, 160, 160, 0.25)',
+    fillColor: 'transparent',
+    lineColor: 'rgba(160, 160, 160, 0.4)',
     textColor: '#A0A0A0'
   }
 } as const;
 
 export const ENTRY_ZONE_STYLES = {
   bull: {
-    fillColor: 'rgba(0, 255, 136, 0.08)',
-    lineColor: 'rgba(0, 255, 136, 0.5)',
+    fillColor: 'transparent',
+    lineColor: 'rgba(0, 255, 136, 0.6)',
     textColor: '#00FF88'
   },
   bear: {
-    fillColor: 'rgba(255, 105, 180, 0.08)',
-    lineColor: 'rgba(255, 105, 180, 0.5)',
+    fillColor: 'transparent',
+    lineColor: 'rgba(255, 105, 180, 0.6)',
     textColor: '#FF69B4'
   },
   neutral: {
-    fillColor: 'rgba(255, 204, 0, 0.08)',
-    lineColor: 'rgba(255, 204, 0, 0.5)',
+    fillColor: 'transparent',
+    lineColor: 'rgba(255, 204, 0, 0.6)',
     textColor: '#FFCC00'
   }
 } as const;
@@ -1658,6 +1658,21 @@ export class ChartDrawingController {
           drawingInit.anchors = [{ time: Date.now(), price: spec.price }];
         }
 
+        // Kotak selain posisi long & short (tipe 'box') dibuat 100% transparan hanya dengan border dan teks di tengah
+        if (drawingInit.type === 'box') {
+          drawingInit.style = {
+            lineWidth: 1,
+            lineColor: drawingInit.style?.lineColor || 'rgba(56, 189, 248, 0.6)',
+            ...(drawingInit.style || {}),
+            fillColor: 'transparent'
+          };
+          if (drawingInit.text) {
+            drawingInit.text.halign = 'center';
+            drawingInit.text.valign = 'middle';
+            drawingInit.text.align = 'center';
+          }
+        }
+
         if (typeof activeChart.drawings.create === 'function') {
           created = activeChart.drawings.create(drawingInit);
         } else if (typeof activeChart.drawings.add === 'function') {
@@ -1804,7 +1819,10 @@ export class ChartDrawingController {
           },
           text: {
             value: labelText,
-            color: zoneStyle.textColor
+            color: zoneStyle.textColor,
+            halign: 'center',
+            valign: 'middle',
+            align: 'center'
           },
           metadata: {
             planId,
@@ -1855,7 +1873,10 @@ export class ChartDrawingController {
           },
           text: {
             value: zone.label || 'FVG Zone',
-            color: zoneStyle.textColor
+            color: zoneStyle.textColor,
+            halign: 'center',
+            valign: 'middle',
+            align: 'center'
           },
           metadata: {
             planId,
@@ -2235,6 +2256,30 @@ export class ChartDrawingController {
             for (const a of d.anchors) {
               if (typeof a.price === 'number') {
                 a.price = roundToTickSize(a.price);
+              }
+            }
+          }
+        }
+
+        // Kotak selain posisi long & short (tipe 'box') dipastikan 100% transparan dengan border dan teks di tengah
+        for (const d of this.activeDrawings) {
+          if (d && d.type === 'box') {
+            if (d.style && d.style.fillColor !== 'transparent' && d.style.fillColor !== 'rgba(0, 0, 0, 0)') {
+              d.style.fillColor = 'transparent';
+              const chartItem = typeof activeChart.drawings.get === 'function' ? activeChart.drawings.get(d.id) : null;
+              if (chartItem && chartItem.style) {
+                chartItem.style.fillColor = 'transparent';
+              }
+            }
+            if (d.text) {
+              d.text.halign = 'center';
+              d.text.valign = 'middle';
+              d.text.align = 'center';
+              const chartItem = typeof activeChart.drawings.get === 'function' ? activeChart.drawings.get(d.id) : null;
+              if (chartItem && chartItem.text) {
+                chartItem.text.halign = 'center';
+                chartItem.text.valign = 'middle';
+                chartItem.text.align = 'center';
               }
             }
           }

@@ -481,6 +481,9 @@ TP3: 3100 (6.00R)
     const entryZoneDrawing = drawings.find((d) => d.metadata?.role === 'entry_zone');
     assert.ok(entryZoneDrawing, 'Drawing kotak Entry Zone harus tercipta');
     assert.equal(entryZoneDrawing.type, 'box');
+    assert.equal(entryZoneDrawing.style.fillColor, 'transparent', 'Entry zone fill harus 100% transparan');
+    assert.equal(entryZoneDrawing.text.align, 'center', 'Teks entry zone harus di tengah horizontal');
+    assert.equal(entryZoneDrawing.text.valign, 'middle', 'Teks entry zone harus di tengah vertikal');
     assert.equal(entryZoneDrawing.metadata.minEntry, 1.576);
     assert.equal(entryZoneDrawing.metadata.maxEntry, 1.584);
     assert.match(entryZoneDrawing.text.value, /Entry Zone/);

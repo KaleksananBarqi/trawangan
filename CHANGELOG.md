@@ -5,6 +5,16 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.38.1] - 2026-11-06
+
+### 🔄 Diubah (Changed)
+- **Visualisasi Kotak Gambar Transparan 100% dengan Teks di Tengah Kanvas:**
+  - Menyetel latar belakang seluruh kotak non-posisi (`type: 'box'`) menjadi 100% transparan (`fillColor: 'transparent'`), menghilangkan arsiran warna padat sehingga candlestick di belakangnya terlihat jernih dan bebas gangguan visual.
+  - Mempertahankan garis border luar (`lineColor`) dengan ketebalan 1px yang tegas sesuai polaritas zona (hijau untuk *bullish*, merah muda untuk *bearish*, dan abu-abu untuk *neutral*).
+  - Menyelaraskan teks label pada kotak Context Zone (FVG, OB, IDM, Supply, Demand) dan kotak proyeksi Entry Zone tepat di tengah-tengah area kotak secara horizontal maupun vertikal (`align: 'center'`, `halign: 'center'`, `valign: 'middle'`).
+  - Menambahkan pengaman sanitasi pada `createDrawing` dan listener mutasi `handleDrawingMutated` pada `chartDrawingController.ts` agar seluruh gambar bertipe `box` (baik dari parsing plan, gesture recognition, maupun perkakas gambar manual) otomatis mengadopsi gaya transparan 100% dan teks di posisi tengah.
+  - Mempertahankan visualisasi kotak posisi Long dan Short (`type: 'position'`) dengan warna latar rasio risiko/imbalan bawaan mesin grafik.
+
 ## [0.38.0] - 2026-11-05
 
 ### 🚀 Ditambahkan (Added)
