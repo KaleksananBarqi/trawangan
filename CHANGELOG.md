@@ -5,6 +5,42 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.39.0] - 2026-11-08
+
+### 🚀 Ditambahkan (Added)
+- **Modul Inti Identitas Instrumen Kanonikal & Venue Capability Guard (`instrumentIdentity.ts`):**
+  - Titik tunggal kebenaran (SSOT) untuk parsing simbol, pemisahan base/quote/contractType, pembersihan sufiks derivatif (`.P`, `-PERP`, `PERP`), dan normalisasi delimiter (`[-_/]`).
+  - Resolusi kunci penyimpanan gambar (`resolveDrawingStorageKey`) dan format simbol bursa Vela (`resolveVelaSymbolKey`) yang deterministik dan bebas inkonsistensi huruf besar/kecil.
+  - Guard routing bursa otomatis (`routeVenueForSymbol`) yang menyatukan aturan penentuan bursa (Indodax untuk IDR, Bitunix untuk kontrak `.P`, Binance untuk USDT/USDC, Hyperliquid, dan Coinbase).
+- **Mesin Lifecycle Workspace & Comprehensive Auto-Save Guard (`workspaceLifecycle.ts`):**
+  - Pipeline pemuatan workspace terstruktur (`executeWorkspaceLoadPipeline`) dengan proteksi double-barrier clean-slate, pemulihan indikator Pine deterministik dengan inputs & props lengkap, restorasi skala harga & bobot pane, serta rekonstruksi rencana perdagangan (#116).
+  - Koordinator auto-save ber-debounce (`WorkspaceAutoSaveCoordinator`) dengan dirty-checking komprehensif untuk mencegah race-condition I/O penyimpanan.
+  - Perluasan polimorfik `computeWorkspaceFingerprint` di `workspaceService.ts` untuk melacak seluruh 15 dimensi state workspace (`paneWeights`, `priceScaleState`, `priceStyle`, `barSpacing`, `showVolume`, `activeRightDockPanel`, `syncConfig`, `activePlans`, `showThesisCards`).
+- **Mesin Tema Terpadu & Memori Preset Kanvas Independen (`themeEngine.ts`):**
+  - Intent reducer murni (`transitionThemeState`) dan perakit CSS bundle headless (`assembleThemeCssBundle`) untuk penanganan tema aplikasi dan kanvas chart.
+  - Memori preset decoupled yang mempertahankan pilihan tema mode gelap (`activeDarkChartPreset`) dan mode terang (`activeLightChartPreset`) secara independen saat `syncChartWithAppTheme === false`.
+- **Mesin Presentasi Kartu Tesis & Layout Kanvas 2D Terpadu (`thesisOverlayEngine.ts`):**
+  - Penyatuan model data presentasi dan tata letak kanvas 2-pass antara kartu tesis apung (`FloatingThesisCard.svelte`), panel samping snapshot (`renderDedicatedThesisSidePanel`), dan snapshot kanvas langsung (`drawThesisCardOnCanvas`).
+- **Modul Tata Kelola Rencana Perdagangan Mandiri (`tradingPlanLifecycle.ts`):**
+  - Pemisahan siklus hidup rencana perdagangan, sinkronisasi alert otomatis, persistensi vault, dan kalkulasi risiko dinamis melalui abstraksi port/adapter `TradingPlanHostPort`.
+
+### 🔄 Diubah (Changed)
+- **Pembersihan Logika Imperatif & Timer Soup di `+page.svelte`:**
+  - Mengeliminasi cascading timeouts acak (`setTimeout(150)`, `setTimeout(100)`, `setTimeout(600)`) pada pemuatan workspace dan menggantinya dengan pipeline terstruktur berbasis Promise.
+  - Menyederhanakan penanganan siklus tema dari ~85 baris mutasi DOM ad-hoc menjadi pemanggilan deklaratif `applyThemeCssBundle()`.
+- **Refactoring Antarmuka Pengaturan Tema (`AppearanceTab.svelte`):**
+  - Mengganti perulangan fallback 6x manual saat menghapus preset pengguna dengan resolver transisi tema terpadu.
+
+### 🐛 Diperbaiki (Fixed)
+- **Penyelarasan Pencocokan Simbol pada Alert & Skala Harga:**
+  - Menutup bug di mana alert yang dibuat pada simbol ber-prefix atau berformat non-standar (seperti `BINANCE:BTCUSDT`, `BTC-PERP`, atau `BTC/USDT`) gagal terpicu pada `alertService.ts` atau tidak muncul pada garis sumbu harga di `priceScaleOverlayController.ts`.
+- **Pencegahan Silent State Loss pada Auto-Save Workspace:**
+  - Menutup celah di mana perubahan pada `activePlans` (Multi-Target Trading Plans), bobot pane, atau skala harga diabaikan oleh auto-save guard karena tidak tercakup dalam perhitungan fingerprint sebelumnya.
+- **Eliminasi Canvas Drag Drift pada Rencana Perdagangan Dual-Entry:**
+  - Menutup bug pergeseran koordinat delta saat memindahkan kotak posisi Dual-Entry (E1 & E2) dan kotak Entry Zone di kanvas chart.
+- **Konsistensi Visual Kartu Tesis pada Snapshot:**
+  - Memulihkan pil level E1 & E2, lencana epistemik, dan skor konfluensi setup yang sebelumnya hilang pada beberapa mode rendering snapshot ultra-HD.
+
 ## [0.38.1] - 2026-11-06
 
 ### 🔄 Diubah (Changed)
