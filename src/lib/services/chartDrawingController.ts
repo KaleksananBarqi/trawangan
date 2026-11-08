@@ -70,40 +70,20 @@ export interface DrawingContextResolvers {
   getWorkspaceId?: () => string | null | undefined;
 }
 
-/**
- * Menghasilkan kunci persistensi gabungan workspace, bursa, dan simbol yang ternormalisasi (misal: 'default_workspace:binance:BTCUSDT' atau 'binance:BTCUSDT')
- */
-export function resolveDrawingKey(
-  providerId: string | undefined,
-  symbol: string,
-  workspaceId?: string | null
-): string {
-  const clean = symbol ? symbol.trim() : 'BTCUSDT';
-  let provider = (providerId || 'binance').trim().toLowerCase();
-  let normalizedSymbol = clean.toUpperCase();
-  if (clean.includes(':')) {
-    const parts = clean.split(':');
-    provider = parts[0].trim().toLowerCase() || 'binance';
-    normalizedSymbol = parts[1].trim().toUpperCase();
-  }
-  const baseKey = `${provider}:${normalizedSymbol}`;
-  if (workspaceId && workspaceId.trim()) {
-    return `${workspaceId.trim().toLowerCase()}:${baseKey}`;
-  }
-  return baseKey;
-}
-
-/**
- * Membandingkan dua simbol instrumen perdagangan dengan normalisasi nama dan toleransi sufiks kontrak (.P / PERP)
- */
-export function isSameSymbol(symA?: string, symB?: string): boolean {
-  if (!symA || !symB) return false;
-  const cleanA = symA.replace(/^[^:]+:/, '').trim().toUpperCase();
-  const cleanB = symB.replace(/^[^:]+:/, '').trim().toUpperCase();
-  if (cleanA === cleanB) return true;
-  const strip = (s: string) => s.replace(/\.P$|-PERP$|PERP$/i, '').replace(/[-_/]/g, '');
-  return strip(cleanA) === strip(cleanB);
-}
+import {
+  isSameSymbol,
+  isSameInstrument,
+  resolveDrawingKey,
+  resolveDrawingStorageKey,
+  normalizeSymbolForMatching,
+} from './instrumentIdentity';
+export {
+  isSameSymbol,
+  isSameInstrument,
+  resolveDrawingKey,
+  resolveDrawingStorageKey,
+  normalizeSymbolForMatching,
+};
 
 /**
  * Memeriksa apakah dua kotak pembatas AABB (Axis-Aligned Bounding Box) beririsan/tumpang tindih
@@ -377,7 +357,7 @@ export class ChartDrawingController {
         const activeChart = this.getActiveChart();
         return (activeChart?.drawings?.all?.() || this.activeDrawings || []) as ChartDrawingItem[];
       },
-      createCanvasDrawing: (spec) => this.createDrawing(spec),
+      createCanvasDrawing: (spec) => this.createDrawing(spec as any),
       removeCanvasDrawings: (ids) => {
         this.removeDrawingsFromChart(ids);
         const activeChart = this.getActiveChart();

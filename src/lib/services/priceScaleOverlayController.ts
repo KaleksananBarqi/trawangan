@@ -6,6 +6,7 @@ import {
   type PriceScaleBadge
 } from './priceScaleLabelService';
 import { parseAdaptiveSymbol } from './market/symbolSearchService';
+import { isSameInstrument } from './instrumentIdentity';
 
 export interface OverlayPositionsSnapshot {
   tick: number;
@@ -411,10 +412,7 @@ export class PriceScaleOverlayController {
   }
 
   private recomputeAlertPositions(): void {
-    const cleanSym = this.activeSymbol.replace('.P', '').toUpperCase();
-    const matchingAlerts = this.alerts.filter(
-      (a) => a.symbol.replace('.P', '').toUpperCase() === cleanSym
-    );
+    const matchingAlerts = this.alerts.filter((a) => isSameInstrument(a.symbol, this.activeSymbol));
 
     const pos: Record<string, number | null> = {};
     for (const a of matchingAlerts) {

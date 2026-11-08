@@ -123,18 +123,20 @@ export interface PlanUndoTransaction {
   autoCreateAlerts: boolean;
 }
 
+export interface TradingPlanExecutionContext {
+  hasActiveCanvas: boolean;
+  symbol: string;
+  providerId: string;
+  timeframe: string;
+  deltaT: number;
+  latestCandleTime: number;
+}
+
 /**
  * SEAM: Local-substitutable port antara TradingPlanLifecycle dan host kanvas/storage/alert.
  */
 export interface TradingPlanHostPort {
-  getContext(): {
-    hasActiveCanvas: boolean;
-    symbol: string;
-    providerId: string;
-    timeframe: string;
-    deltaT: number;
-    latestCandleTime: number;
-  };
+  getContext(): TradingPlanExecutionContext;
   ensureSymbolReady?(symbol: string): Promise<void>;
   getCanvasDrawings(): any[];
   createCanvasDrawing(spec: Record<string, any>): any | null;
@@ -600,6 +602,7 @@ export class TradingPlanLifecycle {
           providerId: ctx.providerId || 'binance',
           timeframe: ctx.timeframe || '15m',
           createdAt: options?.createdAt || Date.now(),
+          updatedAt: Date.now(),
           rawText: plan.rawText || '',
           plan: planRecord
         });

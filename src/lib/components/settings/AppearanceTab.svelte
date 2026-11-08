@@ -38,6 +38,7 @@
     buildThemeConfigFromUserTheme,
     isBuiltInTheme,
   } from "../../constants/themes";
+  import { transitionThemeState } from "../../services/themeEngine";
   import { isDarkColor } from "../../utils/colorUtils";
   import type {
     AppSettings,
@@ -199,17 +200,14 @@
     const targetId = editingUserThemeId;
     const targetName = editingUserThemeName || "Tema";
 
-    const updatedThemes = updateUserThemePalette(
-      savedUserThemes,
-      targetId,
-      currentPalette,
-      isPaletteDark ? "dark" : "light",
-    );
-
-    onUpdateSettings({
-      savedUserThemes: updatedThemes,
-      customPalette: undefined,
+    const patch = transitionThemeState(settings, {
+      type: "UPDATE_USER_THEME_PALETTE",
+      themeId: targetId,
+      palette: currentPalette,
+      mode: isPaletteDark ? "dark" : "light",
     });
+
+    onUpdateSettings(patch);
 
     showToast(`Warna tema "${targetName}" berhasil diperbarui!`);
     editingUserThemeId = null;
@@ -239,143 +237,96 @@
       typeof window !== "undefined" && window.matchMedia
         ? window.matchMedia("(prefers-color-scheme: dark)").matches
         : true;
-    const isTargetLight = mode === "light" || (mode === "system" && !sysDark);
-
-    const darkPreset = (settings.activeDarkPreset as any) || "signature";
-    const lightPreset = (settings.activeLightPreset as any) || "red_folder";
-    const resolvedAppTarget = isTargetLight ? lightPreset : darkPreset;
-
-    const darkChartPreset =
-      (settings.activeDarkChartPreset as any) ||
-      settings.chartThemePreset ||
-      "signature";
-    const lightChartPreset =
-      (settings.activeLightChartPreset as any) || "red_folder";
-    const resolvedChartTarget = syncChartWithAppTheme
-      ? resolvedAppTarget
-      : isTargetLight
-        ? lightChartPreset
-        : darkChartPreset;
-
-    onUpdateSettings({
-      colorModePreference: mode,
-      themePreset: resolvedAppTarget,
-      theme: resolvedAppTarget,
-      chartThemePreset: resolvedChartTarget,
-      // Bersihkan sisa override palet kustom agar preset mode yang dipilih
-      // benar-benar mengendalikan tampilan UI (mencegah layar putih akibat sisa palet lama).
-      customPalette: undefined,
-      customBullColor: undefined,
-      customBearColor: undefined,
-    });
+    const patch = transitionThemeState(
+      settings,
+      { type: "SET_COLOR_MODE", mode },
+      { systemIsDark: sysDark },
+    );
+    onUpdateSettings(patch);
   }
 
   function handleSetDarkPreset(presetId: string) {
-    const isLight = isCurrentlyInLightMode();
-    onUpdateSettings({
-      activeDarkPreset: presetId,
-      ...(!isLight
-        ? { themePreset: presetId as any, theme: presetId as any }
-        : {}),
-      ...(syncChartWithAppTheme
-        ? {
-            activeDarkChartPreset: presetId,
-            ...(!isLight ? { chartThemePreset: presetId as any } : {}),
-          }
-        : {}),
-      customPalette: undefined,
+    const patch = transitionThemeState(settings, {
+      type: "SET_MODE_PRESET_MEMORY",
+      slot: "appDark",
+      presetId,
     });
+    onUpdateSettings(patch);
   }
 
   function handleSetLightPreset(presetId: string) {
-    const isLight = isCurrentlyInLightMode();
-    onUpdateSettings({
-      activeLightPreset: presetId,
-      ...(isLight
-        ? { themePreset: presetId as any, theme: presetId as any }
-        : {}),
-      ...(syncChartWithAppTheme
-        ? {
-            activeLightChartPreset: presetId,
-            ...(isLight ? { chartThemePreset: presetId as any } : {}),
-          }
-        : {}),
-      customPalette: undefined,
+    const patch = transitionThemeState(settings, {
+      type: "SET_MODE_PRESET_MEMORY",
+      slot: "appLight",
+      presetId,
     });
+    onUpdateSettings(patch);
   }
 
   function handleSetDarkChartPreset(presetId: string) {
-    const isLight = isCurrentlyInLightMode();
-    onUpdateSettings({
-      activeDarkChartPreset: presetId,
-      ...(!isLight && !syncChartWithAppTheme
-        ? { chartThemePreset: presetId as any }
-        : {}),
-      customPalette: undefined,
+    const patch = transitionThemeState(settings, {
+      type: "SET_MODE_PRESET_MEMORY",
+      slot: "chartDark",
+      presetId,
     });
+    onUpdateSettings(patch);
   }
 
   function handleSetLightChartPreset(presetId: string) {
-    const isLight = isCurrentlyInLightMode();
-    onUpdateSettings({
-      activeLightChartPreset: presetId,
-      ...(isLight && !syncChartWithAppTheme
-        ? { chartThemePreset: presetId as any }
-        : {}),
-      customPalette: undefined,
+    const patch = transitionThemeState(settings, {
+      type: "SET_MODE_PRESET_MEMORY",
+      slot: "chartLight",
+      presetId,
     });
+    onUpdateSettings(patch);
   }
 
   function handleSelectChartPreset(preset: {
     id: string;
     mode: "dark" | "light";
   }) {
-    const isLight = isCurrentlyInLightMode();
-    onUpdateSettings({
-      chartThemePreset: preset.id,
-      ...(isLight
-        ? { activeLightChartPreset: preset.id }
-        : { activeDarkChartPreset: preset.id }),
-      customPalette: undefined,
-      customBullColor: undefined,
-      customBearColor: undefined,
-    });
+    const sysDark =
+      typeof window !== "undefined" && window.matchMedia
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        : true;
+    const patch = transitionThemeState(
+      settings,
+      { type: "SELECT_PRESET", target: "chart", presetId: preset.id },
+      { systemIsDark: sysDark },
+    );
+    onUpdateSettings(patch);
   }
 
   function handleSelectAppPreset(preset: {
     id: string;
     mode: "dark" | "light";
   }) {
-    onUpdateSettings({
-      themePreset: preset.id,
-      theme: preset.id as any,
-      colorModePreference: preset.mode,
-      ...(preset.mode === "dark"
-        ? { activeDarkPreset: preset.id }
-        : { activeLightPreset: preset.id }),
-      ...(syncChartWithAppTheme ? { chartThemePreset: preset.id } : {}),
-      customPalette: undefined,
-      customBullColor: undefined,
-      customBearColor: undefined,
-    });
+    const sysDark =
+      typeof window !== "undefined" && window.matchMedia
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        : true;
+    const patch = transitionThemeState(
+      settings,
+      { type: "SELECT_PRESET", target: "app", presetId: preset.id },
+      { systemIsDark: sysDark },
+    );
+    onUpdateSettings(patch);
   }
 
   function handleSelectBothPreset(preset: {
     id: string;
     mode: "dark" | "light";
   }) {
-    onUpdateSettings({
-      themePreset: preset.id,
-      chartThemePreset: preset.id,
-      theme: preset.id as any,
-      colorModePreference: preset.mode,
-      ...(preset.mode === "dark"
-        ? { activeDarkPreset: preset.id }
-        : { activeLightPreset: preset.id }),
-      customPalette: undefined,
-      customBullColor: undefined,
-      customBearColor: undefined,
-    });
+    const sysDark =
+      typeof window !== "undefined" && window.matchMedia
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        : true;
+    const patch = transitionThemeState(
+      settings,
+      { type: "SELECT_PRESET", target: "both", presetId: preset.id },
+      { systemIsDark: sysDark },
+    );
+    onUpdateSettings(patch);
   }
 
   function handleSelectAppThemeDropdown(selectedId: string) {
@@ -395,15 +346,8 @@
       handleSelectBothPreset(preset);
     } else {
       if (targetThemeSelection === "app") {
-        onUpdateSettings({
-          themePreset: preset.id,
-          theme: preset.id as any,
-          colorModePreference: preset.mode,
-          ...(preset.mode === "dark"
-            ? { activeDarkPreset: preset.id }
-            : { activeLightPreset: preset.id }),
-          customPalette: undefined,
-        });
+        // Menyelaraskan mode aplikasi (colorModePreference: preset.mode) melalui themeEngine
+        handleSelectAppPreset(preset);
       } else {
         handleSelectChartPreset(preset);
       }
@@ -411,11 +355,12 @@
   }
 
   function handleToggleSyncChart(checked: boolean) {
+    const patch = transitionThemeState(settings, {
+      type: "SET_SYNC_WITH_APP",
+      sync: checked,
+    });
     onUpdateSettings({
-      syncChartWithAppTheme: checked,
-      ...(checked
-        ? { chartThemePreset: settings.themePreset || "signature" }
-        : {}),
+      ...patch,
       customPalette: undefined,
     });
     if (checked) {
@@ -452,50 +397,18 @@
       return;
     }
 
-    const newTheme = createUserTheme(
-      cleanName,
-      saveAsThemeMode,
-      currentPalette,
-    );
-    const updatedList = [...savedUserThemes, newTheme];
-
-    if (syncChartWithAppTheme) {
-      onUpdateSettings({
-        savedUserThemes: updatedList,
-        themePreset: newTheme.id,
-        chartThemePreset: newTheme.id,
-        colorModePreference: saveAsThemeMode,
-        ...(saveAsThemeMode === "dark"
-          ? { activeDarkPreset: newTheme.id, activeDarkChartPreset: newTheme.id }
-          : { activeLightPreset: newTheme.id, activeLightChartPreset: newTheme.id }),
-        customPalette: undefined,
-      });
-    } else if (targetThemeSelection === "chart") {
-      const isLight = isCurrentlyInLightMode();
-      onUpdateSettings({
-        savedUserThemes: updatedList,
-        chartThemePreset: newTheme.id,
-        ...(isLight
-          ? { activeLightChartPreset: newTheme.id }
-          : { activeDarkChartPreset: newTheme.id }),
-        customPalette: undefined,
-      });
-    } else {
-      onUpdateSettings({
-        savedUserThemes: updatedList,
-        themePreset: newTheme.id,
-        colorModePreference: saveAsThemeMode,
-        ...(saveAsThemeMode === "dark"
-          ? { activeDarkPreset: newTheme.id }
-          : { activeLightPreset: newTheme.id }),
-        customPalette: undefined,
-      });
-    }
+    const patch = transitionThemeState(settings, {
+      type: "SAVE_USER_THEME",
+      name: cleanName,
+      mode: saveAsThemeMode,
+      palette: currentPalette,
+    });
+    onUpdateSettings(patch);
 
     isSaveAsModalOpen = false;
     saveAsThemeName = "";
     saveAsError = null;
-    showToast(`Tema "${newTheme.name}" berhasil disimpan!`);
+    showToast(`Tema "${cleanName}" berhasil disimpan!`);
   }
 
   function handleOpenRename(
@@ -536,12 +449,12 @@
     }
 
     try {
-      const updatedList = renameUserTheme(
-        savedUserThemes,
-        renameTargetThemeId,
-        cleanName,
-      );
-      onUpdateSettings({ savedUserThemes: updatedList });
+      const patch = transitionThemeState(settings, {
+        type: "RENAME_USER_THEME",
+        themeId: renameTargetThemeId,
+        newName: cleanName,
+      });
+      onUpdateSettings(patch);
       isRenameModalOpen = false;
       renameTargetThemeId = null;
       renameThemeName = "";
@@ -558,47 +471,11 @@
   ) {
     e.stopPropagation();
     try {
-      const updatedList = deleteUserTheme(savedUserThemes, themeId);
-      const fallbackApp = resolveDeletedThemeFallback(
+      const patch = transitionThemeState(settings, {
+        type: "DELETE_USER_THEME",
         themeId,
-        settings.themePreset,
-        "signature",
-      );
-      const fallbackChart = resolveDeletedThemeFallback(
-        themeId,
-        settings.chartThemePreset,
-        "signature",
-      );
-      const fallbackDarkApp = resolveDeletedThemeFallback(
-        themeId,
-        settings.activeDarkPreset,
-        "signature",
-      );
-      const fallbackLightApp = resolveDeletedThemeFallback(
-        themeId,
-        settings.activeLightPreset,
-        "red_folder",
-      );
-      const fallbackDarkChart = resolveDeletedThemeFallback(
-        themeId,
-        settings.activeDarkChartPreset,
-        "signature",
-      );
-      const fallbackLightChart = resolveDeletedThemeFallback(
-        themeId,
-        settings.activeLightChartPreset,
-        "red_folder",
-      );
-
-      onUpdateSettings({
-        savedUserThemes: updatedList,
-        themePreset: fallbackApp,
-        chartThemePreset: fallbackChart,
-        activeDarkPreset: fallbackDarkApp,
-        activeLightPreset: fallbackLightApp,
-        activeDarkChartPreset: fallbackDarkChart,
-        activeLightChartPreset: fallbackLightChart,
       });
+      onUpdateSettings(patch);
       showToast(`Tema "${themeName}" berhasil dihapus.`);
     } catch (err: any) {
       showToast(`Gagal menghapus: ${err?.message || "Error"}`);

@@ -656,7 +656,7 @@ export function buildThesisPresentationModel(
         formattedPrice,
         weightText,
         pillText,
-        style: e.style || 'neutral'
+        style: (e.style as any) || 'neutral'
       });
     }
   }
@@ -952,9 +952,11 @@ export function measureThesisOverlayLayout(
     entry: 0,
     stopLoss: 0,
     targets: [],
+    riskAmount: 0,
     reasons: {},
     rawText: '',
-    validation: { valid: false, errors: [] }
+    validation: { valid: false, errors: [], warnings: [] },
+    contextZones: []
   };
 
   const model = buildThesisPresentationModel(emptyPlan, {

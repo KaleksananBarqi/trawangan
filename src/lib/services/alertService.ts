@@ -4,6 +4,7 @@ import { loadAlerts, saveAlerts } from './persistence';
 import { playAlertChime, playSuccessPip } from './soundService';
 import { sendWindowsAlertNotification } from './systemNotificationService';
 import { roundToTickSize } from './priceSnapService';
+import { normalizeSymbolForMatching, isSameInstrument } from './instrumentIdentity';
 
 type TriggerListener = (alert: PriceAlert, actualPrice: number) => void;
 type AlertChangeListener = (alerts: PriceAlert[]) => void;
@@ -52,11 +53,7 @@ class AlertService {
   }
 
   public getAlertsForSymbol(symbol: string): PriceAlert[] {
-    const clean = symbol.replace('.P', '').toUpperCase();
-    return this.alerts.filter((a) => {
-      const aClean = a.symbol.replace('.P', '').toUpperCase();
-      return aClean === clean;
-    });
+    return this.alerts.filter((a) => isSameInstrument(a.symbol, symbol));
   }
 
   /**
@@ -66,7 +63,7 @@ class AlertService {
     const activeSymbols = new Set<string>();
     for (const alert of this.alerts) {
       if (alert.active && !alert.triggered && alert.symbol) {
-        const clean = alert.symbol.trim().toUpperCase();
+        const clean = normalizeSymbolForMatching(alert.symbol);
         if (clean) {
           activeSymbols.add(clean);
         }
@@ -417,7 +414,7 @@ class AlertService {
   public evaluateAlerts(symbol: string, currentPrice: number): PriceAlert[] {
     if (!currentPrice || isNaN(currentPrice) || currentPrice <= 0) return [];
 
-    const normSym = symbol.replace('.P', '').toUpperCase();
+    const normSym = normalizeSymbolForMatching(symbol);
     const prevPrice = this.previousPrices.get(normSym);
     this.previousPrices.set(normSym, currentPrice);
 
@@ -425,7 +422,7 @@ class AlertService {
 
     let hasChanges = false;
     this.alerts = this.alerts.map((alert) => {
-      const aNorm = alert.symbol.replace('.P', '').toUpperCase();
+      const aNorm = normalizeSymbolForMatching(alert.symbol);
       if (aNorm !== normSym || !alert.active || alert.triggered) {
         return alert;
       }

@@ -276,8 +276,7 @@
 
   const displayAlerts = $derived.by(() => {
     if (alertFilterMode === 'current') {
-      const clean = activeSymbol.replace('.P', '').toUpperCase();
-      return alerts.filter((a) => a.symbol.replace('.P', '').toUpperCase() === clean);
+      return alerts.filter((a) => isSameSymbol(a.symbol, activeSymbol));
     }
     return alerts;
   });

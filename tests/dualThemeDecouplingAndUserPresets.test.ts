@@ -345,20 +345,23 @@ describe('Tiket #149: Dual-Theme Decoupling & User Theme Presets ("Save As") Stu
     const contextMenuPath = path.resolve(process.cwd(), 'src/lib/components/ChartContextMenu.svelte');
     const contextMenuContent = fs.readFileSync(contextMenuPath, 'utf8');
 
-    test('1. +page.svelte menyuntikkan token CSS UI Shell saat preset pengguna aktif tanpa customPalette', () => {
+    test('1. themeEngine menyuntikkan token CSS UI Shell saat preset pengguna aktif tanpa customPalette', () => {
+      const themeEnginePath = path.resolve(process.cwd(), 'src/lib/services/themeEngine.ts');
+      const themeEngineContent = fs.readFileSync(themeEnginePath, 'utf8');
+
       assert.match(
-        pageContent,
-        /!isBuiltInTheme\(effectivePreset\)/,
-        '+page.svelte harus mengecek !isBuiltInTheme untuk menyuntikkan token user preset'
+        themeEngineContent,
+        /!isBuiltInTheme\(state\.effectiveAppPreset\)/,
+        'themeEngine harus mengecek !isBuiltInTheme untuk menyuntikkan token user preset'
       );
-      assert.match(pageContent, /--bg-darkest.*activeThemeConfig\.tokens\.bgDarkest/);
-      assert.match(pageContent, /--bg-surface.*activeThemeConfig\.tokens\.bgSurface/);
-      assert.match(pageContent, /--bg-container.*activeThemeConfig\.tokens\.bgContainer/);
-      assert.match(pageContent, /--bg-panel.*activeThemeConfig\.tokens\.bgPanel/);
-      assert.match(pageContent, /--text-main.*activeThemeConfig\.tokens\.textMain/);
-      assert.match(pageContent, /--bull-color.*activeThemeConfig\.tokens\.bullColor/);
-      assert.match(pageContent, /--bear-color.*activeThemeConfig\.tokens\.bearColor/);
-      assert.match(pageContent, /--brand-primary.*activeThemeConfig\.tokens\.brandPrimary/);
+      assert.match(themeEngineContent, /--bg-darkest.*state\.appConfig\.tokens\.bgDarkest/);
+      assert.match(themeEngineContent, /--bg-surface.*state\.appConfig\.tokens\.bgSurface/);
+      assert.match(themeEngineContent, /--bg-container.*state\.appConfig\.tokens\.bgContainer/);
+      assert.match(themeEngineContent, /--bg-panel.*state\.appConfig\.tokens\.bgPanel/);
+      assert.match(themeEngineContent, /--text-main.*state\.appConfig\.tokens\.textMain/);
+      assert.match(themeEngineContent, /--bull-color.*state\.appConfig\.tokens\.bullColor/);
+      assert.match(themeEngineContent, /--bear-color.*state\.appConfig\.tokens\.bearColor/);
+      assert.match(themeEngineContent, /--brand-primary.*state\.appConfig\.tokens\.brandPrimary/);
     });
 
     test('2. SnapshotPreviewModal.svelte menghitung activeTheme grafik menggunakan resolveEffectiveChartThemePreset', () => {

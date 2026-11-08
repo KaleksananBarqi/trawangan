@@ -41,6 +41,8 @@
   import { replaySession, type ReplaySnapshot } from '../lib/services/replay';
   import { commandDispatcher } from '../lib/services/commandDispatcher';
   import { chartDrawingController } from '../lib/services/chartDrawingController';
+  import { routeVenueForSymbol } from '../lib/services/instrumentIdentity';
+  import { executeWorkspaceLoadPipeline } from '../lib/services/workspaceLifecycle';
   import { parseWatchlistEntry, formatWatchlistEntry, insertSymbolIntoSection, isSectionToken } from '../lib/services/watchlistUtils';
   import { watchlistRegistry } from '../lib/services/watchlistRegistryService';
   import {
@@ -94,6 +96,12 @@
     registerUserThemes,
     getNextColorMode
   } from '../lib/constants/themes';
+  import {
+    resolveThemeState,
+    transitionThemeState,
+    assembleThemeCssBundle,
+    applyThemeCssBundle
+  } from '../lib/services/themeEngine';
   import {
     DEFAULT_APP_SETTINGS,
     DEFAULT_SYNC_CONFIG,
@@ -162,133 +170,15 @@
   });
 
   function handleCycleColorMode() {
-    const currentPreference = appSettings.colorModePreference ?? 'system';
-    const nextPreference = getNextColorMode(currentPreference);
-    const darkPreset = appSettings.activeDarkPreset || 'signature';
-    const lightPreset = appSettings.activeLightPreset || 'red_folder';
-    const targetPreset =
-      nextPreference === 'dark'
-        ? darkPreset
-        : nextPreference === 'light'
-          ? lightPreset
-          : systemIsDark
-            ? darkPreset
-            : lightPreset;
-    const isSynced = appSettings.syncChartWithAppTheme !== false;
-
-    const darkChartPreset =
-      appSettings.activeDarkChartPreset ||
-      appSettings.chartThemePreset ||
-      appSettings.activeDarkPreset ||
-      'signature';
-    const lightChartPreset =
-      appSettings.activeLightChartPreset ||
-      appSettings.activeLightPreset ||
-      'red_folder';
-    const targetChartPreset = isSynced
-      ? targetPreset
-      : nextPreference === 'dark'
-        ? darkChartPreset
-        : nextPreference === 'light'
-          ? lightChartPreset
-          : systemIsDark
-            ? darkChartPreset
-            : lightChartPreset;
-
-    handleUpdateSettings({
-      colorModePreference: nextPreference,
-      themePreset: targetPreset,
-      theme: targetPreset as any,
-      chartThemePreset: targetChartPreset,
-      customPalette: undefined,
-      customBullColor: undefined,
-      customBearColor: undefined,
-    });
+    const patch = transitionThemeState(appSettings, { type: 'CYCLE_COLOR_MODE' }, { systemIsDark });
+    handleUpdateSettings(patch);
   }
 
-  // Reaktif Sinkronisasi Tema, Token Vela, & Tipografi ke Elemen Root DOM
+  // Reaktif Sinkronisasi Tema, Token Vela, & Tipografi ke Elemen Root DOM via Deep Theme Engine
   $effect(() => {
     if (typeof document !== 'undefined') {
-      const effectivePreset = effectiveThemePreset || 'signature';
-      const activeThemeConfig = resolveThemeConfig(effectivePreset, appSettings.savedUserThemes);
-      const cp = appSettings.syncChartWithAppTheme !== false ? appSettings.customPalette : undefined;
-      const isCustomActive = Boolean(cp && cp.enabled !== false);
-
-      document.documentElement.setAttribute('data-theme', effectivePreset);
-
-      const { background: effectiveBg, textColor: effectiveText, isDark } = resolveEffectiveThemeColors(effectivePreset, cp, appSettings.savedUserThemes);
-      const themeMode = isDark ? 'dark' : 'light';
-
-      document.documentElement.setAttribute('data-theme-mode', themeMode);
-      document.documentElement.style.setProperty('color-scheme', themeMode);
-
-      const uiOpt = UI_FONT_OPTIONS.find((f) => f.id === appSettings.fontFamilyUi);
-      const monoOpt = MONO_FONT_OPTIONS.find((f) => f.id === appSettings.fontFamilyMono);
-      
-      const currentFontSize = appSettings.fontSize ?? (appSettings.uiDensity === 'compact' ? 11 : appSettings.uiDensity === 'comfortable' ? 13.5 : 12);
-      const fontScale = currentFontSize / 12;
-
-      document.documentElement.style.setProperty('--font-ui', uiOpt ? uiOpt.css : "'Plus Jakarta Sans', sans-serif");
-      document.documentElement.style.setProperty('--font-code', monoOpt ? monoOpt.css : "'JetBrains Mono', monospace");
-      document.documentElement.style.setProperty('--base-font-size', `${currentFontSize}px`);
-      document.documentElement.style.setProperty('--font-scale', `${fontScale}`);
-
-      // Sinkronisasi variabel CSS UI Shell saat Custom Palette atau User Preset aktif (#149 review, ADR-0019)
-      if (isCustomActive && cp) {
-        const containerSurface = deriveSurfaceColor(effectiveBg, 0.045);
-        const panelSurface = deriveSurfaceColor(effectiveBg, 0.065);
-        document.documentElement.style.setProperty('--bg-darkest', effectiveBg);
-        document.documentElement.style.setProperty('--bg-surface', effectiveBg);
-        document.documentElement.style.setProperty('--bg-container', containerSurface);
-        document.documentElement.style.setProperty('--bg-panel', panelSurface);
-        document.documentElement.style.setProperty('--text-main', effectiveText);
-        document.documentElement.style.setProperty('--text-primary', effectiveText);
-        document.documentElement.style.setProperty('--bull-color', cp.candles.bullBody);
-        document.documentElement.style.setProperty('--bear-color', cp.candles.bearBody);
-        document.documentElement.style.setProperty('--brand-primary', cp.candles.bullBody);
-      } else if (!isBuiltInTheme(effectivePreset)) {
-        // Suntikkan token UI Shell dari preset tema pengguna personal ke root DOM
-        document.documentElement.style.setProperty('--bg-darkest', activeThemeConfig.tokens.bgDarkest);
-        document.documentElement.style.setProperty('--bg-surface', activeThemeConfig.tokens.bgSurface);
-        document.documentElement.style.setProperty('--bg-container', activeThemeConfig.tokens.bgContainer);
-        document.documentElement.style.setProperty('--bg-panel', activeThemeConfig.tokens.bgPanel);
-        document.documentElement.style.setProperty('--text-main', activeThemeConfig.tokens.textMain);
-        document.documentElement.style.setProperty('--text-primary', activeThemeConfig.tokens.textPrimary || activeThemeConfig.tokens.textMain);
-        document.documentElement.style.setProperty('--bull-color', activeThemeConfig.tokens.bullColor);
-        document.documentElement.style.setProperty('--bear-color', activeThemeConfig.tokens.bearColor);
-        document.documentElement.style.setProperty('--brand-primary', activeThemeConfig.tokens.brandPrimary);
-      } else {
-        document.documentElement.style.removeProperty('--bg-darkest');
-        document.documentElement.style.removeProperty('--bg-surface');
-        document.documentElement.style.removeProperty('--bg-container');
-        document.documentElement.style.removeProperty('--bg-panel');
-        document.documentElement.style.removeProperty('--text-main');
-        document.documentElement.style.removeProperty('--text-primary');
-        document.documentElement.style.removeProperty('--bull-color');
-        document.documentElement.style.removeProperty('--bear-color');
-        document.documentElement.style.removeProperty('--brand-primary');
-      }
-
-      // Suntikkan token Themed Thesis Overlay (--chart-thesis-*) berbasis tema kanvas grafik yang dominan (ADR-0019)
-      const activeChartThemeConfig = resolveThemeConfig(
-        effectiveChartThemePreset || 'signature',
-        appSettings.savedUserThemes
-      );
-      const thesisTokens = generateChartThesisThemeTokens(activeChartThemeConfig);
-      for (const [k, v] of Object.entries(thesisTokens)) {
-        document.documentElement.style.setProperty(k, v);
-      }
-
-      // Injeksi token runtime kit WebGL2 Vela (--vela-*) ke elemen root DOM
-      const velaTokens = generateVelaThemeTokens(
-        effectiveBg,
-        effectiveText,
-        isDark ? withAlpha(effectiveText, 0.14) : withAlpha(effectiveText, 0.18),
-        uiOpt ? uiOpt.css : "'Plus Jakarta Sans', sans-serif"
-      );
-      for (const [k, v] of Object.entries(velaTokens)) {
-        document.documentElement.style.setProperty(k, v);
-      }
+      const bundle = assembleThemeCssBundle(appSettings, { systemIsDark });
+      applyThemeCssBundle(document, bundle);
     }
   });
 
@@ -865,27 +755,7 @@
   });
 
   async function handleSymbolChange(newSym: string, providerHint?: string) {
-    const clean = newSym.trim().toUpperCase();
-    const hint = providerHint ? providerHint.trim().toLowerCase() : '';
-
-    let targetProvider = activeProviderId;
-
-    if (hint) {
-      if (hint.includes('indodax') || hint === 'indodax') targetProvider = 'indodax';
-      else if (hint.includes('bitunix') || hint === 'bitunix') targetProvider = 'bitunix';
-      else if (hint.includes('binance') || hint === 'binance') targetProvider = 'binance';
-      else if (hint.includes('hyperliquid') || hint === 'hyperliquid') targetProvider = 'hyperliquid';
-      else if (hint.includes('coinbase') || hint === 'coinbase') targetProvider = 'coinbase';
-      else targetProvider = hint;
-    } else {
-      if (clean.endsWith('IDR')) {
-        targetProvider = 'indodax';
-      } else if (clean.endsWith('.P') && activeProviderId === 'indodax') {
-        targetProvider = 'bitunix';
-      } else if (clean.includes('USDT') && activeProviderId === 'indodax') {
-        targetProvider = 'binance';
-      }
-    }
+    const targetProvider = routeVenueForSymbol(newSym, activeProviderId, providerHint);
 
     if (targetProvider !== activeProviderId) {
       await handleProviderChange(targetProvider);
@@ -1146,116 +1016,35 @@
       activeWorkspace = w;
       if (w && w.id) {
         setLastActiveWorkspaceId(w.id);
-        chartDrawingController.setWorkspaceId(w.id);
       }
 
-      // 1. FRESH CLEAN SLATE TAHAP 1: Reset activeIndicators state Svelte & bersihkan chart lama
-      activeIndicators = [];
-      if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
-        chartComponent.clearAllIndicators();
-      }
+      // Jalankan pipeline restorasi workspace melalui deep workspaceLifecycle engine
+      const res = await executeWorkspaceLoadPipeline({
+        workspace: w,
+        chart: chartComponent,
+        plan: chartDrawingController,
+        shell: workspaceShellService,
+        activeProviderId,
+        onProviderChange: async (pId) => {
+          if (w.providerId) await handleProviderChange(w.providerId);
+        },
+        onSymbolChange: async (sym) => {
+          await handleSymbolChange(w.symbol);
+        },
+        onTimeframeChange: (tf) => handleTimeframeChange(tf),
+        onLayoutChange: (l) => handleLayoutChange(l),
+        onSyncConfigChange: (cfg) => { syncConfig = { ...DEFAULT_SYNC_CONFIG, ...cfg }; },
+        onShowVolumeChange: (vol) => handleUpdateSettings({ showVolume: vol }),
+        onSyncIndicators: () => syncActiveIndicators(),
+        onLog: (msg, lvl) => addSystemLog(msg, (lvl as any) || 'info'),
+      });
 
-      // 2. Terapkan konfigurasi provider, simbol, timeframe, dan layout baru
-      if (w.providerId && w.providerId !== activeProviderId) {
-        await handleProviderChange(w.providerId);
-      }
-      await handleSymbolChange(w.symbol);
-      handleTimeframeChange(w.timeframe as Timeframe);
-      handleLayoutChange(w.layout);
-
-      if (w.syncConfig) {
-        syncConfig = { ...DEFAULT_SYNC_CONFIG, ...w.syncConfig };
-      }
-
-      if (w.activeRightDockPanel !== undefined) {
-        if (w.activeRightDockPanel === null) {
-          workspaceShellService.closeRightDock();
-        } else {
-          workspaceShellService.openRightDockTab(w.activeRightDockPanel as any);
-        }
-      }
-
-      if (w.showVolume !== undefined) {
-        handleUpdateSettings({ showVolume: w.showVolume });
-      }
-
-      // Tunggu layout grid dan WebGL render settle secara penuh
-      await new Promise((resolve) => setTimeout(resolve, 150));
-
-      // 3. FRESH CLEAN SLATE TAHAP 2 (Double-Barrier): Pastikan chart BENAR-BENAR bersih sebelum memuat indikator workspace baru
-      if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
-        chartComponent.clearAllIndicators();
-      }
-      activeIndicators = [];
-
-      // 4. Muat indikator dari workspace secara deterministik dengan inputs & props lengkap
-      if (w.indicators && w.indicators.length > 0 && chartComponent) {
-        for (const ind of w.indicators) {
-          if (ind.source) {
-            try {
-              await chartComponent.addPineIndicator(ind.source, ind.title, ind.inputs, ind.props);
-              if (ind.visible === false) {
-                const active = chartComponent.getActiveIndicators();
-                const target = active.find((a: any) => a.title === ind.title);
-                if (target && target.visible) {
-                  chartComponent.toggleIndicatorVisibility(target.id);
-                }
-              }
-            } catch (e) {
-              console.warn(`Gagal memuat indikator ${ind.title}:`, e);
-            }
-          }
-        }
-      }
-
-      // 5. Sinkronkan state indikator akhir ke Svelte UI
-      syncActiveIndicators();
-
-      // 6. Pulihkan gaya lilin, zoom barSpacing, skala harga, dan bobot pane indikator
-      if (chartComponent) {
-        if (w.priceStyle) {
-          chartComponent.setPriceStyle(w.priceStyle);
-        }
-        if (w.barSpacing) {
-          chartComponent.setBarSpacing(w.barSpacing);
-        }
-        if (w.priceScaleState) {
-          chartComponent.applyPriceScaleState(w.priceScaleState);
-        }
-        if (w.paneWeights && w.paneWeights.length > 0) {
-          setTimeout(() => {
-            chartComponent.applyPaneWeights(w.paneWeights!);
-          }, 100);
-        }
-      }
-
-      // 7. Pulihkan rencana perdagangan dan kartu tesis aktif (#116)
-      if (Array.isArray(w.activePlans) && w.activePlans.length > 0) {
-        chartDrawingController.restorePlans(w.activePlans, w.showThesisCards ?? true);
-      } else {
-        chartDrawingController.clearAllPlans();
-      }
-
-      const indCount = w.indicators?.length || 0;
-      const indTitles = w.indicators && w.indicators.length > 0
-        ? w.indicators.map((i: any) => i.title).join(', ')
-        : 'tanpa indikator';
-      lastSavedWorkspaceFingerprint = computeWorkspaceFingerprint(
-        w.id || w.name,
-        w.symbol,
-        w.timeframe,
-        w.layout,
-        w.providerId || activeProviderId,
-        w.indicators || []
-      );
-      addSystemLog(`Workspace "${w.name}" dimuat (${indCount} indikator: ${indTitles})`, 'success');
+      lastSavedWorkspaceFingerprint = res.fingerprint;
     } catch (e) {
       console.warn('Gagal memuat workspace:', e);
       addSystemLog(`Gagal memuat workspace: ${e instanceof Error ? e.message : String(e)}`, 'warn');
     } finally {
-      setTimeout(() => {
-        isLoadingWorkspace = false;
-      }, 600);
+      isLoadingWorkspace = false;
     }
   }
 
@@ -1281,14 +1070,24 @@
     const targetName = activeWorkspace.name;
     const targetId = activeWorkspace.id;
     const freshIndicators = chartComponent?.getActiveIndicators?.() || activeIndicators;
-    const currentFingerprint = computeWorkspaceFingerprint(
-      targetId || targetName,
-      activeSymbol,
-      activeTimeframe,
-      currentLayout,
-      activeProviderId,
-      freshIndicators
-    );
+    const currentFingerprint = computeWorkspaceFingerprint({
+      id: targetId,
+      name: targetName,
+      symbol: activeSymbol,
+      timeframe: activeTimeframe,
+      layout: currentLayout,
+      providerId: activeProviderId,
+      indicators: freshIndicators,
+      paneWeights: chartComponent?.getPaneWeights?.() || [],
+      priceScaleState: chartComponent?.getPriceScaleState?.() || null,
+      priceStyle: chartComponent?.getPriceStyle?.() || 'candles',
+      barSpacing: chartComponent?.getBarSpacing?.() || 8,
+      showVolume: appSettings.showVolume ?? true,
+      activeRightDockPanel: shellState.isRightDockOpen ? shellState.activeRightDockTab : null,
+      syncConfig: { ...syncConfig },
+      activePlans: chartDrawingController.getActivePlans(),
+      showThesisCards: chartDrawingController.isThesisCardsVisible(),
+    });
 
     // KUNCI GUARD: Jika fingerprint nilai sama persis dengan yang sudah tersimpan, abaikan!
     if (lastSavedWorkspaceFingerprint && lastSavedWorkspaceFingerprint === currentFingerprint) {
@@ -1343,6 +1142,9 @@
     const _t = activeTimeframe;
     const _l = currentLayout;
     const _i = activeIndicators;
+    const _sc = syncConfig;
+    const _p = chartDrawingController.getActivePlans();
+    const _tc = chartDrawingController.isThesisCardsVisible();
     if (isPageMounted && !isLoadingWorkspace) {
       triggerWorkspaceAutoSave();
     }

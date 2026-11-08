@@ -96,8 +96,7 @@
 
   let allAlerts = $state<PriceAlert[]>([]);
   let activeSymbolAlerts = $derived.by(() => {
-    const clean = symbol.replace('.P', '').toUpperCase();
-    return allAlerts.filter((a) => a.symbol.replace('.P', '').toUpperCase() === clean);
+    return allAlerts.filter((a) => isSameSymbol(a.symbol, symbol));
   });
   let draggingAlertId = $state<string | null>(null);
   let draggingAlertPrice = $state<number | null>(null);

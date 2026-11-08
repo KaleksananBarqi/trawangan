@@ -95,28 +95,18 @@ export function ensurePineEngine(): void {
   }
 }
 
-/**
- * Normalisasi format simbol pair ke format Vela sesuai bursa aktif
- */
-export function resolveVelaSymbol(sym: string, pId: string): string {
-  if (!sym) return 'binance:BTCUSDT';
-  const clean = sym.includes(':') ? sym.split(':')[1] : sym;
-  const p = (pId || 'binance').toLowerCase();
-
-  if (p === 'indodax' || clean.toUpperCase().endsWith('IDR')) {
-    const pair = clean.replace(/[\/\-_]/g, '').toUpperCase();
-    return `indodax:${pair}`;
-  } else if (p === 'hyperliquid') {
-    const coin = clean.replace(/USDT$/, '').replace(/\.P$/, '');
-    return `hyperliquid:${coin}`;
-  } else if (p === 'coinbase') {
-    const base = clean.replace(/USDT$/, '').replace(/\.P$/, '');
-    return `coinbase:${base}-USD`;
-  } else if (p === 'bitunix') {
-    return `bitunix:${clean}`;
-  }
-  return `binance:${clean}`;
-}
+import {
+  resolveVelaSymbol,
+  resolveVelaSymbolKey,
+  getCellMarketIdentity,
+  isSameInstrument,
+  normalizeSymbolForMatching,
+} from './instrumentIdentity';
+export {
+  resolveVelaSymbol,
+  resolveVelaSymbolKey,
+  getCellMarketIdentity,
+};
 
 /**
  * Helper untuk mendapatkan instans Coords dari Vela Chart Renderer
@@ -124,39 +114,6 @@ export function resolveVelaSymbol(sym: string, pId: string): string {
 function getChartCoords(chart: any): any {
   if (!chart) return null;
   return chart.renderer?.renderer?.coords || chart.renderer?.coords || chart.coords || null;
-}
-
-/**
- * Ekstraksi providerId dan symbol dari cell atau chart
- */
-export function getCellMarketIdentity(cell: any): { providerId: string; symbol: string } {
-  if (!cell) return { providerId: 'binance', symbol: '' };
-
-  const rawSymbol = String(cell.symbol || cell.chart?.symbol || '').trim();
-  let providerId = String(cell.providerId || cell.provider || '').trim().toLowerCase();
-
-  if (rawSymbol.includes(':')) {
-    const parts = rawSymbol.split(':');
-    const prefix = parts[0].toLowerCase();
-    const cleanSym = parts.slice(1).join(':').toUpperCase();
-    return {
-      providerId: providerId || prefix,
-      symbol: cleanSym
-    };
-  }
-
-  if (!providerId) {
-    if (rawSymbol.toUpperCase().endsWith('IDR')) {
-      providerId = 'indodax';
-    } else {
-      providerId = 'binance';
-    }
-  }
-
-  return {
-    providerId: providerId.toLowerCase(),
-    symbol: rawSymbol.toUpperCase()
-  };
 }
 
 /**
