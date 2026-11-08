@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from 'svelte';
+  import { onMount, onDestroy, untrack, tick } from 'svelte';
   import Header from '../lib/components/Header.svelte';
   import Chart from '../lib/components/Chart.svelte';
   import DrawingToolbar from '../lib/components/DrawingToolbar.svelte';
@@ -350,23 +350,20 @@
     options?: { autoCreateAlerts?: boolean; isFromHistory?: boolean }
   ) {
     const targetSym = plan.symbol || activeSymbol;
-    if (options?.isFromHistory && targetSym && targetSym !== activeSymbol) {
-      await handleSymbolChange(targetSym);
-      await new Promise((resolve) => setTimeout(resolve, 120));
-    }
-
     const planWithSymbol = {
       ...plan,
       symbol: targetSym
     };
     const autoCreateAlerts = options?.autoCreateAlerts ?? !options?.isFromHistory;
-    const result = chartDrawingController.createMultiTargetPosition(planWithSymbol, {
+    const result = await chartDrawingController.applyTradingPlan(planWithSymbol, {
       autoCreateAlerts,
       skipVaultSave: Boolean(options?.isFromHistory)
     });
     if (result) {
+      const dualEntryCount =
+        Array.isArray(plan.entries) && plan.entries.length > 1 ? plan.entries.length : 0;
       const alertInfo = autoCreateAlerts
-        ? ` + ${2 + (plan.targets?.length || 0)} Price Alert otomatis`
+        ? ` + ${2 + dualEntryCount + (plan.targets?.length || 0)} Price Alert otomatis`
         : '';
       addSystemLog(
         `Trading Plan ${plan.bias.toUpperCase()} (${planWithSymbol.symbol}) diterapkan ke chart${alertInfo}`,
@@ -778,6 +775,13 @@
       currentActivePlans = state.activePlans || [];
       hasActivePlans = Boolean(state.activePlans && state.activePlans.length > 0);
       showThesisCards = state.showThesisCards ?? true;
+    });
+
+    chartDrawingController.setSymbolReadyHandler(async (targetSym) => {
+      if (targetSym && targetSym !== activeSymbol) {
+        await handleSymbolChange(targetSym);
+        await tick();
+      }
     });
 
     // Deep Link & Clipboard Watcher Sentry

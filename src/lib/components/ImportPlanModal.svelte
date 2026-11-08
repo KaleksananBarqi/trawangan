@@ -31,6 +31,7 @@
     clearTradingPlanHistory
   } from '../services/persistence';
   import { isSameSymbol } from '../services/chartDrawingController';
+  import { evaluatePlanMarketStatus } from '../services/tradingPlanLifecycle';
   import type { SavedTradingPlanRecord } from '../types/market';
 
   export interface ApplyImportPlanOptions {
@@ -125,78 +126,7 @@
     badgeClass: string;
     diffPctText: string;
   } | null {
-    if (
-      currentPrice === null ||
-      currentPrice === undefined ||
-      currentPrice <= 0 ||
-      !isSameSymbol(rec.symbol, activeSymbol)
-    ) {
-      return null;
-    }
-    const plan = rec.plan;
-    if (!plan || !plan.entry || !plan.stopLoss) return null;
-
-    const isBull = plan.bias !== 'bearish';
-    const diffPct = ((currentPrice - plan.entry) / plan.entry) * 100;
-    const sign = diffPct >= 0 ? '+' : '';
-    const diffPctText = `${sign}${diffPct.toFixed(2)}% dari Entry`;
-
-    const sortedTargets = [...(plan.targets || [])]
-      .filter((t) => typeof t.price === 'number' && !isNaN(t.price))
-      .sort((a, b) => (isBull ? b.price - a.price : a.price - b.price));
-
-    for (const t of sortedTargets) {
-      if ((isBull && currentPrice >= t.price) || (!isBull && currentPrice <= t.price)) {
-        return {
-          label: `Di Area / Lewat ${t.label || t.id.toUpperCase()}`,
-          badgeClass: 'status-tp',
-          diffPctText
-        };
-      }
-    }
-
-    if ((isBull && currentPrice <= plan.stopLoss) || (!isBull && currentPrice >= plan.stopLoss)) {
-      return {
-        label: 'Di Area / Lewat Stop Loss',
-        badgeClass: 'status-sl',
-        diffPctText
-      };
-    }
-
-    // Jika ada Dual-Entry, periksa apakah harga saat ini berada di dalam zona entry
-    if (Array.isArray(plan.entries) && plan.entries.length > 1) {
-      const entryPrices = plan.entries
-        .map((e: any) => e.price)
-        .filter((p: any) => typeof p === 'number' && !isNaN(p) && p > 0);
-      if (entryPrices.length >= 2) {
-        const minE = Math.min(...entryPrices);
-        const maxE = Math.max(...entryPrices);
-        if (currentPrice >= minE && currentPrice <= maxE) {
-          return {
-            label: 'Di Dalam Entry Zone (Menjemput Limit)',
-            badgeClass: 'status-waiting',
-            diffPctText
-          };
-        }
-      }
-    }
-
-    if (
-      (isBull && currentPrice >= plan.entry) ||
-      (!isBull && currentPrice <= plan.entry)
-    ) {
-      return {
-        label: 'Berjalan Menuju Target (In Profit)',
-        badgeClass: 'status-running',
-        diffPctText
-      };
-    }
-
-    return {
-      label: 'Antara Entry & SL / Menunggu Trigger',
-      badgeClass: 'status-waiting',
-      diffPctText
-    };
+    return evaluatePlanMarketStatus(rec, currentPrice, activeSymbol);
   }
 
   function formatTimestamp(ts: number): string {

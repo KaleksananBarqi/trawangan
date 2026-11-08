@@ -264,6 +264,11 @@ _Avoid_: Single-point rigid entry, Manual dual limit drawing
 Harga rata-rata tertimbang (*weighted average price*) dari kombinasi level Dual-Entry (`0.4×E1 + 0.6×E2`) yang berfungsi sebagai acuan tunggal deterministik kalkulasi risiko 1R dan rasio RRR multi-target, menjaga kompatibilitas penuh dengan sistem posisi bertingkat dan Trade Plan Vault.
 _Avoid_: Unweighted average entry, Arbitrary multi-risk basis
 
+**Trading Plan Lifecycle**:
+Siklus hidup terpadu rencana perdagangan aktif sejak diterjemahkan menjadi proyeksi gambar bertingkat (Staged Position Boxes, Entry Zone, dan Context Zone), disinkronkan secara dua arah saat titik jangkar digeser di kanvas (termasuk pergeseran proporsional level Dual-Entry dan kalkulasi ulang R-multiple), diarsipkan ke Trade Plan Vault, hingga pembersihan otomatis Plan-Linked Auto-Alerts ketika rencana dibatalkan atau dihapus.
+_Avoid_: Scattered plan glue, Drawing-only plan state, Orphaned plan mutation
+
+
 
 
 

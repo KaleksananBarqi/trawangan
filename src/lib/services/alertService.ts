@@ -276,7 +276,7 @@ class AlertService {
         const cleanEntry = roundToTickSize(plan.entry);
         const hasEntries = Array.isArray(plan.entries) && plan.entries.length > 0;
         const entryLabel = hasEntries ? `⚡ [${biasTag}] Blended Entry @ ${cleanEntry}` : `⚡ [${biasTag}] Entry @ ${cleanEntry}`;
-        if (a.targetPrice !== cleanEntry) {
+        if (a.targetPrice !== cleanEntry || a.label !== entryLabel) {
           changed = true;
           return {
             ...a,
@@ -290,23 +290,25 @@ class AlertService {
           const cleanPrice = roundToTickSize(matched.price);
           const weightBadge = typeof matched.weight === 'number' ? ` (${Math.round(matched.weight * 100)}%)` : '';
           const levelLabel = matched.label || a.planRole.toUpperCase();
-          if (a.targetPrice !== cleanPrice) {
+          const newLabel = `⚡ [${biasTag}] ${levelLabel}${weightBadge} @ ${cleanPrice}`;
+          if (a.targetPrice !== cleanPrice || a.label !== newLabel) {
             changed = true;
             return {
               ...a,
               targetPrice: cleanPrice,
-              label: `⚡ [${biasTag}] ${levelLabel}${weightBadge} @ ${cleanPrice}`,
+              label: newLabel,
             };
           }
         }
       } else if (a.planRole === 'sl' && typeof plan.stopLoss === 'number') {
         const cleanSL = roundToTickSize(plan.stopLoss);
-        if (a.targetPrice !== cleanSL) {
+        const newLabel = `🛡️ [${biasTag}] Stop Loss (-1.00R) @ ${cleanSL}`;
+        if (a.targetPrice !== cleanSL || a.label !== newLabel) {
           changed = true;
           return {
             ...a,
             targetPrice: cleanSL,
-            label: `🛡️ [${biasTag}] Stop Loss (-1.00R) @ ${cleanSL}`,
+            label: newLabel,
           };
         }
       } else if (a.planRole?.startsWith('tp') && Array.isArray(plan.targets)) {
@@ -319,12 +321,13 @@ class AlertService {
             typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)
               ? ` (+${tgt.rMultiple.toFixed(2)}R)`
               : '';
-          if (a.targetPrice !== cleanTp) {
+          const newLabel = `🎯 [${biasTag}] ${tpName}${rBadge} @ ${cleanTp}`;
+          if (a.targetPrice !== cleanTp || a.label !== newLabel) {
             changed = true;
             return {
               ...a,
               targetPrice: cleanTp,
-              label: `🎯 [${biasTag}] ${tpName}${rBadge} @ ${cleanTp}`,
+              label: newLabel,
             };
           }
         }
