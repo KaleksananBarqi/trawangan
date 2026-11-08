@@ -14,7 +14,11 @@
     Layers,
     EyeOff
   } from '@lucide/svelte';
-  import { formatPlanPrice, inferZonePolarity, type ParsedTradingPlan } from '../services/planParserService';
+  import { formatPlanPrice, type ParsedTradingPlan } from '../services/planParserService';
+  import {
+    buildThesisPresentationModel,
+    type EpistemicTextSegment
+  } from '../services/thesisOverlayEngine';
 
   export interface ThesisCardGeometry {
     planId: string;
@@ -151,21 +155,24 @@
     }
   }
 
-  function formatPrice(p?: number): string {
-    return formatPlanPrice(p);
-  }
-
-  // Highlight tag epistemik seperti [FAKTA], [INFERENSI], [SPEKULASI]
-  function formatEpistemicText(text?: string): string {
-    if (!text) return '';
-    return text
-      .replace(/\[FAKTA\]/g, '<span class="epistemic-badge fakta">[FAKTA]</span>')
-      .replace(/\[INFERENSI\]/g, '<span class="epistemic-badge inferensi">[INFERENSI]</span>')
-      .replace(/\[SPEKULASI\]/g, '<span class="epistemic-badge spekulasi">[SPEKULASI]</span>');
-  }
-
-  const isBearish = $derived(plan.bias === 'bearish');
+  const vm = $derived(
+    buildThesisPresentationModel(plan, {
+      variant: 'floating-card',
+      formatPrice: (p) => formatPlanPrice(p ?? undefined)
+    })
+  );
+  const isBearish = $derived(vm.isBearish);
 </script>
+
+{#snippet epistemicText(segments: EpistemicTextSegment[])}
+  {#each segments as seg}
+    {#if seg.type === 'badge'}
+      <span class="epistemic-badge {seg.kind}">{seg.label}</span>{seg.trailingPunct ?? ''}
+    {:else}
+      {seg.content}
+    {/if}
+  {/each}
+{/snippet}
 
 {#if isMinimized}
   <!-- Mini Collapsed Pill HUD -->
@@ -181,11 +188,11 @@
     </div>
 
     <div class="pill-badge {isBearish ? 'bearish' : 'bullish'}">
-      {isBearish ? 'BEARISH' : 'BULLISH'}
+      {vm.header.biasLabel}
     </div>
 
     <span class="pill-title mono-nums">
-      {plan.conclusion?.probability ? `(${plan.conclusion.probability})` : `${plan.targets.length} Target`}
+      {vm.header.collapsedSubtitle}
     </span>
 
     <button
@@ -233,21 +240,21 @@
       <div class="header-left">
         <span class="drag-icon" title="Geser posisi kartu"><GripVertical size={13} /></span>
         <span class="bias-tag {isBearish ? 'bearish' : 'bullish'}">
-          {isBearish ? 'BEARISH' : 'BULLISH'}
+          {vm.header.biasLabel}
         </span>
-        {#if plan.conclusion?.probability}
+        {#if vm.header.probabilityBadge}
           <span class="prob-tag" title="Tingkat Keyakinan Setup">
-            {plan.conclusion.probability}
+            {vm.header.probabilityBadge.fullText}
           </span>
         {/if}
-        {#if plan.setupStatus}
+        {#if vm.header.setupStatusBadge}
           <span class="status-tag mono-nums" title="Status Setup">
-            {plan.setupStatus}
+            {vm.header.setupStatusBadge}
           </span>
         {/if}
-        {#if plan.confluenceScore}
+        {#if vm.header.confluenceBadge}
           <span class="status-tag conf-tag mono-nums" title="Skor Konfluensi Setup">
-            {plan.confluenceScore.score}/{plan.confluenceScore.max}
+            {vm.header.confluenceBadge.shortText}
           </span>
         {/if}
       </div>
@@ -301,10 +308,10 @@
 
     <!-- Scrollable Thesis Body -->
     <div class="thesis-body custom-scroll {isWideMode ? 'columns-grid' : ''}">
-      {#if plan.definition}
+      {#if vm.definition}
         <div class="definition-banner">
           <Info size={11} class="def-icon" />
-          <span class="def-text">{plan.definition}</span>
+          <span class="def-text">{vm.definition}</span>
         </div>
       {/if}
 
@@ -313,42 +320,41 @@
         <div class="section-title-row">
           <span class="section-icon"><Zap size={11} /></span>
           <span class="section-label">
-            {plan.entries && plan.entries.length > 0 ? 'BLENDED ENTRY' : 'KATALIS ENTRY'}
+            {vm.entrySection.title}
           </span>
           <span class="price-val mono-nums {isBearish ? 'bearish' : 'bullish'}">
-            {formatPrice(plan.entry)}
+            {vm.entrySection.formattedPrimaryPrice}
           </span>
         </div>
 
-        {#if plan.entries && plan.entries.length > 0}
+        {#if vm.entrySection.dualEntries.length > 0}
           <div class="entry-levels-container">
-            {#each plan.entries as e}
-              <div class="entry-level-pill mono-nums {e.style || 'neutral'}">
+            {#each vm.entrySection.dualEntries as e (e.id)}
+              <div class="entry-level-pill mono-nums {e.style}">
                 <span class="level-lbl">{e.label}</span>
-                <span class="level-price">{formatPrice(e.price)}</span>
-                {#if typeof e.weight === 'number'}
-                  <span class="level-weight">({Math.round(e.weight * 100)}%)</span>
+                <span class="level-price">{e.formattedPrice}</span>
+                {#if e.weightText}
+                  <span class="level-weight">{e.weightText}</span>
                 {/if}
               </div>
             {/each}
           </div>
         {/if}
 
-        {#if plan.contextZones && plan.contextZones.length > 0}
+        {#if vm.entrySection.contextZones.length > 0}
           <div class="zones-container">
-            {#each plan.contextZones as zone}
-              {@const pol = zone.polarity || inferZonePolarity(zone.label)}
-              <div class="zone-pill {pol === 'bull' ? 'bullish' : pol === 'bear' ? 'bearish' : 'neutral'} mono-nums">
+            {#each vm.entrySection.contextZones as zone}
+              <div class="zone-pill {zone.polarity} mono-nums">
                 <Layers size={10} />
-                <span>{zone.label || 'FVG'}: {formatPrice(zone.low)} - {formatPrice(zone.high)}</span>
+                <span>{zone.formattedRange}</span>
               </div>
             {/each}
           </div>
         {/if}
 
-        {#if plan.reasons.entry}
+        {#if vm.entrySection.reasonSegments.length > 0}
           <div class="reason-text">
-            {@html formatEpistemicText(plan.reasons.entry)}
+            {@render epistemicText(vm.entrySection.reasonSegments)}
           </div>
         {/if}
       </div>
@@ -357,24 +363,24 @@
       <div class="thesis-section sl-section">
         <div class="section-title-row">
           <span class="section-icon sl"><ShieldAlert size={11} /></span>
-          <span class="section-label">INVALIDASI & STOP LOSS</span>
+          <span class="section-label">{vm.invalidationSection.title}</span>
           <span class="price-val mono-nums sl">
-            {formatPrice(plan.stopLoss)}
+            {vm.invalidationSection.formattedStopLoss}
           </span>
-          <span class="r-badge sl-r-badge mono-nums">-1.00R</span>
+          <span class="r-badge sl-r-badge mono-nums">{vm.invalidationSection.rBadge}</span>
         </div>
 
-        {#if plan.reasons.stopLoss}
+        {#if vm.invalidationSection.reasonSegments.length > 0}
           <div class="reason-text">
-            {@html formatEpistemicText(plan.reasons.stopLoss)}
+            {@render epistemicText(vm.invalidationSection.reasonSegments)}
           </div>
         {/if}
 
-        {#if plan.conclusion?.invalidationScenario}
+        {#if vm.invalidationSection.invalidationBox}
           <div class="invalidation-box">
-            <span class="inv-badge">SKENARIO BATAL</span>
+            <span class="inv-badge">{vm.invalidationSection.invalidationBox.badgeLabel}</span>
             <span class="inv-content">
-              {@html formatEpistemicText(plan.conclusion.invalidationScenario)}
+              {@render epistemicText(vm.invalidationSection.invalidationBox.segments)}
             </span>
           </div>
         {/if}
@@ -384,29 +390,27 @@
       <div class="thesis-section tp-section">
         <div class="section-title-row">
           <span class="section-icon tp"><Target size={11} /></span>
-          <span class="section-label">TARGET LIKUIDITAS ({plan.targets.length})</span>
+          <span class="section-label">{vm.targetsSection.title}</span>
         </div>
 
         <div class="targets-list">
-          {#each plan.targets as tgt, idx}
-            {@const targetKey = `tp${idx + 1}`}
-            {@const reason = plan.reasons[targetKey]}
+          {#each vm.targetsSection.items as item}
             <div class="target-item">
               <div class="target-item-header">
-                <span class="target-badge mono-nums">TP{idx + 1}</span>
-                <span class="target-price mono-nums">{formatPrice(tgt.price)}</span>
-                {#if typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)}
-                  <span class="r-badge mono-nums {tgt.rMultiple < 0 ? 'sl-r-badge' : ''}">
-                    {tgt.rMultiple >= 0 ? '+' : ''}{tgt.rMultiple.toFixed(2)}R
-                    {#if tgt.rMultipleByEntry?.e1}
-                      <span class="r-sub">({tgt.rMultipleByEntry.e1}R E1)</span>
+                <span class="target-badge mono-nums">{item.badge}</span>
+                <span class="target-price mono-nums">{item.formattedPrice}</span>
+                {#if item.rBadge}
+                  <span class="r-badge mono-nums {item.rBadge.isNegative ? 'sl-r-badge' : ''}">
+                    {item.rBadge.primaryText}
+                    {#if item.rBadge.e1SubText}
+                      <span class="r-sub">{item.rBadge.e1SubText}</span>
                     {/if}
                   </span>
                 {/if}
               </div>
-              {#if reason}
+              {#if item.reasonSegments.length > 0}
                 <div class="target-reason">
-                  {@html formatEpistemicText(reason)}
+                  {@render epistemicText(item.reasonSegments)}
                 </div>
               {/if}
             </div>
@@ -415,22 +419,22 @@
       </div>
 
       <!-- Section: Ringkasan Probabilitas & Risiko -->
-      {#if plan.riskAmount || plan.conclusion?.probabilityNotes}
+      {#if vm.riskFooter}
         <div class="thesis-section risk-summary-section">
-          {#if plan.riskAmount}
+          {#if vm.riskFooter.formattedRiskAmount}
             <div class="risk-meta-row mono-nums">
               <span class="meta-lbl">Unit Risiko (R):</span>
               <span class="meta-val">
-                {formatPrice(plan.riskAmount)}
-                {#if plan.riskPercent}
-                  <span class="risk-pct-badge">({plan.riskPercent}%)</span>
+                {vm.riskFooter.formattedRiskAmount}
+                {#if vm.riskFooter.riskPercentText}
+                  <span class="risk-pct-badge">{vm.riskFooter.riskPercentText}</span>
                 {/if}
               </span>
             </div>
           {/if}
-          {#if plan.conclusion?.probabilityNotes}
+          {#if vm.riskFooter.probabilityNotesSegments.length > 0}
             <div class="prob-notes">
-              {@html formatEpistemicText(plan.conclusion.probabilityNotes)}
+              {@render epistemicText(vm.riskFooter.probabilityNotesSegments)}
             </div>
           {/if}
         </div>
