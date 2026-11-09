@@ -9,6 +9,7 @@ import { HyperliquidProvider } from '@luxalgo/vela/providers/hyperliquid';
 import { CoinbaseProvider } from '@luxalgo/vela/providers/coinbase';
 import { BitunixProvider } from './bitunixProvider';
 import { IndodaxProvider } from './indodaxProvider';
+import { YahooFinanceProvider } from './yahooFinanceProvider';
 import { registerDefaultEngine } from '@luxalgo/vela';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 import { IndicatorRegistry } from './indicatorRegistry';
@@ -516,6 +517,7 @@ export class ChartSessionController {
         hyperliquid: () => new HyperliquidProvider(),
         coinbase: () => new CoinbaseProvider(),
         bitunix: () => new BitunixProvider(),
+        yahoo: () => new YahooFinanceProvider(),
       },
       engines: {
         pine: () => new PineWorkerEngine(),

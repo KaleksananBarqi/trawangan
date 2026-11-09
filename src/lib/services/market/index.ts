@@ -14,10 +14,12 @@ import { BinanceAdapter } from './adapters/binanceAdapter';
 import { IndodaxAdapter } from './adapters/indodaxAdapter';
 import { BitunixAdapter } from './adapters/bitunixAdapter';
 import { MockMarketAdapter } from './adapters/mockAdapter';
+import { YahooFinanceAdapter } from './adapters/yahooAdapter';
 import { DEFAULT_PROVIDERS, normalizeTicker } from './constants';
 import { alertService } from '../alertService';
 import { SymbolSearchEngine } from './symbolSearchService';
 import { isSectionToken } from '../watchlistUtils';
+import { isYahooSymbol } from '../instrumentIdentity';
 
 /**
  * Memecah simbol pair (baik ber-prefix 'provider:symbol' atau raw) dan menginfer bursa target
@@ -38,6 +40,11 @@ export function resolveSymbolProvider(
   }
 
   const upper = trimmed.toUpperCase();
+  // Deteksi bursa Yahoo Finance untuk Saham Indo (.JK), Indeks (^), dan Komoditas Futures (=F)
+  if (isYahooSymbol(upper)) {
+    return { providerId: 'yahoo', cleanSymbol: upper };
+  }
+
   if (upper.endsWith('IDR')) {
     return { providerId: 'indodax', cleanSymbol: upper };
   }
@@ -78,6 +85,7 @@ export class MarketFeedService implements IMarketFeedService {
     this.registerAdapter(new IndodaxAdapter());
     this.registerAdapter(new BitunixAdapter());
     this.registerAdapter(new MockMarketAdapter());
+    this.registerAdapter(new YahooFinanceAdapter());
 
     // Pantau perubahan alert untuk mengaktifkan atau menonaktifkan siklus polling otomatis
     this.unsubscribeAlerts = alertService.subscribe(() => {

@@ -268,6 +268,19 @@ _Avoid_: Unweighted average entry, Arbitrary multi-risk basis
 Siklus hidup terpadu rencana perdagangan aktif sejak diterjemahkan menjadi proyeksi gambar bertingkat (Staged Position Boxes, Entry Zone, dan Context Zone), disinkronkan secara dua arah saat titik jangkar digeser di kanvas (termasuk pergeseran proporsional level Dual-Entry dan kalkulasi ulang R-multiple), diarsipkan ke Trade Plan Vault, hingga pembersihan otomatis Plan-Linked Auto-Alerts ketika rencana dibatalkan atau dihapus.
 _Avoid_: Scattered plan glue, Drawing-only plan state, Orphaned plan mutation
 
+**Dynamic Feeder Context**:
+Mekanisme pengalihan bursa data feed aktif secara otomatis berdasarkan kelas aset dan namespace simbol yang sedang dibuka di kanvas grafik, menghilangkan kebutuhan konfigurasi provider manual oleh pengguna.
+_Avoid_: Manual provider switch, Global static feed
+
+**Symbol Aliasing Engine**:
+Mekanisme translasi kueri pencarian ramah pengguna (seperti `XAUUSD`, `GOLD`, atau `NASDAQ`) ke simbol kanonikal bursa penyedia data (seperti `GC=F` atau `^IXIC`).
+_Avoid_: Hardcoded search, Raw ticker requirement
+
+**Candle Resampling**:
+Mekanisme sintesis lilin timeframe tingkat tinggi (seperti 2H atau 4H) dari kumpulan lilin dasar tingkat rendah (seperti 1H) pada sisi klien ketika bursa sumber tidak menyediakan resolusi tersebut secara native.
+_Avoid_: Missing timeframe error, Flat interval filler
+
+
 
 
 

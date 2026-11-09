@@ -37,6 +37,13 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     ws_url: 'wss://ws-feed.exchange.coinbase.com',
     is_active: false,
   },
+  {
+    id: 'yahoo',
+    name: 'Yahoo Finance (Delayed 15m)',
+    rest_url: 'https://query1.finance.yahoo.com',
+    ws_url: '',
+    is_active: false,
+  },
 ];
 
 export const VERIFIED_CRYPTO_ASSETS = [

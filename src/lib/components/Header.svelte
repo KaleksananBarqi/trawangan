@@ -254,6 +254,12 @@
         <ChevronDown size={10} />
       </button>
 
+      {#if activeProviderId === 'yahoo'}
+        <span class="delayed-badge mono-nums" title="Data Yahoo Finance (Saham Indo IDX & US) mengalami jeda waktu ~15 menit sesuai regulasi bursa">
+          DELAYED 15M
+        </span>
+      {/if}
+
       {#if isProviderDropdownOpen}
         <!-- Backdrop klik luar -->
         <div
@@ -672,6 +678,19 @@
     background-color: rgba(243, 186, 47, 0.12);
     color: #f3ba2f;
     border-color: rgba(243, 186, 47, 0.3);
+  }
+
+  .delayed-badge {
+    font-size: 8.5px;
+    font-weight: 700;
+    color: #f59e0b;
+    background-color: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs, 4px);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    align-self: center;
   }
 
   .provider-pill-btn.bitunix {

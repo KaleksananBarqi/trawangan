@@ -159,6 +159,9 @@
       {:else}
         <span class="pill-badge badge-bear">OFFLINE</span>
       {/if}
+      {#if feedStatus.providerId === 'yahoo'}
+        <span class="pill-badge badge-amber font-mono" title="Feed Yahoo Finance (Saham Indo IDX & US) memiliki jeda 15 menit sesuai regulasi bursa">DELAYED 15M</span>
+      {/if}
     </div>
 
     <div class="divider"></div>

@@ -34,8 +34,9 @@
 
   let query = $state('');
   let filterType = $state<'all' | 'spot' | 'perp'>('all');
+  let assetCategory = $state<'all' | 'crypto' | 'idx' | 'metals_indices'>('all');
   let selectedExchange = $state<string>('all');
-  let selectedQuote = $state<'all' | 'IDR' | 'USDT' | 'BTC'>('all');
+  let selectedQuote = $state<'all' | 'IDR' | 'USDT' | 'BTC' | 'USD'>('all');
   let searchResults = $state<MarketSearchResult[]>([]);
   let selectedIndex = $state(0);
   let searchInputEl = $state<HTMLInputElement | null>(null);
@@ -120,14 +121,37 @@
         selectedIndex = 0;
       }
 
+      // Terapkan filter kategori aset pada exchange/quoteAsset jika dipilih
+      let effectiveExchange = selectedExchange;
+      let effectiveQuote = selectedQuote;
+
+      if (assetCategory === 'idx') {
+        effectiveExchange = 'yahoo';
+        effectiveQuote = 'IDR';
+      } else if (assetCategory === 'metals_indices') {
+        effectiveExchange = 'yahoo';
+        effectiveQuote = 'USD';
+      } else if (assetCategory === 'crypto') {
+        if (effectiveExchange === 'yahoo') effectiveExchange = 'all';
+      }
+
       marketFeed
         .searchSymbols(query, {
           filterType,
-          exchange: selectedExchange as any,
-          quoteAsset: selectedQuote,
+          exchange: effectiveExchange as any,
+          quoteAsset: effectiveQuote,
         })
         .then((res) => {
-          searchResults = res;
+          let list = res;
+          if (assetCategory === 'crypto') {
+            list = list.filter((r) => r.provider !== 'Yahoo Finance');
+          } else if (assetCategory === 'idx') {
+            list = list.filter((r) => r.symbol.endsWith('.JK') || r.symbol === '^JKSE');
+          } else if (assetCategory === 'metals_indices') {
+            list = list.filter((r) => r.symbol.includes('=F') || (r.symbol.startsWith('^') && r.symbol !== '^JKSE') || r.symbol === 'QQQ' || r.symbol === 'SPY');
+          }
+
+          searchResults = list;
           selectedIndex = 0;
           // Ambil preview ticker 24h untuk 20 item pertama
           const symbols = res.slice(0, 20).map((r) => r.symbol);
@@ -254,6 +278,38 @@
 
       <!-- Filter Tabs & Provider Context -->
       <div class="filter-toolbar">
+        <!-- Baris Kategori Aset Utama (ADR-0021) -->
+        <div class="asset-category-tabs">
+          <button
+            type="button"
+            class="category-tab-btn {assetCategory === 'all' ? 'active' : ''}"
+            onclick={() => (assetCategory = 'all')}
+          >
+            Semua Aset
+          </button>
+          <button
+            type="button"
+            class="category-tab-btn {assetCategory === 'crypto' ? 'active' : ''}"
+            onclick={() => (assetCategory = 'crypto')}
+          >
+            Kripto
+          </button>
+          <button
+            type="button"
+            class="category-tab-btn {assetCategory === 'idx' ? 'active' : ''}"
+            onclick={() => (assetCategory = 'idx')}
+          >
+            Saham Indo (IDX)
+          </button>
+          <button
+            type="button"
+            class="category-tab-btn {assetCategory === 'metals_indices' ? 'active' : ''}"
+            onclick={() => (assetCategory = 'metals_indices')}
+          >
+            Komoditas & Indeks
+          </button>
+        </div>
+
         <div class="filter-primary-row">
           <div class="filter-tabs">
             <button
@@ -282,7 +338,7 @@
           <div class="active-feed-info">
             <span class="feed-label">Sumber:</span>
             <span class="feed-badge {activeProviderId}">
-              {activeProviderId === 'indodax' ? 'INDODAX SPOT (IDR)' : activeProviderId === 'bitunix' ? 'BITUNIX FUTURES' : 'BINANCE SPOT/FUTURES'}
+              {activeProviderId === 'yahoo' ? 'YAHOO FINANCE (DELAYED 15M)' : activeProviderId === 'indodax' ? 'INDODAX SPOT (IDR)' : activeProviderId === 'bitunix' ? 'BITUNIX FUTURES' : 'BINANCE SPOT/FUTURES'}
             </span>
           </div>
         </div>
@@ -361,6 +417,13 @@
               onclick={() => (selectedQuote = 'BTC')}
             >
               BTC (₿)
+            </button>
+            <button
+              type="button"
+              class="filter-chip {selectedQuote === 'USD' ? 'active' : ''}"
+              onclick={() => (selectedQuote = 'USD')}
+            >
+              USD ($)
             </button>
           </div>
         </div>
@@ -620,6 +683,38 @@
     padding: 8px 14px;
     background-color: var(--bg-container, #161e29);
     border-bottom: 1px solid var(--border-hairline, #1f2733);
+  }
+
+  /* Asset Category Tabs */
+  .asset-category-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .category-tab-btn {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-dim, #64748b);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: var(--radius-xs, 4px);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .category-tab-btn:hover {
+    color: var(--text-main, #f1f5f9);
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+
+  .category-tab-btn.active {
+    color: var(--brand-primary, #00f090);
+    background-color: rgba(0, 240, 144, 0.08);
+    border-color: rgba(0, 240, 144, 0.25);
   }
 
   .filter-primary-row {

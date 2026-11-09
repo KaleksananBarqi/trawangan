@@ -63,6 +63,44 @@ export const POPULAR_BTC_PAIRS: Array<{ base: string; name: string }> = [
 ];
 
 /**
+ * Daftar instrumen multi-aset populer Yahoo Finance (Saham Indo IDX, Logam Mulia USD, Indeks AS)
+ * untuk pencarian offline instan (< 10ms) dan pemetaan alias.
+ */
+export const POPULAR_YAHOO_ASSETS: Array<{
+  symbol: string;
+  name: string;
+  base: string;
+  quote: string;
+  aliases: string[];
+}> = [
+  // Logam Mulia (Metals USD)
+  { symbol: 'GC=F', name: 'Gold Futures (COMEX USD)', base: 'GC', quote: 'USD', aliases: ['XAUUSD', 'GOLD', 'EMAS', 'XAU'] },
+  { symbol: 'SI=F', name: 'Silver Futures (COMEX USD)', base: 'SI', quote: 'USD', aliases: ['XAGUSD', 'SILVER', 'PERAK', 'XAG'] },
+  // Indeks Saham AS & Global
+  { symbol: '^IXIC', name: 'Nasdaq Composite Index', base: 'IXIC', quote: 'USD', aliases: ['NASDAQ', 'COMPOSITE'] },
+  { symbol: '^NDX', name: 'Nasdaq-100 Index', base: 'NDX', quote: 'USD', aliases: ['NASDAQ100', 'NDX100'] },
+  { symbol: 'QQQ', name: 'Invesco QQQ Trust (Nasdaq-100 ETF)', base: 'QQQ', quote: 'USD', aliases: ['QQQ', 'ETF'] },
+  { symbol: '^GSPC', name: 'S&P 500 Index', base: 'GSPC', quote: 'USD', aliases: ['SPX', 'SP500', 'S&P500'] },
+  { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', base: 'SPY', quote: 'USD', aliases: ['SPY'] },
+  // Saham Indonesia (IDX) & IHSG
+  { symbol: '^JKSE', name: 'IHSG (Jakarta Composite Index)', base: 'JKSE', quote: 'IDR', aliases: ['IHSG', 'COMPOSITE'] },
+  { symbol: 'BBCA.JK', name: 'Bank Central Asia Tbk', base: 'BBCA', quote: 'IDR', aliases: ['BBCA', 'BCA'] },
+  { symbol: 'BBRI.JK', name: 'Bank Rakyat Indonesia (Persero) Tbk', base: 'BBRI', quote: 'IDR', aliases: ['BBRI', 'BRI'] },
+  { symbol: 'BMRI.JK', name: 'Bank Mandiri (Persero) Tbk', base: 'BMRI', quote: 'IDR', aliases: ['BMRI', 'MANDIRI'] },
+  { symbol: 'BBNI.JK', name: 'Bank Negara Indonesia (Persero) Tbk', base: 'BBNI', quote: 'IDR', aliases: ['BBNI', 'BNI'] },
+  { symbol: 'TLKM.JK', name: 'Telkom Indonesia (Persero) Tbk', base: 'TLKM', quote: 'IDR', aliases: ['TLKM', 'TELKOM'] },
+  { symbol: 'ASII.JK', name: 'Astra International Tbk', base: 'ASII', quote: 'IDR', aliases: ['ASII', 'ASTRA'] },
+  { symbol: 'GOTO.JK', name: 'GoTo Gojek Tokopedia Tbk', base: 'GOTO', quote: 'IDR', aliases: ['GOTO'] },
+  { symbol: 'ICBP.JK', name: 'Indofood CBP Sukses Makmur Tbk', base: 'ICBP', quote: 'IDR', aliases: ['ICBP'] },
+  { symbol: 'UNVR.JK', name: 'Unilever Indonesia Tbk', base: 'UNVR', quote: 'IDR', aliases: ['UNVR'] },
+  { symbol: 'ADRO.JK', name: 'Alamtri Resources Indonesia Tbk (Adaro)', base: 'ADRO', quote: 'IDR', aliases: ['ADRO', 'ADARO'] },
+  { symbol: 'AMMN.JK', name: 'Amman Mineral Internasional Tbk', base: 'AMMN', quote: 'IDR', aliases: ['AMMN', 'AMMAN'] },
+  { symbol: 'BREN.JK', name: 'Barito Renewables Energy Tbk', base: 'BREN', quote: 'IDR', aliases: ['BREN'] },
+  { symbol: 'BRPT.JK', name: 'Barito Pacific Tbk', base: 'BRPT', quote: 'IDR', aliases: ['BRPT'] },
+  { symbol: 'ANTM.JK', name: 'Aneka Tambang Tbk', base: 'ANTM', quote: 'IDR', aliases: ['ANTM', 'ANTAM'] },
+];
+
+/**
  * Representasi pasangan simbol hasil parsing adaptif.
  */
 export interface ParsedSymbolPair {
@@ -171,8 +209,14 @@ export function calculateSearchScore(rawQuery: string, item: MarketSearchResult)
   if (base === q || sym === q) {
     return 120;
   }
-  if (sym === `${q}USDT` || sym === `${q}USDT.P` || sym === `${q}IDR` || sym === `${q}BTC`) {
+  if (sym === `${q}USDT` || sym === `${q}USDT.P` || sym === `${q}IDR` || sym === `${q}BTC` || sym === `${q}.JK`) {
     return 115;
+  }
+
+  // 1b. Symbol Aliasing Engine Match (misal: XAUUSD, GOLD -> GC=F; NASDAQ -> ^IXIC)
+  const aliasMatch = POPULAR_YAHOO_ASSETS.find((y) => y.symbol.toUpperCase().replace(/[\/\-_]/g, '') === sym);
+  if (aliasMatch && aliasMatch.aliases.some((a) => a.toUpperCase() === q)) {
+    return 118; // Hampir setara exact match
   }
 
   // 2. Tier 1: Prefix Match pada BaseAsset atau Ticker
@@ -318,6 +362,18 @@ export class SymbolSearchEngine {
       });
     }
 
+    // Instrumen Yahoo Finance (Saham Indo, Logam Mulia USD, Indeks AS)
+    for (const item of POPULAR_YAHOO_ASSETS) {
+      list.push({
+        symbol: item.symbol,
+        baseAsset: item.base,
+        quoteAsset: item.quote,
+        displayName: item.name,
+        type: 'spot',
+        provider: 'Yahoo Finance',
+      });
+    }
+
     this.localRegistry = list;
   }
 
@@ -357,6 +413,7 @@ export class SymbolSearchEngine {
         if (exchange === 'binance' && !prov.includes('binance')) return false;
         if (exchange === 'indodax' && !prov.includes('indodax')) return false;
         if (exchange === 'bitunix' && !prov.includes('bitunix')) return false;
+        if (exchange === 'yahoo' && !prov.includes('yahoo')) return false;
       }
       return true;
     });

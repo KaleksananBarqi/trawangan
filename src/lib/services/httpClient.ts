@@ -64,8 +64,15 @@ export async function universalFetch(
   }
 
   // Fallback ke global fetch (Node.js test environment atau browser biasa)
+  const defaultHeaders: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  };
+
   const res = await globalThis.fetch(url, {
-    headers: options?.headers,
+    headers: {
+      ...defaultHeaders,
+      ...(options?.headers || {}),
+    },
     signal: options?.signal,
   });
 

@@ -22,6 +22,17 @@ export interface InstrumentIdentity {
 const COMMON_QUOTES = ['USDT', 'USDC', 'USD', 'IDR', 'BUSD', 'BTC', 'ETH', 'EUR', 'GBP', 'TRY'];
 
 /**
+ * Memeriksa apakah simbol merupakan instrumen bursa Yahoo Finance
+ * (Saham Indonesia .JK, Indeks ^, atau Komoditas Berjangka =F)
+ */
+export function isYahooSymbol(symbol?: string | null): boolean {
+  if (!symbol) return false;
+  const clean = symbol.includes(':') ? symbol.split(':')[1].trim() : symbol.trim();
+  const upper = clean.toUpperCase();
+  return upper.endsWith('.JK') || upper.startsWith('^') || upper.endsWith('=F') || upper.includes('=F');
+}
+
+/**
  * Normalisasi string simbol perdagangan untuk pencocokan toleran bursa dan sufiks kontrak.
  * Menghilangkan awalan bursa ('binance:'), tanda baca ('-', '_', '/'),
  * serta sufiks kontrak derivatif ('.P', '-PERP', 'PERP').
@@ -146,7 +157,9 @@ export function resolveVelaSymbolKey(sym: string, pId: string): string {
   const clean = sym.includes(':') ? sym.split(':')[1].trim() : sym.trim();
   const p = (pId || 'binance').toLowerCase();
 
-  if (p === 'indodax' || clean.toUpperCase().endsWith('IDR')) {
+  if (p === 'yahoo' || isYahooSymbol(clean)) {
+    return `yahoo:${clean.toUpperCase()}`;
+  } else if (p === 'indodax' || clean.toUpperCase().endsWith('IDR')) {
     const pair = clean.replace(/[\/\-_]/g, '').toUpperCase();
     return `indodax:${pair}`;
   } else if (p === 'hyperliquid') {
@@ -183,10 +196,13 @@ export function routeVenueForSymbol(
     if (hint.includes('binance') || hint === 'binance') return 'binance';
     if (hint.includes('hyperliquid') || hint === 'hyperliquid') return 'hyperliquid';
     if (hint.includes('coinbase') || hint === 'coinbase') return 'coinbase';
+    if (hint.includes('yahoo') || hint === 'yahoo') return 'yahoo';
     return hint;
   }
 
-  if (clean.endsWith('IDR')) {
+  if (isYahooSymbol(clean)) {
+    return 'yahoo';
+  } else if (clean.endsWith('IDR')) {
     return 'indodax';
   } else if (clean.endsWith('.P') && currentVenue === 'indodax') {
     return 'bitunix';
