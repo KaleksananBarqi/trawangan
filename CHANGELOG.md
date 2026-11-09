@@ -5,6 +5,23 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.40.0] - 2026-11-09
+
+### 🚀 Ditambahkan (Added)
+- **Dukungan Multi-Aset Yahoo Finance & Dynamic Feeder Context (ADR-0021):**
+  - **Integrasi Feed Multi-Aset Gratis:** Mendukung data pasar non-kripto gratis tanpa API key untuk Saham Indonesia/IDX (`*.JK`), Indeks Saham AS (`^IXIC`, `^NDX`, `QQQ`), dan Komoditas riil berdenominasi USD (`GC=F` Emas dan `SI=F` Perak).
+  - **Dynamic Feeder Routing & Provider Context:** Pengalihan provider aktif secara otomatis mengikuti instrumen yang dipilih tanpa perlu konfigurasi manual di Pengaturan.
+  - **Lencana Status Keterlambatan (Delayed 15M):** Penanda visual transparan `DELAYED 15M` pada Header dan Status Bar saat feed instrumen Yahoo aktif dengan pembatasan polling cerdas untuk mencegah rate limiting.
+  - **Client-Side Candle Resampling:** Mesin resampling lilin otomatis untuk menghasilkan timeframe 2 Jam (2H) dan 4 Jam (4H) dari data basis 1 Jam Yahoo Finance.
+  - **Symbol Aliasing Engine & Offline Registry Sub-10ms:** Pencarian cerdas alias simbol populer (`GOLD`/`XAUUSD` -> `GC=F`, `NASDAQ` -> `^IXIC`, `BBCA` -> `BBCA.JK`).
+  - **Kategori Aset & Filter USD:** Tab navigasi kategori aset (`Semua Aset`, `Kripto`, `Saham Indo (IDX)`, `Komoditas & Indeks`) serta filter denominasi `USD ($)` pada modal pencarian simbol.
+
+### 🐛 Diperbaiki (Fixed)
+- **Multi-Pane Gesture Drawing pada Sub-Pane Indikator (Volume & Osilator):**
+  - Mengatasi masalah di mana hasil gestur gambar teknikal (*draw by holding*) tidak muncul saat digambar di sub-pane bawah (Volume dan Stochastic Oscillator).
+  - Menetapkan resolusi pane dinamis (`targetPaneId`) dan memproyeksikan anchors ke data-space sub-pane terkait secara presisi tanpa terpotong (*clipped out*).
+  - Mengisolasi wick snapping hanya untuk lilin harga pada pane utama (`'price'`) dan mengaktifkan dukungan *scribble to erase* multi-pane.
+
 ## [0.39.0] - 2026-11-08
 
 ### 🚀 Ditambahkan (Added)
