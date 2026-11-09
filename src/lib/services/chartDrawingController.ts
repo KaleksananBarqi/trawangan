@@ -32,6 +32,7 @@ export interface GestureCreationState {
   candidates: GestureCandidate[];
   candidateIndex: number;
   points: Array<{ x: number; y: number }>;
+  paneId?: string;
   expiresAt: number;
 }
 
@@ -95,11 +96,41 @@ export function isAABBOverlap(a: ScribbleBounds, b: ScribbleBounds): boolean {
 /**
  * Mengekstrak koordinat batas AABB dari berbagai format objek gambar Vela
  */
-export function extractDrawingBounds(drawing: any): ScribbleBounds | null {
+export function extractDrawingBounds(drawing: any, proj?: any): ScribbleBounds | null {
   if (!drawing) return null;
 
-  // 1. Jika drawing memiliki properti bounds
-  if (drawing.bounds) {
+  // 1. Jika drawing adalah objek Vela yang memiliki method bounds(proj)
+  if (proj && typeof drawing.bounds === 'function') {
+    try {
+      const b = drawing.bounds(proj);
+      if (b && typeof b.x === 'number' && typeof b.y === 'number') {
+        return {
+          minX: b.x,
+          maxX: b.x + (b.w ?? 0),
+          minY: b.y,
+          maxY: b.y + (b.h ?? 0)
+        };
+      }
+    } catch (_) {}
+  }
+
+  // 2. Jika drawing memiliki method pixels(proj)
+  if (proj && typeof drawing.pixels === 'function') {
+    try {
+      const p = drawing.pixels(proj);
+      if (Array.isArray(p) && p.length >= 4) {
+        return {
+          minX: Math.min(p[0], p[2]),
+          maxX: Math.max(p[0], p[2]),
+          minY: Math.min(p[1], p[3]),
+          maxY: Math.max(p[1], p[3])
+        };
+      }
+    } catch (_) {}
+  }
+
+  // 3. Jika drawing memiliki properti bounds
+  if (drawing.bounds && typeof drawing.bounds === 'object') {
     const b = drawing.bounds;
     const minX = b.minX ?? b.left ?? b.x ?? 0;
     const maxX = b.maxX ?? b.right ?? (minX + (b.width ?? 0));
@@ -108,7 +139,43 @@ export function extractDrawingBounds(drawing: any): ScribbleBounds | null {
     return { minX, maxX, minY, maxY };
   }
 
-  // 2. Jika drawing memiliki points (Array<{ x: number, y: number }>)
+  // 4. Jika drawing memiliki anchors data-space [{ time, price }] dan ada projector
+  if (
+    proj &&
+    Array.isArray(drawing.anchors) &&
+    drawing.anchors.length > 0 &&
+    typeof proj.xOf === 'function' &&
+    typeof proj.yOf === 'function'
+  ) {
+    try {
+      const paneId = drawing.paneId || 'price';
+      const validPixelAnchors = drawing.anchors
+        .map((a: any) => {
+          if (typeof a?.time === 'number' && typeof a?.price === 'number') {
+            const x = proj.xOf(a.time);
+            const y = proj.yOf(a.price, paneId);
+            if (typeof x === 'number' && typeof y === 'number' && !isNaN(x) && !isNaN(y)) {
+              return { x, y };
+            }
+          }
+          return null;
+        })
+        .filter(Boolean) as Array<{ x: number; y: number }>;
+
+      if (validPixelAnchors.length > 0) {
+        const xs = validPixelAnchors.map((a) => a.x);
+        const ys = validPixelAnchors.map((a) => a.y);
+        return {
+          minX: Math.min(...xs),
+          maxX: Math.max(...xs),
+          minY: Math.min(...ys),
+          maxY: Math.max(...ys)
+        };
+      }
+    } catch (_) {}
+  }
+
+  // 5. Jika drawing memiliki points (Array<{ x: number, y: number }>)
   if (Array.isArray(drawing.points) && drawing.points.length > 0) {
     const xs = drawing.points.map((p: any) => p.x);
     const ys = drawing.points.map((p: any) => p.y);
@@ -120,7 +187,7 @@ export function extractDrawingBounds(drawing: any): ScribbleBounds | null {
     };
   }
 
-  // 3. Jika drawing memiliki anchors (Array<{ x?: number, y?: number, price?: number, time?: number }>)
+  // 6. Jika drawing memiliki anchors berpiksel (Array<{ x?: number, y?: number }>)
   if (Array.isArray(drawing.anchors) && drawing.anchors.length > 0) {
     const validAnchors = drawing.anchors.filter((a: any) => typeof a.x === 'number' && typeof a.y === 'number');
     if (validAnchors.length > 0) {
@@ -135,7 +202,7 @@ export function extractDrawingBounds(drawing: any): ScribbleBounds | null {
     }
   }
 
-  // 4. Jika drawing memiliki koordinat x1, y1, x2, y2
+  // 7. Jika drawing memiliki koordinat x1, y1, x2, y2
   if (typeof drawing.x1 === 'number' && typeof drawing.y1 === 'number') {
     const x2 = typeof drawing.x2 === 'number' ? drawing.x2 : drawing.x1;
     const y2 = typeof drawing.y2 === 'number' ? drawing.y2 : drawing.y1;
@@ -147,7 +214,7 @@ export function extractDrawingBounds(drawing: any): ScribbleBounds | null {
     };
   }
 
-  // 5. Jika drawing memiliki koordinat x, y (dan width/height opsional)
+  // 8. Jika drawing memiliki koordinat x, y (dan width/height opsional)
   if (typeof drawing.x === 'number' && typeof drawing.y === 'number') {
     const w = drawing.width ?? 0;
     const h = drawing.height ?? 0;
@@ -165,8 +232,8 @@ export function extractDrawingBounds(drawing: any): ScribbleBounds | null {
 /**
  * Memeriksa apakah suatu objek gambar beririsan dengan area goresan scribble
  */
-export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBounds): boolean {
-  const drawingBounds = extractDrawingBounds(drawing);
+export function checkDrawingIntersectsBounds(drawing: any, bounds: ScribbleBounds, proj?: any): boolean {
+  const drawingBounds = extractDrawingBounds(drawing, proj);
   if (!drawingBounds) return false;
   return isAABBOverlap(drawingBounds, bounds);
 }
@@ -635,12 +702,45 @@ export class ChartDrawingController {
     const stroke = [...this.liveGestureStroke];
     this.liveGestureStroke = [];
 
-    const result = recognizeGesture(stroke, options);
+    // Deteksi sub-pane target berdasarkan titik goresan awal atau tengah
+    const activeChart = this.getActiveChart();
+    const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+    const proj = typeof renderer?.drawingProjector === 'function'
+      ? renderer.drawingProjector()
+      : typeof activeChart?.getProjector === 'function'
+        ? activeChart.getProjector()
+        : null;
+
+    let targetPaneId: string | null = null;
+    if (proj && typeof proj.paneIdAtY === 'function' && stroke.length > 0) {
+      targetPaneId = proj.paneIdAtY(stroke[0].y);
+      if (!targetPaneId && stroke.length > 1) {
+        targetPaneId = proj.paneIdAtY(stroke[Math.floor(stroke.length / 2)].y);
+      }
+      if (!targetPaneId && stroke.length > 0) {
+        targetPaneId = proj.paneIdAtY(stroke[stroke.length - 1].y);
+      }
+    }
+    if (!targetPaneId && typeof renderer?.nearestPaneToY === 'function' && stroke.length > 0) {
+      targetPaneId = renderer.nearestPaneToY(stroke[0].y)?.id ?? null;
+    }
+    if (!targetPaneId) {
+      targetPaneId = 'price';
+    }
+
+    // Jika menggambar di sub-pane indikator (bukan 'price'), nonaktifkan candle wick snapping
+    const isIndicatorPane = targetPaneId !== 'price';
+    const effectiveOptions: GestureRecognizerOptions = {
+      ...options,
+      ...(isIndicatorPane ? { wicks: [], candles: [] } : {})
+    };
+
+    const result = recognizeGesture(stroke, effectiveOptions);
 
     // 1. Tangani Penghapusan Scribble to Erase
     if (result.tool === 'scribble') {
       if (result.scribbleBounds) {
-        this.eraseDrawingsInBounds(result.scribbleBounds);
+        this.eraseDrawingsInBounds(result.scribbleBounds, targetPaneId);
       }
       // Jika mode transient hold aktif, kembalikan kursor ke tool sebelumnya
       if (this.isHoldingGestureKey) {
@@ -656,18 +756,20 @@ export class ChartDrawingController {
     if (result.tool) {
       const created = this.createDrawing({
         type: result.tool,
-        points: result.points
+        points: result.points,
+        paneId: targetPaneId
       });
 
       const drawingId = created?.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
 
-      // Simpan referensi lastGestureCreation untuk Floating HUD & Tab cycling
+      // Simpan referensi lastGestureCreation untuk Floating HUD & Tab cycling (melestarikan targetPaneId)
       if (result.candidates && result.candidates.length > 0) {
         this.setLastGestureCreation({
           drawingId,
           candidates: result.candidates,
           candidateIndex: 0,
           points: result.points,
+          paneId: targetPaneId,
           expiresAt: Date.now() + 2500
         });
       }
@@ -718,12 +820,25 @@ export class ChartDrawingController {
   /**
    * Menghapus seluruh drawing yang beririsan dengan scribbleBounds dan merekamnya ke undo stack
    */
-  eraseDrawingsInBounds(bounds: ScribbleBounds): string[] {
+  eraseDrawingsInBounds(bounds: ScribbleBounds, targetPaneId?: string): string[] {
     const activeChart = this.getActiveChart();
     const allDrawings = activeChart?.drawings?.all?.() || this.activeDrawings;
     if (!allDrawings || allDrawings.length === 0) return [];
 
-    const toDelete = allDrawings.filter((d: any) => checkDrawingIntersectsBounds(d, bounds));
+    const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+    const proj = typeof renderer?.drawingProjector === 'function'
+      ? renderer.drawingProjector()
+      : typeof activeChart?.getProjector === 'function'
+        ? activeChart.getProjector()
+        : null;
+
+    const toDelete = allDrawings.filter((d: any) => {
+      // Jika targetPaneId didefinisikan, jangan hapus drawing milik pane lain
+      if (targetPaneId && d.paneId && d.paneId !== targetPaneId) {
+        return false;
+      }
+      return checkDrawingIntersectsBounds(d, bounds, proj);
+    });
     if (toDelete.length === 0) return [];
 
     const idsToDelete = toDelete.map((d: any) => d.id).filter(Boolean);
@@ -809,7 +924,7 @@ export class ChartDrawingController {
     const current = this.getLastGestureCreation();
     if (!current) return false;
 
-    const { candidates, candidateIndex, drawingId, points } = current;
+    const { candidates, candidateIndex, drawingId, points, paneId } = current;
     if (!candidates || candidates.length <= 1) return false;
 
     const nextIndex = (candidateIndex + 1) % candidates.length;
@@ -820,10 +935,11 @@ export class ChartDrawingController {
       this.deleteDrawing(drawingId);
     }
 
-    // Buat drawing baru dengan tipe alat dari kandidat berikutnya
+    // Buat drawing baru dengan tipe alat dari kandidat berikutnya, mempertahankan target paneId
     const created = this.createDrawing({
       type: nextCandidate.tool,
-      points
+      points,
+      paneId
     });
 
     const newDrawingId = created?.id || (this.activeDrawings.length > 0 ? this.activeDrawings[this.activeDrawings.length - 1]?.id : null);
@@ -833,6 +949,7 @@ export class ChartDrawingController {
       candidates,
       candidateIndex: nextIndex,
       points,
+      paneId,
       expiresAt: Date.now() + 2500
     });
 
@@ -1614,25 +1731,53 @@ export class ChartDrawingController {
   /**
    * Buat objek gambar programatik langsung pada chart (misal horizontal line dari menu konteks atau gesture)
    */
-  createDrawing(spec: { type: string; price?: number; [key: string]: any }): any {
+  createDrawing(spec: { type: string; price?: number; paneId?: string; [key: string]: any }): any {
     const activeChart = this.getActiveChart();
     if (activeChart?.drawings) {
       try {
         let created: any = null;
         const drawingInit: any = { ...spec };
 
+        const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+        const proj = typeof renderer?.drawingProjector === 'function'
+          ? renderer.drawingProjector()
+          : typeof activeChart?.getProjector === 'function'
+            ? activeChart.getProjector()
+            : null;
+
+        // Auto-detect target paneId dari spec.paneId, atau dari koordinat titik spec.points
+        let targetPaneId = drawingInit.paneId;
+        if (!targetPaneId && proj && Array.isArray(spec.points) && spec.points.length > 0) {
+          const firstPt = spec.points[0];
+          if (typeof firstPt?.y === 'number' && typeof proj.paneIdAtY === 'function') {
+            targetPaneId = proj.paneIdAtY(firstPt.y);
+            // Jika berada di batas separator, coba titik tengah atau titik akhir
+            if (!targetPaneId && spec.points.length > 1) {
+              const midPt = spec.points[Math.floor(spec.points.length / 2)];
+              if (typeof midPt?.y === 'number') {
+                targetPaneId = proj.paneIdAtY(midPt.y);
+              }
+            }
+            if (!targetPaneId && spec.points.length > 0) {
+              const lastPt = spec.points[spec.points.length - 1];
+              if (typeof lastPt?.y === 'number') {
+                targetPaneId = proj.paneIdAtY(lastPt.y);
+              }
+            }
+          }
+          if (!targetPaneId && typeof renderer?.nearestPaneToY === 'function') {
+            targetPaneId = renderer.nearestPaneToY(firstPt.y)?.id;
+          }
+        }
+        if (!targetPaneId) {
+          targetPaneId = 'price';
+        }
+        drawingInit.paneId = targetPaneId;
+
         // Resolusi anchors data-space ({ time, price }) dari koordinat piksel points jika belum tersedia
         if (spec.points && Array.isArray(spec.points) && !drawingInit.anchors) {
-          const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
-          const proj = typeof renderer?.drawingProjector === 'function'
-            ? renderer.drawingProjector()
-            : typeof activeChart?.getProjector === 'function'
-              ? activeChart.getProjector()
-              : null;
-
           if (proj && typeof proj.pxToPoint === 'function') {
-            const paneId = drawingInit.paneId || 'price';
-            drawingInit.anchors = spec.points.map((pt: any) => proj.pxToPoint(pt.x, pt.y, paneId));
+            drawingInit.anchors = spec.points.map((pt: any) => proj.pxToPoint(pt.x, pt.y, targetPaneId));
           }
         } else if (spec.price !== undefined && !drawingInit.anchors) {
           drawingInit.anchors = [{ time: Date.now(), price: spec.price }];
@@ -1765,9 +1910,9 @@ export class ChartDrawingController {
         // Tempelkan kembali metadata ke activeDrawings sebelum sanitasi
         this.planLifecycle.reattachMetadataToDrawings(this.activeDrawings);
 
-        // Tick-Aligned Price Guard: Sanitasi anchors harga pada setiap gambar
+        // Tick-Aligned Price Guard: Sanitasi anchors harga khusus gambar pada pane utama 'price'
         for (const d of this.activeDrawings) {
-          if (Array.isArray(d.anchors)) {
+          if ((!d.paneId || d.paneId === 'price') && Array.isArray(d.anchors)) {
             for (const a of d.anchors) {
               if (typeof a.price === 'number') {
                 a.price = roundToTickSize(a.price);

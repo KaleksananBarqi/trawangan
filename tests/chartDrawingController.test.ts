@@ -1238,6 +1238,148 @@ test('ChartDrawingController Deep Module Suite', async (t) => {
     assert.equal(neutralBox.text.halign, 'center');
     assert.equal(neutralBox.metadata.polarity, 'neutral');
   });
+
+  await t.test('29. Multi-Pane Gesture Drawing Support (Volume & Oscillator Sub-Panes)', () => {
+    const controller = new ChartDrawingController();
+    const createdDrawings: any[] = [];
+
+    // Mock projector dengan multi-pane resolution:
+    // price: y 0..350
+    // pane-volume: y 351..450
+    // pane-stoch: y 451..550
+    const mockProjector = {
+      paneIdAtY: (y: number) => {
+        if (y <= 350) return 'price';
+        if (y <= 450) return 'pane-volume';
+        return 'pane-stoch';
+      },
+      pxToPoint: (x: number, y: number, paneId: string) => {
+        if (paneId === 'pane-stoch') {
+          return { time: 1700000000 + x * 60, price: 100 - (y - 450) };
+        }
+        if (paneId === 'pane-volume') {
+          return { time: 1700000000 + x * 60, price: (450 - y) * 1000 };
+        }
+        return { time: 1700000000 + x * 60, price: 50000 - y * 10 };
+      },
+      xOf: (time: number) => (time - 1700000000) / 60,
+      yOf: (price: number, paneId: string) => {
+        if (paneId === 'pane-stoch') return 450 + (100 - price);
+        if (paneId === 'pane-volume') return 450 - price / 1000;
+        return (50000 - price) / 10;
+      }
+    };
+
+    const mockDrawings = {
+      create: (spec: any) => {
+        const item = { ...spec, id: `dw-${createdDrawings.length + 1}` };
+        createdDrawings.push(item);
+        return item;
+      },
+      add: (type: string, spec: any) => {
+        const item = { ...spec, type, id: `dw-${createdDrawings.length + 1}` };
+        createdDrawings.push(item);
+        return item;
+      },
+      all: () => createdDrawings,
+      get: (id: string) => createdDrawings.find((d) => d.id === id),
+      removeMany: (ids: string[]) => {
+        const remaining = createdDrawings.filter((d) => !ids.includes(d.id));
+        createdDrawings.length = 0;
+        createdDrawings.push(...remaining);
+      },
+      on: () => {},
+      off: () => {}
+    };
+
+    const mockWorkspace = {
+      active: {
+        chart: {
+          drawings: mockDrawings,
+          renderer: {
+            drawingProjector: () => mockProjector
+          }
+        }
+      },
+      cells: () => [
+        {
+          chart: {
+            drawings: mockDrawings,
+            renderer: {
+              drawingProjector: () => mockProjector
+            }
+          }
+        }
+      ]
+    };
+
+    controller.attachWorkspace(mockWorkspace as any, () => 'BTCUSDT', () => '15m');
+    controller.setTool('gesture');
+
+    // 1. Gesture stroke di sub-pane Stochastic (y = 500, range 451..550)
+    controller.startGestureStroke(100, 500);
+    controller.addGesturePoint(200, 501);
+    controller.addGesturePoint(300, 500);
+    controller.addGesturePoint(400, 500);
+
+    const stochResult = controller.finishGestureStroke({
+      canvasWidth: 800,
+      canvasHeight: 600,
+      // Walaupun dikirimi wicks lilin chart utama (y=100..200), sub-pane tidak boleh snap ke lilin
+      wicks: [{ highY: 100, lowY: 200 }] as any
+    });
+
+    assert.ok(stochResult, 'Hasil pengenalan gestur harus valid');
+    assert.equal(stochResult.tool, 'hline');
+    const createdStochDrawing = createdDrawings[createdDrawings.length - 1];
+    assert.ok(createdStochDrawing, 'Drawing di sub-pane stoch harus terbuat');
+    assert.equal(createdStochDrawing.paneId, 'pane-stoch', 'paneId drawing harus pane-stoch');
+    assert.ok(Array.isArray(createdStochDrawing.anchors), 'anchors harus terkonversi');
+    // Di Stochastic y=500: price = 100 - (500 - 450) = 50
+    assert.equal(createdStochDrawing.anchors[0].price, 50);
+
+    // 2. Siklus kandidat Tab harus mempertahankan target paneId
+    const hudState = controller.getLastGestureCreation();
+    assert.ok(hudState, 'HUD state harus aktif');
+    assert.equal(hudState.paneId, 'pane-stoch', 'HUD state harus menyimpan paneId pane-stoch');
+
+    const cycled = controller.cycleGestureCandidate();
+    assert.equal(cycled, true);
+    const cycledDrawing = createdDrawings[createdDrawings.length - 1];
+    assert.equal(cycledDrawing.paneId, 'pane-stoch', 'Cycled candidate harus tetap di pane-stoch');
+
+    // 3. Gesture stroke di sub-pane Volume (y = 400, range 351..450)
+    controller.setTool('gesture');
+    controller.startGestureStroke(100, 400);
+    controller.addGesturePoint(300, 400);
+    controller.addGesturePoint(300, 430);
+    controller.addGesturePoint(100, 430);
+    controller.addGesturePoint(100, 400);
+
+    const volResult = controller.finishGestureStroke();
+    assert.ok(volResult);
+    assert.equal(volResult.tool, 'box');
+    const createdVolDrawing = createdDrawings[createdDrawings.length - 1];
+    assert.equal(createdVolDrawing.paneId, 'pane-volume', 'Box drawing harus memiliki pane-volume');
+
+    // 4. Scribble to Erase di sub-pane Volume hanya menghapus drawing di pane-volume
+    const initialCount = createdDrawings.length;
+    controller.setTool('gesture');
+    // Gambar scribble zigzag bolak-balik di area volume (y: 390..440, x: 100..300)
+    controller.startGestureStroke(100, 410);
+    controller.addGesturePoint(280, 415);
+    controller.addGesturePoint(110, 420);
+    controller.addGesturePoint(270, 422);
+    controller.addGesturePoint(105, 425);
+    controller.addGesturePoint(275, 428);
+
+    const scribbleResult = controller.finishGestureStroke();
+    assert.ok(scribbleResult);
+    assert.equal(scribbleResult.tool, 'scribble');
+    // Box di volume terhapus, tetapi drawing di stoch tetap ada
+    assert.equal(createdDrawings.some((d) => d.paneId === 'pane-volume'), false, 'Box volume harus terhapus');
+    assert.equal(createdDrawings.some((d) => d.paneId === 'pane-stoch'), true, 'Drawing stoch harus tetap bertahan');
+  });
 });
 
 
