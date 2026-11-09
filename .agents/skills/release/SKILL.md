@@ -19,7 +19,8 @@ Alur rilis dianggap **SELESAI** jika dan hanya jika:
 4. Gerbang pengujian lolos 100% (`npm test` pass, `npm run check` / `tsc --noEmit` clean, `cargo check` clean).
 5. Git commit dan annotated git tag `v<version>` terbentuk.
 6. Branch utama dan git tag berhasil di-push ke remote GitHub (`origin`).
-7. Dokumentasi Second Brain di Obsidian berhasil dicatat via MCP tanpa menunggu konfirmasi manual.
+7. Workflow release GitHub Actions terverifikasi sukses (status: `success`) dan seluruh aset biner resmi (.exe/.msi, .AppImage/.deb/.rpm, .dmg) terkonfirmasi lengkap pada GitHub Release.
+8. Dokumentasi Second Brain di Obsidian berhasil dicatat via MCP tanpa menunggu konfirmasi manual.
 
 ---
 
@@ -139,7 +140,38 @@ Jalankan rangkaian pengujian berikut secara berurutan:
    git push origin vX.Y.Z
    ```
    *Catatan:* Push tag `v*` akan otomatis memicu workflow GitHub Actions `.github/workflows/release.yml`. Workflow tersebut secara otomatis menjalankan `node scripts/extract-changelog.cjs vX.Y.Z` untuk menyematkan changelog terbaru ke dalam `releaseBody`.
-3. *(Opsional/Verifikasi Cepat)* Jika GitHub Release sudah terbuat oleh CI/CD dan perlu pembaruan teks rilis seketika:
+
+---
+
+### Langkah 6b: Verifikasi & Pemantauan CI/CD Release Run (Wajib Sebelum Rilis Dinyatakan Selesai)
+1. Dapatkan Run ID rilis yang terpicu oleh tag:
+   ```powershell
+   $runId = gh run list --workflow="release.yml" --limit 1 --json databaseId -q ".[0].databaseId"
+   ```
+2. Pantau jalannya proses kompilasi dan bundling multi-platform hingga tuntas:
+   ```powershell
+   gh run watch $runId --interval 15
+   ```
+3. **Penanganan Otomatis jika Terjadi Kegagalan Jaringan Transient (HTTP 504 / Download Timeout):**
+   - Jika ada job yang gagal, periksa penyebab kegagalan:
+     ```powershell
+     gh run view $runId --log-failed
+     ```
+   - Jika kegagalan disebabkan oleh gangguan jaringan sesaat (seperti HTTP 504 saat runner mengunduh biner WiX atau AppImage), picu rerun otomatis untuk job yang gagal:
+     ```powershell
+     gh run rerun $runId --failed
+     gh run watch $runId --interval 15
+     ```
+4. **Verifikasi Lampiran Aset Biner Resmi pada GitHub Release:**
+   ```powershell
+   gh release view vX.Y.Z
+   ```
+   Pastikan seluruh paket installer biner resmi telah terlampir lengkap:
+   - **Windows:** `.exe` (NSIS) & `.msi`
+   - **Linux:** `.AppImage`, `.deb`, & `.rpm`
+   - **macOS:** `.dmg` & `.app.tar.gz`
+
+5. *(Opsional/Sinkronisasi Catatan Rilis)* Jika teks rilis pada GitHub Release perlu diperbarui seketika:
    ```powershell
    $notes = node scripts/extract-changelog.cjs vX.Y.Z
    gh release edit vX.Y.Z --notes "$notes"
