@@ -411,6 +411,14 @@
                       Konfluensi {parsedPlan.confluenceScore.score}/{parsedPlan.confluenceScore.max}
                     </span>
                   {/if}
+                  <span
+                    class="status-preview-pill symbol-pill mono-nums"
+                    title={parsedPlan.symbol
+                      ? `Simbol terdeteksi dari dokumen: ${parsedPlan.symbol}`
+                      : `Rencana posisi akan diterapkan ke chart aktif: ${activeSymbol}`}
+                  >
+                    {parsedPlan.symbol || activeSymbol}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1193,6 +1201,12 @@
     background: rgba(168, 85, 247, 0.15);
     color: #c084fc;
     border-color: rgba(168, 85, 247, 0.3);
+  }
+
+  .status-preview-pill.symbol-pill {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border-color: rgba(59, 130, 246, 0.35);
   }
 
   /* Dual Entries Preview Grid */

@@ -1157,10 +1157,9 @@ export function parseTradingPlan(
 
   // Fallback deteksi simbol koin dari teks jika belum ada di tabel parameter
   if (!parsedSymbol) {
-    const symRegex = /\b([A-Z0-9]{2,10}(?:USDT|BUSD|USDC|USD|BTC)(?:\.P)?)\b/i;
-    const headerMatch = (text || '').match(symRegex);
-    if (headerMatch) {
-      parsedSymbol = headerMatch[1].toUpperCase();
+    const fallbackSym = extractFallbackSymbol(text);
+    if (fallbackSym) {
+      parsedSymbol = fallbackSym;
     }
   }
 
@@ -1182,6 +1181,87 @@ export function parseTradingPlan(
     ...(parsedSymbol ? { symbol: parsedSymbol } : {}),
     ...(parsedSetupStatus ? { setupStatus: parsedSetupStatus } : {}),
   };
+}
+
+/**
+ * Mengekstrak fallback simbol koin dari teks jika tidak tercantum secara eksplisit di tabel parameter.
+ * Menggunakan pendekatan multi-tier berjenjang:
+ * 1. Baris heading / judul setup (# ..., ## ..., Setup ..., Analisis ...)
+ * 2. Baris narasi umum di luar tabel.
+ *
+ * Dilengkapi dengan filter konteks cerdas untuk mengabaikan penyebutan korelasi benchmark makro
+ * (misal "Korelasi benchmark BTCUSDT", "Benchmark BTC", "relative to BTCUSDT", dll.)
+ * agar rencana trading tidak tertukar ke instrumen pembanding.
+ */
+export function extractFallbackSymbol(text: string): string | undefined {
+  if (!text || typeof text !== 'string') return undefined;
+
+  // Pola pasangan dagang kripto umum (misal ETHUSDT, BTCUSDT.P, SOL/USDT, BTC-PERP)
+  const candidateRegex = /\b([A-Z0-9]{2,10}(?:[\/-])?(?:USDT|BUSD|USDC|USD|BTC|IDR)(?:\.P)?)\b/gi;
+
+  /**
+   * Memeriksa apakah kemunculan kandidat simbol berada dalam konteks pembanding / benchmark korelasi.
+   */
+  const isBenchmarkContext = (line: string, rawCandidate: string): boolean => {
+    const escaped = rawCandidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // 1. Simbol didahului kata kunci korelasi / benchmark / pembanding
+    // Contoh: "Korelasi benchmark BTCUSDT", "Benchmark makro BTCUSDT", "Korelasi dengan BTCUSDT", "relative to BTCUSDT"
+    const prefixBenchmarkPattern = new RegExp(
+      `(?:korelasi(?:\\s+(?:benchmark|pasar|market|makro))?|benchmark(?:\\s+(?:aset|asset|koin|coin|pair|makro))?|correlation(?:\\s+(?:with|benchmark))?|correlated(?:\\s+with)?|vs\\.?|versus|relatif\\s+terhadap|relative\\s+to|dibandingkan(?:\\s+dengan)?|compared\\s+to|market\\s+leader)(?:\\s+\\w+){0,3}\\s*[:\\s-]*${escaped}\\b`,
+      'i'
+    );
+    if (prefixBenchmarkPattern.test(line)) {
+      return true;
+    }
+
+    // 2. Simbol diikuti kata kunci pembanding / benchmark
+    // Contoh: "BTCUSDT sebagai benchmark", "BTCUSDT sebagai korelasi", "BTCUSDT as benchmark"
+    const suffixBenchmarkPattern = new RegExp(
+      `\\b${escaped}\\s+(?:sebagai|as|sebagai\\s+aset|sebagai\\s+pair)?\\s*(?:benchmark|korelasi|correlation|pembanding)\\b`,
+      'i'
+    );
+    if (suffixBenchmarkPattern.test(line)) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const lines = text.split(/\r?\n/);
+
+  // Tahap 1: Periksa baris judul/heading markdown (# ..., ## ..., dsb) atau label setup eksplisit
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isHeadingOrTitle = /^(?:#{1,6}\s+|(?:\*{1,2}|_{1,2})?(?:setup|tesis|thesis|analisis|trading plan|plan)\s*[:\-])/i.test(trimmed);
+    if (!isHeadingOrTitle) continue;
+
+    candidateRegex.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = candidateRegex.exec(trimmed)) !== null) {
+      const rawCandidate = match[1];
+      if (!isBenchmarkContext(trimmed, rawCandidate)) {
+        return rawCandidate.replace(/[\/-]/g, '').toUpperCase();
+      }
+    }
+  }
+
+  // Tahap 2: Periksa baris-baris narasi teks biasa (lewati baris tabel markdown)
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('|')) continue;
+
+    candidateRegex.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = candidateRegex.exec(trimmed)) !== null) {
+      const rawCandidate = match[1];
+      if (!isBenchmarkContext(trimmed, rawCandidate)) {
+        return rawCandidate.replace(/[\/-]/g, '').toUpperCase();
+      }
+    }
+  }
+
+  return undefined;
 }
 
 /**

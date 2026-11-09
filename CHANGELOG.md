@@ -5,6 +5,15 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.40.1] - 2026-11-09
+
+### 🐛 Diperbaiki (Fixed)
+- **Eliminasi False-Positive Korelasi Benchmark pada Trade Plan Parser:**
+  - Menutup celah di mana rencana trading yang memuat narasi korelasi instrumen benchmark makro (contoh: *"Korelasi benchmark BTCUSDT"*) salah dikenali sebagai trading plan BTCUSDT dan memicu perpindahan workspace (*auto-switch*) secara paksa.
+  - Memperkenalkan algoritma ekstraksi simbol bertingkat (*multi-tier*) dengan guard konteks (`isBenchmarkContext`) yang secara cerdas mendeteksi dan mengabaikan penyebutan korelasi, benchmark, maupun instrumen pembanding (`relative to`, `sebagai benchmark`, `vs`).
+  - Memastikan fallback deterministik ke simbol chart aktif (`activeSymbol`) jika trading plan tidak mencantumkan nama koin atau hanya menyebutkan benchmark pembanding.
+  - Menambahkan lencana visual transparan target simbol (`.status-preview-pill.symbol-pill`) pada modal Import Trading Plan agar pengguna dapat memverifikasi instrumen target sebelum diterapkan ke chart.
+
 ## [0.40.0] - 2026-11-09
 
 ### 🚀 Ditambahkan (Added)
