@@ -5,6 +5,32 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.42.0] - 2026-11-11
+
+### 🚀 Ditambahkan (Added)
+- **Integrasi Tab Persisten `Plan` di Panel Kanan & Edit Form 2-Arah (`TradePlanTab.svelte`, `tradePlanFormService.ts`):**
+  - Memindahkan alur pembuatan dan penyuntingan Trade Plan dari modal sementara (`ImportPlanModal`) ke tab persisten **`Plan`** di panel kanan (`RightDockRail`) dengan 3 sub-mode tersinkronisasi: **Form** terstruktur, **Teks Markdown 2-arah lossless**, dan **Riwayat (Trade Plan Vault)**.
+  - Mendukung **Edit In-Place Atomik** (`updatePlan` pada `TradingPlanLifecycle` & `ChartDrawingController`) langsung dari tombol Edit di tab `Layers` atau `FloatingThesisCard` dengan penguncian simbol *read-only*, pemeliharaan koordinat stage, rekonsiliasi auto-alerts (`reconcilePlanAlerts`), dan transaksi undo/redo `'update_multi_position'`.
+  - Dilengkapi *dirty guard* banner (**"Level di chart berubah"** + `[Muat dari chart]`) saat anchor chart digeser di tengah penyuntingan form, resizer lebar panel adaptif dengan dukungan keyboard (`panelResizeHelper.ts`), serta pintasan eksekusi cepat **`Ctrl + Enter`** (`commit-trade-plan`).
+- **Koleksi 31 Preset Tema Jawa & Token Kontras Adaptif WCAG 2.1 AA (ADR-0022):**
+  - Menambahkan **31 preset tema bawaan bernuansa budaya Jawa** melalui builder `createBuiltInPreset` di `themes.ts` (13 tema gelap: `Pundi Arta`, `Samodra Wengi`, `Undhuh Dana`, `Segara Jero`, `Getih Segara`, `Tutup Sasi`, `Kilat Wengi`, `Tengah Wengi`, `Surya Baskara`, `Sapu Tirta`, `Rame Sore`, `Ayem Tentrem`, `Wates Dhuwur`; dan 18 tema terang: `Ngrembaka`, `Kopi Tubruk`, `Geni Mrengkang`, `Rega Pasar`, `Watu Putih`, `Laku Batin`, `Pasar Esuk`, `Gading Ijo`, `Sekar Jambon`, `Kuning Kunir`, `Mas Kencana`, `Wangsit Lembah`, `Dana Lestari`, `Peken Ijo`, `Paring Eling`, `Lembayung Awan`, `Kopi Klotok`, `Banyu Segara`), sehingga total registri resmi meningkat menjadi **37 preset** (18 Gelap & 19 Terang).
+  - Memperkenalkan kontrak token foreground adaptif berbasis rasio kontras WCAG 2.1 (`--on-brand-primary`, `--on-bull-color`, `--on-bear-color`) serta kalkulasi `--bull-text` *Hybrid Semantik* (`resolveContrastTextColor` dan `resolveReadableBullText` di `colorUtils.ts`) yang menjamin rasio kontras minimum `>= 4.5:1` di seluruh preset bawaan maupun palet kustom pengguna.
+  - Menambahkan bilah pencarian instan tema (`themeSearchQuery`) beserta `.btn-reset-filter` dan outline kontras swatch pada `AppearanceTab.svelte`.
+
+### 🔄 Diubah (Changed)
+- **Evolusi Preset `red_folder` Menjadi Warta Abang (Amandemen ADR-0016 §2):**
+  - Mengonversi skema warna *Red Folder News* menjadi **Warta Abang** (`#EAEAE5` background, `#4E1112` text, `#CF9F9F` bullish, `#941B1E` bearish) sambil mempertahankan ID kanonikal `'red_folder'` demi kompatibilitas mundur penuh.
+- **Kebijakan Akses Tunggal & Modularisasi Panel Kanan (`WatchlistPanel.svelte` -> `right-dock/`, `trade-plan/`):**
+  - Menghapus `ImportPlanModal.svelte`, tombol duplikat di `Header.svelte` / `DrawingToolbar.svelte`, serta baris tab ganda di `WatchlistPanel.svelte`; pemicu `Ctrl + Shift + P` dan *Smart Canvas Paste* kini bermuara langsung ke tab `Plan` di panel kanan.
+  - Memecah komponen monolitik menjadi modul terpisah (`WatchlistTab.svelte`, `AlertsTab.svelte` dengan langganan ticker terisolasi, `LayersTab.svelte`, serta sub-komponen `trade-plan/`).
+- **Sinkronisasi Dokumentasi `README.md`:**
+  - Memperbarui dokumentasi utama (`README.md`) mencakup fitur v0.33–v0.42 (Multi-Aset Yahoo Finance, Deep Stream Health Guard, Dual-Entry, Right-Dock `Plan` Tab, 37 Preset Tema, cheatsheet pintasan terbaru, dan daftar lengkap ADR 0001–0022).
+
+### 🐛 Diperbaiki (Fixed)
+- **Round-Trip Markdown & Konsistensi Kontras Lintas Tema:**
+  - Memperbaiki parsing bullet list sebelum `key: value`, mempertahankan label `ContextZone` verbatim, menjaga `preservedEntryLabels` untuk `E1`/`E2`, serta mencegah `probabilityNotes` menyisipkan label `'Sedang'` secara paksa.
+  - Menstandarkan fallback CSS `--on-brand-primary`, `--on-bull-color`, dan `--on-bear-color` di 14 komponen UI Svelte serta memusatkan token `--bull-text`, `--status-warn`, dan `--status-danger` di `theme.css` dan `themeEngine.ts`.
+
 ## [0.41.0] - 2026-11-10
 
 ### 🚀 Ditambahkan (Added)
