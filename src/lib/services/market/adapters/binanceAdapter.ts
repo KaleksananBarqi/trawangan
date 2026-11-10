@@ -173,9 +173,10 @@ export class BinanceAdapter implements MarketProviderAdapter {
   }
 
   async fetchCandles(symbol: string, interval: string, limit = 500): Promise<Candle[]> {
-    const normalized = normalizeTicker(symbol);
-    const isPerp = normalized.endsWith('.P');
-    const cleanSymbol = normalized.replace(/\.P$/i, '');
+    const trimmedSym = (symbol || '').trim();
+    const normalized = normalizeTicker(trimmedSym);
+    const isPerp = normalized.endsWith('.P') || trimmedSym.toUpperCase().includes('.P');
+    const cleanSymbol = normalized.replace(/\.P$/i, '').replace(/\.P/gi, '');
     const exchangeInterval = toExchangeInterval(interval, 'binance');
 
     // Rust backend fetch_binance_klines hanya memanggil Spot (/api/v3/klines); kontrak .P langsung diarahkan ke fapi.binance.com

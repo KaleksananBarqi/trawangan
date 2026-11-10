@@ -157,7 +157,7 @@ export function normalizeBitunixSymbol(ticker: string): string {
     .trim()
     .replace(/^bitunix:/i, '')
     .replace(/\.P$/i, '')
-    .replace(/[\/\-_]/g, '')
+    .replace(/[\s\/\-_]/g, '')
     .toUpperCase();
   return clean.endsWith('USDT') ? clean : `${clean}USDT`;
 }
@@ -568,6 +568,7 @@ export class BitunixProvider {
     let fallbackPollTimer: ReturnType<typeof setTimeout> | null = null;
     let fallbackPollInFlight = false;
     let fallbackActive = false;
+    let fallbackHealthy = false;
 
     let lastKlineAt = this.now();
     let lastFrameAt = this.now();
@@ -608,10 +609,29 @@ export class BitunixProvider {
       fallbackPollInFlight = true;
       try {
         const bars = await this.fetchBarsStrict(ticker, timeframe, { countBack: 4 });
-        if (closed || bars.length === 0) return;
+        if (closed) return;
+        if (bars.length === 0) {
+          if (emitToGuardAsFailure) {
+            fallbackHealthy = false;
+            pollErrorCount++;
+            const state = pollErrorCount >= 3 ? 'blocked' : 'stalled';
+            this.options.healthSink?.reportStreamState(
+              sourceKey,
+              'bitunix',
+              state,
+              `Fallback REST Bitunix ${symbol} mengembalikan data kosong.`
+            );
+          }
+          return;
+        }
 
         pollErrorCount = 0;
         const latestBars = bars.slice(-2);
+        const tailBar = latestBars[latestBars.length - 1];
+        if (emitToGuardAsFailure && tailBar && Number.isFinite(tailBar.close) && tailBar.close > 0) {
+          fallbackHealthy = true;
+          this.options.healthSink?.reportStreamState(sourceKey, 'bitunix', 'connected');
+        }
         for (const bar of latestBars) {
           if (!currentBar || bar.time >= currentBar.time) {
             currentBar = { ...bar };
@@ -621,6 +641,7 @@ export class BitunixProvider {
         }
       } catch (err: any) {
         if (!closed && emitToGuardAsFailure) {
+          fallbackHealthy = false;
           pollErrorCount++;
           const state = pollErrorCount >= 3 ? 'blocked' : 'stalled';
           this.options.healthSink?.reportStreamState(
@@ -704,12 +725,15 @@ export class BitunixProvider {
       clearSocketTimers();
       closeSocketSafely(ws);
       ws = null;
-      this.options.healthSink?.reportStreamState(
-        sourceKey,
-        'bitunix',
-        reconnectAttempt >= 2 ? 'blocked' : 'stalled',
-        reason
-      );
+      // Laporkan gangguan jika fallback REST belum terverifikasi sehat agar UI tidak flip-flop saat background WS retry
+      if (!fallbackHealthy) {
+        this.options.healthSink?.reportStreamState(
+          sourceKey,
+          'bitunix',
+          reconnectAttempt >= 2 ? 'blocked' : 'stalled',
+          reason
+        );
+      }
       startFallbackPolling(true);
       scheduleReconnect();
     };
@@ -736,6 +760,7 @@ export class BitunixProvider {
       lastKlineAt = nowMs;
       reconnectAttempt = 0;
       pollErrorCount = 0;
+      fallbackHealthy = false;
       stopFallbackPolling();
       this.options.healthSink?.reportStreamState(sourceKey, 'bitunix', 'connected');
 
@@ -900,6 +925,8 @@ export class BitunixProvider {
         if (closed) return;
         reconnectAttempt = 0;
         pollErrorCount = 0;
+        fallbackHealthy = false;
+        stopFallbackPolling();
         clearReconnectTimer();
         clearSocketTimers();
         closeSocketSafely(ws);

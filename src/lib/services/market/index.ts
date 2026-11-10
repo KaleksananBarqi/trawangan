@@ -251,7 +251,7 @@ export class MarketFeedService implements IMarketFeedService {
    * Menerima laporan kesehatan dari live stream grafik (WebSocket / polling candle)
    * sehingga gangguan candle tidak tertutupi oleh suksesnya polling ticker REST.
    */
-  public reportStreamHealth(
+  public reportStreamState(
     sourceKey: string,
     providerId: string,
     state: FeedConnectionState,
@@ -281,15 +281,6 @@ export class MarketFeedService implements IMarketFeedService {
     ) {
       this.notifyConnectionChange();
     }
-  }
-
-  public reportStreamState(
-    sourceKey: string,
-    providerId: string,
-    state: FeedConnectionState,
-    message?: string
-  ): void {
-    this.reportStreamHealth(sourceKey, providerId, state, message);
   }
 
   public clearStreamState(sourceKey: string): void {
@@ -354,13 +345,28 @@ export class MarketFeedService implements IMarketFeedService {
 
   // ─── Manajemen Subscription ───
 
+  /**
+   * Membaca cache ticker secara terisolasi per provider agar tidak terjadi kebocoran harga lintas bursa
+   */
+  private getCachedTicker(
+    rawSymbol: string,
+    providerId: string,
+    cleanSymbol: string
+  ): TickerInfo | undefined {
+    const norm = normalizeTicker(cleanSymbol || rawSymbol);
+    const scopedKey = `${providerId}:${norm}`;
+    return (
+      this.tickerCache.get(scopedKey) ||
+      (!rawSymbol.includes(':') ? this.tickerCache.get(norm) : undefined)
+    );
+  }
+
   public subscribeActiveTicker(symbol: string, listener: TickerListener): () => void {
     const hasPrefix = symbol.includes(':');
     const { providerId, cleanSymbol } = resolveSymbolProvider(symbol, this.activeProviderId);
     const clean = hasPrefix
       ? `${providerId}:${cleanSymbol}`
       : cleanSymbol || normalizeTicker(symbol);
-    const scopedCacheKey = `${providerId}:${normalizeTicker(cleanSymbol || symbol)}`;
 
     if (!this.activeSymbolSubscribers.has(clean)) {
       this.activeSymbolSubscribers.set(clean, new Set());
@@ -368,9 +374,7 @@ export class MarketFeedService implements IMarketFeedService {
     this.activeSymbolSubscribers.get(clean)!.add(listener);
 
     // Jika ada cache harga lama yang cocok, kirim segera ke subscriber baru tanpa kebocoran lintas bursa
-    const cached =
-      this.tickerCache.get(scopedCacheKey) ||
-      (!hasPrefix ? this.tickerCache.get(normalizeTicker(cleanSymbol || symbol)) : undefined);
+    const cached = this.getCachedTicker(symbol, providerId, cleanSymbol);
     if (cached) {
       listener(cached);
     }
@@ -401,10 +405,7 @@ export class MarketFeedService implements IMarketFeedService {
     for (const s of symbols) {
       if (!s || isSectionToken(s)) continue;
       const { providerId, cleanSymbol } = resolveSymbolProvider(s, this.activeProviderId);
-      const norm = normalizeTicker(cleanSymbol || s);
-      const c =
-        this.tickerCache.get(`${providerId}:${norm}`) ||
-        (!s.includes(':') ? this.tickerCache.get(norm) : undefined);
+      const c = this.getCachedTicker(s, providerId, cleanSymbol);
       if (c) initialMap[s] = c;
     }
     if (Object.keys(initialMap).length > 0) {
@@ -593,11 +594,7 @@ export class MarketFeedService implements IMarketFeedService {
 
     for (const [sym, listeners] of this.activeSymbolSubscribers.entries()) {
       const { providerId, cleanSymbol } = resolveSymbolProvider(sym, this.activeProviderId);
-      const norm = normalizeTicker(cleanSymbol || sym);
-      const t =
-        mergedBatchData[sym] ||
-        this.tickerCache.get(`${providerId}:${norm}`) ||
-        (!sym.includes(':') ? this.tickerCache.get(norm) : undefined);
+      const t = mergedBatchData[sym] || this.getCachedTicker(sym, providerId, cleanSymbol);
       if (t) {
         for (const l of listeners) {
           l(t);
@@ -609,11 +606,7 @@ export class MarketFeedService implements IMarketFeedService {
       const subMap: Record<string, TickerInfo> = {};
       for (const s of sub.symbols) {
         const { providerId, cleanSymbol } = resolveSymbolProvider(s, this.activeProviderId);
-        const norm = normalizeTicker(cleanSymbol || s);
-        const t =
-          mergedBatchData[s] ||
-          this.tickerCache.get(`${providerId}:${norm}`) ||
-          (!s.includes(':') ? this.tickerCache.get(norm) : undefined);
+        const t = mergedBatchData[s] || this.getCachedTicker(s, providerId, cleanSymbol);
         if (t) subMap[s] = t;
       }
       sub.listener(subMap);
@@ -654,8 +647,7 @@ export class MarketFeedService implements IMarketFeedService {
     const querySym = cleanSymbol || symbol;
     const norm = normalizeTicker(querySym);
     const scopedKey = `${providerId}:${norm}`;
-    const cached =
-      this.tickerCache.get(scopedKey) || (!hasPrefix ? this.tickerCache.get(norm) : undefined);
+    const cached = this.getCachedTicker(symbol, providerId, cleanSymbol);
     if (cached) return cached;
 
     const ticker = await this.getAdapter(providerId).fetchTicker(querySym);
@@ -749,17 +741,27 @@ export class MarketFeedService implements IMarketFeedService {
       this.syncCustomAdapter(targetCfg);
     }
 
+    let persistedInTauri = false;
     if (this.isTauri()) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('set_active_data_provider', { id });
-        return;
+        persistedInTauri = true;
+
+        // Hidrasi daftar provider dari Rust bila provider custom-* belum ada di adapter/memori lokal
+        if (!targetCfg || id.trim().toLowerCase().startsWith('custom')) {
+          await this.getSavedProviders();
+          this.inMemoryProviders = this.inMemoryProviders.map((p) => ({
+            ...p,
+            is_active: p.id === id,
+          }));
+        }
       } catch (e) {
         console.warn('[MarketFeedService] Gagal set_active_data_provider di Rust:', e);
       }
     }
 
-    if (typeof localStorage !== 'undefined') {
+    if (!persistedInTauri && typeof localStorage !== 'undefined') {
       try {
         const list = await this.getSavedProviders();
         const updated = list.map((p) => ({
@@ -770,7 +772,7 @@ export class MarketFeedService implements IMarketFeedService {
       } catch (_) {}
     }
 
-    // Segera perbarui polling dengan provider baru
+    // Segera perbarui polling dengan provider baru pada jalur web maupun desktop Tauri
     this.pollTick().catch(() => {});
   }
 

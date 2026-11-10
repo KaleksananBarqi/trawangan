@@ -1,9 +1,12 @@
 // Adapter Pasar Bursa Coinbase Exchange (Regulated US Spot)
 import type { MarketProviderAdapter } from '../types';
 import type { Candle, TickerInfo, MarketSearchResult } from '../../../types/market';
-import { VERIFIED_CRYPTO_ASSETS } from '../constants';
+import { VERIFIED_CRYPTO_ASSETS, fetchTickersInChunks } from '../constants';
+import { normalizeCoinbaseProductId } from '../../instrumentIdentity';
 import { fromVelaTimeframe, toExchangeInterval } from '../../../utils/timeframeAdapter';
 import { universalFetch } from '../../httpClient';
+
+export { normalizeCoinbaseProductId };
 
 const COINBASE_REST_BASE = 'https://api.exchange.coinbase.com';
 const MAX_CANDLES_PER_REQ = 300;
@@ -23,56 +26,6 @@ const GRANULARITY_MAP: Record<string, number> = {
   '1w': 86400,
   '1M': 86400,
 };
-
-/**
- * Menormalkan berbagai variasi simbol menuju ID produk resmi Coinbase Exchange (format BASE-QUOTE).
- * Menjaga pair eksplisit seperti 'ETH-BTC' / 'ETH/BTC' -> 'ETH-BTC',
- * serta menghindari duplikasi '-USD-USD' pada 'BTCUSD' maupun sufiks kontrak '.P'.
- */
-export function normalizeCoinbaseProductId(symbol: string): string {
-  if (!symbol) return 'BTC-USD';
-  let product = symbol
-    .trim()
-    .replace(/^coinbase:/i, '')
-    .trim()
-    .replace(/\.P$/i, '')
-    .replace(/-PERP$/i, '')
-    .replace(/_PERP$/i, '')
-    .replace(/PERP$/i, '')
-    .replace(/[\/_]/g, '-')
-    .toUpperCase();
-
-  if (!product) return 'BTC-USD';
-
-  if (product.endsWith('-USDT')) {
-    return `${product.slice(0, -5)}-USD`;
-  }
-
-  if (product.includes('-')) {
-    return product;
-  }
-
-  if (product.endsWith('USDT') && product.length > 4) {
-    return `${product.slice(0, -4)}-USD`;
-  }
-  if (product.endsWith('USDC') && product.length > 4) {
-    return `${product.slice(0, -4)}-USDC`;
-  }
-  if (product.endsWith('USD') && product.length > 3) {
-    return `${product.slice(0, -3)}-USD`;
-  }
-  if (product.endsWith('BTC') && product.length > 3) {
-    return `${product.slice(0, -3)}-BTC`;
-  }
-  if (product.endsWith('ETH') && product.length > 3) {
-    return `${product.slice(0, -3)}-ETH`;
-  }
-  if (product.endsWith('EUR') && product.length > 3) {
-    return `${product.slice(0, -3)}-EUR`;
-  }
-
-  return `${product}-USD`;
-}
 
 export class CoinbaseAdapter implements MarketProviderAdapter {
   id = 'coinbase';
@@ -149,34 +102,8 @@ export class CoinbaseAdapter implements MarketProviderAdapter {
   }
 
   async fetchBatchTickers(symbols: string[]): Promise<Record<string, TickerInfo>> {
-    if (!symbols || symbols.length === 0) return {};
-    const resultMap: Record<string, TickerInfo> = {};
-    let lastError: any = null;
-
     // Eksekusi paralel berbatas agar aman dari rate limit API Coinbase Exchange
-    const batchSize = 5;
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      const chunk = symbols.slice(i, i + batchSize);
-      const settled = await Promise.allSettled(chunk.map((s) => this.fetchTicker(s)));
-      for (let j = 0; j < settled.length; j++) {
-        const res = settled[j];
-        const sym = chunk[j];
-        if (res.status === 'fulfilled') {
-          if (res.value.price > 0) {
-            resultMap[sym] = res.value;
-          }
-        } else {
-          lastError = res.reason;
-          console.warn(`[CoinbaseAdapter] Gagal fetch ticker ${sym}:`, res.reason);
-        }
-      }
-    }
-
-    if (Object.keys(resultMap).length === 0 && lastError) {
-      throw lastError;
-    }
-
-    return resultMap;
+    return fetchTickersInChunks(symbols, (sym) => this.fetchTicker(sym), 'CoinbaseAdapter');
   }
 
   async fetchCandles(symbol: string, interval: string, limit = 500): Promise<Candle[]> {

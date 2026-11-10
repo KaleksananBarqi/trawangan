@@ -59,12 +59,6 @@ export interface IMarketFeedService {
   getConnectionStatus(): FeedConnectionStatus;
   onConnectionChange(listener: FeedConnectionListener): () => void;
   resetConnectionError(): void;
-  reportStreamHealth?(
-    sourceKey: string,
-    providerId: string,
-    state: FeedConnectionState,
-    message?: string
-  ): void;
   reportStreamState?(
     sourceKey: string,
     providerId: string,

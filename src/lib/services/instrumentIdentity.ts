@@ -162,19 +162,71 @@ export function toVelaProviderId(providerId: string): string {
 }
 
 /**
+ * Menormalkan berbagai variasi simbol menuju ID produk resmi Coinbase Exchange (format BASE-QUOTE).
+ * Menjaga pair eksplisit seperti 'ETH-BTC' / 'ETH/BTC' -> 'ETH-BTC',
+ * serta menghindari duplikasi '-USD-USD' pada 'BTCUSD' maupun sufiks kontrak '.P'.
+ */
+export function normalizeCoinbaseProductId(symbol: string): string {
+  if (!symbol) return 'BTC-USD';
+  let product = symbol
+    .trim()
+    .replace(/^coinbase:/i, '')
+    .trim()
+    .replace(/\.P$/i, '')
+    .replace(/-PERP$/i, '')
+    .replace(/_PERP$/i, '')
+    .replace(/PERP$/i, '')
+    .replace(/[\/_]/g, '-')
+    .replace(/\s+/g, '')
+    .toUpperCase();
+
+  if (!product) return 'BTC-USD';
+
+  if (product.endsWith('-USDT')) {
+    return `${product.slice(0, -5)}-USD`;
+  }
+
+  if (product.includes('-')) {
+    return product;
+  }
+
+  if (product.endsWith('USDT') && product.length > 4) {
+    return `${product.slice(0, -4)}-USD`;
+  }
+  if (product.endsWith('USDC') && product.length > 4) {
+    return `${product.slice(0, -4)}-USDC`;
+  }
+  if (product.endsWith('USD') && product.length > 3) {
+    return `${product.slice(0, -3)}-USD`;
+  }
+  if (product.endsWith('BTC') && product.length > 3) {
+    return `${product.slice(0, -3)}-BTC`;
+  }
+  if (product.endsWith('ETH') && product.length > 3) {
+    return `${product.slice(0, -3)}-ETH`;
+  }
+  if (product.endsWith('EUR') && product.length > 3) {
+    return `${product.slice(0, -3)}-EUR`;
+  }
+
+  return `${product}-USD`;
+}
+
+/**
  * Normalisasi format simbol pair ke format Vela sesuai bursa aktif
  */
 export function resolveVelaSymbolKey(sym: string, pId: string): string {
   if (!sym) return 'binance:BTCUSDT';
   const raw = sym.trim();
   const colonIdx = raw.indexOf(':');
+  const rawPrefix = colonIdx > 0 ? raw.slice(0, colonIdx).trim().toLowerCase() : '';
   const clean = colonIdx >= 0 ? raw.slice(colonIdx + 1).trim() : raw;
-  const p = (pId || 'binance').trim().toLowerCase();
+  const p = rawPrefix || (pId || 'binance').trim().toLowerCase();
 
   if (p === 'yahoo' || isYahooSymbol(clean)) {
     return `yahoo:${clean.toUpperCase()}`;
   } else if (p === 'indodax' || clean.toUpperCase().endsWith('IDR')) {
-    const pair = clean.replace(/[\/\-_]/g, '').toUpperCase();
+    const pair = clean.replace(/[\s\/\-_]/g, '').toUpperCase();
     return `indodax:${pair}`;
   } else if (p === 'hyperliquid') {
     if (clean.includes('/')) {
@@ -188,53 +240,20 @@ export function resolveVelaSymbolKey(sym: string, pId: string): string {
       .replace(/\.P$/i, '')
       .replace(/-PERP$/i, '')
       .replace(/(USDT|USDC|USD)$/i, '')
-      .replace(/[\/\-_]/g, '')
+      .replace(/[\s\/\-_]/g, '')
       .toUpperCase();
     return `hyperliquid:${coin || clean.toUpperCase()}`;
   } else if (p === 'coinbase') {
-    let product = clean
-      .replace(/\.P$/i, '')
-      .replace(/-PERP$/i, '')
-      .replace(/[\/_]/g, '-')
-      .toUpperCase();
-
-    if (product.endsWith('-USDT')) {
-      product = `${product.slice(0, -5)}-USD`;
-    } else if (!product.includes('-')) {
-      if (product.endsWith('USDT') && product.length > 4) {
-        product = `${product.slice(0, -4)}-USD`;
-      } else if (product.endsWith('USDC') && product.length > 4) {
-        product = `${product.slice(0, -4)}-USDC`;
-      } else if (product.endsWith('USD') && product.length > 3) {
-        product = `${product.slice(0, -3)}-USD`;
-      } else if (product.endsWith('BTC') && product.length > 3) {
-        product = `${product.slice(0, -3)}-BTC`;
-      } else if (product.endsWith('ETH') && product.length > 3) {
-        product = `${product.slice(0, -3)}-ETH`;
-      } else if (product.endsWith('EUR') && product.length > 3) {
-        product = `${product.slice(0, -3)}-EUR`;
-      } else {
-        product = `${product}-USD`;
-      }
-    }
-    return `coinbase:${product}`;
-  } else if (p === 'bitunix') {
-    const isPerp = clean.toUpperCase().endsWith('.P');
-    const bare = clean
-      .replace(/\.P$/i, '')
-      .replace(/[\/\-_]/g, '')
-      .toUpperCase();
-    return `bitunix:${isPerp ? `${bare}.P` : bare}`;
+    return `coinbase:${normalizeCoinbaseProductId(clean)}`;
   } else if (p.startsWith('custom')) {
     return `${toVelaProviderId(p)}:${clean.toUpperCase()}`;
   }
 
-  const isPerp = clean.toUpperCase().endsWith('.P');
-  const bare = clean
-    .replace(/\.P$/i, '')
-    .replace(/[\/\-_]/g, '')
-    .toUpperCase();
-  return `binance:${isPerp ? `${bare}.P` : bare}`;
+  const resolvedVenue = p === 'bitunix' ? 'bitunix' : 'binance';
+  const compact = clean.replace(/[\s\/\-_]/g, '').toUpperCase();
+  const isPerp = compact.endsWith('.P');
+  const bare = compact.replace(/\.P$/i, '');
+  return `${resolvedVenue}:${isPerp ? `${bare}.P` : bare}`;
 }
 
 /**

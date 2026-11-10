@@ -1,7 +1,7 @@
 // Adapter Pasar untuk Custom Node / Proxy Endpoint yang didaftarkan pengguna
 import type { MarketProviderAdapter } from '../types';
 import type { Candle, TickerInfo, MarketSearchResult, ProviderConfig } from '../../../types/market';
-import { VERIFIED_CRYPTO_ASSETS } from '../constants';
+import { VERIFIED_CRYPTO_ASSETS, fetchTickersInChunks } from '../constants';
 import { CustomFeedProvider } from '../../customProvider';
 import { universalFetch } from '../../httpClient';
 
@@ -103,33 +103,7 @@ export class CustomFeedAdapter implements MarketProviderAdapter {
   }
 
   async fetchBatchTickers(symbols: string[]): Promise<Record<string, TickerInfo>> {
-    if (!symbols || symbols.length === 0) return {};
-    const resultMap: Record<string, TickerInfo> = {};
-    let lastError: any = null;
-
-    const batchSize = 5;
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      const chunk = symbols.slice(i, i + batchSize);
-      const settled = await Promise.allSettled(chunk.map((s) => this.fetchTicker(s)));
-      for (let j = 0; j < settled.length; j++) {
-        const res = settled[j];
-        const sym = chunk[j];
-        if (res.status === 'fulfilled') {
-          if (res.value.price > 0) {
-            resultMap[sym] = res.value;
-          }
-        } else {
-          lastError = res.reason;
-          console.warn(`[CustomFeedAdapter:${this.id}] Gagal fetch ticker ${sym}:`, res.reason);
-        }
-      }
-    }
-
-    if (Object.keys(resultMap).length === 0 && lastError) {
-      throw lastError;
-    }
-
-    return resultMap;
+    return fetchTickersInChunks(symbols, (sym) => this.fetchTicker(sym), `CustomFeedAdapter:${this.id}`);
   }
 
   async fetchCandles(symbol: string, interval: string, limit = 500): Promise<Candle[]> {

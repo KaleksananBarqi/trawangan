@@ -372,6 +372,8 @@ export class ChartSessionController {
   private streamWatchdogMs?: number;
   private streamStaleMs?: number;
   private onlineListener: (() => void) | null = null;
+  private registeredCustomSignatures = new Map<string, string>();
+  private customHydrationEpoch = 0;
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -515,13 +517,32 @@ export class ChartSessionController {
     return Array.from(byId.values());
   }
 
-  private registerCustomConfigIntoVela(cfg: ProviderConfig): void {
+  private getCustomConfigSignature(cfg: ProviderConfig): string {
+    return `${cfg.name || ''}|${cfg.rest_url || ''}|${cfg.ws_url || ''}`;
+  }
+
+  private registerCustomConfigIntoVela(cfg: ProviderConfig): boolean {
     const velaFeed = this.workspace?.feed;
-    if (!velaFeed || typeof velaFeed.registerProvider !== 'function') return;
+    if (!velaFeed || typeof velaFeed.registerProvider !== 'function') return false;
     const velaKey = toVelaProviderId(cfg.id);
-    if (typeof velaFeed.providerInstance === 'function' && velaFeed.providerInstance(velaKey)) {
-      return;
+    const nextSig = this.getCustomConfigSignature(cfg);
+    const existingInstance =
+      typeof velaFeed.providerInstance === 'function' ? velaFeed.providerInstance(velaKey) : undefined;
+    const prevSig = this.registeredCustomSignatures.get(velaKey);
+
+    if (existingInstance && prevSig === nextSig) {
+      return false;
     }
+
+    if (existingInstance) {
+      try {
+        existingInstance.destroy?.();
+      } catch (_) {}
+      if (typeof velaFeed.unregisterProvider === 'function') {
+        velaFeed.unregisterProvider(velaKey);
+      }
+    }
+
     const wrapped = wrapProviderWithStreamGuard(
       new CustomFeedProvider({
         providerId: cfg.id,
@@ -539,25 +560,30 @@ export class ChartSessionController {
       }
     );
     velaFeed.registerProvider(velaKey, wrapped);
+    this.registeredCustomSignatures.set(velaKey, nextSig);
+    return Boolean(existingInstance);
   }
 
-  private ensureVelaProviderRegistered(targetProviderId?: string): boolean {
+  private ensureVelaProviderRegistered(targetProviderId?: string): { registered: boolean; replaced: boolean } {
     const rawId = (targetProviderId || this.providerId || 'binance').trim().toLowerCase();
-    if (!rawId.startsWith('custom')) return true;
+    if (!rawId.startsWith('custom')) return { registered: true, replaced: false };
 
     const velaFeed = this.workspace?.feed;
-    if (!velaFeed || typeof velaFeed.registerProvider !== 'function') return false;
-    const velaKey = toVelaProviderId(rawId);
-    if (typeof velaFeed.providerInstance === 'function' && velaFeed.providerInstance(velaKey)) {
-      return true;
+    if (!velaFeed || typeof velaFeed.registerProvider !== 'function') {
+      return { registered: false, replaced: false };
     }
+    const velaKey = toVelaProviderId(rawId);
 
     const customCfg = this.getKnownCustomConfigs().find(
       (c) => c.id.toLowerCase() === rawId || toVelaProviderId(c.id) === velaKey
     );
     if (customCfg) {
-      this.registerCustomConfigIntoVela(customCfg);
-      return true;
+      const replaced = this.registerCustomConfigIntoVela(customCfg);
+      return { registered: true, replaced };
+    }
+
+    if (typeof velaFeed.providerInstance === 'function' && velaFeed.providerInstance(velaKey)) {
+      return { registered: true, replaced: false };
     }
 
     const customFactory = this.providerFactories?.[rawId] || this.providerFactories?.[velaKey];
@@ -568,32 +594,47 @@ export class ChartSessionController {
         staleStreamMs: this.streamStaleMs,
       });
       velaFeed.registerProvider(velaKey, wrapped);
-      return true;
+      return { registered: true, replaced: false };
     }
 
-    return false;
+    return { registered: false, replaced: false };
   }
 
   private async hydrateAndRegisterCustomProviders(): Promise<void> {
-    const lists: ProviderConfig[][] = [];
-    const sinkAny = this.feedHealthSink as any;
-    if (typeof sinkAny?.getSavedProviders === 'function') {
-      try {
-        const res = await sinkAny.getSavedProviders();
-        if (Array.isArray(res)) lists.push(res);
-      } catch (_) {}
-    }
-    try {
-      const res = await marketFeed.getSavedProviders();
-      if (Array.isArray(res)) lists.push(res);
-    } catch (_) {}
+    const epoch = ++this.customHydrationEpoch;
+    const byId = new Map<string, ProviderConfig>();
 
-    for (const list of lists) {
+    const mergeList = (list: any) => {
+      if (!Array.isArray(list)) return;
       for (const cfg of list) {
-        if (cfg?.id && cfg.id.toLowerCase().startsWith('custom') && cfg.rest_url?.trim()) {
-          this.registerCustomConfigIntoVela(cfg);
+        if (cfg?.id && String(cfg.id).toLowerCase().startsWith('custom') && cfg.rest_url?.trim()) {
+          byId.set(cfg.id, cfg);
         }
       }
+    };
+
+    try {
+      const res = await marketFeed.getSavedProviders();
+      if (epoch !== this.customHydrationEpoch) return;
+      mergeList(res);
+    } catch (_) {}
+
+    const sinkAny = this.feedHealthSink as any;
+    if (typeof sinkAny?.getSavedProviders === 'function' && sinkAny !== marketFeed) {
+      try {
+        const res = await sinkAny.getSavedProviders();
+        if (epoch !== this.customHydrationEpoch) return;
+        mergeList(res);
+      } catch (_) {}
+    }
+
+    if (epoch !== this.customHydrationEpoch) return;
+
+    // Utamakan state sinkron terkini bila terjadi penyimpanan config saat await berlangsung
+    mergeList(this.getKnownCustomConfigs());
+
+    for (const cfg of byId.values()) {
+      this.registerCustomConfigIntoVela(cfg);
     }
   }
 
@@ -647,9 +688,11 @@ export class ChartSessionController {
       yahoo: () => new YahooFinanceProvider({ healthSink: this.feedHealthSink }),
     };
 
+    this.registeredCustomSignatures.clear();
     // Daftarkan provider custom-* menggunakan kunci Vela aman ([A-Za-z0-9_.]+ -> custom_*)
     for (const cfg of knownCustomConfigs) {
       const velaKey = toVelaProviderId(cfg.id);
+      this.registeredCustomSignatures.set(velaKey, this.getCustomConfigSignature(cfg));
       rawProviderFactories[velaKey] = () =>
         new CustomFeedProvider({
           providerId: cfg.id,
@@ -1247,18 +1290,24 @@ export class ChartSessionController {
 
     if (this.workspace) {
       try {
-        if (!this.ensureVelaProviderRegistered(this.providerId)) {
+        this.customHydrationEpoch++;
+        let regStatus = this.ensureVelaProviderRegistered(this.providerId);
+        if (!regStatus.registered) {
           await this.hydrateAndRegisterCustomProviders();
-          this.ensureVelaProviderRegistered(this.providerId);
+          regStatus = this.ensureVelaProviderRegistered(this.providerId);
         }
         const targetSym = resolveVelaSymbol(this.symbol, this.providerId);
         if (this.syncConfig.symbol) {
           for (const cell of this.getAllCells()) {
-            if (cell.symbol !== targetSym && typeof cell.setSymbol === 'function') {
+            if ((regStatus.replaced || cell.symbol !== targetSym) && typeof cell.setSymbol === 'function') {
               cell.setSymbol(targetSym);
             }
           }
-        } else if (this.workspace.active && this.workspace.active.symbol !== targetSym && typeof this.workspace.active.setSymbol === 'function') {
+        } else if (
+          this.workspace.active &&
+          (regStatus.replaced || this.workspace.active.symbol !== targetSym) &&
+          typeof this.workspace.active.setSymbol === 'function'
+        ) {
           this.workspace.active.setSymbol(targetSym);
         }
 
@@ -2378,31 +2427,38 @@ export class ChartSessionController {
   }
 
   /**
+   * Menambal celah candle historis pada satu cell melalui batas interface orchestrator Vela
+   */
+  private async healCellGap(cell: any): Promise<void> {
+    const chart = cell?.chart || cell?.inner;
+    const orchestrator = chart?.orchestrator;
+    if (!orchestrator || orchestrator.replayQueue) return;
+
+    try {
+      if (!orchestrator.live && typeof orchestrator.startLive === 'function') {
+        orchestrator.startLive();
+      }
+      if (typeof orchestrator.healGap === 'function' && orchestrator.canHeal?.()) {
+        const bars = orchestrator.bars;
+        const lastBar = Array.isArray(bars) && bars.length > 0 ? bars[bars.length - 1] : null;
+        if (lastBar?.time) {
+          orchestrator.lastHealAt = 0;
+          await orchestrator.healGap(lastBar.time);
+        }
+      }
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal healGap saat reconnectLiveFeed:', err);
+    }
+  }
+
+  /**
    * Memaksa penyambungan ulang seluruh live stream aktif dan menambal celah candle pada setiap cell
    */
   public async reconnectLiveFeed(): Promise<void> {
     await this.streamCoordinator.reconnectAll();
 
     for (const cell of this.getAllCells()) {
-      const chart = cell?.chart || cell?.inner;
-      const orchestrator = chart?.orchestrator;
-      if (!orchestrator || orchestrator.replayQueue) continue;
-
-      try {
-        if (!orchestrator.live && typeof orchestrator.startLive === 'function') {
-          orchestrator.startLive();
-        }
-        if (typeof orchestrator.healGap === 'function' && orchestrator.canHeal?.()) {
-          const bars = orchestrator.bars;
-          const lastBar = Array.isArray(bars) && bars.length > 0 ? bars[bars.length - 1] : null;
-          if (lastBar?.time) {
-            orchestrator.lastHealAt = 0;
-            await orchestrator.healGap(lastBar.time);
-          }
-        }
-      } catch (err) {
-        console.warn('[ChartSessionController] Gagal healGap saat reconnectLiveFeed:', err);
-      }
+      await this.healCellGap(cell);
     }
   }
 
@@ -2418,6 +2474,7 @@ export class ChartSessionController {
     }
 
     this.streamCoordinator.clear();
+    this.registeredCustomSignatures.clear();
 
     if (this.resizeObserver) {
       try {

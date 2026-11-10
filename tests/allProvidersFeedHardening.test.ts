@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { universalFetch } from '../src/lib/services/httpClient';
 import { BinanceAdapter } from '../src/lib/services/market/adapters/binanceAdapter';
+import { normalizeTicker } from '../src/lib/services/market/constants';
 import { BitunixProvider, normalizeBitunixSymbol } from '../src/lib/services/bitunixProvider';
 import { resolveVelaSymbolKey } from '../src/lib/services/instrumentIdentity';
 import { MarketFeedService } from '../src/lib/services/market';
@@ -12,6 +13,7 @@ import { HyperliquidAdapter } from '../src/lib/services/market/adapters/hyperliq
 import { CoinbaseAdapter } from '../src/lib/services/market/adapters/coinbaseAdapter';
 import { CustomFeedProvider } from '../src/lib/services/customProvider';
 import { CustomFeedAdapter } from '../src/lib/services/market/adapters/customAdapter';
+import { YahooFinanceProvider } from '../src/lib/services/yahooFinanceProvider';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -501,5 +503,366 @@ test.describe('Phase 2 Hardening — Semua Datafeed, Pair Normalization, & Illiq
 
     await feed.deleteProvider('custom-777');
     feed.destroy();
+  });
+
+  test('9. Remediasi Spec: resolveVelaSymbolKey hormati prefix :, hapus spasi, & deteksi .P berspasi di BinanceAdapter', async () => {
+    // Hormati prefix provider pada simbol meskipun pId default berbeda
+    assert.equal(resolveVelaSymbolKey('coinbase:ETH-BTC', 'binance'), 'coinbase:ETH-BTC');
+    assert.equal(resolveVelaSymbolKey('bitunix:ETH / USDT', 'binance'), 'bitunix:ETHUSDT');
+    assert.equal(resolveVelaSymbolKey('hyperliquid:PURR/USDC', 'binance'), 'hyperliquid:PURR/USDC');
+
+    // Hapus spasi beserta delimiter lain pada Bitunix/Binance
+    assert.equal(normalizeBitunixSymbol('ETH / USDT'), 'ETHUSDT');
+    assert.equal(resolveVelaSymbolKey('ETH / USDT', 'bitunix'), 'bitunix:ETHUSDT');
+    assert.equal(resolveVelaSymbolKey('BTC / USDT.P', 'binance'), 'binance:BTCUSDT.P');
+
+    // normalizeTicker wajib melakukan trim agar akhir .P tidak luput akibat spasi
+    assert.equal(normalizeTicker('BTCUSDT.P '), 'BTCUSDT.P');
+
+    const hitUrls: string[] = [];
+    await withMockFetch(async (url) => {
+      hitUrls.push(url);
+      if (url.startsWith('https://fapi.binance.com/fapi/v1/klines')) {
+        return new Response(
+          JSON.stringify([[1700000000000, '90000', '91000', '89500', '90500', '100']]),
+          { status: 200 }
+        );
+      }
+      return new Response('Bad Request', { status: 400 });
+    }, async () => {
+      const adapter = new BinanceAdapter({ timeoutMs: 1000 });
+      const bars = await adapter.fetchCandles('BTCUSDT.P ', '15m', 5);
+      assert.equal(bars.length, 1);
+      assert.ok(
+        hitUrls[0].startsWith('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&'),
+        `Kontrak .P berspasi harus menuju fapi tanpa .P, aktual=${hitUrls[0]}`
+      );
+    });
+  });
+
+  test('10. Remediasi Spec: fallbackHealthy & sync status BitunixProvider/CustomFeedProvider anti-stuck dan anti-flicker', async () => {
+    // Bagian A: BitunixProvider saat WS gagal & REST fallback sehat -> tidak macet stalled/blocked di MarketFeedService
+    const feed = new MarketFeedService();
+    await feed.setActiveProvider('bitunix');
+
+    class FakeDroppingSocket {
+      public readyState = 0;
+      public onopen: any = null;
+      public onmessage: any = null;
+      public onclose: any = null;
+      public onerror: any = null;
+      constructor(_url: string) {
+        setTimeout(() => {
+          this.readyState = 3;
+          this.onclose?.();
+        }, 5);
+      }
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+
+    let bitunixRestOk = true;
+    const bitunixObservedStates: string[] = [];
+    const trackingSink = {
+      reportStreamState(k: string, p: string, state: any, msg?: string) {
+        bitunixObservedStates.push(state);
+        feed.reportStreamState(k, p, state, msg);
+      },
+      clearStreamState(k: string) {
+        feed.clearStreamState(k);
+      },
+    };
+
+    const bitunixProv = new BitunixProvider({
+      wsFactory: (u) => new FakeDroppingSocket(u),
+      healthSink: trackingSink,
+      pollFallbackMs: 20,
+      baseBackoffMs: 25,
+      maxBackoffMs: 40,
+      staleMs: 5000,
+      pingIntervalMs: 5000,
+    });
+
+    await withMockFetch(async (url) => {
+      if (url.includes('/futures/market/kline')) {
+        if (!bitunixRestOk) return new Response('Down', { status: 503 });
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: [{ time: String(Date.now() - 60_000), open: '2100', high: '2110', low: '2095', close: '2105', baseVol: '10' }],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/futures/market/tickers')) {
+        if (!bitunixRestOk) return new Response('Down', { status: 503 });
+        return new Response(
+          JSON.stringify({ code: 0, data: [{ symbol: 'ETHUSDT', lastPrice: '2107' }] }),
+          { status: 200 }
+        );
+      }
+      return new Response('{}', { status: 404 });
+    }, async () => {
+      const wrappedBitunix = wrapProviderWithStreamGuard(bitunixProv, 'bitunix', new StreamGuardCoordinator(trackingSink), {
+        healthSink: trackingSink,
+        watchdogCheckMs: 30,
+        staleStreamMs: 60,
+      });
+
+      const unsubB = wrappedBitunix.subscribe('ETHUSDT', '15', () => {});
+      await delay(140);
+
+      // WS sempat putus (stalled terlapor awal), namun karena REST fallback sehat maka MarketFeedService harus pulih ke 'connected'
+      assert.ok(bitunixObservedStates.includes('stalled'), 'Putus WS pertama tetap wajib terlapor stalled');
+      assert.equal(
+        feed.getConnectionStatus().state,
+        'connected',
+        'Saat fallback REST Bitunix sehat, sourceKey bitunix tidak boleh tertinggal stalled/blocked'
+      );
+
+      // Anti-flicker: catat jumlah event setelah pulih sementara WS masih gagal reconnect berkala
+      const countAtSteadyRest = bitunixObservedStates.length;
+      await delay(90);
+      const addedWhileRestHealthy = bitunixObservedStates.slice(countAtSteadyRest);
+      assert.ok(
+        !addedWhileRestHealthy.includes('stalled') && !addedWhileRestHealthy.includes('blocked'),
+        'Saat REST fallback sehat berkelanjutan, retry WS background tidak boleh mem-flicker stalled/blocked'
+      );
+
+      // Saat REST fallback ikut mati -> harus naik ke stalled/blocked lagi
+      bitunixRestOk = false;
+      await delay(130);
+      assert.notEqual(
+        feed.getConnectionStatus().state,
+        'connected',
+        'Jika REST fallback ikut gagal setelah WS mati, Guard wajib kembali mendeteksi stalled/blocked'
+      );
+
+      unsubB();
+    });
+
+    // Bagian B: CustomFeedProvider dengan wsUrl menggunakan fallback polling ber-in-flight guard
+    let activeCustomRequests = 0;
+    let maxCustomInFlight = 0;
+    const customFeedStates: string[] = [];
+
+    const customWsProv = new CustomFeedProvider({
+      providerId: 'custom-ws-fallback',
+      restUrl: 'https://custom-ws.example.com',
+      wsUrl: 'wss://custom-ws.example.com/ws',
+      wsFactory: (u) => new FakeDroppingSocket(u),
+      pollIntervalMs: 15,
+      baseBackoffMs: 25,
+      maxBackoffMs: 40,
+      staleMs: 5000,
+      healthSink: {
+        reportStreamState(_k, _p, state) {
+          customFeedStates.push(state);
+        },
+      },
+    });
+
+    await withMockFetch(async () => {
+      activeCustomRequests++;
+      maxCustomInFlight = Math.max(maxCustomInFlight, activeCustomRequests);
+      await delay(45); // Lebih lama dari pollIntervalMs (15ms) untuk menguji anti-overlap
+      activeCustomRequests--;
+      return new Response(JSON.stringify([[Date.now(), 100, 102, 99, 101, 10]]), { status: 200 });
+    }, async () => {
+      const customBars: any[] = [];
+      const unsubC = customWsProv.subscribe('BTCUSDT', '15', (b) => customBars.push(b));
+      await delay(160);
+      assert.equal(maxCustomInFlight, 1, 'Fallback polling WS CustomFeedProvider wajib mematuhi in-flight guard');
+      assert.ok(customBars.length >= 1, 'Fallback polling harus memancarkan candle dari REST');
+      assert.equal(
+        customFeedStates[customFeedStates.length - 1],
+        'connected',
+        'Fallback REST CustomFeedProvider yang sehat harus menstabilkan state connected'
+      );
+      unsubC();
+    });
+
+    feed.destroy();
+  });
+
+  test('11. Remediasi Spec: MarketFeedService.setActiveProvider di Tauri menghidrasi custom-* & memicu pollTick', async () => {
+    const prevWindow = (globalThis as any).window;
+    const invokedCmds: string[] = [];
+    const pollUrls: string[] = [];
+
+    (globalThis as any).window = {
+      __TAURI_INTERNALS__: {
+        invoke: async (cmd: string, args?: any) => {
+          invokedCmds.push(cmd);
+          if (cmd === 'get_data_providers') {
+            return [
+              {
+                id: 'custom-tauri-88',
+                name: 'Tauri Private Node',
+                rest_url: 'https://tauri-node.example.com',
+                ws_url: '',
+                is_active: false,
+              },
+            ];
+          }
+          if (cmd === 'set_active_data_provider') {
+            return null;
+          }
+          if (cmd === 'http_get') {
+            const url = String(args?.url || '');
+            pollUrls.push(url);
+            if (url.startsWith('https://tauri-node.example.com/ticker')) {
+              return JSON.stringify({ price: 54321 });
+            }
+            if (url.startsWith('https://tauri-node.example.com/klines')) {
+              return JSON.stringify([[1700000000, 50000, 55000, 49000, 54321, 10]]);
+            }
+            return JSON.stringify({ lastPrice: '90000', highPrice: '91000', lowPrice: '89000', volume: '10', priceChangePercent: '1.2' });
+          }
+          return null;
+        },
+      },
+    };
+
+    try {
+      const feed = new MarketFeedService();
+      const receivedPrices: number[] = [];
+      const unsub = feed.subscribeActiveTicker('BTCUSDT', (t) => receivedPrices.push(t.price));
+      await delay(20);
+      pollUrls.length = 0;
+
+      await feed.setActiveProvider('custom-tauri-88');
+      await delay(30);
+
+      assert.ok(invokedCmds.includes('set_active_data_provider'));
+      assert.ok(invokedCmds.includes('get_data_providers'), 'Harus menghidrasi daftar custom provider saat setActiveProvider');
+      assert.equal(feed.getAdapter('custom-tauri-88').id, 'custom-tauri-88');
+      assert.ok(
+        pollUrls.some((u) => u.includes('tauri-node.example.com')),
+        'setActiveProvider di Tauri wajib tetap memicu pollTick untuk provider baru'
+      );
+      assert.ok(receivedPrices.includes(54321), 'Subscriber harus menerima ticker baru dari provider custom-* yang baru aktif');
+
+      unsub();
+      feed.destroy();
+    } finally {
+      (globalThis as any).window = prevWindow;
+    }
+  });
+
+  test('12. Remediasi Spec: ChartSessionController memperbarui instance Vela custom_* saat config URL diedit ulang', async () => {
+    const feed = new MarketFeedService();
+    await feed.saveProviderConfig({
+      id: 'custom-777',
+      name: 'Node V1',
+      rest_url: 'https://node-v1.example.com',
+      ws_url: '',
+      is_active: true,
+    });
+
+    const velaRegistry = new Map<string, any>();
+    const fakeWs: any = {
+      feed: {
+        registerProvider(name: string, prov: any) {
+          velaRegistry.set(name, prov);
+        },
+        unregisterProvider(name: string) {
+          velaRegistry.delete(name);
+        },
+        providerInstance(name: string) {
+          return velaRegistry.get(name);
+        },
+      },
+      active: { id: 'c1', symbol: 'custom_777:BTCUSDT', setSymbol(s: string) { this.symbol = s; }, chart: {} },
+      cells: () => [fakeWs.active],
+      on: () => {},
+      destroy: () => {},
+    };
+
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      providerId: 'custom-777',
+      feedHealthSink: feed,
+      workspaceFactory: (_el, cfg) => {
+        for (const [k, fac] of Object.entries(cfg.providers || {})) {
+          velaRegistry.set(k, (fac as any)());
+        }
+        return fakeWs;
+      },
+    });
+    const mockContainer: any = { nodeType: 1, style: {}, children: [], querySelectorAll: () => [] };
+    controller.attach(mockContainer);
+
+    // Edit config ID yang sama ke URL V2
+    await feed.saveProviderConfig({
+      id: 'custom-777',
+      name: 'Node V2',
+      rest_url: 'https://node-v2.example.com',
+      ws_url: '',
+      is_active: true,
+    });
+
+    const requestedUrls: string[] = [];
+    await withMockFetch(async (url) => {
+      requestedUrls.push(url);
+      return new Response(JSON.stringify([[1700000000, 10, 12, 9, 11, 1]]), { status: 200 });
+    }, async () => {
+      await controller.setSymbol('ETHUSDT', '15m', 'custom-777');
+      const updatedProv = velaRegistry.get('custom_777');
+      await updatedProv.getBars('ETHUSDT', '15', { countBack: 5 });
+      assert.ok(
+        requestedUrls.some((u) => u.startsWith('https://node-v2.example.com/')),
+        `Provider custom_777 wajib diregistrasi ulang ke URL terbaru V2, aktual=${requestedUrls.join(', ')}`
+      );
+    });
+
+    controller.destroy();
+    await feed.deleteProvider('custom-777');
+    feed.destroy();
+  });
+
+  test('13. Remediasi Standards (ADR-0021 §6): YahooFinanceProvider.subscribe melewati polling HTTP saat pasar tutup', async () => {
+    let marketIsOpen = false;
+    let yahooFetchCalls = 0;
+
+    await withMockFetch(async () => {
+      yahooFetchCalls++;
+      return new Response(
+        JSON.stringify({
+          chart: {
+            result: [
+              {
+                timestamp: [Math.floor(Date.now() / 1000)],
+                indicators: { quote: [{ open: [100], high: [101], low: [99], close: [100.5], volume: [10] }] },
+              },
+            ],
+          },
+        }),
+        { status: 200 }
+      );
+    }, async () => {
+      const yahoo = new (YahooFinanceProvider as any)({
+        pollIntervalMs: 15,
+        respectMarketHours: true,
+        isMarketOpen: () => marketIsOpen,
+      });
+
+      const emitted: any[] = [];
+      const unsub = yahoo.subscribe('BBCA.JK', '15m', (b: any) => emitted.push(b));
+      await delay(75);
+      assert.equal(yahooFetchCalls, 0, 'Saat bursa Yahoo sedang tutup, polling berkala tidak boleh menembak HTTP API');
+      assert.equal(emitted.length, 0);
+
+      // Simulasikan bursa buka -> polling langsung berjalan dan mengirim candle
+      marketIsOpen = true;
+      await delay(65);
+      assert.ok(yahooFetchCalls >= 1, 'Saat bursa buka, polling Yahoo harus berjalan normal');
+      assert.ok(emitted.length >= 1, 'Candle Yahoo harus dikirim saat bursa aktif');
+
+      unsub();
+    });
   });
 });

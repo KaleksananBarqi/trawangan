@@ -6,6 +6,7 @@
 import { isMonthlyTimeframe } from '../utils/timeframeAdapter';
 import { universalFetch } from './httpClient';
 import { isYahooSymbol } from './instrumentIdentity';
+import { isMarketSessionOpen } from './worldClockService';
 import {
   createPollingSubscription,
   type ManagedStreamHandle,
@@ -17,6 +18,71 @@ export interface YahooFinanceProviderOptions {
   pollIntervalMs?: number;
   maxBackoffMs?: number;
   timeoutMs?: number;
+  respectMarketHours?: boolean;
+  isMarketOpen?: (symbol: string, now: Date) => boolean;
+}
+
+function getZonedWeekdayAndMinutes(
+  date: Date,
+  timezone: string
+): { weekday: string; totalMinutes: number } | null {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+    let weekday = '';
+    let hour = 0;
+    let minute = 0;
+    for (const part of parts) {
+      if (part.type === 'weekday') weekday = part.value;
+      if (part.type === 'hour') hour = parseInt(part.value, 10);
+      if (part.type === 'minute') minute = parseInt(part.value, 10);
+    }
+    return { weekday, totalMinutes: hour * 60 + minute };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Memeriksa apakah instrumen Yahoo Finance sedang berada di jam perdagangan aktif
+ * sesuai ADR-0021 §6 (IDX .JK / ^JKSE, COMEX Futures =F, serta indeks & ekuitas AS).
+ */
+export function isYahooMarketActive(symbol: string, now: Date = new Date()): boolean {
+  const upper = symbol.replace(/^yahoo:/i, '').trim().toUpperCase();
+  if (!upper) return false;
+
+  // Bursa Efek Indonesia (.JK dan IHSG ^JKSE): Senin-Jumat 09:00-16:15 WIB
+  if (upper.endsWith('.JK') || upper === '^JKSE') {
+    return isMarketSessionOpen(now, 'Asia/Jakarta', {
+      openHour: 9,
+      openMinute: 0,
+      closeHour: 16,
+      closeMinute: 15,
+    });
+  }
+
+  // Kontrak berjangka komoditas COMEX/NYMEX (=F): Minggu 18:00 s/d Jumat 17:00 ET (jeda break harian 17:00-18:00 ET)
+  if (upper.includes('=F')) {
+    const et = getZonedWeekdayAndMinutes(now, 'America/New_York');
+    if (!et) return false;
+    if (et.weekday === 'Sat') return false;
+    if (et.weekday === 'Sun') return et.totalMinutes >= 18 * 60;
+    if (et.weekday === 'Fri') return et.totalMinutes < 17 * 60;
+    return et.totalMinutes < 17 * 60 || et.totalMinutes >= 18 * 60;
+  }
+
+  // Indeks & ekuitas AS (^IXIC, ^NDX, ^GSPC, QQQ, dll.): Senin-Jumat 09:30-16:00 ET
+  return isMarketSessionOpen(now, 'America/New_York', {
+    openHour: 9,
+    openMinute: 30,
+    closeHour: 16,
+    closeMinute: 0,
+  });
 }
 
 export interface OHLCV {
@@ -299,6 +365,8 @@ export class YahooFinanceProvider {
   subscribe(ticker: string, timeframe: string, onBar: (b: OHLCV) => void): () => void {
     const symbol = this.cleanYahooTicker(ticker);
     const subKey = `yahoo:${symbol}:${timeframe}:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`;
+    const respectMarketHours = this.options.respectMarketHours ?? true;
+    const checkMarketOpen = this.options.isMarketOpen ?? isYahooMarketActive;
 
     return createPollingSubscription<OHLCV>({
       sourceKey: subKey,
@@ -307,6 +375,10 @@ export class YahooFinanceProvider {
       maxBackoffMs: this.options.maxBackoffMs ?? 60000,
       healthSink: this.options.healthSink,
       fetchLatest: async () => {
+        // Guard jam bursa ADR-0021 §6: hindari spam request saat bursa terkait tutup
+        if (respectMarketHours && !checkMarketOpen(symbol, new Date())) {
+          return null;
+        }
         const bars = await this.fetchBarsStrict(ticker, timeframe, { countBack: 2 });
         return bars.length > 0 ? bars[bars.length - 1] : null;
       },

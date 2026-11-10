@@ -301,8 +301,8 @@ export class CustomFeedProvider {
     let lastBarAt = Date.now();
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let watchdogTimer: ReturnType<typeof setInterval> | null = null;
-    let fallbackPollTimer: ReturnType<typeof setTimeout> | null = null;
-    let fallbackActive = false;
+    let fallbackUnsub: (() => void) | null = null;
+    let fallbackHealthy = false;
 
     const clearTimers = () => {
       if (watchdogTimer !== null) {
@@ -316,39 +316,48 @@ export class CustomFeedProvider {
     };
 
     const stopFallback = () => {
-      fallbackActive = false;
-      if (fallbackPollTimer !== null) {
-        clearTimeout(fallbackPollTimer);
-        fallbackPollTimer = null;
+      fallbackHealthy = false;
+      if (fallbackUnsub) {
+        fallbackUnsub();
+        fallbackUnsub = null;
       }
     };
 
-    const scheduleFallback = () => {
-      if (closed || !fallbackActive) return;
-      if (fallbackPollTimer !== null) clearTimeout(fallbackPollTimer);
-      fallbackPollTimer = setTimeout(() => {
-        fallbackPollTimer = null;
-        void (async () => {
-          try {
-            const bars = await this.fetchBarsStrict(ticker, timeframe, { countBack: 2 });
-            if (!closed && bars.length > 0) {
-              this.options.healthSink?.reportStreamState(sourceKey, this.options.providerId, 'connected');
-              onBar(bars[bars.length - 1]);
-            }
-          } catch (err: any) {
-            if (!closed) {
-              this.options.healthSink?.reportStreamState(
-                sourceKey,
-                this.options.providerId,
-                'stalled',
-                `Fallback REST ${this.options.providerId} terganggu (${err?.message || 'Error'})`
-              );
-            }
+    const fallbackHealthSink: StreamHealthSink = {
+      reportStreamState: (_k, provId, state, msg) => {
+        if (closed) return;
+        if (state === 'connected') {
+          fallbackHealthy = true;
+          this.options.healthSink?.reportStreamState(sourceKey, provId, 'connected');
+        } else {
+          fallbackHealthy = false;
+          this.options.healthSink?.reportStreamState(sourceKey, provId, state, msg);
+        }
+      },
+      clearStreamState: () => {
+        fallbackHealthy = false;
+      },
+    };
+
+    const startFallback = () => {
+      if (closed || fallbackUnsub !== null) return;
+      fallbackUnsub = createPollingSubscription<OHLCV>({
+        sourceKey,
+        providerId: this.options.providerId,
+        pollIntervalMs,
+        maxBackoffMs,
+        healthSink: fallbackHealthSink,
+        fetchLatest: async () => {
+          const bars = await this.fetchBarsStrict(ticker, timeframe, { countBack: 2 });
+          if (bars.length === 0) {
+            throw new Error(`Fallback REST ${this.options.providerId} mengembalikan data kosong.`);
           }
-          if (!closed && fallbackActive) scheduleFallback();
-        })();
-      }, pollIntervalMs);
-      unrefTimer(fallbackPollTimer);
+          return bars[bars.length - 1];
+        },
+        onBar: (bar) => {
+          if (!closed) onBar(bar);
+        },
+      });
     };
 
     const closeSocket = (sock: WebSocketLike | null) => {
@@ -370,16 +379,16 @@ export class CustomFeedProvider {
       }
       closeSocket(ws);
       ws = null;
-      this.options.healthSink?.reportStreamState(
-        sourceKey,
-        this.options.providerId,
-        reconnectAttempt >= 2 ? 'blocked' : 'stalled',
-        reason
-      );
-      if (!fallbackActive) {
-        fallbackActive = true;
-        scheduleFallback();
+      // Laporkan stalled/blocked jika fallback REST belum terverifikasi sehat agar UI tidak ping-pong saat WS retry
+      if (!fallbackHealthy) {
+        this.options.healthSink?.reportStreamState(
+          sourceKey,
+          this.options.providerId,
+          reconnectAttempt >= 2 ? 'blocked' : 'stalled',
+          reason
+        );
       }
+      startFallback();
       if (reconnectTimer === null) {
         const delayMs = computeExponentialBackoffMs(reconnectAttempt++, baseBackoffMs, maxBackoffMs);
         reconnectTimer = setTimeout(() => {
@@ -396,8 +405,7 @@ export class CustomFeedProvider {
       closeSocket(ws);
       const socket = this.createSocket(wsUrl);
       if (!socket) {
-        fallbackActive = true;
-        scheduleFallback();
+        startFallback();
         return;
       }
       ws = socket;
@@ -435,6 +443,7 @@ export class CustomFeedProvider {
           if (bars.length > 0) {
             lastBarAt = Date.now();
             reconnectAttempt = 0;
+            fallbackHealthy = false;
             stopFallback();
             this.options.healthSink?.reportStreamState(sourceKey, this.options.providerId, 'connected');
             for (const b of bars) onBar(b);
@@ -457,6 +466,7 @@ export class CustomFeedProvider {
       reconnect: () => {
         if (closed) return;
         reconnectAttempt = 0;
+        stopFallback();
         clearTimers();
         closeSocket(ws);
         ws = null;

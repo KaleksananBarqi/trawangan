@@ -261,7 +261,7 @@ test.describe('Diagnosing Bugs #LiveFeed — Regression Suite', () => {
     });
   });
 
-  test('4. BitunixProvider memulihkan stream macet (stale watchdog), fallback REST, reconnect backoff, dan melapor ke Feed Health Guard', async () => {
+  test('4. BitunixProvider memulihkan stream macet (stale watchdog), fallback REST, reconnect backoff, dan melapor ke Feed Connection Guard', async () => {
     const sockets: MockWebSocket[] = [];
     const healthEvents: Array<{ state: string; message?: string }> = [];
     const currentOpenMs = Date.UTC(2026, 10, 10, 4, 20, 0);
@@ -396,6 +396,7 @@ test.describe('Diagnosing Bugs #LiveFeed — Regression Suite', () => {
       const yahoo = new (YahooFinanceProvider as any)({
         pollIntervalMs: 15,
         maxBackoffMs: 40,
+        respectMarketHours: false,
         healthSink: {
           reportStreamState(_k: string, _p: string, state: string) {
             yahooStates.push(state);
@@ -462,7 +463,7 @@ test.describe('Diagnosing Bugs #LiveFeed — Regression Suite', () => {
     await feed.setActiveProvider('bitunix');
 
     // Simulasikan stream grafik bitunix gagal
-    (feed as any).reportStreamHealth('chart:bitunix:ETHUSDT:15m', 'bitunix', 'blocked', 'Stream candle ETHUSDT macet');
+    feed.reportStreamState?.('chart:bitunix:ETHUSDT:15m', 'bitunix', 'blocked', 'Stream candle ETHUSDT macet');
     assert.equal(feed.getConnectionStatus().state, 'blocked');
 
     // Simulasikan polling ticker/watchlist sukses
@@ -474,7 +475,7 @@ test.describe('Diagnosing Bugs #LiveFeed — Regression Suite', () => {
     );
 
     // Pulihkan stream grafik
-    (feed as any).reportStreamHealth('chart:bitunix:ETHUSDT:15m', 'bitunix', 'connected');
+    feed.reportStreamState?.('chart:bitunix:ETHUSDT:15m', 'bitunix', 'connected');
     assert.equal(feed.getConnectionStatus().state, 'connected');
 
     feed.destroy();

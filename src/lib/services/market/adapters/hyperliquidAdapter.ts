@@ -213,7 +213,7 @@ export class HyperliquidAdapter implements MarketProviderAdapter {
       }
     }
 
-    // Lempar exception bila seluruh kueri gagal agar Feed Health Guard mendeteksi gangguan jaringan
+    // Lempar exception bila seluruh kueri gagal agar Feed Connection Guard mendeteksi gangguan jaringan
     if (Object.keys(resultMap).length === 0 && (perpError || spotError)) {
       throw perpError || spotError;
     }

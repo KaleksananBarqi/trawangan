@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { YahooFinanceProvider, resampleCandles, type OHLCV } from '../../src/lib/services/yahooFinanceProvider';
+import { YahooFinanceProvider, isYahooMarketActive, resampleCandles, type OHLCV } from '../../src/lib/services/yahooFinanceProvider';
 import { resolveSymbolProvider } from '../../src/lib/services/market';
 import { resolveVelaSymbolKey, routeVenueForSymbol } from '../../src/lib/services/instrumentIdentity';
 import { SymbolSearchEngine, POPULAR_YAHOO_ASSETS } from '../../src/lib/services/market/symbolSearchService';
@@ -111,6 +111,40 @@ describe('Yahoo Finance Provider & Multi-Asset Feed Suite', () => {
       const matchesBbca = engine.searchLocal('BBCA');
       assert.ok(matchesBbca.length > 0);
       assert.ok(matchesBbca.some((m) => m.symbol === 'BBCA.JK'));
+    });
+  });
+
+  describe('5. ADR-0021 §6 Jam Perdagangan Bursa Aktif (isYahooMarketActive)', () => {
+    it('mendeteksi jam buka/tutup IDX (.JK & ^JKSE) dalam Asia/Jakarta (09:00-16:15 WIB)', () => {
+      // Selasa 10 Nov 2026 10:30 WIB = 03:30 UTC (buka)
+      assert.equal(isYahooMarketActive('BBCA.JK', new Date('2026-11-10T03:30:00Z')), true);
+      assert.equal(isYahooMarketActive('^JKSE', new Date('2026-11-10T03:30:00Z')), true);
+      // Selasa 10 Nov 2026 17:00 WIB = 10:00 UTC (tutup)
+      assert.equal(isYahooMarketActive('BBCA.JK', new Date('2026-11-10T10:00:00Z')), false);
+      // Sabtu (tutup)
+      assert.equal(isYahooMarketActive('BBCA.JK', new Date('2026-11-14T03:30:00Z')), false);
+    });
+
+    it('mendeteksi jadwal COMEX Futures (=F) termasuk pembukaan Minggu malam, break harian 17:00-18:00 ET, dan penutupan Sabtu', () => {
+      // Nov 2026 sudah EST (UTC-5):
+      // Minggu 19:00 ET = Senin 00:00 UTC -> buka
+      assert.equal(isYahooMarketActive('GC=F', new Date('2026-11-09T00:00:00Z')), true);
+      // Selasa 17:30 ET = Selasa 22:30 UTC -> daily maintenance break (tutup)
+      assert.equal(isYahooMarketActive('GC=F', new Date('2026-11-10T22:30:00Z')), false);
+      // Selasa 18:15 ET = Selasa 23:15 UTC -> buka kembali
+      assert.equal(isYahooMarketActive('SI=F', new Date('2026-11-10T23:15:00Z')), true);
+      // Sabtu 12:00 ET = Sabtu 17:00 UTC -> tutup akhir pekan
+      assert.equal(isYahooMarketActive('GC=F', new Date('2026-11-14T17:00:00Z')), false);
+    });
+
+    it('mendeteksi jam buka/tutup indeks & ETF AS (^IXIC, QQQ) dalam America/New_York (09:30-16:00 ET)', () => {
+      // Selasa 11:00 EST = 16:00 UTC (buka)
+      assert.equal(isYahooMarketActive('^IXIC', new Date('2026-11-10T16:00:00Z')), true);
+      assert.equal(isYahooMarketActive('QQQ', new Date('2026-11-10T16:00:00Z')), true);
+      // Selasa 08:00 EST = 13:00 UTC (belum buka)
+      assert.equal(isYahooMarketActive('^IXIC', new Date('2026-11-10T13:00:00Z')), false);
+      // Minggu tutup
+      assert.equal(isYahooMarketActive('^IXIC', new Date('2026-11-08T16:00:00Z')), false);
     });
   });
 });

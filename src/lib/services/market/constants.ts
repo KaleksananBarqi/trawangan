@@ -1,5 +1,5 @@
 // Daftar master aset terverifikasi & konfigurasi default bursa
-import type { ProviderConfig } from '../../types/market';
+import type { ProviderConfig, TickerInfo } from '../../types/market';
 
 export const DEFAULT_PROVIDERS: ProviderConfig[] = [
   {
@@ -92,6 +92,43 @@ export const VERIFIED_CRYPTO_ASSETS = [
 export function normalizeTicker(sym: string): string {
   if (!sym) return '';
   const parts = sym.split(':');
-  const raw = parts[parts.length - 1];
-  return raw.replace(/[\/\-_]/g, '').toUpperCase();
+  const raw = parts[parts.length - 1].trim();
+  return raw.replace(/[\s\/\-_]/g, '').toUpperCase();
+}
+
+/**
+ * Mengambil batch ticker secara paralel berbatas (chunked) dengan pelaporan error bila seluruh kueri gagal
+ */
+export async function fetchTickersInChunks(
+  symbols: string[],
+  fetchOne: (symbol: string) => Promise<TickerInfo>,
+  logTag: string,
+  batchSize = 5
+): Promise<Record<string, TickerInfo>> {
+  if (!symbols || symbols.length === 0) return {};
+  const resultMap: Record<string, TickerInfo> = {};
+  let lastError: any = null;
+
+  for (let i = 0; i < symbols.length; i += batchSize) {
+    const chunk = symbols.slice(i, i + batchSize);
+    const settled = await Promise.allSettled(chunk.map((s) => fetchOne(s)));
+    for (let j = 0; j < settled.length; j++) {
+      const res = settled[j];
+      const sym = chunk[j];
+      if (res.status === 'fulfilled') {
+        if (res.value.price > 0) {
+          resultMap[sym] = res.value;
+        }
+      } else {
+        lastError = res.reason;
+        console.warn(`[${logTag}] Gagal fetch ticker ${sym}:`, res.reason);
+      }
+    }
+  }
+
+  if (Object.keys(resultMap).length === 0 && lastError) {
+    throw lastError;
+  }
+
+  return resultMap;
 }
