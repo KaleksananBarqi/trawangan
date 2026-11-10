@@ -39,8 +39,8 @@ export interface MarketProviderAdapter {
 
 export interface SearchSymbolsOptions {
   filterType?: 'all' | 'spot' | 'perp';
-  exchange?: 'all' | 'binance' | 'indodax' | 'bitunix' | 'yahoo';
-  quoteAsset?: 'all' | 'IDR' | 'USDT' | 'BTC' | 'USD';
+  exchange?: 'all' | 'binance' | 'indodax' | 'bitunix' | 'hyperliquid' | 'coinbase' | 'yahoo' | (string & {});
+  quoteAsset?: 'all' | 'IDR' | 'USDT' | 'BTC' | 'USD' | 'USDC';
 }
 
 /**
@@ -59,6 +59,19 @@ export interface IMarketFeedService {
   getConnectionStatus(): FeedConnectionStatus;
   onConnectionChange(listener: FeedConnectionListener): () => void;
   resetConnectionError(): void;
+  reportStreamHealth?(
+    sourceKey: string,
+    providerId: string,
+    state: FeedConnectionState,
+    message?: string
+  ): void;
+  reportStreamState?(
+    sourceKey: string,
+    providerId: string,
+    state: FeedConnectionState,
+    message?: string
+  ): void;
+  clearStreamState?(sourceKey: string): void;
   destroy?(): void;
   isPollingRunning?(): boolean;
 

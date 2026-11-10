@@ -13,6 +13,9 @@ import type {
 import { BinanceAdapter } from './adapters/binanceAdapter';
 import { IndodaxAdapter } from './adapters/indodaxAdapter';
 import { BitunixAdapter } from './adapters/bitunixAdapter';
+import { HyperliquidAdapter } from './adapters/hyperliquidAdapter';
+import { CoinbaseAdapter } from './adapters/coinbaseAdapter';
+import { CustomFeedAdapter } from './adapters/customAdapter';
 import { MockMarketAdapter } from './adapters/mockAdapter';
 import { YahooFinanceAdapter } from './adapters/yahooAdapter';
 import { DEFAULT_PROVIDERS, normalizeTicker } from './constants';
@@ -32,7 +35,9 @@ export function resolveSymbolProvider(
   const trimmed = rawSymbol.trim();
   if (isSectionToken(trimmed)) return { providerId: '', cleanSymbol: '' };
   if (trimmed.includes(':')) {
-    const [p, s] = trimmed.split(':');
+    const colonIdx = trimmed.indexOf(':');
+    const p = trimmed.slice(0, colonIdx).trim();
+    const s = trimmed.slice(colonIdx + 1).trim();
     return {
       providerId: (p || defaultProvider).toLowerCase(),
       cleanSymbol: s.toUpperCase(),
@@ -78,14 +83,25 @@ export class MarketFeedService implements IMarketFeedService {
   private readonly maxErrorThreshold = 3;
   private connectionState: FeedConnectionState = 'connected';
   private connectionListeners = new Set<FeedConnectionListener>();
+  private chartStreamHealth = new Map<
+    string,
+    { providerId: string; state: FeedConnectionState; message?: string; errorCount: number }
+  >();
   private unsubscribeAlerts: (() => void) | null = null;
 
   constructor() {
     this.registerAdapter(new BinanceAdapter());
     this.registerAdapter(new IndodaxAdapter());
     this.registerAdapter(new BitunixAdapter());
+    this.registerAdapter(new HyperliquidAdapter());
+    this.registerAdapter(new CoinbaseAdapter());
     this.registerAdapter(new MockMarketAdapter());
     this.registerAdapter(new YahooFinanceAdapter());
+
+    // Sinkronkan custom-* endpoint tersimpan di localStorage saat inisialisasi awal
+    for (const cfg of this.getKnownProviderConfigsSync()) {
+      this.syncCustomAdapter(cfg);
+    }
 
     // Pantau perubahan alert untuk mengaktifkan atau menonaktifkan siklus polling otomatis
     this.unsubscribeAlerts = alertService.subscribe(() => {
@@ -98,19 +114,98 @@ export class MarketFeedService implements IMarketFeedService {
     this.searchEngine.registerAdapter(adapter);
   }
 
+  /**
+   * Mendaftarkan atau memperbarui CustomFeedAdapter untuk provider berawalan custom-*
+   */
+  public syncCustomAdapter(config: ProviderConfig): void {
+    if (!config?.id) return;
+    const idLower = config.id.trim().toLowerCase();
+    if (!idLower.startsWith('custom')) return;
+    if (!config.rest_url || !config.rest_url.trim()) return;
+
+    const existing = this.adapters.get(config.id) || this.adapters.get(idLower);
+    if (existing instanceof CustomFeedAdapter) {
+      existing.updateConfig(config);
+      this.adapters.set(idLower, existing);
+      return;
+    }
+
+    const adapter = new CustomFeedAdapter({ ...config, id: idLower });
+    this.registerAdapter(adapter);
+    if (config.id !== idLower) {
+      this.adapters.set(config.id, adapter);
+    }
+  }
+
+  /**
+   * Mengembalikan daftar konfigurasi provider secara sinkron (inMemory + fallback localStorage)
+   */
+  public getKnownProviderConfigsSync(): ProviderConfig[] {
+    const byId = new Map<string, ProviderConfig>();
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('trawangan_providers');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            for (const p of parsed) {
+              if (p?.id) byId.set(p.id, p);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    for (const p of this.inMemoryProviders) {
+      if (p?.id) byId.set(p.id, p);
+    }
+    return Array.from(byId.values());
+  }
+
   public getSearchEngine(): SymbolSearchEngine {
     return this.searchEngine;
   }
 
+  private severityRank(state: FeedConnectionState): number {
+    if (state === 'blocked') return 2;
+    if (state === 'stalled') return 1;
+    return 0;
+  }
+
   public getConnectionStatus(): FeedConnectionStatus {
+    let effectiveState: FeedConnectionState = this.connectionState;
+    let effectiveErrors = this.consecutiveErrors;
+    let effectiveMessage: string | undefined =
+      this.connectionState === 'blocked'
+        ? `Koneksi feed ke ${this.activeProviderId.toUpperCase()} terhambat (kemungkinan diblokir ISP).`
+        : undefined;
+
+    // Agregasikan status kesehatan dari stream candle aktif agar gangguan WebSocket/candle ikut terlihat
+    const activeNorm = this.activeProviderId.toLowerCase().replace(/-/g, '_');
+    for (const entry of this.chartStreamHealth.values()) {
+      const entryNorm = entry.providerId ? entry.providerId.toLowerCase().replace(/-/g, '_') : '';
+      if (entryNorm && entryNorm !== activeNorm) continue;
+      if (this.severityRank(entry.state) > this.severityRank(effectiveState)) {
+        effectiveState = entry.state;
+        effectiveErrors = Math.max(effectiveErrors, entry.errorCount);
+        if (entry.message) {
+          effectiveMessage = entry.message;
+        }
+      } else if (
+        entry.state === effectiveState &&
+        entry.state !== 'connected'
+      ) {
+        effectiveErrors = Math.max(effectiveErrors, entry.errorCount);
+        if (!effectiveMessage && entry.message) {
+          effectiveMessage = entry.message;
+        }
+      }
+    }
+
     return {
-      state: this.connectionState,
+      state: effectiveState,
       providerId: this.activeProviderId,
-      errorCount: this.consecutiveErrors,
-      message:
-        this.connectionState === 'blocked'
-          ? `Koneksi feed ke ${this.activeProviderId.toUpperCase()} terhambat (kemungkinan diblokir ISP).`
-          : undefined,
+      errorCount: effectiveErrors,
+      message: effectiveMessage,
     };
   }
 
@@ -130,16 +225,20 @@ export class MarketFeedService implements IMarketFeedService {
   }
 
   public recordSuccess(): void {
-    if (this.consecutiveErrors > 0 || this.connectionState !== 'connected') {
+    const prevAggregate = this.getConnectionStatus().state;
+    const hadTickerError = this.consecutiveErrors > 0 || this.connectionState !== 'connected';
+    if (hadTickerError) {
       this.consecutiveErrors = 0;
       this.connectionState = 'connected';
+    }
+    const nextAggregate = this.getConnectionStatus().state;
+    if (hadTickerError || prevAggregate !== nextAggregate) {
       this.notifyConnectionChange();
     }
   }
 
   public recordFailure(_err?: any): void {
     this.consecutiveErrors++;
-    const oldState = this.connectionState;
     if (this.consecutiveErrors >= this.maxErrorThreshold) {
       this.connectionState = 'blocked';
     } else {
@@ -148,9 +247,66 @@ export class MarketFeedService implements IMarketFeedService {
     this.notifyConnectionChange();
   }
 
+  /**
+   * Menerima laporan kesehatan dari live stream grafik (WebSocket / polling candle)
+   * sehingga gangguan candle tidak tertutupi oleh suksesnya polling ticker REST.
+   */
+  public reportStreamHealth(
+    sourceKey: string,
+    providerId: string,
+    state: FeedConnectionState,
+    message?: string
+  ): void {
+    const prev = this.getConnectionStatus();
+    const normalizedProvider = (providerId || this.activeProviderId).toLowerCase();
+
+    if (state === 'connected') {
+      this.chartStreamHealth.delete(sourceKey);
+    } else {
+      const existing = this.chartStreamHealth.get(sourceKey);
+      const nextCount = (existing?.errorCount ?? 0) + 1;
+      this.chartStreamHealth.set(sourceKey, {
+        providerId: normalizedProvider,
+        state,
+        message,
+        errorCount: Math.max(nextCount, state === 'blocked' ? this.maxErrorThreshold : 1),
+      });
+    }
+
+    const next = this.getConnectionStatus();
+    if (
+      next.state !== prev.state ||
+      next.errorCount !== prev.errorCount ||
+      next.message !== prev.message
+    ) {
+      this.notifyConnectionChange();
+    }
+  }
+
+  public reportStreamState(
+    sourceKey: string,
+    providerId: string,
+    state: FeedConnectionState,
+    message?: string
+  ): void {
+    this.reportStreamHealth(sourceKey, providerId, state, message);
+  }
+
+  public clearStreamState(sourceKey: string): void {
+    if (this.chartStreamHealth.has(sourceKey)) {
+      const prev = this.getConnectionStatus();
+      this.chartStreamHealth.delete(sourceKey);
+      const next = this.getConnectionStatus();
+      if (next.state !== prev.state || next.errorCount !== prev.errorCount) {
+        this.notifyConnectionChange();
+      }
+    }
+  }
+
   public resetConnectionError(): void {
     this.consecutiveErrors = 0;
     this.connectionState = 'connected';
+    this.chartStreamHealth.clear();
     this.notifyConnectionChange();
   }
 
@@ -166,6 +322,7 @@ export class MarketFeedService implements IMarketFeedService {
     this.activeSymbolSubscribers.clear();
     this.watchlistSubscribers.clear();
     this.connectionListeners.clear();
+    this.chartStreamHealth.clear();
   }
 
   public isPollingRunning(): boolean {
@@ -180,20 +337,40 @@ export class MarketFeedService implements IMarketFeedService {
   }
 
   public getAdapter(id = this.activeProviderId): MarketProviderAdapter {
-    return this.adapters.get(id) || this.adapters.get('binance')!;
+    const cleanId = (id || this.activeProviderId || 'binance').trim().toLowerCase();
+    const direct = this.adapters.get(cleanId) || this.adapters.get(id);
+    if (direct) return direct;
+
+    // Cocokkan ID custom-* dengan underscore maupun hyphen
+    const cleanNorm = cleanId.replace(/-/g, '_');
+    for (const [k, adapter] of this.adapters.entries()) {
+      if (k.toLowerCase().replace(/-/g, '_') === cleanNorm) {
+        return adapter;
+      }
+    }
+
+    return this.adapters.get('binance')!;
   }
 
   // ─── Manajemen Subscription ───
 
   public subscribeActiveTicker(symbol: string, listener: TickerListener): () => void {
-    const clean = normalizeTicker(symbol);
+    const hasPrefix = symbol.includes(':');
+    const { providerId, cleanSymbol } = resolveSymbolProvider(symbol, this.activeProviderId);
+    const clean = hasPrefix
+      ? `${providerId}:${cleanSymbol}`
+      : cleanSymbol || normalizeTicker(symbol);
+    const scopedCacheKey = `${providerId}:${normalizeTicker(cleanSymbol || symbol)}`;
+
     if (!this.activeSymbolSubscribers.has(clean)) {
       this.activeSymbolSubscribers.set(clean, new Set());
     }
     this.activeSymbolSubscribers.get(clean)!.add(listener);
 
-    // Jika ada cache harga lama, kirim segera ke subscriber baru
-    const cached = this.tickerCache.get(clean);
+    // Jika ada cache harga lama yang cocok, kirim segera ke subscriber baru tanpa kebocoran lintas bursa
+    const cached =
+      this.tickerCache.get(scopedCacheKey) ||
+      (!hasPrefix ? this.tickerCache.get(normalizeTicker(cleanSymbol || symbol)) : undefined);
     if (cached) {
       listener(cached);
     }
@@ -223,7 +400,11 @@ export class MarketFeedService implements IMarketFeedService {
     const initialMap: Record<string, TickerInfo> = {};
     for (const s of symbols) {
       if (!s || isSectionToken(s)) continue;
-      const c = this.tickerCache.get(normalizeTicker(s));
+      const { providerId, cleanSymbol } = resolveSymbolProvider(s, this.activeProviderId);
+      const norm = normalizeTicker(cleanSymbol || s);
+      const c =
+        this.tickerCache.get(`${providerId}:${norm}`) ||
+        (!s.includes(':') ? this.tickerCache.get(norm) : undefined);
       if (c) initialMap[s] = c;
     }
     if (Object.keys(initialMap).length > 0) {
@@ -335,16 +516,18 @@ export class MarketFeedService implements IMarketFeedService {
 
 
     const mergedBatchData: Record<string, TickerInfo> = {};
+    const scopedCacheEntries: Array<{ key: string; legacyKey: string; ticker: TickerInfo; writeLegacy: boolean }> = [];
     let activeProviderSucceeded = false;
     let activeProviderHasQuery = false;
     let activeProviderError: any = null;
+    const activeNorm = this.activeProviderId.toLowerCase().replace(/-/g, '_');
 
     // 2. Eksekusi batch per provider secara paralel
     await Promise.allSettled(
       Array.from(providerMap.entries()).map(async ([pId, symList]) => {
-        const adapter = this.adapters.get(pId) || this.getAdapter();
+        const adapter = this.getAdapter(pId);
         const cleanList = Array.from(new Set(symList.map((s) => s.clean)));
-        const isActive = pId === this.activeProviderId;
+        const isActive = pId.toLowerCase().replace(/-/g, '_') === activeNorm;
 
         if (isActive) {
           activeProviderHasQuery = true;
@@ -356,10 +539,18 @@ export class MarketFeedService implements IMarketFeedService {
             if (isActive) activeProviderSucceeded = true;
             // Petakan kembali hasil ticker ke raw symbol dan clean symbol
             for (const item of symList) {
-              const found = batch[item.clean] || batch[normalizeTicker(item.clean)];
+              const found =
+                batch[item.clean] || batch[normalizeTicker(item.clean)] || batch[item.raw];
               if (found) {
                 mergedBatchData[item.raw] = found;
                 mergedBatchData[item.clean] = found;
+                const normClean = normalizeTicker(item.clean);
+                scopedCacheEntries.push({
+                  key: `${pId}:${normClean}`,
+                  legacyKey: normClean,
+                  ticker: found,
+                  writeLegacy: isActive || !item.raw.includes(':'),
+                });
               }
             }
           } else if (isActive && cleanList.length > 0) {
@@ -385,16 +576,28 @@ export class MarketFeedService implements IMarketFeedService {
       this.recordSuccess();
     }
 
-    // 4. Update cache & notifikasi subscriber
+    // 4. Update cache terisolasi per provider & notifikasi subscriber
+    for (const entry of scopedCacheEntries) {
+      if (entry.ticker && entry.ticker.price > 0) {
+        this.tickerCache.set(entry.key, entry.ticker);
+        if (entry.writeLegacy) {
+          this.tickerCache.set(entry.legacyKey, entry.ticker);
+        }
+      }
+    }
     for (const [sym, ticker] of Object.entries(mergedBatchData)) {
       if (ticker && ticker.price > 0) {
-        this.tickerCache.set(normalizeTicker(sym), ticker);
         alertService.evaluateAlerts(sym, ticker.price);
       }
     }
 
     for (const [sym, listeners] of this.activeSymbolSubscribers.entries()) {
-      const t = mergedBatchData[sym] || this.tickerCache.get(sym);
+      const { providerId, cleanSymbol } = resolveSymbolProvider(sym, this.activeProviderId);
+      const norm = normalizeTicker(cleanSymbol || sym);
+      const t =
+        mergedBatchData[sym] ||
+        this.tickerCache.get(`${providerId}:${norm}`) ||
+        (!sym.includes(':') ? this.tickerCache.get(norm) : undefined);
       if (t) {
         for (const l of listeners) {
           l(t);
@@ -405,7 +608,12 @@ export class MarketFeedService implements IMarketFeedService {
     for (const sub of this.watchlistSubscribers) {
       const subMap: Record<string, TickerInfo> = {};
       for (const s of sub.symbols) {
-        const t = mergedBatchData[s] || this.tickerCache.get(normalizeTicker(s));
+        const { providerId, cleanSymbol } = resolveSymbolProvider(s, this.activeProviderId);
+        const norm = normalizeTicker(cleanSymbol || s);
+        const t =
+          mergedBatchData[s] ||
+          this.tickerCache.get(`${providerId}:${norm}`) ||
+          (!s.includes(':') ? this.tickerCache.get(norm) : undefined);
         if (t) subMap[s] = t;
       }
       sub.listener(subMap);
@@ -414,11 +622,17 @@ export class MarketFeedService implements IMarketFeedService {
 
   private async fetchAndDispatchSingle(symbol: string): Promise<void> {
     try {
-      const adapter = this.getAdapter();
-      const ticker = await adapter.fetchTicker(symbol);
+      const { providerId, cleanSymbol } = resolveSymbolProvider(symbol, this.activeProviderId);
+      const adapter = this.getAdapter(providerId);
+      const querySym = cleanSymbol || symbol;
+      const ticker = await adapter.fetchTicker(querySym);
       if (ticker && ticker.price > 0) {
         this.recordSuccess();
-        this.tickerCache.set(symbol, ticker);
+        const norm = normalizeTicker(querySym);
+        this.tickerCache.set(`${providerId}:${norm}`, ticker);
+        if (providerId === this.activeProviderId || !symbol.includes(':')) {
+          this.tickerCache.set(norm, ticker);
+        }
         alertService.evaluateAlerts(symbol, ticker.price);
         const listeners = this.activeSymbolSubscribers.get(symbol);
         if (listeners) {
@@ -435,18 +649,59 @@ export class MarketFeedService implements IMarketFeedService {
   // ─── Direct Reader Methods ───
 
   public async getTicker(symbol: string): Promise<TickerInfo> {
-    const clean = normalizeTicker(symbol);
-    const cached = this.tickerCache.get(clean);
+    const hasPrefix = symbol.includes(':');
+    const { providerId, cleanSymbol } = resolveSymbolProvider(symbol, this.activeProviderId);
+    const querySym = cleanSymbol || symbol;
+    const norm = normalizeTicker(querySym);
+    const scopedKey = `${providerId}:${norm}`;
+    const cached =
+      this.tickerCache.get(scopedKey) || (!hasPrefix ? this.tickerCache.get(norm) : undefined);
     if (cached) return cached;
-    return this.getAdapter().fetchTicker(symbol);
+
+    const ticker = await this.getAdapter(providerId).fetchTicker(querySym);
+    if (ticker && ticker.price > 0) {
+      this.tickerCache.set(scopedKey, ticker);
+      if (!hasPrefix || providerId === this.activeProviderId) {
+        this.tickerCache.set(norm, ticker);
+      }
+    }
+    return ticker;
   }
 
   public async getWatchlistTickers(symbols: string[]): Promise<Record<string, TickerInfo>> {
-    return this.getAdapter().fetchBatchTickers(symbols);
+    if (!symbols || symbols.length === 0) return {};
+
+    // Partisi per provider agar pembacaan langsung menghormati prefix bursa
+    const grouped = new Map<string, Array<{ raw: string; clean: string }>>();
+    for (const s of symbols) {
+      if (!s || isSectionToken(s)) continue;
+      const { providerId, cleanSymbol } = resolveSymbolProvider(s, this.activeProviderId);
+      if (!providerId || !cleanSymbol) continue;
+      if (!grouped.has(providerId)) grouped.set(providerId, []);
+      grouped.get(providerId)!.push({ raw: s, clean: cleanSymbol });
+    }
+
+    const resultMap: Record<string, TickerInfo> = {};
+    await Promise.allSettled(
+      Array.from(grouped.entries()).map(async ([pId, items]) => {
+        const cleanList = Array.from(new Set(items.map((i) => i.clean)));
+        const batch = await this.getAdapter(pId).fetchBatchTickers(cleanList);
+        if (!batch) return;
+        for (const item of items) {
+          const found = batch[item.clean] || batch[normalizeTicker(item.clean)] || batch[item.raw];
+          if (found) {
+            resultMap[item.raw] = found;
+          }
+        }
+      })
+    );
+
+    return resultMap;
   }
 
   public async getCandles(symbol: string, interval: string, limit = 500): Promise<Candle[]> {
-    return this.getAdapter().fetchCandles(symbol, interval, limit);
+    const { providerId, cleanSymbol } = resolveSymbolProvider(symbol, this.activeProviderId);
+    return this.getAdapter(providerId).fetchCandles(cleanSymbol || symbol, interval, limit);
   }
 
   public async searchSymbols(
@@ -473,6 +728,9 @@ export class MarketFeedService implements IMarketFeedService {
 
   public async getActiveProviderId(): Promise<string> {
     const providers = await this.getSavedProviders();
+    for (const p of providers) {
+      this.syncCustomAdapter(p);
+    }
     const active = providers.find((p) => p.is_active);
     this.activeProviderId = active ? active.id : 'binance';
     return this.activeProviderId;
@@ -486,6 +744,10 @@ export class MarketFeedService implements IMarketFeedService {
       ...p,
       is_active: p.id === id,
     }));
+    const targetCfg = this.inMemoryProviders.find((p) => p.id === id);
+    if (targetCfg) {
+      this.syncCustomAdapter(targetCfg);
+    }
 
     if (this.isTauri()) {
       try {
@@ -517,7 +779,11 @@ export class MarketFeedService implements IMarketFeedService {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const list = await invoke<ProviderConfig[]>('get_data_providers');
-        if (list && list.length > 0) return list;
+        if (list && list.length > 0) {
+          this.inMemoryProviders = list;
+          for (const p of list) this.syncCustomAdapter(p);
+          return list;
+        }
       } catch (e) {
         console.error('[MarketFeedService] Error mengambil data providers dari Rust:', e);
       }
@@ -526,10 +792,20 @@ export class MarketFeedService implements IMarketFeedService {
     if (typeof localStorage !== 'undefined') {
       try {
         const raw = localStorage.getItem('trawangan_providers');
-        if (raw) return JSON.parse(raw);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            this.inMemoryProviders = parsed;
+            for (const p of parsed) this.syncCustomAdapter(p);
+            return parsed;
+          }
+        }
       } catch (_) {}
     }
 
+    for (const p of this.inMemoryProviders) {
+      this.syncCustomAdapter(p);
+    }
     return this.inMemoryProviders;
   }
 
@@ -541,6 +817,7 @@ export class MarketFeedService implements IMarketFeedService {
     }
     updated.push(provider);
     this.inMemoryProviders = updated;
+    this.syncCustomAdapter(provider);
 
     if (this.isTauri()) {
       try {
@@ -567,6 +844,8 @@ export class MarketFeedService implements IMarketFeedService {
 
   public async deleteProvider(id: string): Promise<void> {
     this.inMemoryProviders = this.inMemoryProviders.filter((p) => p.id !== id);
+    this.adapters.delete(id);
+    this.adapters.delete(id.toLowerCase());
 
     if (this.isTauri()) {
       try {

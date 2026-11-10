@@ -6,6 +6,18 @@
 import { isMonthlyTimeframe } from '../utils/timeframeAdapter';
 import { universalFetch } from './httpClient';
 import { isYahooSymbol } from './instrumentIdentity';
+import {
+  createPollingSubscription,
+  type ManagedStreamHandle,
+  type StreamHealthSink,
+} from './streamHealthGuard';
+
+export interface YahooFinanceProviderOptions {
+  healthSink?: StreamHealthSink;
+  pollIntervalMs?: number;
+  maxBackoffMs?: number;
+  timeoutMs?: number;
+}
 
 export interface OHLCV {
   time: number;
@@ -79,7 +91,16 @@ export function resampleCandles(candles: OHLCV[], targetIntervalSeconds: number)
 }
 
 export class YahooFinanceProvider {
-  private activeSubscriptions = new Map<string, { timer: any; callback: (b: OHLCV) => void }>();
+  private activeSubscriptions = new Map<string, ManagedStreamHandle>();
+  private options: YahooFinanceProviderOptions;
+
+  constructor(options: YahooFinanceProviderOptions = {}) {
+    this.options = options;
+  }
+
+  public setHealthSink(sink?: StreamHealthSink): void {
+    this.options.healthSink = sink;
+  }
 
   info() {
     return {
@@ -180,110 +201,123 @@ export class YahooFinanceProvider {
   }
 
   /**
-   * Mengambil candle historis dari Yahoo Finance REST API
+   * Mengambil candle historis Yahoo Finance secara ketat (melempar error bila gagal jaringan/HTTP)
    */
-  async getBars(ticker: string, timeframe: string, range: any): Promise<OHLCV[]> {
+  public async fetchBarsStrict(ticker: string, timeframe: string, range: any = {}): Promise<OHLCV[]> {
     const symbol = this.cleanYahooTicker(ticker);
     const { interval, resampleTargetSec } = this.mapTimeframe(timeframe);
-    const countBack = range?.countBack || 300;
+    const countBack = range?.countBack || range?.limit || 300;
     const rangeParam = this.determineRange(interval, countBack);
 
     const encodedSymbol = encodeURIComponent(symbol);
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedSymbol}?interval=${interval}&range=${rangeParam}`;
+    const timeoutMs = this.options.timeoutMs ?? 8000;
 
+    const res = await universalFetch(url, { timeoutMs });
+    if (!res.ok) {
+      throw new Error(`Yahoo HTTP Error: ${res.status} ${res.statusText}`);
+    }
+    const json = await res.json();
+    const chartResult = json?.chart?.result?.[0];
+    if (!chartResult) {
+      return [];
+    }
+
+    const timestamps = chartResult.timestamp || [];
+    const quote = chartResult.indicators?.quote?.[0] || {};
+    const opens = quote.open || [];
+    const highs = quote.high || [];
+    const lows = quote.low || [];
+    const closes = quote.close || [];
+    const volumes = quote.volume || [];
+
+    const bars: OHLCV[] = [];
+
+    for (let i = 0; i < timestamps.length; i++) {
+      const rawTime = timestamps[i];
+      const open = opens[i];
+      const high = highs[i];
+      const low = lows[i];
+      const close = closes[i];
+      const volume = volumes[i] ?? 0;
+
+      // Validasi lilin valid (bukan null akibat jeda bursa)
+      if (
+        rawTime !== null &&
+        rawTime !== undefined &&
+        open !== null &&
+        high !== null &&
+        low !== null &&
+        close !== null &&
+        !isNaN(open) &&
+        !isNaN(close)
+      ) {
+        // Yahoo timestamp dalam detik; Vela WebGL2 engine membutuhkan milidetik (ms)
+        const timeMs = Number(rawTime) < 1e11 ? Number(rawTime) * 1000 : Number(rawTime);
+
+        bars.push({
+          time: timeMs,
+          open: Number(open),
+          high: Number(high),
+          low: Number(low),
+          close: Number(close),
+          volume: Number(volume),
+        });
+      }
+    }
+
+    // Terapkan resampling jika diperlukan (2H, 4H)
+    if (resampleTargetSec && resampleTargetSec > 3600) {
+      return resampleCandles(bars, resampleTargetSec);
+    }
+
+    return bars;
+  }
+
+  /**
+   * Mengambil candle historis dari Yahoo Finance REST API (fail-soft untuk kompatibilitas Vela)
+   */
+  async getBars(ticker: string, timeframe: string, range: any): Promise<OHLCV[]> {
+    const symbol = this.cleanYahooTicker(ticker);
     try {
-      const res = await universalFetch(url);
-      if (!res.ok) {
-        throw new Error(`Yahoo HTTP Error: ${res.status} ${res.statusText}`);
-      }
-      const json = await res.json();
-      const chartResult = json?.chart?.result?.[0];
-      if (!chartResult) {
-        return [];
-      }
-
-      const timestamps = chartResult.timestamp || [];
-      const quote = chartResult.indicators?.quote?.[0] || {};
-      const opens = quote.open || [];
-      const highs = quote.high || [];
-      const lows = quote.low || [];
-      const closes = quote.close || [];
-      const volumes = quote.volume || [];
-
-      const bars: OHLCV[] = [];
-
-      for (let i = 0; i < timestamps.length; i++) {
-        const rawTime = timestamps[i];
-        const open = opens[i];
-        const high = highs[i];
-        const low = lows[i];
-        const close = closes[i];
-        const volume = volumes[i] ?? 0;
-
-        // Validasi lilin valid (bukan null akibat jeda bursa)
-        if (
-          rawTime !== null &&
-          rawTime !== undefined &&
-          open !== null &&
-          high !== null &&
-          low !== null &&
-          close !== null &&
-          !isNaN(open) &&
-          !isNaN(close)
-        ) {
-          // Yahoo timestamp dalam detik; Vela WebGL2 engine membutuhkan milidetik (ms)
-          const timeMs = Number(rawTime) < 1e11 ? Number(rawTime) * 1000 : Number(rawTime);
-
-          bars.push({
-            time: timeMs,
-            open: Number(open),
-            high: Number(high),
-            low: Number(low),
-            close: Number(close),
-            volume: Number(volume),
-          });
-        }
-      }
-
-      // Terapkan resampling jika diperlukan (2H, 4H)
-      if (resampleTargetSec && resampleTargetSec > 3600) {
-        return resampleCandles(bars, resampleTargetSec);
-      }
-
-      return bars;
+      return await this.fetchBarsStrict(ticker, timeframe, range);
     } catch (err: any) {
       console.warn(`[YahooFinanceProvider] getBars error for ${symbol}:`, err?.message || err);
       return [];
     }
   }
 
+  public reconnectAll(): void {
+    for (const handle of this.activeSubscriptions.values()) {
+      handle.reconnect();
+    }
+  }
+
   /**
-   * Polling berkala untuk live feed update lilin aktif (kontrak resmi Vela: subscribe)
+   * Polling berkala untuk live feed update lilin aktif dengan anti-overlap guard, backoff, dan health reporting
    */
   subscribe(ticker: string, timeframe: string, onBar: (b: OHLCV) => void): () => void {
-    const subKey = `${ticker}_${timeframe}_${Date.now()}`;
+    const symbol = this.cleanYahooTicker(ticker);
+    const subKey = `yahoo:${symbol}:${timeframe}:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`;
 
-    const timer = setInterval(async () => {
-      try {
-        const bars = await this.getBars(ticker, timeframe, { countBack: 2 });
-        if (bars.length > 0) {
-          onBar(bars[bars.length - 1]);
-        }
-      } catch (_) {
-        // Abaikan kegagalan berkala
-      }
-    }, 12000); // Polling 12 detik aman dari rate limiting
-
-    if (typeof (timer as any)?.unref === 'function') {
-      (timer as any).unref();
-    }
-
-    this.activeSubscriptions.set(subKey, { timer, callback: onBar });
-
-    return () => {
-      clearInterval(timer);
-      this.activeSubscriptions.delete(subKey);
-    };
+    return createPollingSubscription<OHLCV>({
+      sourceKey: subKey,
+      providerId: 'yahoo',
+      pollIntervalMs: this.options.pollIntervalMs ?? 12000, // Polling 12 detik aman dari rate limiting
+      maxBackoffMs: this.options.maxBackoffMs ?? 60000,
+      healthSink: this.options.healthSink,
+      fetchLatest: async () => {
+        const bars = await this.fetchBarsStrict(ticker, timeframe, { countBack: 2 });
+        return bars.length > 0 ? bars[bars.length - 1] : null;
+      },
+      onBar,
+      onRegister: (handle) => {
+        this.activeSubscriptions.set(subKey, handle);
+        return () => {
+          this.activeSubscriptions.delete(subKey);
+        };
+      },
+    });
   }
 
   async getSymbolInfo(ticker: string): Promise<SymbolInfo> {

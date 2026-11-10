@@ -411,9 +411,17 @@ export class SymbolSearchEngine {
       if (exchange !== 'all') {
         const prov = item.provider.toLowerCase();
         if (exchange === 'binance' && !prov.includes('binance')) return false;
-        if (exchange === 'indodax' && !prov.includes('indodax')) return false;
-        if (exchange === 'bitunix' && !prov.includes('bitunix')) return false;
-        if (exchange === 'yahoo' && !prov.includes('yahoo')) return false;
+        else if (exchange === 'indodax' && !prov.includes('indodax')) return false;
+        else if (exchange === 'bitunix' && !prov.includes('bitunix')) return false;
+        else if (exchange === 'hyperliquid' && !prov.includes('hyperliquid')) return false;
+        else if (exchange === 'coinbase' && !prov.includes('coinbase')) return false;
+        else if (exchange === 'yahoo' && !prov.includes('yahoo')) return false;
+        else if (
+          !['binance', 'indodax', 'bitunix', 'hyperliquid', 'coinbase', 'yahoo'].includes(exchange) &&
+          !prov.includes(exchange.toLowerCase())
+        ) {
+          return false;
+        }
       }
       return true;
     });

@@ -10,6 +10,13 @@ import { CoinbaseProvider } from '@luxalgo/vela/providers/coinbase';
 import { BitunixProvider } from './bitunixProvider';
 import { IndodaxProvider } from './indodaxProvider';
 import { YahooFinanceProvider } from './yahooFinanceProvider';
+import { CustomFeedProvider } from './customProvider';
+import { marketFeed } from './market';
+import {
+  StreamGuardCoordinator,
+  wrapProviderWithStreamGuard,
+  type StreamHealthSink,
+} from './streamHealthGuard';
 import { registerDefaultEngine } from '@luxalgo/vela';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 import { IndicatorRegistry } from './indicatorRegistry';
@@ -22,7 +29,8 @@ import type {
   SavedWorkspace,
   CustomChartBackgroundConfig,
   CustomThemePalette,
-  GridMode
+  GridMode,
+  ProviderConfig
 } from '../types/market';
 import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors, resolveThemeConfig } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
@@ -54,8 +62,12 @@ export interface ChartSessionOptions {
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
-  // Factory opsional untuk dependency injection / headless unit testing
+  // Factory & Stream Guard opsional untuk dependency injection / headless unit testing
   workspaceFactory?: (container: HTMLElement, config: any) => any;
+  feedHealthSink?: StreamHealthSink;
+  providerFactories?: Partial<Record<string, () => any>>;
+  streamWatchdogMs?: number;
+  streamStaleMs?: number;
 }
 
 export interface ChartSessionSnapshot {
@@ -102,6 +114,7 @@ import {
   getCellMarketIdentity,
   isSameInstrument,
   normalizeSymbolForMatching,
+  toVelaProviderId,
 } from './instrumentIdentity';
 export {
   resolveVelaSymbol,
@@ -353,6 +366,12 @@ export class ChartSessionController {
   private customChartBackground?: CustomChartBackgroundConfig;
   private onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
   private gridMode: GridMode = 'normal';
+  private feedHealthSink: StreamHealthSink;
+  private streamCoordinator: StreamGuardCoordinator;
+  private providerFactories?: Partial<Record<string, () => any>>;
+  private streamWatchdogMs?: number;
+  private streamStaleMs?: number;
+  private onlineListener: (() => void) | null = null;
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -385,6 +404,11 @@ export class ChartSessionController {
     this.onActiveCellChange = options.onActiveCellChange;
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
     this.workspaceFactory = options.workspaceFactory;
+    this.feedHealthSink = options.feedHealthSink ?? marketFeed;
+    this.streamCoordinator = new StreamGuardCoordinator(this.feedHealthSink);
+    this.providerFactories = options.providerFactories;
+    this.streamWatchdogMs = options.streamWatchdogMs;
+    this.streamStaleMs = options.streamStaleMs;
   }
 
   /**
@@ -461,6 +485,119 @@ export class ChartSessionController {
   }
 
   /**
+   * Mengumpulkan konfigurasi custom-* provider secara sinkron dari sink aktif, singleton marketFeed, dan localStorage
+   */
+  private getKnownCustomConfigs(): ProviderConfig[] {
+    const byId = new Map<string, ProviderConfig>();
+
+    const collect = (list: any) => {
+      if (!Array.isArray(list)) return;
+      for (const p of list) {
+        if (p?.id && String(p.id).toLowerCase().startsWith('custom') && p.rest_url?.trim()) {
+          if (!byId.has(p.id)) byId.set(p.id, p);
+        }
+      }
+    };
+
+    const sinkAny = this.feedHealthSink as any;
+    if (typeof sinkAny?.getKnownProviderConfigsSync === 'function') {
+      collect(sinkAny.getKnownProviderConfigsSync());
+    }
+    collect(marketFeed.getKnownProviderConfigsSync());
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('trawangan_providers');
+        if (raw) collect(JSON.parse(raw));
+      } catch (_) {}
+    }
+
+    return Array.from(byId.values());
+  }
+
+  private registerCustomConfigIntoVela(cfg: ProviderConfig): void {
+    const velaFeed = this.workspace?.feed;
+    if (!velaFeed || typeof velaFeed.registerProvider !== 'function') return;
+    const velaKey = toVelaProviderId(cfg.id);
+    if (typeof velaFeed.providerInstance === 'function' && velaFeed.providerInstance(velaKey)) {
+      return;
+    }
+    const wrapped = wrapProviderWithStreamGuard(
+      new CustomFeedProvider({
+        providerId: cfg.id,
+        name: cfg.name,
+        restUrl: cfg.rest_url,
+        wsUrl: cfg.ws_url,
+        healthSink: this.feedHealthSink,
+      }),
+      cfg.id,
+      this.streamCoordinator,
+      {
+        healthSink: this.feedHealthSink,
+        watchdogCheckMs: this.streamWatchdogMs,
+        staleStreamMs: this.streamStaleMs,
+      }
+    );
+    velaFeed.registerProvider(velaKey, wrapped);
+  }
+
+  private ensureVelaProviderRegistered(targetProviderId?: string): boolean {
+    const rawId = (targetProviderId || this.providerId || 'binance').trim().toLowerCase();
+    if (!rawId.startsWith('custom')) return true;
+
+    const velaFeed = this.workspace?.feed;
+    if (!velaFeed || typeof velaFeed.registerProvider !== 'function') return false;
+    const velaKey = toVelaProviderId(rawId);
+    if (typeof velaFeed.providerInstance === 'function' && velaFeed.providerInstance(velaKey)) {
+      return true;
+    }
+
+    const customCfg = this.getKnownCustomConfigs().find(
+      (c) => c.id.toLowerCase() === rawId || toVelaProviderId(c.id) === velaKey
+    );
+    if (customCfg) {
+      this.registerCustomConfigIntoVela(customCfg);
+      return true;
+    }
+
+    const customFactory = this.providerFactories?.[rawId] || this.providerFactories?.[velaKey];
+    if (typeof customFactory === 'function') {
+      const wrapped = wrapProviderWithStreamGuard(customFactory(), rawId, this.streamCoordinator, {
+        healthSink: this.feedHealthSink,
+        watchdogCheckMs: this.streamWatchdogMs,
+        staleStreamMs: this.streamStaleMs,
+      });
+      velaFeed.registerProvider(velaKey, wrapped);
+      return true;
+    }
+
+    return false;
+  }
+
+  private async hydrateAndRegisterCustomProviders(): Promise<void> {
+    const lists: ProviderConfig[][] = [];
+    const sinkAny = this.feedHealthSink as any;
+    if (typeof sinkAny?.getSavedProviders === 'function') {
+      try {
+        const res = await sinkAny.getSavedProviders();
+        if (Array.isArray(res)) lists.push(res);
+      } catch (_) {}
+    }
+    try {
+      const res = await marketFeed.getSavedProviders();
+      if (Array.isArray(res)) lists.push(res);
+    } catch (_) {}
+
+    for (const list of lists) {
+      for (const cfg of list) {
+        if (cfg?.id && cfg.id.toLowerCase().startsWith('custom') && cfg.rest_url?.trim()) {
+          this.registerCustomConfigIntoVela(cfg);
+        }
+      }
+    }
+  }
+
+  /**
    * Mengaitkan elemen container kanvas WebGL2 dan menginisialisasi workspace
    */
   public attach(container: HTMLElement | null, options: Partial<ChartSessionOptions> = {}): () => void {
@@ -500,6 +637,53 @@ export class ChartSessionController {
     };
 
     const velaSym = resolveVelaSymbol(this.symbol, this.providerId);
+    const knownCustomConfigs = this.getKnownCustomConfigs();
+    const rawProviderFactories: Record<string, () => any> = {
+      binance: () => new BinanceProvider(),
+      indodax: () => new IndodaxProvider({ healthSink: this.feedHealthSink }),
+      hyperliquid: () => new HyperliquidProvider(),
+      coinbase: () => new CoinbaseProvider(),
+      bitunix: () => new BitunixProvider({ healthSink: this.feedHealthSink }),
+      yahoo: () => new YahooFinanceProvider({ healthSink: this.feedHealthSink }),
+    };
+
+    // Daftarkan provider custom-* menggunakan kunci Vela aman ([A-Za-z0-9_.]+ -> custom_*)
+    for (const cfg of knownCustomConfigs) {
+      const velaKey = toVelaProviderId(cfg.id);
+      rawProviderFactories[velaKey] = () =>
+        new CustomFeedProvider({
+          providerId: cfg.id,
+          name: cfg.name,
+          restUrl: cfg.rest_url,
+          wsUrl: cfg.ws_url,
+          healthSink: this.feedHealthSink,
+        });
+    }
+
+    if (this.providerFactories) {
+      for (const [id, factory] of Object.entries(this.providerFactories)) {
+        if (typeof factory !== 'function') continue;
+        const velaKey = toVelaProviderId(id);
+        rawProviderFactories[velaKey] = factory;
+        if (velaKey !== id) {
+          rawProviderFactories[id] = factory;
+        }
+      }
+    }
+
+    const guardedProviders: Record<string, () => any> = {};
+    for (const [key, factory] of Object.entries(rawProviderFactories)) {
+      if (typeof factory !== 'function') continue;
+      const matchedCustom = knownCustomConfigs.find((c) => toVelaProviderId(c.id) === key);
+      const guardProviderId = matchedCustom ? matchedCustom.id : key;
+      guardedProviders[key] = () =>
+        wrapProviderWithStreamGuard(factory(), guardProviderId, this.streamCoordinator, {
+          healthSink: this.feedHealthSink,
+          watchdogCheckMs: this.streamWatchdogMs,
+          staleStreamMs: this.streamStaleMs,
+        });
+    }
+
     const workspaceConfig = {
       layout: this.layout as any,
       symbol: velaSym,
@@ -511,14 +695,7 @@ export class ChartSessionController {
       volume: this.showVolume,
       theme: velaTheme,
       timezone: this.timezone,
-      providers: {
-        binance: () => new BinanceProvider(),
-        indodax: () => new IndodaxProvider(),
-        hyperliquid: () => new HyperliquidProvider(),
-        coinbase: () => new CoinbaseProvider(),
-        bitunix: () => new BitunixProvider(),
-        yahoo: () => new YahooFinanceProvider(),
-      },
+      providers: guardedProviders,
       engines: {
         pine: () => new PineWorkerEngine(),
       },
@@ -540,6 +717,9 @@ export class ChartSessionController {
       }
       this.attachDrawingSyncBoundaryGuard(this.workspace);
       this.isAttached = true;
+      if (this.providerId.toLowerCase().startsWith('custom')) {
+        void this.hydrateAndRegisterCustomProviders();
+      }
     } catch (err) {
       console.warn('[ChartSessionController] Gagal inisialisasi VelaWorkspace:', err);
       this.workspace = null;
@@ -594,6 +774,23 @@ export class ChartSessionController {
         });
         this.resizeObserver.observe(container);
       } catch (_) {}
+    }
+
+    // Otomatis sambung ulang stream WebSocket & tambal celah candle ketika koneksi OS pulih (online)
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      if (this.onlineListener) {
+        try {
+          window.removeEventListener('online', this.onlineListener);
+        } catch (_) {}
+      }
+      this.onlineListener = () => {
+        if (this.feedHealthSink === marketFeed) {
+          marketFeed.resetConnectionError();
+          void marketFeed.pollTick().catch(() => {});
+        }
+        void this.reconnectLiveFeed();
+      };
+      window.addEventListener('online', this.onlineListener);
     }
 
     this.notify();
@@ -1050,6 +1247,10 @@ export class ChartSessionController {
 
     if (this.workspace) {
       try {
+        if (!this.ensureVelaProviderRegistered(this.providerId)) {
+          await this.hydrateAndRegisterCustomProviders();
+          this.ensureVelaProviderRegistered(this.providerId);
+        }
         const targetSym = resolveVelaSymbol(this.symbol, this.providerId);
         if (this.syncConfig.symbol) {
           for (const cell of this.getAllCells()) {
@@ -2177,9 +2378,47 @@ export class ChartSessionController {
   }
 
   /**
+   * Memaksa penyambungan ulang seluruh live stream aktif dan menambal celah candle pada setiap cell
+   */
+  public async reconnectLiveFeed(): Promise<void> {
+    await this.streamCoordinator.reconnectAll();
+
+    for (const cell of this.getAllCells()) {
+      const chart = cell?.chart || cell?.inner;
+      const orchestrator = chart?.orchestrator;
+      if (!orchestrator || orchestrator.replayQueue) continue;
+
+      try {
+        if (!orchestrator.live && typeof orchestrator.startLive === 'function') {
+          orchestrator.startLive();
+        }
+        if (typeof orchestrator.healGap === 'function' && orchestrator.canHeal?.()) {
+          const bars = orchestrator.bars;
+          const lastBar = Array.isArray(bars) && bars.length > 0 ? bars[bars.length - 1] : null;
+          if (lastBar?.time) {
+            orchestrator.lastHealAt = 0;
+            await orchestrator.healGap(lastBar.time);
+          }
+        }
+      } catch (err) {
+        console.warn('[ChartSessionController] Gagal healGap saat reconnectLiveFeed:', err);
+      }
+    }
+  }
+
+  /**
    * Menghancurkan sesi, melepaskan observer, dan membebaskan alokasi WebGL Context
    */
   public destroy(): void {
+    if (this.onlineListener && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      try {
+        window.removeEventListener('online', this.onlineListener);
+      } catch (_) {}
+      this.onlineListener = null;
+    }
+
+    this.streamCoordinator.clear();
+
     if (this.resizeObserver) {
       try {
         this.resizeObserver.disconnect();

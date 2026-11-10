@@ -148,11 +148,13 @@ export class TelemetryService {
   // ─── Pengukur Latensi Jaringan (Ping RTT) Real-Time ───
 
   public async measurePing(): Promise<void> {
-    const pingUrl = this.getPingUrl(this.activeProviderId);
+    const target = this.getPingTarget(this.activeProviderId);
     const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     try {
-      const res = await universalFetch(pingUrl, {
+      const res = await universalFetch(target.url, {
+        method: target.method,
+        body: target.body,
         timeoutMs: 3500,
       });
 
@@ -220,15 +222,28 @@ export class TelemetryService {
     }
   }
 
-  private getPingUrl(providerId: string): string {
+  private getPingTarget(providerId: string): { url: string; method?: 'GET' | 'POST'; body?: string } {
     if (providerId === 'indodax') {
-      return 'https://indodax.com/api/ticker/btc_idr';
+      return { url: 'https://indodax.com/api/ticker/btc_idr' };
     }
     if (providerId === 'bitunix') {
-      return 'https://fapi.bitunix.com/api/v1/futures/market/trading_pairs';
+      return { url: 'https://fapi.bitunix.com/api/v1/futures/market/trading_pairs' };
+    }
+    if (providerId === 'hyperliquid') {
+      return {
+        url: 'https://api.hyperliquid.xyz/info',
+        method: 'POST',
+        body: '{"type":"allMids"}',
+      };
+    }
+    if (providerId === 'coinbase') {
+      return { url: 'https://api.exchange.coinbase.com/time' };
+    }
+    if (providerId === 'yahoo') {
+      return { url: 'https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=1d' };
     }
     // Default: Binance spot ping endpoint yang sangat ringan dan cepat
-    return 'https://api.binance.com/api/v3/ping';
+    return { url: 'https://api.binance.com/api/v3/ping' };
   }
 
   private getProviderDisplayName(providerId: string): string {
@@ -243,6 +258,8 @@ export class TelemetryService {
         return 'Hyperliquid';
       case 'coinbase':
         return 'Coinbase';
+      case 'yahoo':
+        return 'Yahoo Finance';
       default:
         return 'Custom Feed';
     }

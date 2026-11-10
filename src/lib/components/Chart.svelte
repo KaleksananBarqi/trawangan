@@ -308,6 +308,14 @@
     } catch (_) {}
   }
 
+  async function handleRetryFeedConnection() {
+    isDismissedConnectionWarning = false;
+    marketFeed.resetConnectionError();
+    void marketFeed.pollTick().catch(() => {});
+    await controller.reconnectLiveFeed();
+    void refreshCachedCandles();
+  }
+
   $effect(() => {
     const s = symbol, tf = timeframe;
     if (isMounted) {
@@ -792,12 +800,17 @@
       <div class="warning-left">
         <WifiOff size={16} class="warning-icon" />
         <span class="warning-text">
-          Koneksi feed ke <b>{feedConnectionStatus.providerId.toUpperCase()}</b> {feedConnectionStatus.state === 'blocked' ? 'terhambat (diblokir ISP)' : 'tersendat'}. Ingin beralih ke Indodax atau coba lagi?
+          {#if feedConnectionStatus.message}
+            {feedConnectionStatus.message}
+          {:else}
+            Koneksi feed ke <b>{feedConnectionStatus.providerId.toUpperCase()}</b> {feedConnectionStatus.state === 'blocked' ? 'terhambat (diblokir ISP)' : 'tersendat'}.
+          {/if}
+          Ingin beralih ke Indodax atau coba lagi?
         </span>
       </div>
       <div class="warning-actions">
         <button type="button" class="btn-switch-indodax" onclick={() => { marketFeed.setActiveProvider('indodax'); onActiveCellChange?.({ symbol: symbol.toUpperCase().endsWith('IDR') ? symbol : 'BTCIDR', timeframe }); }}>Beralih ke Indodax</button>
-        <button type="button" class="btn-retry-feed" onclick={() => marketFeed.resetConnectionError()}>Coba Ulang</button>
+        <button type="button" class="btn-retry-feed" onclick={handleRetryFeedConnection}>Coba Ulang</button>
         <button type="button" class="btn-dismiss-warning" title="Tutup" onclick={() => (isDismissedConnectionWarning = true)}><X size={14} /></button>
       </div>
     </div>

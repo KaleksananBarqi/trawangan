@@ -4,22 +4,31 @@ import type { Candle, TickerInfo, MarketSearchResult } from '../../../types/mark
 import { normalizeTicker, VERIFIED_CRYPTO_ASSETS } from '../constants';
 import { toExchangeInterval } from '../../../utils/timeframeAdapter';
 import { parseAdaptiveSymbol } from '../symbolSearchService';
+import { universalFetch } from '../../httpClient';
 
 export class BinanceAdapter implements MarketProviderAdapter {
   id = 'binance';
   name = 'Binance Official Public';
+  private timeoutMs: number;
+
+  constructor(options: { timeoutMs?: number } = {}) {
+    this.timeoutMs = options.timeoutMs ?? 8000;
+  }
 
   private isTauri(): boolean {
     return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   }
 
   async fetchTicker(symbol: string): Promise<TickerInfo> {
-    const isPerp = symbol.toUpperCase().endsWith('.P');
-    const clean = normalizeTicker(symbol).replace(/\.P$/i, '');
+    const normalized = normalizeTicker(symbol);
+    const isPerp = normalized.endsWith('.P');
+    const clean = normalized.replace(/\.P$/i, '');
 
     if (isPerp) {
       try {
-        const res = await fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${clean}`);
+        const res = await universalFetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${clean}`, {
+          timeoutMs: this.timeoutMs,
+        });
         if (res.ok) {
           const data = await res.json();
           return {
@@ -38,7 +47,9 @@ export class BinanceAdapter implements MarketProviderAdapter {
     }
 
     try {
-      const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${clean}`);
+      const res = await universalFetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${clean}`, {
+        timeoutMs: this.timeoutMs,
+      });
       if (res.ok) {
         const data = await res.json();
         return {
@@ -74,20 +85,27 @@ export class BinanceAdapter implements MarketProviderAdapter {
     const perpSymbols: string[] = [];
 
     for (const s of symbols) {
-      if (s.toUpperCase().endsWith('.P')) {
+      if (s.trim().toUpperCase().endsWith('.P')) {
         perpSymbols.push(s);
       } else {
         spotSymbols.push(s);
       }
     }
 
+    let spotError: any = null;
+    let perpError: any = null;
+
     // 1. Ambil Spot Tickers
     if (spotSymbols.length > 0) {
       const cleanSpots = spotSymbols.map((s) => normalizeTicker(s));
       try {
         const encoded = encodeURIComponent(JSON.stringify(cleanSpots));
-        const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbols=${encoded}`);
-        if (res.ok) {
+        const res = await universalFetch(`https://api.binance.com/api/v3/ticker/24hr?symbols=${encoded}`, {
+          timeoutMs: this.timeoutMs,
+        });
+        if (!res.ok) {
+          spotError = new Error(`Binance Spot Ticker HTTP ${res.status} ${res.statusText}`);
+        } else {
           const data = await res.json();
           for (const item of data) {
             resultMap[item.symbol] = {
@@ -102,6 +120,7 @@ export class BinanceAdapter implements MarketProviderAdapter {
           }
         }
       } catch (err) {
+        spotError = err;
         console.warn('[BinanceAdapter] Gagal fetch batch spot tickers:', err);
       }
     }
@@ -109,8 +128,12 @@ export class BinanceAdapter implements MarketProviderAdapter {
     // 2. Ambil Perpetuals Tickers
     if (perpSymbols.length > 0) {
       try {
-        const fRes = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
-        if (fRes.ok) {
+        const fRes = await universalFetch('https://fapi.binance.com/fapi/v1/ticker/24hr', {
+          timeoutMs: this.timeoutMs,
+        });
+        if (!fRes.ok) {
+          perpError = new Error(`Binance Futures Ticker HTTP ${fRes.status} ${fRes.statusText}`);
+        } else {
           const fData = await fRes.json();
           const fMap = new Map<string, any>();
           for (const item of fData) {
@@ -124,7 +147,7 @@ export class BinanceAdapter implements MarketProviderAdapter {
           }
 
           for (const pSym of perpSymbols) {
-            const bare = pSym.replace(/\.P$/i, '').toUpperCase();
+            const bare = normalizeTicker(pSym).replace(/\.P$/i, '');
             const match = fMap.get(bare);
             if (match) {
               resultMap[pSym] = {
@@ -136,18 +159,27 @@ export class BinanceAdapter implements MarketProviderAdapter {
           }
         }
       } catch (fErr) {
+        perpError = fErr;
         console.warn('[BinanceAdapter] Gagal fetch batch futures tickers:', fErr);
       }
+    }
+
+    // Lempar error bila seluruh kueri Binance gagal sehingga MarketFeedService Guard mencatat status terganggu
+    if (Object.keys(resultMap).length === 0 && (spotError || perpError)) {
+      throw perpError || spotError;
     }
 
     return resultMap;
   }
 
   async fetchCandles(symbol: string, interval: string, limit = 500): Promise<Candle[]> {
-    const cleanSymbol = normalizeTicker(symbol);
+    const normalized = normalizeTicker(symbol);
+    const isPerp = normalized.endsWith('.P');
+    const cleanSymbol = normalized.replace(/\.P$/i, '');
     const exchangeInterval = toExchangeInterval(interval, 'binance');
 
-    if (this.isTauri()) {
+    // Rust backend fetch_binance_klines hanya memanggil Spot (/api/v3/klines); kontrak .P langsung diarahkan ke fapi.binance.com
+    if (this.isTauri() && !isPerp) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const data = await invoke<Candle[]>('fetch_candles', {
@@ -162,15 +194,19 @@ export class BinanceAdapter implements MarketProviderAdapter {
       }
     }
 
-    const res = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${exchangeInterval}&limit=${limit}`
+    const baseUrl = isPerp
+      ? 'https://fapi.binance.com/fapi/v1/klines'
+      : 'https://api.binance.com/api/v3/klines';
+    const res = await universalFetch(
+      `${baseUrl}?symbol=${cleanSymbol}&interval=${exchangeInterval}&limit=${limit}`,
+      { timeoutMs: this.timeoutMs }
     );
     if (!res.ok) {
-      throw new Error(`Respon error dari Binance API: ${res.statusText}`);
+      throw new Error(`Respon error dari Binance API: ${res.status} ${res.statusText}`);
     }
     const raw = await res.json();
     return raw.map((item: any[]) => ({
-      time: item[0],
+      time: Number(item[0]),
       open: parseFloat(item[1]),
       high: parseFloat(item[2]),
       low: parseFloat(item[3]),

@@ -6,9 +6,30 @@
 import { isMonthlyTimeframe } from '../utils/timeframeAdapter';
 import type { OHLCV, SymbolDescriptor, SymbolInfo } from './bitunixProvider';
 import { universalFetch } from './httpClient';
+import {
+  createPollingSubscription,
+  type ManagedStreamHandle,
+  type StreamHealthSink,
+} from './streamHealthGuard';
+
+export interface IndodaxProviderOptions {
+  healthSink?: StreamHealthSink;
+  pollIntervalMs?: number;
+  maxBackoffMs?: number;
+  timeoutMs?: number;
+}
 
 export class IndodaxProvider {
-  private activeSubscriptions = new Map<string, { timer: any; callback: (b: OHLCV) => void }>();
+  private activeSubscriptions = new Map<string, ManagedStreamHandle>();
+  private options: IndodaxProviderOptions;
+
+  constructor(options: IndodaxProviderOptions = {}) {
+    this.options = options;
+  }
+
+  public setHealthSink(sink?: StreamHealthSink): void {
+    this.options.healthSink = sink;
+  }
 
   info() {
     return {
@@ -105,14 +126,14 @@ export class IndodaxProvider {
   }
 
   /**
-   * Mengambil candle historis dari Indodax Public TradingView API
+   * Mengambil candle historis Indodax secara ketat (melempar error bila gagal jaringan/HTTP)
    */
-  async getBars(ticker: string, timeframe: string, range: any): Promise<OHLCV[]> {
+  public async fetchBarsStrict(ticker: string, timeframe: string, range: any = {}): Promise<OHLCV[]> {
     const pair = this.normalizePair(ticker);
     const tf = this.mapTimeframe(timeframe);
 
     const nowSec = Math.floor(Date.now() / 1000);
-    const countBack = Math.min(Math.max(range?.countBack || 300, 100), 1000);
+    const countBack = Math.min(Math.max(range?.countBack || range?.limit || 300, 100), 1000);
 
     // Hitung estimasi rentang waktu mundur berdasarkan timeframe
     let secondsPerBar = 900; // default 15m
@@ -135,21 +156,30 @@ export class IndodaxProvider {
       : nowSec;
 
     const url = `https://indodax.com/tradingview/history_v2?symbol=${pair}&tf=${tf}&from=${fromSec}&to=${toSec}`;
+    const timeoutMs = this.options.timeoutMs ?? 8000;
 
+    const res = await universalFetch(url, { timeoutMs });
+    if (!res.ok) {
+      throw new Error(`Indodax HTTP Error: ${res.status} ${res.statusText}`);
+    }
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      throw new Error(`Indodax API mengembalikan payload tidak valid untuk ${pair}`);
+    }
+    return this.transformKlineData(data);
+  }
+
+  /**
+   * Mengambil candle historis dari Indodax Public TradingView API (fail-soft untuk kompatibilitas Vela)
+   */
+  async getBars(ticker: string, timeframe: string, range: any): Promise<OHLCV[]> {
+    const pair = this.normalizePair(ticker);
     try {
-      const res = await universalFetch(url);
-      if (!res.ok) {
-        throw new Error(`Indodax HTTP Error: ${res.statusText}`);
-      }
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        return this.transformKlineData(data);
-      }
+      return await this.fetchBarsStrict(ticker, timeframe, range);
     } catch (err) {
       console.warn(`[IndodaxProvider] Gagal fetch kline ${pair}:`, err);
+      return [];
     }
-
-    return [];
   }
 
   /**
@@ -197,31 +227,36 @@ export class IndodaxProvider {
     ];
   }
 
+  public reconnectAll(): void {
+    for (const handle of this.activeSubscriptions.values()) {
+      handle.reconnect();
+    }
+  }
+
   /**
-   * Polling berkala streaming update bar
+   * Polling berkala streaming update bar dengan anti-overlap guard, exponential backoff, dan health reporting
    */
   subscribe(ticker: string, timeframe: string, onBar: (bar: OHLCV) => void): () => void {
-    const subKey = `${ticker}_${timeframe}_${Date.now()}`;
-    const timer = setInterval(async () => {
-      try {
-        const bars = await this.getBars(ticker, timeframe, { from: 0, to: 0, countBack: 2 });
-        if (bars.length > 0) {
-          onBar(bars[bars.length - 1]);
-        }
-      } catch (_) {
-        // Polling silent error
-      }
-    }, 4000);
+    const pair = this.normalizePair(ticker);
+    const subKey = `indodax:${pair}:${timeframe}:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`;
 
-    if (typeof (timer as any)?.unref === 'function') {
-      (timer as any).unref();
-    }
-
-    this.activeSubscriptions.set(subKey, { timer, callback: onBar });
-
-    return () => {
-      clearInterval(timer);
-      this.activeSubscriptions.delete(subKey);
-    };
+    return createPollingSubscription<OHLCV>({
+      sourceKey: subKey,
+      providerId: 'indodax',
+      pollIntervalMs: this.options.pollIntervalMs ?? 4000,
+      maxBackoffMs: this.options.maxBackoffMs ?? 30000,
+      healthSink: this.options.healthSink,
+      fetchLatest: async () => {
+        const bars = await this.fetchBarsStrict(ticker, timeframe, { countBack: 2 });
+        return bars.length > 0 ? bars[bars.length - 1] : null;
+      },
+      onBar,
+      onRegister: (handle) => {
+        this.activeSubscriptions.set(subKey, handle);
+        return () => {
+          this.activeSubscriptions.delete(subKey);
+        };
+      },
+    });
   }
 }

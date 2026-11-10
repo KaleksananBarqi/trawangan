@@ -4,10 +4,12 @@ import type { Candle, TickerInfo, MarketSearchResult } from '../../../types/mark
 import { normalizeTicker, VERIFIED_CRYPTO_ASSETS } from '../constants';
 
 import { universalFetch } from '../../httpClient';
+import { BitunixProvider } from '../../bitunixProvider';
 
 export class BitunixAdapter implements MarketProviderAdapter {
   id = 'bitunix';
   name = 'Bitunix Futures (USDT-M)';
+  private klineProvider = new BitunixProvider();
 
   async fetchTicker(symbol: string): Promise<TickerInfo> {
     // Bitunix hanya menyediakan endpoint batch /tickers, ambil langsung dari batch
@@ -30,7 +32,9 @@ export class BitunixAdapter implements MarketProviderAdapter {
     const resultMap: Record<string, TickerInfo> = {};
 
     try {
-      const res = await universalFetch('https://fapi.bitunix.com/api/v1/futures/market/tickers');
+      const res = await universalFetch('https://fapi.bitunix.com/api/v1/futures/market/tickers', {
+        timeoutMs: 8000,
+      });
       if (res.ok) {
         const json = await res.json();
         if (json && json.code === 0 && Array.isArray(json.data)) {
@@ -71,30 +75,22 @@ export class BitunixAdapter implements MarketProviderAdapter {
 
   async fetchCandles(symbol: string, interval: string, limit = 500): Promise<Candle[]> {
     const clean = normalizeTicker(symbol).replace(/\.P$/i, '').toUpperCase();
-    const cleanTf = interval.toLowerCase();
 
     try {
-      const res = await universalFetch(
-        `https://fapi.bitunix.com/api/v1/futures/market/tradingview/history?symbol=${clean}&resolution=${cleanTf}&countback=${limit}`
-      );
-      if (res.ok) {
-        const json = await res.json();
-        if (json && json.s === 'ok' && Array.isArray(json.t)) {
-          const len = json.t.length;
-          const candles: Candle[] = new Array(len);
-          for (let i = 0; i < len; i++) {
-            candles[i] = {
-              time: json.t[i] * 1000,
-              open: json.o[i],
-              high: json.h[i],
-              low: json.l[i],
-              close: json.c[i],
-              volume: json.v ? json.v[i] : 0,
-            };
-          }
-          return candles;
-        }
-      }
+      // Gunakan endpoint resmi /futures/market/kline + forming bar melalui BitunixProvider
+      // menggantikan endpoint lama /tradingview/history yang mengembalikan 404.
+      const bars = await this.klineProvider.fetchBarsStrict(clean, interval, {
+        limit,
+        countBack: limit,
+      });
+      return bars.map((b) => ({
+        time: b.time,
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+        volume: b.volume ?? 0,
+      }));
     } catch (err) {
       console.warn('[BitunixAdapter] Gagal fetch candles:', err);
     }
