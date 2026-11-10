@@ -22,6 +22,7 @@ import {
   type ZonePolarity
 } from './planParserService';
 import { getAdaptiveTickSize, roundToTickSize } from './priceSnapService';
+import { computeRiskPercent } from './tradePlanFormService';
 
 export const CONTEXT_ZONE_STYLES = {
   bull: {
@@ -76,8 +77,10 @@ export type ActiveTradingPlan = ParsedTradingPlan & {
   symbol?: string;
 };
 
-export interface ApplyPlanOptions {
-  planId?: string;
+/**
+ * Opsi pembaruan Trading Plan secara in-place pada simbol aktif.
+ */
+export interface UpdatePlanOptions {
   anchorTime?: number;
   barSpanPerTarget?: number;
   paneId?: string;
@@ -85,6 +88,11 @@ export interface ApplyPlanOptions {
   autoCreateAlerts?: boolean;
   skipVaultSave?: boolean;
   createdAt?: number;
+}
+
+export interface ApplyPlanOptions extends UpdatePlanOptions {
+  planId?: string;
+  replaceExistingOnSymbol?: boolean;
 }
 
 export interface AppliedPlanResult {
@@ -116,12 +124,29 @@ export interface SerializedPlanEnvelope {
   timestamp: number;
 }
 
-export interface PlanUndoTransaction {
+export interface PlanCreateUndoTransaction {
+  action?: 'create';
   plan: ActiveTradingPlan;
   drawingIds: string[];
   drawings: any[];
   autoCreateAlerts: boolean;
 }
+
+export interface PlanUpdateUndoTransaction {
+  action: 'update';
+  plan: ActiveTradingPlan;
+  drawingIds: string[];
+  drawings: any[];
+  autoCreateAlerts: boolean;
+  previousPlan: ActiveTradingPlan;
+  previousDrawingIds: string[];
+  previousDrawings: any[];
+  previousAlertsEnabled: boolean;
+}
+
+export type PlanUndoTransaction =
+  | PlanCreateUndoTransaction
+  | PlanUpdateUndoTransaction;
 
 export interface TradingPlanExecutionContext {
   hasActiveCanvas: boolean;
@@ -143,7 +168,12 @@ export interface TradingPlanHostPort {
   removeCanvasDrawings(ids: string[]): void;
   recordUndoAction?(tx: PlanUndoTransaction): void;
   saveToVault?(record: SavedTradingPlanRecord): void;
+  hasActiveAlerts?(planId: string): boolean;
   addPlanAlerts?(plan: ActiveTradingPlan, symbol: string): void;
+  reconcilePlanAlerts?(
+    plan: ActiveTradingPlan,
+    options: { enabled: boolean; fallbackSymbol: string }
+  ): void;
   syncPlanAlertPrices?(plan: ActiveTradingPlan): void;
   deleteAlertsByPlanId?(planId: string): void;
   onStateChanged?(): void;
@@ -170,8 +200,9 @@ export function formatEntryZoneLabel(
 export function recalculatePlanRiskAndTargets(plan: ActiveTradingPlan): void {
   const risk = Math.abs(plan.entry - plan.stopLoss);
   plan.riskAmount = parseFloat(risk.toFixed(8));
-  if (plan.entry > 0) {
-    plan.riskPercent = parseFloat(((risk / plan.entry) * 100).toFixed(2));
+  const computedPct = computeRiskPercent(plan.entry, plan.stopLoss);
+  if (computedPct !== undefined) {
+    plan.riskPercent = computedPct;
   }
 
   const isBearish = plan.bias === 'bearish' || plan.stopLoss > plan.entry;
@@ -333,11 +364,29 @@ export class TradingPlanLifecycle {
     }
   }
 
+  private hasActiveAlerts(planId: string): boolean {
+    if (this.host.hasActiveAlerts) {
+      return this.host.hasActiveAlerts(planId);
+    }
+    return alertService.hasActiveAlertsForPlan(planId);
+  }
+
   private createAlerts(plan: ActiveTradingPlan, symbol: string): void {
     if (this.host.addPlanAlerts) {
       this.host.addPlanAlerts(plan, symbol);
     } else {
       alertService.addPlanAlerts(plan, symbol);
+    }
+  }
+
+  private reconcileAlerts(
+    plan: ActiveTradingPlan,
+    options: { enabled: boolean; fallbackSymbol: string }
+  ): void {
+    if (this.host.reconcilePlanAlerts) {
+      this.host.reconcilePlanAlerts(plan, options);
+    } else {
+      alertService.reconcilePlanAlerts(plan, options);
     }
   }
 
@@ -362,44 +411,32 @@ export class TradingPlanLifecycle {
   }
 
   /**
-   * Proyeksi sinkron ParsedTradingPlan ke kanvas menjadi Staged Position Boxes, Entry Zone, dan Context Zone
+   * Membangun dan menggambar kotak staged position, dual-entry zone, dan context zones ke kanvas.
+   * Mengizinkan pewarisan koordinat waktu `[startTime, endTime]` tiap stage saat plan diedit in-place.
    */
-  projectPlan(
-    plan: ParsedTradingPlan & { id?: string },
-    options?: ApplyPlanOptions
-  ): AppliedPlanResult | null {
-    if (!plan) return null;
-    if (plan.validation && !plan.validation.valid) return null;
-    if (!plan.entry || !plan.stopLoss || !plan.targets || plan.targets.length === 0) {
-      return null;
+  private createPlanDrawingsOnCanvas(
+    plan: ParsedTradingPlan,
+    planId: string,
+    params: {
+      stageTimes: Array<{ startTime: number; endTime: number }>;
+      defaultAnchorTime: number;
+      stageDuration: number;
+      paneId: string;
+      drawContextZones: boolean;
     }
-
-    const ctx = this.host.getContext();
-    if (!ctx.hasActiveCanvas) {
-      return null;
-    }
-
-    const deltaT = ctx.deltaT > 0 ? ctx.deltaT : 3600000;
-    const t0 = options?.anchorTime || ctx.latestCandleTime || Date.now();
-    const span = options?.barSpanPerTarget && options.barSpanPerTarget > 0 ? options.barSpanPerTarget : 25;
-    const paneId = options?.paneId || 'price';
-
-    const planId =
-      options?.planId ||
-      plan.id ||
-      `plan_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  ): { drawings: any[]; drawingIds: string[] } {
     const createdDrawings: any[] = [];
     const createdDrawingIds: string[] = [];
+    const { stageTimes, defaultAnchorTime, stageDuration, paneId, drawContextZones } = params;
 
-    this.isProjecting = true;
-    try {
-      // 1. Gambar kotak posisi bertingkat (Staged Position Boxes)
+    // 1. Gambar kotak posisi bertingkat (Staged Position Boxes)
     for (let i = 0; i < plan.targets.length; i++) {
       const target = plan.targets[i];
       if (typeof target.price !== 'number' || isNaN(target.price)) continue;
 
-      const startTime = t0 + i * span * deltaT;
-      const endTime = startTime + span * deltaT;
+      const slot = stageTimes[i];
+      const startTime = slot ? slot.startTime : defaultAnchorTime + i * stageDuration;
+      const endTime = slot ? slot.endTime : startTime + stageDuration;
 
       const rMultipleFormatted =
         typeof target.rMultiple === 'number' && !isNaN(target.rMultiple)
@@ -450,6 +487,11 @@ export class TradingPlanLifecycle {
       }
     }
 
+    const firstStartTime = stageTimes[0]?.startTime ?? defaultAnchorTime;
+    const lastEndTime =
+      stageTimes[stageTimes.length - 1]?.endTime ??
+      defaultAnchorTime + Math.max(1, plan.targets.length) * stageDuration;
+
     // 1b. Gambar kotak arsiran zona entry (Dual-Entry Zone) jika ada beberapa level entry (ADR-0020)
     if (Array.isArray(plan.entries) && plan.entries.length > 1) {
       const entryPrices = plan.entries
@@ -458,7 +500,6 @@ export class TradingPlanLifecycle {
       if (entryPrices.length >= 2) {
         const minEntry = Math.min(...entryPrices);
         const maxEntry = Math.max(...entryPrices);
-        const lastEndTime = t0 + plan.targets.length * span * deltaT;
         const isBear = plan.bias === 'bearish' || plan.stopLoss > plan.entry;
         const zoneStyle = isBear ? ENTRY_ZONE_STYLES.bear : ENTRY_ZONE_STYLES.bull;
         const labelText = formatEntryZoneLabel(plan.entries, minEntry, maxEntry);
@@ -467,7 +508,7 @@ export class TradingPlanLifecycle {
           type: 'box',
           paneId,
           anchors: [
-            { time: t0, price: maxEntry },
+            { time: firstStartTime, price: maxEntry },
             { time: lastEndTime, price: minEntry }
           ],
           style: {
@@ -507,12 +548,10 @@ export class TradingPlanLifecycle {
 
     // 2. Gambar kotak zona FVG / Context Zone transparan otomatis (#115)
     if (
-      options?.drawContextZones !== false &&
+      drawContextZones &&
       Array.isArray(plan.contextZones) &&
       plan.contextZones.length > 0
     ) {
-      const lastEndTime = t0 + plan.targets.length * span * deltaT;
-
       for (const zone of plan.contextZones) {
         if (
           typeof zone.low !== 'number' ||
@@ -530,7 +569,7 @@ export class TradingPlanLifecycle {
           type: 'box',
           paneId,
           anchors: [
-            { time: t0, price: zone.high },
+            { time: firstStartTime, price: zone.high },
             { time: lastEndTime, price: zone.low }
           ],
           style: {
@@ -568,6 +607,68 @@ export class TradingPlanLifecycle {
         }
       }
     }
+
+    return { drawings: createdDrawings, drawingIds: createdDrawingIds };
+  }
+
+  /**
+   * Proyeksi sinkron ParsedTradingPlan ke kanvas menjadi Staged Position Boxes, Entry Zone, dan Context Zone
+   */
+  projectPlan(
+    plan: ParsedTradingPlan & { id?: string },
+    options?: ApplyPlanOptions
+  ): AppliedPlanResult | null {
+    if (!plan) return null;
+    if (plan.validation && !plan.validation.valid) return null;
+    if (!plan.entry || !plan.stopLoss || !plan.targets || plan.targets.length === 0) {
+      return null;
+    }
+
+    const ctx = this.host.getContext();
+    if (!ctx.hasActiveCanvas) {
+      return null;
+    }
+
+    const deltaT = ctx.deltaT > 0 ? ctx.deltaT : 3600000;
+    const t0 = options?.anchorTime || ctx.latestCandleTime || Date.now();
+    const span = options?.barSpanPerTarget && options.barSpanPerTarget > 0 ? options.barSpanPerTarget : 25;
+    const stageDuration = span * deltaT;
+    const paneId = options?.paneId || 'price';
+
+    const planId =
+      options?.planId ||
+      plan.id ||
+      `plan_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    if (options?.replaceExistingOnSymbol) {
+      const targetSymbol = plan.symbol || ctx.symbol || 'BTCUSDT';
+      const sameSymbolIds = Array.from(this.activePlans.values())
+        .filter((p) => p.id !== planId && (!p.symbol || isSamePlanSymbol(p.symbol, targetSymbol)))
+        .map((p) => p.id);
+      for (const oldId of sameSymbolIds) {
+        this.removePlan(oldId);
+      }
+    }
+
+    const stageTimes = plan.targets.map((_, i) => {
+      const startTime = t0 + i * stageDuration;
+      return { startTime, endTime: startTime + stageDuration };
+    });
+
+    let createdDrawings: any[] = [];
+    let createdDrawingIds: string[] = [];
+
+    this.isProjecting = true;
+    try {
+      const built = this.createPlanDrawingsOnCanvas(plan, planId, {
+        stageTimes,
+        defaultAnchorTime: t0,
+        stageDuration,
+        paneId,
+        drawContextZones: options?.drawContextZones !== false
+      });
+      createdDrawings = built.drawings;
+      createdDrawingIds = built.drawingIds;
     } finally {
       this.isProjecting = false;
     }
@@ -622,10 +723,204 @@ export class TradingPlanLifecycle {
 
     // Catat aksi ke undo history host
     this.host.recordUndoAction?.({
+      action: 'create',
       plan: planRecord,
       drawingIds: createdDrawingIds,
       drawings: createdDrawings,
       autoCreateAlerts: Boolean(options?.autoCreateAlerts)
+    });
+
+    this.notifyChanged();
+
+    return {
+      planId,
+      plan: planRecord,
+      drawingIds: createdDrawingIds,
+      drawings: createdDrawings
+    };
+  }
+
+  /**
+   * Memperbarui Trading Plan yang sedang aktif secara in-place:
+   * - Mempertahankan `planId` serta koordinat waktu horizontal `[startTime, endTime]` tiap stage yang ada
+   * - Menghapus dan membuat ulang set gambar secara atomik dalam guard `isProjecting`
+   * - Memperbarui record Trade Plan Vault tanpa menduplikasi histori
+   * - Merekonsiliasi Plan-Linked Auto-Alerts (harga, bias flip, stage/entry bertambah/berkurang)
+   * - Merekam transaksi Undo/Redo atomik (`action: 'update'`)
+   */
+  updatePlan(
+    planId: string,
+    updatedPlan: ParsedTradingPlan & { id?: string },
+    options?: UpdatePlanOptions
+  ): AppliedPlanResult | null {
+    if (!updatedPlan) return null;
+    if (updatedPlan.validation && !updatedPlan.validation.valid) return null;
+    if (!updatedPlan.entry || !updatedPlan.stopLoss || !updatedPlan.targets || updatedPlan.targets.length === 0) {
+      return null;
+    }
+
+    const ctx = this.host.getContext();
+    if (!ctx.hasActiveCanvas) {
+      return null;
+    }
+
+    const existingPlan = this.activePlans.get(planId);
+    if (!existingPlan) {
+      return this.projectPlan(updatedPlan, { ...options, planId });
+    }
+
+    const deltaT = ctx.deltaT > 0 ? ctx.deltaT : 3600000;
+    const span = options?.barSpanPerTarget && options.barSpanPerTarget > 0 ? options.barSpanPerTarget : 25;
+    const stageDuration = span * deltaT;
+    const paneId = options?.paneId || 'price';
+
+    const prevPlanSnapshot = structuredClone(existingPlan);
+    const prevDrawingIdSet = this.planDrawingIds.get(planId) || new Set<string>();
+    const currentDrawings = this.host.getCanvasDrawings() || [];
+    const prevPlanDrawings = currentDrawings.filter(
+      (d) => d && (d.metadata?.planId === planId || prevDrawingIdSet.has(d.id))
+    );
+    const prevDrawingIds = Array.from(
+      new Set([
+        ...Array.from(prevDrawingIdSet),
+        ...prevPlanDrawings.map((d) => d.id).filter(Boolean)
+      ])
+    );
+    const prevDrawingsSnapshot = prevPlanDrawings.map((d) => structuredClone(d));
+
+    // Pertahankan koordinat waktu tiap stage posisi sebelumnya agar drag X-axis pengguna tidak hilang
+    const prevPositions = prevPlanDrawings
+      .filter((d) => d && d.type === 'position' && Array.isArray(d.anchors) && d.anchors.length >= 3)
+      .sort((a, b) => Number(a.metadata?.stageIndex || 0) - Number(b.metadata?.stageIndex || 0));
+
+    const preservedStageTimes: Array<{ startTime: number; endTime: number }> = [];
+    for (const pos of prevPositions) {
+      const sT = pos.anchors[0]?.time;
+      const eT = pos.anchors[2]?.time ?? pos.anchors[1]?.time;
+      if (typeof sT === 'number' && typeof eT === 'number' && eT > sT) {
+        preservedStageTimes.push({ startTime: sT, endTime: eT });
+      }
+    }
+
+    const baseStart =
+      preservedStageTimes[0]?.startTime ||
+      options?.anchorTime ||
+      ctx.latestCandleTime ||
+      Date.now();
+    const resolvedStageTimes: Array<{ startTime: number; endTime: number }> = [];
+    for (let i = 0; i < updatedPlan.targets.length; i++) {
+      if (preservedStageTimes[i]) {
+        resolvedStageTimes.push({ ...preservedStageTimes[i] });
+      } else {
+        const prev = resolvedStageTimes[i - 1];
+        const prevWidth = prev ? Math.max(deltaT, prev.endTime - prev.startTime) : stageDuration;
+        const startTime = prev ? prev.endTime : baseStart + i * stageDuration;
+        resolvedStageTimes.push({ startTime, endTime: startTime + prevWidth });
+      }
+    }
+
+    const autoAlertsBefore = this.hasActiveAlerts(planId);
+    const nextAutoAlerts = options?.autoCreateAlerts ?? autoAlertsBefore;
+
+    let createdDrawings: any[] = [];
+    let createdDrawingIds: string[] = [];
+
+    this.isProjecting = true;
+    try {
+      for (const oldId of prevDrawingIds) {
+        this.drawingMetadata.delete(oldId);
+        this.drawingPlanMap.delete(oldId);
+      }
+      if (prevDrawingIds.length > 0) {
+        this.host.removeCanvasDrawings(prevDrawingIds);
+      }
+
+      const built = this.createPlanDrawingsOnCanvas(updatedPlan, planId, {
+        stageTimes: resolvedStageTimes,
+        defaultAnchorTime: baseStart,
+        stageDuration,
+        paneId,
+        drawContextZones: options?.drawContextZones !== false
+      });
+      createdDrawings = built.drawings;
+      createdDrawingIds = built.drawingIds;
+
+      // Rollback defensif jika kanvas gagal memproduksi drawing baru
+      if (createdDrawings.length === 0 && prevDrawingsSnapshot.length > 0) {
+        for (const oldD of prevDrawingsSnapshot) {
+          const restored = this.host.createCanvasDrawing(oldD);
+          if (restored?.id) {
+            this.drawingMetadata.set(restored.id, oldD.metadata);
+            this.drawingPlanMap.set(restored.id, planId);
+          }
+        }
+        return null;
+      }
+    } finally {
+      this.isProjecting = false;
+    }
+
+    const targetSymbol = existingPlan.symbol || updatedPlan.symbol || ctx.symbol || 'BTCUSDT';
+    const hasExplicitRiskPct =
+      typeof updatedPlan.riskPercent === 'number' &&
+      !isNaN(updatedPlan.riskPercent) &&
+      updatedPlan.riskPercent > 0;
+    const planRecord: ActiveTradingPlan = {
+      ...updatedPlan,
+      id: planId,
+      symbol: targetSymbol,
+      entries: Array.isArray(updatedPlan.entries) ? updatedPlan.entries.map((e) => ({ ...e })) : undefined,
+      targets: Array.isArray(updatedPlan.targets)
+        ? updatedPlan.targets.map((t) => ({
+            ...t,
+            rMultipleByEntry: t.rMultipleByEntry ? { ...t.rMultipleByEntry } : undefined
+          }))
+        : []
+    };
+    recalculatePlanRiskAndTargets(planRecord);
+    if (hasExplicitRiskPct) {
+      planRecord.riskPercent = updatedPlan.riskPercent;
+    }
+
+    this.activePlans.set(planId, planRecord);
+    this.planDrawingIds.set(planId, new Set(createdDrawingIds));
+
+    if (!options?.skipVaultSave) {
+      try {
+        this.saveVault({
+          id: planId,
+          symbol: targetSymbol,
+          providerId: ctx.providerId || 'binance',
+          timeframe: ctx.timeframe || '15m',
+          createdAt: options?.createdAt || Date.now(),
+          updatedAt: Date.now(),
+          rawText: updatedPlan.rawText || '',
+          plan: planRecord
+        });
+      } catch (err) {
+        console.warn('Gagal memperbarui Trade Plan di Vault:', err);
+      }
+    }
+
+    try {
+      this.reconcileAlerts(planRecord, {
+        enabled: nextAutoAlerts,
+        fallbackSymbol: targetSymbol
+      });
+    } catch (err) {
+      console.warn('Gagal menyinkronkan Plan-Linked Auto-Alerts:', err);
+    }
+
+    this.host.recordUndoAction?.({
+      action: 'update',
+      plan: structuredClone(planRecord),
+      drawingIds: createdDrawingIds,
+      drawings: createdDrawings.map((d) => structuredClone(d)),
+      autoCreateAlerts: nextAutoAlerts,
+      previousPlan: prevPlanSnapshot,
+      previousDrawingIds: prevDrawingIds,
+      previousDrawings: prevDrawingsSnapshot,
+      previousAlertsEnabled: autoAlertsBefore
     });
 
     this.notifyChanged();
@@ -814,11 +1109,58 @@ export class TradingPlanLifecycle {
   }
 
   /**
-   * Rekonsiliasi transisi Undo / Redo untuk aksi pembuatan rencana perdagangan
+   * Rekonsiliasi transisi Undo / Redo untuk aksi pembuatan maupun pembaruan rencana perdagangan
    */
   reconcileUndoTransition(direction: 'undo' | 'redo', tx: PlanUndoTransaction): void {
     if (!tx?.plan) return;
     const planId = tx.plan.id;
+
+    if (tx.action === 'update') {
+      const ctxSym = this.host.getContext().symbol || 'BTCUSDT';
+      if (direction === 'undo') {
+        for (const id of tx.drawingIds) {
+          this.drawingMetadata.delete(id);
+          this.drawingPlanMap.delete(id);
+        }
+        if (tx.previousPlan) {
+          this.activePlans.set(planId, tx.previousPlan);
+          this.planDrawingIds.set(planId, new Set(tx.previousDrawingIds || []));
+          for (const d of tx.previousDrawings || []) {
+            if (d?.id) {
+              if (d.metadata) {
+                this.drawingMetadata.set(d.id, d.metadata);
+              }
+              this.drawingPlanMap.set(d.id, planId);
+            }
+          }
+          this.reconcileAlerts(tx.previousPlan, {
+            enabled: Boolean(tx.previousAlertsEnabled),
+            fallbackSymbol: tx.previousPlan.symbol || ctxSym
+          });
+        }
+      } else {
+        for (const id of tx.previousDrawingIds || []) {
+          this.drawingMetadata.delete(id);
+          this.drawingPlanMap.delete(id);
+        }
+        this.activePlans.set(planId, tx.plan);
+        this.planDrawingIds.set(planId, new Set(tx.drawingIds));
+        for (const d of tx.drawings) {
+          if (d?.id) {
+            if (d.metadata) {
+              this.drawingMetadata.set(d.id, d.metadata);
+            }
+            this.drawingPlanMap.set(d.id, planId);
+          }
+        }
+        this.reconcileAlerts(tx.plan, {
+          enabled: Boolean(tx.autoCreateAlerts),
+          fallbackSymbol: tx.plan.symbol || ctxSym
+        });
+      }
+      return;
+    }
+
     if (direction === 'undo') {
       this.activePlans.delete(planId);
       this.planDrawingIds.delete(planId);

@@ -14,7 +14,9 @@ import {
   ENTRY_ZONE_STYLES,
   isSamePlanSymbol,
   type ApplyPlanOptions,
-  type AppliedPlanResult
+  type AppliedPlanResult,
+  type SerializedPlanEnvelope,
+  type UpdatePlanOptions
 } from './tradingPlanLifecycle';
 
 export { CONTEXT_ZONE_STYLES, ENTRY_ZONE_STYLES };
@@ -247,6 +249,17 @@ export type DrawingUndoAction =
       drawingIds: string[];
       plan?: ParsedTradingPlan & { id: string; symbol?: string };
       autoCreateAlerts?: boolean;
+    }
+  | {
+      action: 'update_multi_position';
+      drawings: any[];
+      drawingIds: string[];
+      plan: ParsedTradingPlan & { id: string; symbol?: string };
+      autoCreateAlerts: boolean;
+      previousDrawings: any[];
+      previousDrawingIds: string[];
+      previousPlan: ParsedTradingPlan & { id: string; symbol?: string };
+      previousAlertsEnabled: boolean;
     };
 
 /**
@@ -433,16 +446,33 @@ export class ChartDrawingController {
         );
       },
       recordUndoAction: (tx) => {
-        this.undoHistory.push({
-          action: 'create_multi_position',
-          drawings: tx.drawings,
-          drawingIds: tx.drawingIds,
-          plan: tx.plan,
-          autoCreateAlerts: tx.autoCreateAlerts
-        });
+        if (tx.action === 'update') {
+          this.undoHistory.push({
+            action: 'update_multi_position',
+            drawings: tx.drawings,
+            drawingIds: tx.drawingIds,
+            plan: tx.plan,
+            autoCreateAlerts: tx.autoCreateAlerts,
+            previousDrawings: tx.previousDrawings,
+            previousDrawingIds: tx.previousDrawingIds,
+            previousPlan: tx.previousPlan,
+            previousAlertsEnabled: tx.previousAlertsEnabled
+          });
+        } else {
+          this.undoHistory.push({
+            action: 'create_multi_position',
+            drawings: tx.drawings,
+            drawingIds: tx.drawingIds,
+            plan: tx.plan,
+            autoCreateAlerts: tx.autoCreateAlerts
+          });
+        }
         this.redoHistory = [];
       },
-      onStateChanged: () => this.notify()
+      onStateChanged: () => {
+        this.persistDrawingDocument();
+        this.notify();
+      }
     });
   }
 
@@ -1284,12 +1314,76 @@ export class ChartDrawingController {
   }
 
   /**
+   * Helper privat untuk membungkus dokumen drawing + `_trawangan_meta` lalu menyimpannya secara persisten.
+   */
+  private flushDrawingDocumentToStorage(doc: any, envelope?: SerializedPlanEnvelope): void {
+    if (!doc) return;
+    const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+    const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
+    const curWs = this.getWorkspaceId();
+    const key = resolveDrawingKey(curProv, curSym, curWs);
+
+    saveDrawingsDebounced(key, 'GLOBAL', {
+      ...doc,
+      _trawangan_meta: envelope ?? this.planLifecycle.toPersistedEnvelope()
+    });
+  }
+
+  /**
+   * Helper privat untuk menyinkronkan dokumen drawing + _trawangan_meta ke penyimpanan persisten.
+   */
+  private persistDrawingDocument(): void {
+    if (this.isRestoring) return;
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings || typeof activeChart.drawings.toJSON !== 'function') return;
+
+    try {
+      const doc = activeChart.drawings.toJSON();
+      this.flushDrawingDocumentToStorage(doc);
+    } catch (err) {
+      console.warn('Gagal menyinkronkan dokumen drawing:', err);
+    }
+  }
+
+  /**
+   * Helper privat untuk memasang kembali daftar drawing ke chart saat undo/redo.
+   */
+  private restoreDrawingsToChart(
+    drawings: any[],
+    options: { fallbackType?: string; clone?: boolean } = {}
+  ): void {
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings || !Array.isArray(drawings)) return;
+    const { fallbackType = 'position', clone = true } = options;
+
+    for (const rawDrawing of drawings) {
+      let d = rawDrawing;
+      if (clone) {
+        try {
+          d = structuredClone(rawDrawing);
+        } catch {
+          d = { ...rawDrawing };
+        }
+      }
+      if (typeof activeChart.drawings.create === 'function') {
+        activeChart.drawings.create(d);
+      } else if (typeof activeChart.drawings.add === 'function') {
+        activeChart.drawings.add(d.type || fallbackType, d);
+      } else if (typeof activeChart.drawings.all === 'function') {
+        const currentAll = activeChart.drawings.all();
+        if (Array.isArray(currentAll) && !currentAll.some((x: any) => x.id === d.id)) {
+          currentAll.push(d);
+        }
+      }
+    }
+  }
+
+  /**
    * Batalkan aksi gambar terakhir (Undo)
-   * Mendukung pemulihan drawing yang terhapus karena scribble serta pembatalan grup multi-target
+   * Mendukung pemulihan drawing yang terhapus karena scribble, pembatalan pembuatan, serta pemulihan edit multi-target
    */
   undo(): void {
     const activeChart = this.getActiveChart();
-    let handledInternal = false;
 
     if (this.undoHistory.length > 0) {
       const lastAction = this.undoHistory.pop()!;
@@ -1297,49 +1391,66 @@ export class ChartDrawingController {
 
       if (lastAction.action === 'erase') {
         // Pulihkan drawing yang terhapus
-        for (const d of lastAction.drawings) {
-          if (activeChart?.drawings) {
-            if (typeof activeChart.drawings.create === 'function') {
-              activeChart.drawings.create(d);
-            } else if (typeof activeChart.drawings.add === 'function') {
-              activeChart.drawings.add(d.type || 'trendline', d);
-            } else if (typeof activeChart.drawings.all === 'function') {
-              const currentAll = activeChart.drawings.all();
-              if (Array.isArray(currentAll) && !currentAll.some((x: any) => x.id === d.id)) {
-                currentAll.push(d);
-              }
-            }
-          }
-        }
-        handledInternal = true;
+        this.restoreDrawingsToChart(lastAction.drawings, { fallbackType: 'trendline' });
       } else if (lastAction.action === 'create') {
         const ids = lastAction.drawings.map((d: any) => d.id).filter(Boolean);
         this.removeDrawingsFromChart(ids);
         if (this.selectedDrawingId && ids.includes(this.selectedDrawingId)) {
           this.selectedDrawingId = null;
         }
-        handledInternal = true;
       } else if (lastAction.action === 'create_multi_position') {
         const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
-        this.removeDrawingsFromChart(ids);
-        if (lastAction.plan) {
+        const prevRestoring = this.isRestoring;
+        this.isRestoring = true;
+        try {
+          this.removeDrawingsFromChart(ids);
+          if (lastAction.plan) {
+            this.planLifecycle.reconcileUndoTransition('undo', {
+              action: 'create',
+              plan: structuredClone(lastAction.plan),
+              drawingIds: [...ids],
+              drawings: structuredClone(lastAction.drawings),
+              autoCreateAlerts: Boolean(lastAction.autoCreateAlerts)
+            });
+          }
+          if (this.selectedDrawingId && ids.includes(this.selectedDrawingId)) {
+            this.selectedDrawingId = null;
+          }
+        } finally {
+          this.isRestoring = prevRestoring;
+        }
+      } else if (lastAction.action === 'update_multi_position') {
+        const newIds = lastAction.drawingIds || [];
+        const prevRestoring = this.isRestoring;
+        this.isRestoring = true;
+        try {
+          this.removeDrawingsFromChart(newIds);
+          this.restoreDrawingsToChart(lastAction.previousDrawings || []);
           this.planLifecycle.reconcileUndoTransition('undo', {
-            plan: lastAction.plan,
-            drawingIds: ids,
-            drawings: lastAction.drawings,
-            autoCreateAlerts: Boolean(lastAction.autoCreateAlerts)
+            action: 'update',
+            plan: structuredClone(lastAction.plan),
+            drawingIds: [...newIds],
+            drawings: structuredClone(lastAction.drawings),
+            autoCreateAlerts: Boolean(lastAction.autoCreateAlerts),
+            previousPlan: structuredClone(lastAction.previousPlan),
+            previousDrawingIds: [...(lastAction.previousDrawingIds || [])],
+            previousDrawings: structuredClone(lastAction.previousDrawings || []),
+            previousAlertsEnabled: Boolean(lastAction.previousAlertsEnabled)
           });
+          if (this.selectedDrawingId && newIds.includes(this.selectedDrawingId)) {
+            this.selectedDrawingId = null;
+          }
+        } finally {
+          this.isRestoring = prevRestoring;
         }
-        if (this.selectedDrawingId && ids.includes(this.selectedDrawingId)) {
-          this.selectedDrawingId = null;
-        }
-        handledInternal = true;
       }
     }
 
+    const undoneAction = this.redoHistory[this.redoHistory.length - 1]?.action;
     const isInternalAction =
-      this.redoHistory[this.redoHistory.length - 1]?.action === 'create_multi_position' ||
-      this.redoHistory[this.redoHistory.length - 1]?.action === 'create';
+      undoneAction === 'create_multi_position' ||
+      undoneAction === 'update_multi_position' ||
+      undoneAction === 'create';
     if (!isInternalAction && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.undo === 'function') {
@@ -1358,7 +1469,6 @@ export class ChartDrawingController {
    */
   redo(): void {
     const activeChart = this.getActiveChart();
-    let handledInternal = false;
 
     if (this.redoHistory.length > 0) {
       const lastAction = this.redoHistory.pop()!;
@@ -1367,54 +1477,58 @@ export class ChartDrawingController {
       if (lastAction.action === 'erase') {
         const ids = lastAction.drawings.map((d) => d.id).filter(Boolean);
         this.removeDrawingsFromChart(ids);
-        handledInternal = true;
       } else if (lastAction.action === 'create') {
-        for (const d of lastAction.drawings) {
-          if (activeChart?.drawings) {
-            if (typeof activeChart.drawings.create === 'function') {
-              activeChart.drawings.create(d);
-            } else if (typeof activeChart.drawings.add === 'function') {
-              activeChart.drawings.add(d.type || 'trendline', d);
-            } else if (typeof activeChart.drawings.all === 'function') {
-              const currentAll = activeChart.drawings.all();
-              if (Array.isArray(currentAll) && !currentAll.some((x: any) => x.id === d.id)) {
-                currentAll.push(d);
-              }
-            }
-          }
-        }
-        handledInternal = true;
+        this.restoreDrawingsToChart(lastAction.drawings, { fallbackType: 'trendline' });
       } else if (lastAction.action === 'create_multi_position') {
-        for (const d of lastAction.drawings) {
-          if (activeChart?.drawings) {
-            if (typeof activeChart.drawings.create === 'function') {
-              activeChart.drawings.create(d);
-            } else if (typeof activeChart.drawings.add === 'function') {
-              activeChart.drawings.add(d.type || 'position', d);
-            } else if (typeof activeChart.drawings.all === 'function') {
-              const currentAll = activeChart.drawings.all();
-              if (Array.isArray(currentAll) && !currentAll.some((x: any) => x.id === d.id)) {
-                currentAll.push(d);
-              }
-            }
+        const prevRestoring = this.isRestoring;
+        this.isRestoring = true;
+        try {
+          this.restoreDrawingsToChart(lastAction.drawings);
+          if (lastAction.plan) {
+            const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
+            this.planLifecycle.reconcileUndoTransition('redo', {
+              action: 'create',
+              plan: structuredClone(lastAction.plan),
+              drawingIds: [...ids],
+              drawings: structuredClone(lastAction.drawings),
+              autoCreateAlerts: Boolean(lastAction.autoCreateAlerts)
+            });
           }
+        } finally {
+          this.isRestoring = prevRestoring;
         }
-        if (lastAction.plan) {
-          const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
+      } else if (lastAction.action === 'update_multi_position') {
+        const prevIds = lastAction.previousDrawingIds || [];
+        const prevRestoring = this.isRestoring;
+        this.isRestoring = true;
+        try {
+          this.removeDrawingsFromChart(prevIds);
+          this.restoreDrawingsToChart(lastAction.drawings);
           this.planLifecycle.reconcileUndoTransition('redo', {
-            plan: lastAction.plan,
-            drawingIds: ids,
-            drawings: lastAction.drawings,
-            autoCreateAlerts: Boolean(lastAction.autoCreateAlerts)
+            action: 'update',
+            plan: structuredClone(lastAction.plan),
+            drawingIds: [...(lastAction.drawingIds || [])],
+            drawings: structuredClone(lastAction.drawings),
+            autoCreateAlerts: Boolean(lastAction.autoCreateAlerts),
+            previousPlan: structuredClone(lastAction.previousPlan),
+            previousDrawingIds: [...prevIds],
+            previousDrawings: structuredClone(lastAction.previousDrawings || []),
+            previousAlertsEnabled: Boolean(lastAction.previousAlertsEnabled)
           });
+          if (this.selectedDrawingId && prevIds.includes(this.selectedDrawingId)) {
+            this.selectedDrawingId = null;
+          }
+        } finally {
+          this.isRestoring = prevRestoring;
         }
-        handledInternal = true;
       }
     }
 
+    const redoneAction = this.undoHistory[this.undoHistory.length - 1]?.action;
     const isInternalAction =
-      this.undoHistory[this.undoHistory.length - 1]?.action === 'create_multi_position' ||
-      this.undoHistory[this.undoHistory.length - 1]?.action === 'create';
+      redoneAction === 'create_multi_position' ||
+      redoneAction === 'update_multi_position' ||
+      redoneAction === 'create';
     if (!isInternalAction && activeChart?.drawings) {
       try {
         if (typeof activeChart.drawings.redo === 'function') {
@@ -1842,6 +1956,21 @@ export class ChartDrawingController {
   }
 
   /**
+   * Memperbarui Trading Plan yang sedang aktif secara in-place pada simbol aktif.
+   */
+  async updateTradingPlan(
+    planId: string,
+    plan: ParsedTradingPlan & { id?: string },
+    options?: UpdatePlanOptions
+  ): Promise<AppliedPlanResult | null> {
+    const res = this.planLifecycle.updatePlan(planId, plan, options);
+    if (res) {
+      this.handleDrawingMutated();
+    }
+    return res;
+  }
+
+  /**
    * Dapatkan seluruh rencana perdagangan aktif di kanvas yang terfilter sesuai koin/simbol aktif
    */
   getActivePlans(symbolFilter?: string): Array<ParsedTradingPlan & { id: string; symbol?: string }> {
@@ -1950,17 +2079,7 @@ export class ChartDrawingController {
 
         const doc = activeChart.drawings.toJSON?.();
         if (doc) {
-          const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
-          const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
-          const curWs = this.getWorkspaceId();
-          const key = resolveDrawingKey(curProv, curSym, curWs);
-
-          const enrichedDoc = {
-            ...doc,
-            _trawangan_meta: envelope
-          };
-
-          saveDrawingsDebounced(key, 'GLOBAL', enrichedDoc);
+          this.flushDrawingDocumentToStorage(doc, envelope);
         }
       } catch (err) {
         console.warn('Gagal memproses auto-save drawing:', err);

@@ -24,10 +24,13 @@ Di sisi lain, `trawangan` berpegang teguh pada prinsip terminal charting desktop
      - Seluruh stage berbagi tingkat Entry dan Stop Loss yang identik secara visual dan matematis.
    - Mengikat pembuatan grup posisi ini ke dalam satu transaksi riwayat *Undo/Redo* atomik (`Ctrl+Z`).
 
-4. **Alur Antarmuka Pengguna (UI/UX) & Pintasan**:
-   - Menyediakan modal dialog **"Import Trading Plan"** dengan pintasan keyboard cepat **`Ctrl + Shift + P`**, tombol pada Header Topbar (bersanding dengan Indikator), dan tombol pada Drawing Toolbar.
-   - Dilengkapi *Live Preview* reaktif yang menampilkan kartu parameter, status validasi, dan rincian R-multiple secara instan saat teks ditempelkan (*paste*).
-   - Mengintegrasikan pendengar *Smart Clipboard Paste* pada kanvas grafik yang otomatis membuka modal impor saat teks tabel terdeteksi.
+4. **Alur Antarmuka Pengguna (UI/UX) & Pintasan** *(Diperbarui: Konsolidasi Right Dock `Plan`)*:
+   - Mengkonsolidasikan alur kerja Trade Plan ke dalam **satu tab khusus (`Plan`) pada Right Dock** agar Header Topbar tetap bersih dari tombol terpisah dan selaras dengan tata letak single-rail (lihat ADR-0004):
+     - **Akses Tunggal**: Dibuka melalui ikon **Plan** pada *Right Dock Rail*, tombol `+ Buat Trade Plan` di *Object Tree*, atau pintasan keyboard **`Ctrl + Shift + P`**.
+     - **Sub-mode Form Interaktif & Teks 2-Arah**: Pengguna dapat menyunting parameter (`Bias`, `Single`/`Dual Entry`, `Stop Loss`, `TP1..TPn`, `Zona Konteks`, dan `Narasi Analisis`) secara langsung melalui form maupun format Markdown di tab `Teks` yang tersinkronisasi 2-arah tanpa kehilangan suntingan, dilengkapi sub-mode `Riwayat` untuk memulihkan rencana tersimpan ke kanvas maupun ke editor.
+     - **Eksekusi Cepat**: Saat tab `Plan` aktif, tekan **`Ctrl + Enter`** (`Cmd + Enter` di macOS) untuk menerapkan plan baru atau menyimpan pembaruan *in-place* pada plan aktif secara deterministik.
+   - Dilengkapi *Live Preview* reaktif yang menampilkan kartu parameter, status validasi, dan rincian R-multiple secara instan saat nilai form diubah maupun saat teks ditempelkan (*paste*).
+   - Mengintegrasikan pendengar *Smart Clipboard Paste* pada kanvas grafik yang otomatis membuka tab **Plan** langsung pada sub-mode `Teks` saat teks terstruktur Trade Plan terdeteksi.
 
 5. **Penyimpanan Metadata Analisis Kualitatif**:
    - Menyimpan seluruh teks narasi alasan ke dalam metadata objek gambar tanpa mengotori kanvas grafik.

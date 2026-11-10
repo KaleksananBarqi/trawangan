@@ -19,7 +19,16 @@
   import RightDockRail from '../lib/components/RightDockRail.svelte';
   import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
   import DrawByHoldingModal from '../lib/components/DrawByHoldingModal.svelte';
-  import ImportPlanModal from '../lib/components/ImportPlanModal.svelte';
+  import type {
+    TradePlanActivationRequest,
+    ApplyPlanFromTabOptions,
+    UpdatePlanFromTabOptions
+  } from '../lib/services/tradePlanFormService';
+  import {
+    adjustPanelWidthByKeyboard,
+    startEdgeResizeSession,
+    type EdgeResizeSession
+  } from '../lib/services/panelResizeHelper';
   import type { ParsedTradingPlan } from '../lib/services/planParserService';
   import { getAdaptiveTickSize } from '../lib/services/priceSnapService';
   import {
@@ -40,7 +49,7 @@
   import { telemetryService } from '../lib/services/telemetryService';
   import { replaySession, type ReplaySnapshot } from '../lib/services/replay';
   import { commandDispatcher } from '../lib/services/commandDispatcher';
-  import { chartDrawingController } from '../lib/services/chartDrawingController';
+  import { chartDrawingController, isSameSymbol } from '../lib/services/chartDrawingController';
   import { routeVenueForSymbol } from '../lib/services/instrumentIdentity';
   import { executeWorkspaceLoadPipeline } from '../lib/services/workspaceLifecycle';
   import { parseWatchlistEntry, formatWatchlistEntry, insertSymbolIntoSection, isSectionToken } from '../lib/services/watchlistUtils';
@@ -193,9 +202,8 @@
   let timeframeQuickBarInitialInput = $state('');
   let isShortcutCheatsheetOpen = $state(false);
   let isDrawByHoldingModalOpen = $state(false);
-  let isImportPlanModalOpen = $state(false);
-  let importPlanInitialText = $state('');
-  let importPlanInitialTab = $state<'import' | 'history'>('import');
+  let planActivationRequest = $state<TradePlanActivationRequest | null>(null);
+  let nextPlanActivationNonce = 0;
   let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
 
@@ -229,15 +237,39 @@
     triggeredAlertsToasts = triggeredAlertsToasts.filter((a) => a.id !== id);
   }
 
-  function handleOpenImportPlanModal(initialText = '', initialTab: 'import' | 'history' = 'import') {
-    importPlanInitialText = initialText;
-    importPlanInitialTab = initialTab;
-    isImportPlanModalOpen = true;
+  function openRightPlanTab(opts?: {
+    subMode?: TradePlanActivationRequest['subMode'];
+    planId?: string | null;
+    initialText?: string;
+  }) {
+    const wasPine = workspaceMode === 'pine';
+    if (wasPine) {
+      handleWorkspaceModeChange('terminal');
+    }
+    nextPlanActivationNonce += 1;
+    planActivationRequest = {
+      subMode: opts?.subMode ?? 'form',
+      planId: opts?.planId ?? null,
+      initialText: opts?.initialText ?? '',
+      nonce: nextPlanActivationNonce
+    };
+    workspaceShellService.openRightDockTab('plan');
+    if (wasPine) {
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 40);
+    }
   }
 
-  async function handleApplyImportPlan(
+  function handleConsumePlanActivation(nonce: number) {
+    if (planActivationRequest?.nonce === nonce) {
+      planActivationRequest = null;
+    }
+  }
+
+  async function handleApplyPlanFromTab(
     plan: ParsedTradingPlan,
-    options?: { autoCreateAlerts?: boolean; isFromHistory?: boolean }
+    options?: ApplyPlanFromTabOptions
   ) {
     const targetSym = plan.symbol || activeSymbol;
     const planWithSymbol = {
@@ -247,7 +279,8 @@
     const autoCreateAlerts = options?.autoCreateAlerts ?? !options?.isFromHistory;
     const result = await chartDrawingController.applyTradingPlan(planWithSymbol, {
       autoCreateAlerts,
-      skipVaultSave: Boolean(options?.isFromHistory)
+      skipVaultSave: Boolean(options?.isFromHistory),
+      replaceExistingOnSymbol: Boolean(options?.replaceExistingOnSymbol)
     });
     if (result) {
       const dualEntryCount =
@@ -259,8 +292,30 @@
         `Trading Plan ${plan.bias.toUpperCase()} (${planWithSymbol.symbol}) diterapkan ke chart${alertInfo}`,
         'success'
       );
-      isImportPlanModalOpen = false;
     }
+    return result;
+  }
+
+  async function handleUpdatePlanFromTab(
+    planId: string,
+    plan: ParsedTradingPlan,
+    options?: UpdatePlanFromTabOptions
+  ) {
+    const targetSym = plan.symbol || activeSymbol;
+    const planWithSymbol = {
+      ...plan,
+      symbol: targetSym
+    };
+    const result = await chartDrawingController.updateTradingPlan(planId, planWithSymbol, {
+      autoCreateAlerts: options?.autoCreateAlerts
+    });
+    if (result) {
+      addSystemLog(
+        `Trading Plan ${plan.bias.toUpperCase()} (${planWithSymbol.symbol}) diperbarui di chart`,
+        'success'
+      );
+    }
+    return result;
   }
 
   // Deep Replay Session Reactive State
@@ -325,7 +380,7 @@
   let pineEditorComponent: any = $state(null);
   let unsubTicker: (() => void) | null = null;
   let pinePanelWidth = $state(480);
-  let isResizingPinePanel = false;
+  let activePineResizeSession: EdgeResizeSession | null = null;
 
   // Terminal Diagnostics Logs
   let systemLogs = $state<{ time: string; msg: string; level: 'info' | 'success' | 'warn' }[]>([
@@ -554,8 +609,8 @@
         addSystemLog('Shortcut: Tool Posisi Long/Short Risk/Reward dipilih (Alt+R)', 'info');
       }),
       commandDispatcher.bindHandler('open-import-plan', () => {
-        handleOpenImportPlanModal();
-        addSystemLog('Shortcut: Buka modal Import Trading Plan (Ctrl+Shift+P)', 'info');
+        openRightPlanTab({ subMode: 'form' });
+        addSystemLog('Shortcut: Buka tab Trade Plan di panel kanan (Ctrl+Shift+P)', 'info');
       }),
       commandDispatcher.bindHandler('fit-chart-z', () => {
         if (chartComponent?.fitChart) chartComponent.fitChart();
@@ -746,6 +801,8 @@
   });
 
   onDestroy(() => {
+    activePineResizeSession?.cancel();
+    activePineResizeSession = null;
     if (unsubTicker) unsubTicker();
     if (unsubAlertTrigger) unsubAlertTrigger();
     if (unsubReplay) unsubReplay();
@@ -845,30 +902,45 @@
   }
 
   function handleStartResizePinePanel(e: PointerEvent) {
-    isResizingPinePanel = true;
-    const startX = e.clientX;
-    const startWidth = pinePanelWidth;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    activePineResizeSession?.cancel();
+    activePineResizeSession = startEdgeResizeSession({
+      startClientX: e.clientX,
+      startWidth: pinePanelWidth,
+      minWidth: 340,
+      maxCap: 850,
+      viewportMaxRatio: 0.65,
+      edge: 'left-edge',
+      storageKey: 'trawangan_pine_panel_width',
+      onResize: (nextWidth) => {
+        pinePanelWidth = nextWidth;
+      },
+      onEnd: () => {
+        activePineResizeSession = null;
+      }
+    });
+  }
 
-    function onPointerMove(ev: PointerEvent) {
-      if (!isResizingPinePanel) return;
-      const deltaX = startX - ev.clientX;
-      const maxWidth = Math.min(850, window.innerWidth * 0.65);
-      const nextWidth = Math.max(340, Math.min(maxWidth, startWidth + deltaX));
-      pinePanelWidth = nextWidth;
-    }
-
-    function onPointerUp() {
-      isResizingPinePanel = false;
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      try {
-        localStorage.setItem('trawangan_pine_panel_width', String(pinePanelWidth));
-      } catch (_) {}
+  function handlePineResizerKeyDown(e: KeyboardEvent) {
+    const nextWidth = adjustPanelWidthByKeyboard(
+      e.key,
+      e.shiftKey,
+      pinePanelWidth,
+      340,
+      850,
+      'left-edge',
+      0.65
+    );
+    if (nextWidth === null) return;
+    e.preventDefault();
+    pinePanelWidth = nextWidth;
+    try {
+      localStorage.setItem('trawangan_pine_panel_width', String(nextWidth));
+    } catch (_) {}
+    if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('resize'));
     }
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
   }
 
   function handleUpdateSettings(newSettings: Partial<AppSettings>) {
@@ -1533,8 +1605,6 @@
     onToggleDrawingToolbar={() => workspaceShellService.toggleLeftRail()}
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
-    onOpenImportPlan={() => handleOpenImportPlanModal()}
-    activePlansCount={currentActivePlans.length}
     onOpenSettingsModal={(tab = 'general') => {
       settingsInitialTab = tab as any;
       isSettingsModalOpen = true;
@@ -1597,7 +1667,6 @@
           onClearIndicators={handleClearIndicators}
           onClearAll={handleClearAll}
           onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
-          onOpenImportPlan={() => handleOpenImportPlanModal()}
           {hasActivePlans}
           {showThesisCards}
           onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
@@ -1664,7 +1733,13 @@
           onStrategyUpdate={handleStrategyUpdate}
           onRequestCreateAlert={handleRequestCreateAlert}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
-          onOpenImportPlan={(text) => handleOpenImportPlanModal(text || '')}
+          onOpenTradePlanPaste={(text) =>
+            openRightPlanTab({
+              subMode: text ? 'text' : 'form',
+              initialText: text || ''
+            })
+          }
+          onEditPlan={(planId) => openRightPlanTab({ subMode: 'form', planId })}
           onVelaThemeSelect={handleVelaThemeSelect}
         />
       </div>
@@ -1674,8 +1749,16 @@
         <!-- Draggable Resizer Splitter -->
         <div
           class="side-panel-resizer"
-          title="Tarik untuk mengatur lebar Pine IDE"
+          title="Tarik atau gunakan tombol Panah Kiri/Kanan untuk mengubah lebar Pine IDE"
+          role="slider"
+          aria-orientation="vertical"
+          aria-label="Ubah lebar panel Pine IDE"
+          aria-valuemin={340}
+          aria-valuemax={850}
+          aria-valuenow={pinePanelWidth}
+          tabindex="0"
           onpointerdown={handleStartResizePinePanel}
+          onkeydown={handlePineResizerKeyDown}
         >
           <div class="resizer-grip"></div>
         </div>
@@ -1700,7 +1783,6 @@
         <WatchlistPanel
           isOpen={shellState.isRightDockOpen}
           activeTab={shellState.activeRightDockTab || shellState.lastOpenedRightDockTab}
-          onTabChange={(tab) => workspaceShellService.openRightDockTab(tab)}
           {activeSymbol}
           {activeProviderId}
           {watchlistSymbols}
@@ -1711,7 +1793,6 @@
           onToggleVolumeVisibility={handleToggleVolumeVisibility}
           onSelectSymbol={handleSymbolChange}
           onWatchlistChange={handleWatchlistChange}
-          onToggleCollapse={() => workspaceShellService.closeRightDock()}
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
           onRemoveIndicator={handleRemoveIndicator}
           onConfigureIndicator={() => (isIndicatorModalOpen = true)}
@@ -1727,8 +1808,15 @@
           {showThesisCards}
           onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
           onRemovePlan={(id) => chartDrawingController.removePlan(id)}
-          onOpenImportPlan={() => handleOpenImportPlanModal('', 'import')}
-          onOpenPlanHistory={() => handleOpenImportPlanModal('', 'history')}
+          currentPrice={ticker?.price ?? null}
+          tickSize={ticker?.price ? getAdaptiveTickSize(ticker.price) : undefined}
+          {planActivationRequest}
+          onConsumePlanActivation={handleConsumePlanActivation}
+          onApplyPlan={handleApplyPlanFromTab}
+          onUpdatePlan={handleUpdatePlanFromTab}
+          onEditPlan={(planId) => openRightPlanTab({ subMode: 'form', planId })}
+          onOpenPlanTab={(subMode = 'form') => openRightPlanTab({ subMode })}
+          onLog={(msg, level) => addSystemLog(msg, level || 'info')}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
           onOpenSymbolSearch={() => {
@@ -1746,9 +1834,13 @@
         {workspaceMode}
         activeAlertsCount={allAlerts.filter((a) => a.active && !a.triggered).length}
         activeIndicatorsCount={activeIndicators.length}
+        activePlansCount={currentActivePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, activeSymbol)).length}
         onToggleTab={(tab) => {
           if (workspaceMode === 'pine') {
             handleWorkspaceModeChange('terminal');
+          }
+          if (tab === 'plan') {
+            planActivationRequest = null;
           }
           workspaceShellService.toggleRightDockTab(tab);
         }}
@@ -1987,18 +2079,6 @@
     isOpen={isDrawByHoldingModalOpen}
     onClose={() => (isDrawByHoldingModalOpen = false)}
   />
-
-  <!-- Modal Import Trading Plan Deterministik & Outlook Vault (#112, ADR-0019) -->
-  <ImportPlanModal
-    isOpen={isImportPlanModalOpen}
-    initialText={importPlanInitialText}
-    initialTab={importPlanInitialTab}
-    {activeSymbol}
-    currentPrice={ticker?.price ?? null}
-    tickSize={ticker?.price ? getAdaptiveTickSize(ticker.price) : undefined}
-    onApply={handleApplyImportPlan}
-    onClose={() => (isImportPlanModalOpen = false)}
-  />
 </div>
 
 <style>
@@ -2075,8 +2155,10 @@
   }
 
   .side-panel-resizer:hover,
-  .side-panel-resizer:active {
-    background-color: var(--bull-color, #00F090);
+  .side-panel-resizer:active,
+  .side-panel-resizer:focus-visible {
+    background-color: var(--brand-cyan);
+    outline: none;
   }
 
   .resizer-grip {

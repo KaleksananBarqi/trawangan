@@ -12,7 +12,7 @@ import {
 } from '../src/lib/services/planParserService';
 import { ChartDrawingController } from '../src/lib/services/chartDrawingController';
 
-describe('Ticket 3 (#112): Import Plan Modal, Canvas Smart Paste & Shortcut Integration', () => {
+describe('Trade Plan Panel Tab, Canvas Smart Paste & Shortcut Integration', () => {
   describe('1. Command Dispatcher Registry & Keystroke Matcher (Ctrl+Shift+P)', () => {
     it('mendaftarkan perintah open-import-plan dalam DEFAULT_COMMANDS dengan spesifikasi yang tepat', () => {
       const cmd = DEFAULT_COMMANDS.find((c) => c.id === 'open-import-plan');
@@ -20,7 +20,7 @@ describe('Ticket 3 (#112): Import Plan Modal, Canvas Smart Paste & Shortcut Inte
       assert.equal(cmd?.id, 'open-import-plan');
       assert.equal(cmd?.category, 'Alat Gambar & Anotasi');
       assert.deepEqual(cmd?.keys, ['Ctrl', 'Shift', 'P']);
-      assert.equal(cmd?.desc, 'Buka modal Import Trading Plan (Long/Short bertingkat)');
+      assert.equal(cmd?.desc, 'Buka tab Trade Plan di panel kanan (Form, Teks & Riwayat)');
       assert.equal(cmd?.allowInInput, false);
       assert.equal(cmd?.match?.ctrlOrMeta, true);
       assert.equal(cmd?.match?.shift, true);
@@ -146,6 +146,74 @@ describe('Ticket 3 (#112): Import Plan Modal, Canvas Smart Paste & Shortcut Inte
       const handled = dispatcher.dispatch(eventInInput);
       assert.equal(handled, false);
       assert.equal(triggered, false);
+    });
+
+    it('mendaftarkan dan memicu perintah commit-trade-plan (Ctrl+Enter / Cmd+Enter) termasuk di dalam input', () => {
+      const cmd = DEFAULT_COMMANDS.find((c) => c.id === 'commit-trade-plan');
+      assert.ok(cmd, 'Perintah commit-trade-plan harus terdaftar di DEFAULT_COMMANDS');
+      assert.equal(cmd?.allowInInput, true);
+      assert.deepEqual(cmd?.keys, ['Ctrl', 'Enter']);
+
+      const dispatcher = createDefaultCommandDispatcher();
+      let commitCount = 0;
+
+      // Sebelum di-bind (misal saat tab Plan belum aktif), Ctrl+Enter tidak memanggil apa pun
+      const fakeInput = {
+        tagName: 'INPUT',
+        isContentEditable: false,
+        closest: () => null,
+      };
+
+      const ctrlEnterEvent = {
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+        key: 'Enter',
+        code: 'Enter',
+        target: fakeInput,
+      } as unknown as KeyboardEvent;
+
+      assert.equal(dispatcher.dispatch(ctrlEnterEvent), false);
+      assert.equal(commitCount, 0);
+
+      // Saat tab Plan aktif, handler terikat
+      const unbind = dispatcher.bindHandler('commit-trade-plan', () => {
+        commitCount++;
+      });
+
+      assert.equal(dispatcher.dispatch(ctrlEnterEvent), true);
+      assert.equal(commitCount, 1);
+
+      const cmdEnterEvent = {
+        ctrlKey: false,
+        metaKey: true,
+        altKey: false,
+        shiftKey: false,
+        key: 'Enter',
+        code: 'Enter',
+        target: { tagName: 'TEXTAREA', isContentEditable: false, closest: () => null },
+      } as unknown as KeyboardEvent;
+      assert.equal(dispatcher.dispatch(cmdEnterEvent), true);
+      assert.equal(commitCount, 2);
+
+      // Enter biasa tanpa Ctrl/Cmd atau Ctrl+Shift+Enter harus diabaikan
+      const plainEnter = {
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+        key: 'Enter',
+        code: 'Enter',
+        target: fakeInput,
+      } as unknown as KeyboardEvent;
+      assert.equal(dispatcher.dispatch(plainEnter), false);
+      assert.equal(commitCount, 2);
+
+      // Setelah unbind (saat pindah dari tab Plan), handler tidak lagi terpanggil
+      unbind();
+      assert.equal(dispatcher.dispatch(ctrlEnterEvent), false);
+      assert.equal(commitCount, 2);
     });
   });
 

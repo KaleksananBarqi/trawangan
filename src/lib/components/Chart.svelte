@@ -43,7 +43,8 @@
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
     onRequestCreateAlert?: (symbol: string, price: number) => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
-    onOpenImportPlan?: (initialText?: string) => void;
+    onOpenTradePlanPaste?: (initialText?: string) => void;
+    onEditPlan?: (planId: string) => void;
     onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
     themePreset?: ThemePresetId | string; fontSize?: number; timezone?: string;
     workspaceId?: string | null;
@@ -63,8 +64,8 @@
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
-    onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenImportPlan,
-    onVelaThemeSelect, securityWatermark, userProfile,
+    onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
+    onEditPlan, onVelaThemeSelect, securityWatermark, userProfile,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -710,7 +711,7 @@
     const text = clipboardData.getData('text/plain') || clipboardData.getData('text');
     if (text && isTradingPlanText(text)) {
       e.preventDefault();
-      onOpenImportPlan?.(text);
+      onOpenTradePlanPaste?.(text);
     }
   }
 
@@ -928,6 +929,7 @@
         initialY={56 + idx * 24}
         onClose={(id) => chartDrawingController.removePlan(id)}
         onHide={() => chartDrawingController.setThesisCardsVisible(false)}
+        onEdit={(id) => onEditPlan?.(id)}
         onGeometryChange={handleThesisCardGeometryChange}
       />
     {/each}

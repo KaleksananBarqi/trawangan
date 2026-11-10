@@ -56,6 +56,11 @@
   --brand-cyan: #38BDF8;        /* Auxiliary Info */
   --brand-blue: #3B82F6;
   --brand-purple: #C084FC;
+
+  /* Semantic Status Text & Warn Tokens (Cross-Theme Contrast Safe) */
+  --bull-text: var(--bull-color);
+  --status-warn: #FBBF24;
+  --status-danger: #FF4466;
   
   /* Micro-Mechanical Radii (Max 4px) */
   --radius-xs: 2px;
@@ -222,6 +227,9 @@
   --brand-primary: #9B1D20;
   --brand-pink: #9B1D20;
   --brand-cyan: #7F4F4F;
+  --bull-text: #166534;
+  --status-warn: #92400E;
+  --status-danger: #9B1D20;
   color-scheme: light;
 }
 

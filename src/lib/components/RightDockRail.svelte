@@ -3,6 +3,7 @@
     Flame,
     Bell,
     Layers,
+    Sparkles,
     Code,
     ChevronRight,
     ChevronLeft
@@ -16,6 +17,7 @@
     workspaceMode?: WorkspaceMode;
     activeAlertsCount?: number;
     activeIndicatorsCount?: number;
+    activePlansCount?: number;
     onToggleTab: (tab: RightDockTab) => void;
     onToggleHider: () => void;
     onTogglePineMode?: () => void;
@@ -27,6 +29,7 @@
     workspaceMode = 'terminal',
     activeAlertsCount = 0,
     activeIndicatorsCount = 0,
+    activePlansCount = 0,
     onToggleTab,
     onToggleHider,
     onTogglePineMode,
@@ -72,6 +75,19 @@
       {/if}
     </button>
 
+    <!-- 4. Trade Plan (Form, Teks & Riwayat) -->
+    <button
+      type="button"
+      class="dock-btn {isOpen && activeTab === 'plan' && workspaceMode !== 'pine' ? 'active' : ''}"
+      title="Trade Plan: Form, Teks & Riwayat ({activePlansCount} Aktif)"
+      onclick={() => onToggleTab('plan')}
+    >
+      <Sparkles size={16} class="dock-icon" />
+      {#if activePlansCount > 0}
+        <span class="dock-badge count-cyan mono-nums">{activePlansCount}</span>
+      {/if}
+    </button>
+
     <div class="dock-divider"></div>
 
     <!-- 4. Pine Script IDE Mode Shortcut -->
@@ -107,8 +123,8 @@
     width: 38px;
     min-width: 38px;
     height: 100%;
-    background-color: var(--bg-surface, #121721);
-    border-left: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.08));
+    background-color: var(--bg-surface);
+    border-left: 1px solid var(--border-hairline);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -130,7 +146,7 @@
   .dock-divider {
     width: 20px;
     height: 1px;
-    background-color: var(--border-hairline, rgba(255, 255, 255, 0.08));
+    background-color: var(--border-hairline);
     margin: 4px 0;
   }
 
@@ -143,28 +159,33 @@
     justify-content: center;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: var(--radius-xs, 4px);
-    color: var(--text-muted, #8b949e);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
     cursor: pointer;
     transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
     padding: 0;
   }
 
   .dock-btn:hover {
-    background-color: rgba(255, 255, 255, 0.06);
-    color: var(--text-main, #e6edf3);
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  .dock-btn:focus-visible {
+    outline: 1.5px solid var(--border-focus);
+    outline-offset: -1px;
   }
 
   .dock-btn.active {
-    background-color: rgba(56, 189, 248, 0.12);
-    color: #38bdf8;
-    border-color: rgba(56, 189, 248, 0.35);
+    background-color: color-mix(in srgb, var(--brand-cyan) 14%, transparent);
+    color: var(--brand-cyan);
+    border-color: color-mix(in srgb, var(--brand-cyan) 38%, transparent);
   }
 
   .dock-btn.pine-active {
-    background-color: rgba(255, 105, 180, 0.14);
-    color: #ff69b4;
-    border-color: rgba(255, 105, 180, 0.4);
+    background-color: color-mix(in srgb, var(--brand-primary) 16%, transparent);
+    color: var(--brand-primary);
+    border-color: color-mix(in srgb, var(--brand-primary) 42%, transparent);
   }
 
   .dock-btn.active::before {
@@ -186,29 +207,35 @@
     height: 13px;
     padding: 0 3px;
     border-radius: 7px;
-    background: #ff3b69;
-    color: #ffffff;
-    font-size: 8.5px;
+    background: var(--bear-color);
+    color: var(--bg-darkest);
+    font-size: var(--font-size-2xs, 8.5px);
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
     line-height: 1;
-    box-shadow: 0 0 6px rgba(255, 59, 105, 0.5);
+    box-shadow: 0 0 6px var(--bear-glow);
   }
 
   .dock-badge.count-muted {
-    background: rgba(255, 255, 255, 0.15);
-    color: #cbd5e1;
+    background: var(--bg-elevated);
+    color: var(--text-main);
+    box-shadow: none;
+  }
+
+  .dock-badge.count-cyan {
+    background: var(--brand-cyan);
+    color: var(--bg-darkest);
     box-shadow: none;
   }
 
   .hider-btn {
-    color: var(--text-muted, #71767b);
+    color: var(--text-muted);
   }
 
   .hider-btn:hover {
-    color: var(--text-main, #ffffff);
-    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    background-color: var(--bg-hover);
   }
 </style>

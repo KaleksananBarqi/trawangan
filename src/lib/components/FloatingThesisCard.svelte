@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import {
     GripVertical,
     Minus,
@@ -12,7 +12,8 @@
     Info,
     ChevronDown,
     Layers,
-    EyeOff
+    EyeOff,
+    Pencil
   } from '@lucide/svelte';
   import { formatPlanPrice, type ParsedTradingPlan } from '../services/planParserService';
   import {
@@ -38,6 +39,7 @@
     initialHeight?: number;
     onClose?: (planId: string) => void;
     onHide?: (planId: string) => void;
+    onEdit?: (planId: string) => void;
     onGeometryChange?: (geo: ThesisCardGeometry) => void;
   }
 
@@ -49,6 +51,7 @@
     initialHeight,
     onClose,
     onHide,
+    onEdit,
     onGeometryChange
   }: Props = $props();
 
@@ -145,6 +148,13 @@
     window.removeEventListener('mouseup', handleStopResize);
   }
 
+  onDestroy(() => {
+    window.removeEventListener('mousemove', handleDragging);
+    window.removeEventListener('mouseup', handleStopDrag);
+    window.removeEventListener('mousemove', handleResizing);
+    window.removeEventListener('mouseup', handleStopResize);
+  });
+
   function toggleWideMode() {
     if (isWideMode) {
       cardWidth = 340;
@@ -194,6 +204,15 @@
     <span class="pill-title mono-nums">
       {vm.header.collapsedSubtitle}
     </span>
+
+    <button
+      type="button"
+      class="pill-btn edit"
+      title="Edit Trade Plan di Form"
+      onclick={() => onEdit?.(plan.id)}
+    >
+      <Pencil size={11} />
+    </button>
 
     <button
       type="button"
@@ -260,6 +279,16 @@
       </div>
 
       <div class="header-actions">
+        <!-- Tombol Edit Plan di Panel Kanan -->
+        <button
+          type="button"
+          class="card-btn edit"
+          title="Edit Trade Plan di Form"
+          onclick={() => onEdit?.(plan.id)}
+        >
+          <Pencil size={12} />
+        </button>
+
         <!-- Tombol Toggle Mode Lebar (Wide Mode 580px) -->
         <button
           type="button"
@@ -526,18 +555,29 @@
   }
 
   .pill-btn:hover {
-    background: var(--chart-thesis-header-bg, rgba(255, 255, 255, 0.1));
-    color: var(--chart-thesis-text, var(--text-main, #f1f5f9));
+    background: var(--chart-thesis-header-bg, var(--bg-hover));
+    color: var(--chart-thesis-text, var(--text-main));
+  }
+
+  .pill-btn:focus-visible,
+  .card-btn:focus-visible {
+    outline: 1.5px solid var(--border-focus);
+    outline-offset: -1px;
+  }
+
+  .pill-btn.edit:hover {
+    background: color-mix(in srgb, var(--chart-thesis-cyan, var(--brand-cyan)) 18%, transparent);
+    color: var(--chart-thesis-cyan, var(--brand-cyan));
   }
 
   .pill-btn.hide:hover {
-    background: rgba(245, 158, 11, 0.2);
-    color: #f59e0b;
+    background: color-mix(in srgb, var(--status-warn) 20%, transparent);
+    color: var(--status-warn);
   }
 
   .pill-btn.close:hover {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--status-danger) 20%, transparent);
+    color: var(--status-danger);
   }
 
   /* Full Glassmorphism Card (Chart-Dominant Thesis Surface, ADR-0019) */
@@ -608,23 +648,23 @@
   }
 
   .prob-tag {
-    font-size: 10px;
+    font-size: var(--font-size-sm, 10px);
     font-weight: 600;
     padding: 2px 5px;
-    border-radius: 4px;
-    background: rgba(56, 189, 248, 0.14);
-    color: var(--chart-thesis-cyan, #38bdf8);
-    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--chart-thesis-cyan, var(--brand-cyan)) 14%, transparent);
+    color: var(--chart-thesis-cyan, var(--brand-cyan));
+    border: 1px solid color-mix(in srgb, var(--chart-thesis-cyan, var(--brand-cyan)) 30%, transparent);
   }
 
   .status-tag {
-    font-size: 9.5px;
+    font-size: var(--font-size-xs, 9px);
     font-weight: 700;
     padding: 2px 5px;
-    border-radius: 4px;
-    background: rgba(250, 204, 21, 0.12);
-    color: #facc15;
-    border: 1px solid rgba(250, 204, 21, 0.3);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--status-warn) 12%, transparent);
+    color: var(--status-warn);
+    border: 1px solid color-mix(in srgb, var(--status-warn) 30%, transparent);
     letter-spacing: 0.3px;
   }
 
@@ -637,29 +677,34 @@
   .card-btn {
     background: transparent;
     border: none;
-    color: var(--chart-thesis-text-muted, var(--text-muted, #94a3b8));
+    color: var(--chart-thesis-text-muted, var(--text-muted));
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 4px;
-    border-radius: 4px;
+    border-radius: var(--radius-md);
     transition: background 0.15s ease, color 0.15s ease;
   }
 
   .card-btn:hover {
-    background: var(--chart-thesis-header-bg, rgba(255, 255, 255, 0.1));
-    color: var(--chart-thesis-text, var(--text-main, #f1f5f9));
+    background: var(--chart-thesis-header-bg, var(--bg-hover));
+    color: var(--chart-thesis-text, var(--text-main));
+  }
+
+  .card-btn.edit:hover {
+    background: color-mix(in srgb, var(--chart-thesis-cyan, var(--brand-cyan)) 18%, transparent);
+    color: var(--chart-thesis-cyan, var(--brand-cyan));
   }
 
   .card-btn.active-wide {
-    color: var(--chart-thesis-cyan, #38bdf8);
-    background: rgba(56, 189, 248, 0.15);
+    color: var(--chart-thesis-cyan, var(--brand-cyan));
+    background: color-mix(in srgb, var(--chart-thesis-cyan, var(--brand-cyan)) 15%, transparent);
   }
 
   .card-btn.close:hover {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--status-danger) 20%, transparent);
+    color: var(--status-danger);
   }
 
   /* Body Content */

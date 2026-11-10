@@ -133,83 +133,77 @@ class AlertService {
   }
 
   /**
-   * Provisikan sekumpulan Plan-Linked Auto-Alerts (Entry, SL, dan TP1..TPn) secara atomik
-   * ketika sebuah Trade Plan diterapkan ke grafik (ADR-0019)
+   * Membangun daftar spesifikasi alert untuk suatu Trade Plan (Single maupun Dual-Entry + SL + TP1..TPn).
    */
-  public async addPlanAlerts(
-    plan: ParsedTradingPlan & { id?: string; symbol?: string },
+  private buildExpectedPlanAlertSpecs(
+    plan: ParsedTradingPlan & { symbol?: string },
     fallbackSymbol = 'BTCUSDT'
-  ): Promise<PriceAlert[]> {
+  ): Array<{
+    planRole: string;
+    symbol: string;
+    targetPrice: number;
+    condition: AlertCondition;
+    label: string;
+    orderOffset: number;
+  }> {
     if (!plan || !plan.entry || !plan.stopLoss) return [];
-    const planId = plan.id || `plan_${Date.now()}`;
     const symbol = (plan.symbol || fallbackSymbol || 'BTCUSDT').trim().toUpperCase();
     const isBearish = plan.bias === 'bearish' || plan.stopLoss > plan.entry;
     const biasTag = isBearish ? 'SHORT PLAN' : 'LONG PLAN';
-    const now = Date.now();
-
-    // Bersihkan alert aktif lama dengan planId yang sama agar tidak duplikat
-    this.alerts = this.alerts.filter((a) => !(a.planId === planId && !a.triggered));
-
-    const created: PriceAlert[] = [];
-
-    // 1. Alert Titik Entry (Blended / Utama)
-    const cleanEntry = roundToTickSize(plan.entry);
     const hasEntries = Array.isArray(plan.entries) && plan.entries.length > 0;
-    const entryLabel = hasEntries ? `⚡ [${biasTag}] Blended Entry @ ${cleanEntry}` : `⚡ [${biasTag}] Entry @ ${cleanEntry}`;
-    created.push({
-      id: `alt_${now}_entry_${Math.random().toString(36).slice(2, 6)}`,
+    const specs: Array<{
+      planRole: string;
+      symbol: string;
+      targetPrice: number;
+      condition: AlertCondition;
+      label: string;
+      orderOffset: number;
+    }> = [];
+
+    // 1. Titik Entry (Blended / Utama)
+    const cleanEntry = roundToTickSize(plan.entry);
+    const entryLabel = hasEntries
+      ? `⚡ [${biasTag}] Blended Entry @ ${cleanEntry}`
+      : `⚡ [${biasTag}] Entry @ ${cleanEntry}`;
+    specs.push({
+      planRole: 'entry',
       symbol,
       targetPrice: cleanEntry,
       condition: 'crossing',
-      frequency: 'once',
       label: entryLabel,
-      active: true,
-      triggered: false,
-      createdAt: now,
-      planId,
-      planRole: 'entry',
+      orderOffset: 0,
     });
 
-    // 1b. Alert Level-Level Entry (E1, E2, dst.) jika tersedia (ADR-0020)
+    // 1b. Level Dual-Entry (E1, E2, dst.)
     if (hasEntries) {
       plan.entries!.forEach((e, idx) => {
         if (typeof e.price !== 'number' || isNaN(e.price) || e.price <= 0) return;
         const cleanPrice = roundToTickSize(e.price);
         const weightBadge = typeof e.weight === 'number' ? ` (${Math.round(e.weight * 100)}%)` : '';
         const levelLabel = e.label || `Entry ${idx + 1}`;
-        created.push({
-          id: `alt_${now}_${e.id}_${Math.random().toString(36).slice(2, 6)}`,
+        specs.push({
+          planRole: e.id,
           symbol,
           targetPrice: cleanPrice,
           condition: 'crossing',
-          frequency: 'once',
           label: `⚡ [${biasTag}] ${levelLabel}${weightBadge} @ ${cleanPrice}`,
-          active: true,
-          triggered: false,
-          createdAt: now + idx + 1,
-          planId,
-          planRole: e.id,
+          orderOffset: idx + 1,
         });
       });
     }
 
-    // 2. Alert Titik Stop Loss (SL)
+    // 2. Titik Stop Loss (SL)
     const cleanSL = roundToTickSize(plan.stopLoss);
-    created.push({
-      id: `alt_${now}_sl_${Math.random().toString(36).slice(2, 6)}`,
+    specs.push({
+      planRole: 'sl',
       symbol,
       targetPrice: cleanSL,
       condition: isBearish ? 'crossing_up' : 'crossing_down',
-      frequency: 'once',
       label: `🛡️ [${biasTag}] Stop Loss (-1.00R) @ ${cleanSL}`,
-      active: true,
-      triggered: false,
-      createdAt: now + 1,
-      planId,
-      planRole: 'sl',
+      orderOffset: 1,
     });
 
-    // 3. Alert Setiap Target Profit (TP1..TPn)
+    // 3. Setiap Target Profit (TP1..TPn)
     if (Array.isArray(plan.targets)) {
       for (let i = 0; i < plan.targets.length; i++) {
         const tgt = plan.targets[i];
@@ -221,26 +215,155 @@ class AlertService {
             ? ` (+${tgt.rMultiple.toFixed(2)}R)`
             : '';
 
-        created.push({
-          id: `alt_${now}_tp${i + 1}_${Math.random().toString(36).slice(2, 6)}`,
+        specs.push({
+          planRole: `tp${i + 1}`,
           symbol,
           targetPrice: cleanTp,
           condition: isBearish ? 'crossing_down' : 'crossing_up',
-          frequency: 'once',
           label: `🎯 [${biasTag}] ${tpName}${rBadge} @ ${cleanTp}`,
-          active: true,
-          triggered: false,
-          createdAt: now + 2 + i,
-          planId,
-          planRole: `tp${i + 1}`,
+          orderOffset: 2 + i,
         });
       }
     }
+
+    return specs;
+  }
+
+  /**
+   * Memeriksa apakah suatu Trade Plan memiliki minimal satu alert aktif yang belum terpicu.
+   */
+  public hasActiveAlertsForPlan(planId: string): boolean {
+    if (!planId) return false;
+    return this.alerts.some((a) => a.planId === planId && !a.triggered);
+  }
+
+  /**
+   * Provisikan sekumpulan Plan-Linked Auto-Alerts (Entry, SL, dan TP1..TPn) secara atomik
+   * ketika sebuah Trade Plan diterapkan ke grafik (ADR-0019)
+   */
+  public async addPlanAlerts(
+    plan: ParsedTradingPlan & { id?: string; symbol?: string },
+    fallbackSymbol = 'BTCUSDT'
+  ): Promise<PriceAlert[]> {
+    const specs = this.buildExpectedPlanAlertSpecs(plan, fallbackSymbol);
+    if (specs.length === 0) return [];
+    const planId = plan.id || `plan_${Date.now()}`;
+    const now = Date.now();
+
+    // Bersihkan alert aktif lama dengan planId yang sama agar tidak duplikat
+    this.alerts = this.alerts.filter((a) => !(a.planId === planId && !a.triggered));
+
+    const created: PriceAlert[] = specs.map((spec) => ({
+      id: `alt_${now}_${spec.planRole}_${Math.random().toString(36).slice(2, 6)}`,
+      symbol: spec.symbol,
+      targetPrice: spec.targetPrice,
+      condition: spec.condition,
+      frequency: 'once',
+      label: spec.label,
+      active: true,
+      triggered: false,
+      createdAt: now + spec.orderOffset,
+      planId,
+      planRole: spec.planRole,
+    }));
 
     this.alerts = [...created, ...this.alerts];
     await this.save();
     playSuccessPip();
     return created;
+  }
+
+  /**
+   * Merekonsiliasi seluruh alert terkait Trade Plan saat diedit in-place:
+   * - Memperbarui harga, kondisi arah (crossing_up/down), label, dan simbol pada role yang masih ada
+   * - Menambahkan alert baru untuk role tambahan (mis. TP baru atau pindah ke Dual-Entry)
+   * - Menghapus alert non-triggered untuk role yang dihapus, atau menghapus semuanya jika `enabled === false`
+   */
+  public async reconcilePlanAlerts(
+    plan: ParsedTradingPlan & { id: string; symbol?: string },
+    options?: { enabled?: boolean; fallbackSymbol?: string }
+  ): Promise<PriceAlert[]> {
+    if (!plan || !plan.id) return [];
+
+    if (options?.enabled === false) {
+      await this.deleteAlertsByPlanId(plan.id);
+      return [];
+    }
+
+    const specs = this.buildExpectedPlanAlertSpecs(plan, options?.fallbackSymbol || 'BTCUSDT');
+    if (specs.length === 0) return [];
+
+    const expectedByRole = new Map(specs.map((s) => [s.planRole, s]));
+    const matchedRoles = new Set<string>();
+    const existingActiveCount = this.alerts.filter((a) => a.planId === plan.id && !a.triggered).length;
+    let changed = false;
+
+    const nextAlerts: PriceAlert[] = [];
+    for (const a of this.alerts) {
+      if (a.planId !== plan.id || a.triggered) {
+        nextAlerts.push(a);
+        continue;
+      }
+
+      const role = a.planRole;
+      const spec = role ? expectedByRole.get(role) : undefined;
+      if (!spec || (role && matchedRoles.has(role))) {
+        // Role ini tidak ada lagi pada plan hasil edit (mis. TP dikurangi atau turun ke Single Entry)
+        changed = true;
+        continue;
+      }
+
+      if (role) matchedRoles.add(role);
+
+      if (
+        a.symbol !== spec.symbol ||
+        a.targetPrice !== spec.targetPrice ||
+        a.condition !== spec.condition ||
+        a.label !== spec.label
+      ) {
+        changed = true;
+        nextAlerts.push({
+          ...a,
+          symbol: spec.symbol,
+          targetPrice: spec.targetPrice,
+          condition: spec.condition,
+          label: spec.label,
+        });
+      } else {
+        nextAlerts.push(a);
+      }
+    }
+
+    const now = Date.now();
+    const created: PriceAlert[] = [];
+    for (const spec of specs) {
+      if (!matchedRoles.has(spec.planRole)) {
+        changed = true;
+        created.push({
+          id: `alt_${now}_${spec.planRole}_${Math.random().toString(36).slice(2, 6)}`,
+          symbol: spec.symbol,
+          targetPrice: spec.targetPrice,
+          condition: spec.condition,
+          frequency: 'once',
+          label: spec.label,
+          active: true,
+          triggered: false,
+          createdAt: now + spec.orderOffset,
+          planId: plan.id,
+          planRole: spec.planRole,
+        });
+      }
+    }
+
+    if (changed) {
+      this.alerts = [...created, ...nextAlerts];
+      await this.save();
+      if (existingActiveCount === 0 && created.length > 0) {
+        playSuccessPip();
+      }
+    }
+
+    return this.alerts.filter((a) => a.planId === plan.id && !a.triggered);
   }
 
   /**

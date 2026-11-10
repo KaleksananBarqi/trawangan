@@ -267,6 +267,65 @@ function extractContextZones(
     .replace(/(BULL|BEAR)_(OB|FVG)/gi, '$1 $2')
     .replace(/[`*]/g, '');
 
+  // 1b. Prioritas Ekstraksi Seksi Eksplisit `### Zona Konteks` (`- <Label>: <low> - <high>`)
+  // Mempertahankan label kustom pengguna verbatim pada `zone.label` (lossless round-trip)
+  const contextSectionMatch = scopedText.match(
+    /(?:^|\n)\s*#{1,4}\s*Zona\s+Konteks\b[^\n\r]*\r?\n([\s\S]*?)(?=\r?\n\s*#{1,4}\s+|$)/i
+  );
+  if (contextSectionMatch) {
+    const sectionBody = contextSectionMatch[1];
+    const sectionLines = sectionBody.split(/\r?\n/);
+    for (const rawLine of sectionLines) {
+      const cleanLine = rawLine.replace(/[*_`]/g, '').trim();
+      if (!cleanLine) continue;
+
+      const bulletMatch = cleanLine.match(
+        /^[-*•]\s*(.+?)\s*:\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|\bs\/d\b|\bto\b)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)(?=\s|$)(?!\s*[-–—]\s*\d)/i
+      );
+      if (!bulletMatch) continue;
+
+      const customLabel = bulletMatch[1].trim();
+      const num1 = parseFloat(bulletMatch[2].replace(/,/g, ''));
+      const num2 = parseFloat(bulletMatch[3].replace(/,/g, ''));
+      if (!customLabel || isNaN(num1) || isNaN(num2)) continue;
+
+      let low = Math.min(num1, num2);
+      let high = Math.max(num1, num2);
+      if (typeof tickSize === 'number' && tickSize > 0) {
+        low = roundToTickSize(low, tickSize);
+        high = roundToTickSize(high, tickSize);
+      }
+
+      const metaSource = customLabel.replace(/(BULL|BEAR)_(OB|FVG)/gi, '$1 $2');
+      let kind = 'Context Zone';
+      if (/\b(?:FVG|IMBALANCE)\b/i.test(metaSource)) kind = 'FVG';
+      else if (/\b(?:OB|ORDER\s*BLOCK)\b/i.test(metaSource)) kind = 'OB';
+      else if (/\b(?:IDM|INDUCEMENT)\b/i.test(metaSource)) kind = 'IDM';
+      else if (/\bDEMAND\b/i.test(metaSource)) kind = 'Demand';
+      else if (/\bSUPPLY\b/i.test(metaSource)) kind = 'Supply';
+
+      const polarity = inferZonePolarity(metaSource);
+      const tfMatch = metaSource.match(
+        /\b([0-9]{1,3}\s*[mhdHDwW]|daily|weekly|macro|htf|mtf|ltf|h[1-9]\d?|m[1-9]\d?)\b/i
+      );
+      const tf = tfMatch ? tfMatch[1].trim() : '';
+
+      const exists = zones.some(
+        (z) => Math.abs(z.low - low) < 1e-6 && Math.abs(z.high - high) < 1e-6
+      );
+      if (exists) continue;
+
+      zones.push({
+        label: customLabel,
+        low,
+        high,
+        polarity,
+        kind,
+        ...(tf ? { timeframe: tf } : {})
+      });
+    }
+  }
+
   // 2. Regex rentang angka: num1 - num2 (mendukung berbagai dash dan s/d / to)
   const rangeRegex = /([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:-|–|—|\bs\/d\b|\bto\b)\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)/gi;
 
@@ -451,14 +510,26 @@ function extractConclusionAndDefinition(text: string): {
   let probNotes: string | undefined;
   let invalidation: string | undefined;
 
-  // Pencocokan Probabilitas / Confidence Level
-  const probMatch = text.match(/(?:(?:Confidence(?:\s+Level)?|Probabilitas(?:\s+Setup)?|Probability))\s*[:=]\s*\*?\*?([^\n\r]+)/i);
+  // Pencocokan Catatan Probabilitas mandiri (tanpa menyisipkan probability fiktif)
+  const probNotesMatch = text.match(
+    /(?:^|\n|\r)\s*(?:[-*]\s*)?(?:\*\*|__)?Catatan\s+Probabilitas(?:\s+Setup)?(?:\*\*|__)?[*_\s]*[:=][*_\s]*([^\n\r]+)/i
+  );
+  if (probNotesMatch && probNotesMatch[1].trim()) {
+    probNotes = stripInlineMarkdown(probNotesMatch[1]);
+  }
+
+  // Pencocokan Probabilitas / Confidence Level (mengecualikan baris "Catatan Probabilitas")
+  const probMatch = text.match(
+    /(?<!Catatan\s+)(?:(?:Confidence(?:\s+Level)?|Probabilitas(?:\s+Setup)?|Probability))\s*[:=]\s*\*?\*?([^\n\r]+)/i
+  );
   if (probMatch) {
     const raw = probMatch[1].trim();
     const dashMatch = raw.match(/^(.*?)\s*(?:[—–]|\s+-\s+|\.\s+)\s*(.*)$/);
     if (dashMatch) {
       prob = stripInlineMarkdown(dashMatch[1]);
-      probNotes = stripInlineMarkdown(dashMatch[2]);
+      if (!probNotes) {
+        probNotes = stripInlineMarkdown(dashMatch[2]);
+      }
     } else {
       prob = stripInlineMarkdown(raw);
     }
@@ -761,8 +832,11 @@ export function parseTradingPlan(
 
     if (!key) continue;
 
-    // Bersihkan karakter formatting markdown dari key
-    const cleanKey = key.replace(/[*_#`]/g, '').trim().toLowerCase();
+    // Bersihkan marker bullet/penomoran (pada baris teks non-tabel) & karakter formatting markdown dari key
+    const keyWithoutBullets = trimmed.startsWith('|')
+      ? key
+      : key.replace(/^\s*(?:[-•*+]|\d+[.)])\s+/, '');
+    const cleanKey = keyWithoutBullets.replace(/[*_#`]/g, '').trim().toLowerCase();
     const cleanVal = val.replace(/^[*_#`\s]+|[*_#`\s]+$/g, '').trim();
 
     // Abaikan header tabel umum
@@ -1287,4 +1361,3 @@ export function isTradingPlanText(text: string): boolean {
 
   return hasBias && hasEntry && hasSL && hasTP;
 }
-

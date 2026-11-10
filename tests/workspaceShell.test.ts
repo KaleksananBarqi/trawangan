@@ -71,6 +71,12 @@ describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock 
       assert.strictEqual(snap.isRightDockOpen, true);
       assert.strictEqual(snap.activeRightDockTab, 'objects');
       assert.strictEqual(snap.lastOpenedRightDockTab, 'objects');
+
+      shell.toggleRightDockTab('plan');
+      snap = shell.getSnapshot();
+      assert.strictEqual(snap.isRightDockOpen, true);
+      assert.strictEqual(snap.activeRightDockTab, 'plan');
+      assert.strictEqual(snap.lastOpenedRightDockTab, 'plan');
     });
 
     it('Click-to-Close: mengklik tab aktif yang sedang terbuka akan menutup drawer panel', () => {
@@ -90,6 +96,13 @@ describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock 
       assert.strictEqual(snap.isRightDockOpen, true);
       assert.strictEqual(snap.activeRightDockTab, 'alerts');
       assert.strictEqual(snap.lastOpenedRightDockTab, 'alerts');
+
+      shell.closeRightDock();
+      shell.openRightDockTab('plan');
+      const planSnap = shell.getSnapshot();
+      assert.strictEqual(planSnap.isRightDockOpen, true);
+      assert.strictEqual(planSnap.activeRightDockTab, 'plan');
+      assert.strictEqual(planSnap.lastOpenedRightDockTab, 'plan');
     });
 
     it('closeRightDock: menutup dock kanan secara deterministik', () => {
@@ -187,6 +200,23 @@ describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock 
       assert.strictEqual(snap.isRightDockOpen, true);
       assert.strictEqual(snap.activeRightDockTab, 'objects');
       assert.strictEqual(snap.lastOpenedRightDockTab, 'objects');
+    });
+
+    it('memulihkan tab plan dari localStorage secara valid saat instansiasi baru', () => {
+      localStorage.setItem(
+        'trawangan_right_dock_state',
+        JSON.stringify({
+          isOpen: true,
+          activeTab: 'plan',
+          lastOpenedTab: 'plan',
+        })
+      );
+
+      const restoredPlanShell = new WorkspaceShellService();
+      const snap = restoredPlanShell.getSnapshot();
+      assert.strictEqual(snap.isRightDockOpen, true);
+      assert.strictEqual(snap.activeRightDockTab, 'plan');
+      assert.strictEqual(snap.lastOpenedRightDockTab, 'plan');
     });
   });
 });

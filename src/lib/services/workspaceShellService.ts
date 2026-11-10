@@ -1,7 +1,18 @@
 import type { WorkspaceMode } from '../types/market';
 
-export type RightDockTab = 'watchlist' | 'alerts' | 'objects';
+export type RightDockTab = 'watchlist' | 'alerts' | 'objects' | 'plan';
 export type { WorkspaceMode };
+
+const VALID_RIGHT_DOCK_TABS: ReadonlySet<RightDockTab> = new Set([
+  'watchlist',
+  'alerts',
+  'objects',
+  'plan',
+]);
+
+function isValidRightDockTab(tab: unknown): tab is RightDockTab {
+  return typeof tab === 'string' && VALID_RIGHT_DOCK_TABS.has(tab as RightDockTab);
+}
 
 export interface WorkspaceShellState {
   isLeftRailCollapsed: boolean;
@@ -49,10 +60,15 @@ export class WorkspaceShellService {
       const savedRight = localStorage.getItem(STORAGE_KEY_RIGHT);
       if (savedRight) {
         const parsed = JSON.parse(savedRight);
-        if (parsed && typeof parsed.isOpen === 'boolean' && parsed.lastOpenedTab) {
+        if (parsed && typeof parsed.isOpen === 'boolean') {
+          // Sanitasi nilai tab tersimpan agar data lama/rusak tetap jatuh aman ke 'watchlist'
+          const lastOpened = isValidRightDockTab(parsed.lastOpenedTab)
+            ? parsed.lastOpenedTab
+            : 'watchlist';
+          const active = isValidRightDockTab(parsed.activeTab) ? parsed.activeTab : lastOpened;
           this.state.isRightDockOpen = parsed.isOpen;
-          this.state.activeRightDockTab = parsed.isOpen ? (parsed.activeTab || parsed.lastOpenedTab) : null;
-          this.state.lastOpenedRightDockTab = parsed.lastOpenedTab || 'watchlist';
+          this.state.lastOpenedRightDockTab = lastOpened;
+          this.state.activeRightDockTab = parsed.isOpen ? active : null;
         }
       }
     } catch (_) {}

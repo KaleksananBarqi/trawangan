@@ -458,9 +458,25 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       id: 'open-import-plan',
       category: 'Alat Gambar & Anotasi',
       keys: ['Ctrl', 'Shift', 'P'],
-      desc: 'Buka modal Import Trading Plan (Long/Short bertingkat)',
+      desc: 'Buka tab Trade Plan di panel kanan (Form, Teks & Riwayat)',
       allowInInput: false,
       match: { ctrlOrMeta: true, shift: true, key: 'p', code: 'KeyP' },
+    },
+    {
+      id: 'commit-trade-plan',
+      category: 'Alat Gambar & Anotasi',
+      keys: ['Ctrl', 'Enter'],
+      desc: 'Terapkan perubahan atau proyeksikan Trade Plan aktif',
+      allowInInput: true,
+      match: {
+        customMatch: (e) =>
+          Boolean(
+            (e.ctrlKey || e.metaKey) &&
+              !e.altKey &&
+              !e.shiftKey &&
+              (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter')
+          ),
+      },
     },
     {
       id: 'draw-fibonacci',

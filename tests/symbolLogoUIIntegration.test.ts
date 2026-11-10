@@ -41,7 +41,7 @@ describe('Ticket 4 (#90): End-to-End Symbol Logo UI Integration Suite', () => {
       'src/lib/components/Header.svelte',
       'src/lib/components/header/QuickSymbolsDropdown.svelte',
       'src/lib/components/SymbolSearchModal.svelte',
-      'src/lib/components/WatchlistPanel.svelte',
+      'src/lib/components/right-dock/WatchlistTab.svelte',
     ];
 
     for (const f of files) {
