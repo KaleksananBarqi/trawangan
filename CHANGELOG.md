@@ -5,6 +5,33 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.41.0] - 2026-11-10
+
+### 🚀 Ditambahkan (Added)
+- **Modul Deep Stream Health Guard (`streamHealthGuard.ts`):**
+  - Membungkus seluruh `DataProvider` Vela melalui `wrapProviderWithStreamGuard()` dan `StreamGuardCoordinator` tanpa memodifikasi paket `@luxalgo/vela`, lengkap dengan watchdog stream diam (30 detik), `reconnectAll()`, serta verifikasi ulang tail candle REST (`Illiquid-Pair Tail Verification Guard`) untuk membedakan pair sepi likuiditas dari koneksi putus.
+  - Menyediakan `createPollingSubscription()` dengan *in-flight lock* anti-tumpang-tindih, *exponential backoff*, dan pelaporan status langsung ke Guard.
+- **Paritas Penuh Datafeed Multi-Bursa (`Hyperliquid`, `Coinbase`, & `Custom Node`):**
+  - `HyperliquidAdapter`: Mendukung normalisasi perp (`BTCUSDT` -> `BTC`) maupun spot ber-slash (`PURR/USDC`), batch ticker `metaAndAssetCtxs` + `spotMetaAndAssetCtxs`, dan pengambilan candle historis `candleSnapshot` via `POST /info`.
+  - `CoinbaseAdapter` & `normalizeCoinbaseProductId`: Mendukung format produk `BASE-QUOTE`, pencegahan duplikasi akhiran `-USD-USD`, dan paginasi candle terurut menaik.
+  - `CustomFeedProvider` & `CustomFeedAdapter`: Mendukung node REST/WebSocket kustom berformat array `[[t,o,h,l,c,v]]`, object array, maupun wrapper objek dengan sinkronisasi dinamis dan *hot-reload* signature di `ChartSessionController`.
+- **Guard Jam Bursa Yahoo Finance (ADR-0021 §6):**
+  - Menambahkan `isYahooMarketActive()` untuk membatasi polling berkala `YahooFinanceProvider` hanya saat jam perdagangan resmi IDX (`.JK`/`^JKSE`), COMEX Futures (`=F`), dan indeks/ekuitas AS untuk menghindari *rate-limit* 429.
+
+### 🔄 Diubah (Changed)
+- **Resiliensi Klien HTTP, Telemetri, & Pemulihan Stream UI:**
+  - `universalFetch()` (`httpClient.ts`) kini menegakkan `timeoutMs` nyata via `AbortController` + `Promise.race` pada fallback non-Tauri dan mendukung metode `POST` beserta body JSON.
+  - `TelemetryService` menguji endpoint ping asli untuk `hyperliquid`, `coinbase`, dan `yahoo`; `SymbolSearchEngine` mendukung filter chip `hyperliquid`, `coinbase`, serta `custom-*`.
+  - `MarketFeedService` mengagregasi status kesehatan WebSocket grafik (`chartStreamHealth`) bersama status REST watchlist, mengisolasi cache ticker per provider (`getCachedTicker`), dan tetap menghidrasi adapter `custom-*` serta memicu `pollTick()` di jalur Tauri saat `setActiveProvider()`.
+  - Tombol **"Coba Ulang"** (`Chart.svelte`) dan event jaringan OS `'online'` (`ChartSessionController`) kini menyambung ulang stream WebSocket aktif dan memicu `orchestrator.healGap()`.
+
+### 🐛 Diperbaiki (Fixed)
+- **Candle Freeze, Hilangnya Countdown Timer, & Kegagalan Reconnect Bitunix (`bitunixProvider.ts`, `bitunixAdapter.ts`):**
+  - Memperbaiki pembekuan candlestick dan hilangnya timer bar aktif (khususnya pair perpetual Bitunix seperti `ETHUSDT`) dengan mengimplementasikan WebSocket publik `wss://fapi.bitunix.com/public/`, heartbeat ping/pong, sintesis *forming candle* dari `/futures/market/tickers`, penanganan rollover bar `ts` UTC/1w/1M, protokol `fallbackHealthy` anti-flicker/anti-stuck, serta migrasi `BitunixAdapter.fetchCandles()` ke endpoint resmi `/futures/market/kline` (menggantikan endpoint 404 `/tradingview/history`).
+- **Routing Futures `.P`, Normalisasi Prefix/Spasi Simbol, & Hardening CI Rilis:**
+  - Memastikan simbol `.P` (termasuk input berspasi) pada `BinanceAdapter` diarahkan ke `https://fapi.binance.com/fapi/v1/klines` tanpa sufiks `.P`, `resolveVelaSymbolKey()` menghormati prefix `provider:` dan menormalkan spasi/delimiter ke `custom_*`, serta memperbaiki *race condition* snapshot asinkron pada registrasi `custom-*` di `ChartSessionController`.
+  - Memperkuat workflow CI rilis Ubuntu (`release.yml`) dengan dependensi `libfuse2` dan `patchelf`.
+
 ## [0.40.1] - 2026-11-09
 
 ### 🐛 Diperbaiki (Fixed)
