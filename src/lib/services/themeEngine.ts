@@ -43,7 +43,8 @@ import {
   generateVelaThemeTokens,
   deriveSurfaceColor,
   withAlpha,
-  isDarkColor
+  resolveContrastTextColor,
+  resolveReadableBullText
 } from '../utils/colorUtils';
 
 /**
@@ -518,21 +519,52 @@ export function assembleThemeCssBundle(
     '--text-primary',
     '--bull-color',
     '--bear-color',
-    '--brand-primary'
+    '--brand-primary',
+    '--bull-text',
+    '--on-brand-primary',
+    '--on-bull-color',
+    '--on-bear-color'
   ];
+
+  const applyAdaptiveContrastTokens = (params: {
+    bgSurface: string;
+    bgPanel: string;
+    brandPrimary: string;
+    bullColor: string;
+    bearColor: string;
+  }): void => {
+    rootCssVariables['--bull-text'] = resolveReadableBullText(
+      params.bgSurface,
+      params.bgPanel,
+      params.bullColor,
+      isDark
+    );
+    rootCssVariables['--on-brand-primary'] = resolveContrastTextColor(params.brandPrimary);
+    rootCssVariables['--on-bull-color'] = resolveContrastTextColor(params.bullColor);
+    rootCssVariables['--on-bear-color'] = resolveContrastTextColor(params.bearColor);
+  };
 
   if (isCustomActive && cp) {
     const containerSurface = deriveSurfaceColor(bg, 0.045);
     const panelSurface = deriveSurfaceColor(bg, 0.065);
+    const bullHex = cp.candles.bullBody;
+    const bearHex = cp.candles.bearBody;
     rootCssVariables['--bg-darkest'] = bg;
     rootCssVariables['--bg-surface'] = bg;
     rootCssVariables['--bg-container'] = containerSurface;
     rootCssVariables['--bg-panel'] = panelSurface;
     rootCssVariables['--text-main'] = text;
     rootCssVariables['--text-primary'] = text;
-    rootCssVariables['--bull-color'] = cp.candles.bullBody;
-    rootCssVariables['--bear-color'] = cp.candles.bearBody;
-    rootCssVariables['--brand-primary'] = cp.candles.bullBody;
+    rootCssVariables['--bull-color'] = bullHex;
+    rootCssVariables['--bear-color'] = bearHex;
+    rootCssVariables['--brand-primary'] = bullHex;
+    applyAdaptiveContrastTokens({
+      bgSurface: bg,
+      bgPanel: panelSurface,
+      brandPrimary: bullHex,
+      bullColor: bullHex,
+      bearColor: bearHex
+    });
   } else if (!isBuiltInTheme(state.effectiveAppPreset)) {
     // Preset kustom pengguna: suntikkan token UI Shell
     rootCssVariables['--bg-darkest'] = state.appConfig.tokens.bgDarkest;
@@ -545,6 +577,13 @@ export function assembleThemeCssBundle(
     rootCssVariables['--bull-color'] = state.appConfig.tokens.bullColor;
     rootCssVariables['--bear-color'] = state.appConfig.tokens.bearColor;
     rootCssVariables['--brand-primary'] = state.appConfig.tokens.brandPrimary;
+    applyAdaptiveContrastTokens({
+      bgSurface: state.appConfig.tokens.bgSurface,
+      bgPanel: state.appConfig.tokens.bgPanel,
+      brandPrimary: state.appConfig.tokens.brandPrimary,
+      bullColor: state.appConfig.tokens.bullColor,
+      bearColor: state.appConfig.tokens.bearColor
+    });
   } else {
     // Preset resmi bawaan: bersihkan override token CSS agar gaya default stylesheet aktif
     removeCssVariables.push(...shellKeys);

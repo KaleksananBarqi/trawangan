@@ -692,7 +692,7 @@
     background-color: var(--brand-primary);
     border: none;
     border-radius: var(--radius-xs);
-    color: var(--bg-darkest);
+    color: var(--on-brand-primary, #000000);
     font-size: 11px;
     font-weight: 700;
     padding: 6px 14px;

@@ -22,6 +22,7 @@
     Sliders,
     ChevronDown,
     ChevronUp,
+    Search,
   } from "@lucide/svelte";
   import {
     THEME_PRESETS,
@@ -66,6 +67,8 @@
   let pasteInputText = $state("");
   let pasteError = $state<string | null>(null);
   let showAdvancedModeDefaults = $state(false);
+  // Kueri pencarian cepat untuk memfilter Galeri Preset Tema (#37 preset)
+  let themeSearchQuery = $state("");
 
   // Dual-Theme Decoupling & User Presets State (#149)
   const syncChartWithAppTheme = $derived<boolean>(
@@ -109,9 +112,21 @@
   );
 
   const filteredPresets = $derived.by(() => {
-    if (filterMode === "dark") return darkPresets;
-    if (filterMode === "light") return lightPresets;
-    return allAvailablePresets;
+    const base =
+      filterMode === "dark"
+        ? darkPresets
+        : filterMode === "light"
+          ? lightPresets
+          : allAvailablePresets;
+    const q = themeSearchQuery.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        (p.badge && p.badge.toLowerCase().includes(q)) ||
+        p.id.toLowerCase().includes(q),
+    );
   });
 
   const colorModePref = $derived<ColorModePreference>(
@@ -1021,38 +1036,80 @@
       </p>
     </div>
 
-    <!-- Filter Mode Tema -->
-    <div
-      class="theme-mode-filters"
-      role="radiogroup"
-      aria-label="Filter Mode Tema"
-    >
-      <button
-        type="button"
-        class="filter-chip {filterMode === 'all' ? 'active' : ''}"
-        onclick={() => setFilterMode("all")}
+    <!-- Pencarian Cepat + Filter Mode Tema -->
+    <div class="presets-toolbar">
+      <div class="preset-search-box">
+        <Search size={12} class="preset-search-icon" />
+        <input
+          type="text"
+          class="preset-search-input"
+          placeholder="Cari nama tema Jawa atau karakter..."
+          bind:value={themeSearchQuery}
+          aria-label="Cari Preset Tema"
+        />
+        {#if themeSearchQuery.trim()}
+          <button
+            type="button"
+            class="preset-search-clear"
+            onclick={() => (themeSearchQuery = "")}
+            title="Hapus kata kunci pencarian"
+            aria-label="Hapus kata kunci pencarian"
+          >
+            <X size={11} />
+          </button>
+        {/if}
+      </div>
+
+      <div
+        class="theme-mode-filters"
+        role="radiogroup"
+        aria-label="Filter Mode Tema"
       >
-        <span>Semua ({allAvailablePresets.length})</span>
-      </button>
-      <button
-        type="button"
-        class="filter-chip {filterMode === 'dark' ? 'active' : ''}"
-        onclick={() => setFilterMode("dark")}
-      >
-        <Moon size={11} />
-        <span>Gelap ({darkPresets.length})</span>
-      </button>
-      <button
-        type="button"
-        class="filter-chip {filterMode === 'light' ? 'active' : ''}"
-        onclick={() => setFilterMode("light")}
-      >
-        <Sun size={11} />
-        <span>Terang ({lightPresets.length})</span>
-      </button>
+        <button
+          type="button"
+          class="filter-chip {filterMode === 'all' ? 'active' : ''}"
+          onclick={() => setFilterMode("all")}
+        >
+          <span>Semua ({allAvailablePresets.length})</span>
+        </button>
+        <button
+          type="button"
+          class="filter-chip {filterMode === 'dark' ? 'active' : ''}"
+          onclick={() => setFilterMode("dark")}
+        >
+          <Moon size={11} />
+          <span>Gelap ({darkPresets.length})</span>
+        </button>
+        <button
+          type="button"
+          class="filter-chip {filterMode === 'light' ? 'active' : ''}"
+          onclick={() => setFilterMode("light")}
+        >
+          <Sun size={11} />
+          <span>Terang ({lightPresets.length})</span>
+        </button>
+      </div>
     </div>
   </div>
 
+  {#if filteredPresets.length === 0}
+    <div class="presets-empty-state">
+      <p>
+        Tidak ada preset tema yang cocok dengan pencarian "{themeSearchQuery}".
+      </p>
+      <button
+        type="button"
+        class="btn-reset-filter"
+        onclick={() => {
+          themeSearchQuery = "";
+          setFilterMode("all");
+        }}
+      >
+        <RotateCcw size={11} />
+        <span>Tampilkan Semua Tema</span>
+      </button>
+    </div>
+  {:else}
   <div class="theme-presets-grid">
     {#each filteredPresets as preset}
       {@const isSelectedApp =
@@ -1101,8 +1158,7 @@
           >
             <span
               class="swatch-color"
-              style="background-color: {preset.tokens
-                .bgDarkest}; border: 1px solid rgba(255,255,255,0.2);"
+              style="background-color: {preset.tokens.bgDarkest};"
             ></span>
             <span class="swatch-label">Latar</span>
           </div>
@@ -1237,6 +1293,7 @@
       </div>
     {/each}
   </div>
+  {/if}
 
   <!-- ═════════════════════════════════════════════════════════════════════════ -->
   <!-- BAGIAN 3: STUDIO KUSTOMISASI TEMA & LATAR KANVAS                          -->
@@ -2279,7 +2336,7 @@
     width: 12px;
     height: 12px;
     border-radius: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid var(--border-bright, rgba(128, 128, 128, 0.35));
     display: inline-block;
   }
 
@@ -2365,6 +2422,106 @@
     align-items: flex-start;
     gap: 12px;
     flex-wrap: wrap;
+  }
+
+  .presets-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .preset-search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+    padding: 0 8px;
+    height: 28px;
+    min-width: 210px;
+    transition: border-color 0.15s ease;
+  }
+
+  .preset-search-box:focus-within {
+    border-color: var(--brand-primary);
+  }
+
+  .preset-search-box :global(.preset-search-icon) {
+    color: var(--text-dim);
+    flex-shrink: 0;
+    margin-right: 6px;
+  }
+
+  .preset-search-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-main);
+    font-size: 11px;
+    outline: none;
+  }
+
+  .preset-search-input::placeholder {
+    color: var(--text-dim);
+  }
+
+  .preset-search-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+  }
+
+  .preset-search-clear:hover {
+    color: var(--text-main);
+    background: var(--bg-hover);
+  }
+
+  .presets-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 28px 16px;
+    background: var(--bg-panel);
+    border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius-sm);
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+
+  .presets-empty-state p {
+    margin: 0;
+  }
+
+  .btn-reset-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-reset-filter:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-bright);
   }
 
   .theme-mode-filters {
@@ -2508,6 +2665,7 @@
     width: 20px;
     height: 12px;
     border-radius: 2px;
+    border: 1px solid var(--border-bright, rgba(128, 128, 128, 0.35));
     display: inline-block;
   }
 
@@ -2812,13 +2970,13 @@
   .btn-studio-action.btn-save-as {
     background: var(--brand-primary);
     border-color: var(--brand-primary);
-    color: #000000;
+    color: var(--on-brand-primary, #000000);
     font-weight: 700;
   }
 
   .btn-studio-action.btn-save-as:hover {
     filter: brightness(1.08);
-    color: #000000;
+    color: var(--on-brand-primary, #000000);
   }
 
   .btn-studio-action:disabled {
@@ -3109,7 +3267,7 @@
     background: var(--brand-primary);
     border: none;
     border-radius: 5px;
-    color: #000000;
+    color: var(--on-brand-primary, #000000);
     font-size: 11px;
     font-weight: 700;
     cursor: pointer;

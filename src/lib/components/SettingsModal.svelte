@@ -377,7 +377,7 @@
     gap: 6px;
     padding: 6px 14px;
     background-color: var(--brand-primary, #00f090);
-    color: #000000;
+    color: var(--on-brand-primary, #000000);
     font-weight: 600;
     font-size: 11px;
     border-radius: var(--radius-xs, 4px);

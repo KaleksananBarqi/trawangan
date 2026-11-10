@@ -21,6 +21,8 @@ Mengadopsi struktur palet kustom 9 atribut modular sesuai standar platform chart
   - `textColor`: Tipografi teks utama, skala harga, dan label waktu.
 
 ### 2. Kategorisasi Eksplisit Dark & Light Theme & Mode Switcher
+> **Catatan Amandemen ([ADR-0022](0022-javanese-theme-preset-collection-and-contrast-tokens.md)):** Daftar preset resmi telah diperluas menjadi **37 tema** (penambahan 31 tema bergaya penamaan Jawa), dan preset `red_folder` (*Red Folder News*) telah berevolusi menjadi **Warta Abang** dengan skema warna tergeser halus serta dukungan token kontras adaptif (`--on-*`, `--bull-text` WCAG AA). ID `red_folder` tetap dipertahankan demi kompatibilitas mundur.
+
 - Seluruh Preset Tema dikelompokkan ke dalam kategori biner yang tegas:
   - **Dark Themes**: `signature` (Cyber-Monochrome), `binance` (Binance Classic), `bitunix` (Bitunix Neon), `tradingview` (TradingView Pro), `coinglass` (Coinglass Dark).
   - **Light Themes**: `red_folder` (Red Folder News — latar krem `#edede9`, teks burgundy `#4A0E0F`, bullish rose `#D4A5A5`, bearish crimson `#9B1D20`).

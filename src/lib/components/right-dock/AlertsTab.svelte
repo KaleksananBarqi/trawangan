@@ -442,7 +442,7 @@
 
   .submit-add-btn {
     background-color: var(--brand-primary);
-    color: var(--bg-darkest);
+    color: var(--on-brand-primary, #000000);
     border: none;
     border-radius: var(--radius-xs);
     font-size: var(--font-size-sm, 10px);

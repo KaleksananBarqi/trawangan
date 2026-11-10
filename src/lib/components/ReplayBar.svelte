@@ -432,7 +432,7 @@
 
   .play-btn.playing {
     background-color: var(--brand-primary);
-    color: var(--bg-darkest);
+    color: var(--on-brand-primary, #000000);
     border-color: var(--brand-primary);
   }
 

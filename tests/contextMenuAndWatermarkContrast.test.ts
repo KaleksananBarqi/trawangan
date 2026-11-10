@@ -302,8 +302,8 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
       assert.equal(darkColors.outerBorder, 'rgba(255, 255, 255, 0.08)');
     });
 
-    test('resolveAttributionBarColors menghasilkan teks kontras gelap pada latar terang (Red Folder News / #EDEDE9)', () => {
-      const lightColors = resolveAttributionBarColors('#EDEDE9', THEME_PRESETS.red_folder);
+    test('resolveAttributionBarColors menghasilkan teks kontras gelap pada latar terang (Warta Abang / #EAEAE5)', () => {
+      const lightColors = resolveAttributionBarColors('#EAEAE5', THEME_PRESETS.red_folder);
       assert.equal(lightColors.isDark, false);
       assert.equal(lightColors.textPrimary, THEME_PRESETS.red_folder.tokens.textMain);
       assert.equal(lightColors.textSecondary, THEME_PRESETS.red_folder.tokens.textMuted);
@@ -311,13 +311,13 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
       assert.equal(lightColors.outerBorder, THEME_PRESETS.red_folder.tokens.borderHairline);
     });
 
-    test('compositeSnapshot merender teks Attribution Bar dengan warna kontras gelap pada tema terang (#EDEDE9)', () => {
+    test('compositeSnapshot merender teks Attribution Bar dengan warna kontras gelap pada tema terang (#EAEAE5)', () => {
       const mockCanvas = createMockCanvas(1280, 720);
       const source = { width: 1280, height: 720 };
 
       compositeSnapshot(source, {
         mode: 'branded',
-        backgroundColor: '#EDEDE9',
+        backgroundColor: '#EAEAE5',
         themeConfig: THEME_PRESETS.red_folder,
         metadata: {
           ...baseMetadata,
@@ -330,7 +330,7 @@ describe('Ticket #147: Semantic CSS Context Menu & Adaptive Watermark Contrast S
         }
       }, mockCanvas);
 
-      // 1. Teks Username harus menggunakan textMain tema terang (burgundy #4A0E0F)
+      // 1. Teks Username harus menggunakan textMain tema terang (merah marun #4E1112)
       const usernameOp = mockCanvas.operations.find(
         (op) => op.method === 'fillText' && op.args[0] === 'arthex1204'
       );

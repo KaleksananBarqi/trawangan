@@ -924,7 +924,7 @@
     padding: 4px 10px;
     background-color: var(--brand-primary, #00F090);
     border: none;
-    color: var(--bg-darkest, #07090E);
+    color: var(--on-brand-primary, #000000);
     border-radius: var(--radius-xs, 4px);
     font-size: 10px;
     font-weight: 700;

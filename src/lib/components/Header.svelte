@@ -864,7 +864,7 @@
 
   .indicator-header-btn .count-badge {
     background: var(--brand-primary, #00f090);
-    color: #000000;
+    color: var(--on-brand-primary, #000000);
     font-size: 9px;
     font-weight: 700;
     padding: 0 4.5px;

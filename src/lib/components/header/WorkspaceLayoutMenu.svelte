@@ -612,7 +612,7 @@
     font-weight: 700;
     padding: 1px 4px;
     background-color: var(--brand-primary);
-    color: #000;
+    color: var(--on-brand-primary, #000000);
     border-radius: 2px;
   }
 
@@ -665,7 +665,7 @@
 
   .quick-overwrite-btn.saved {
     background-color: var(--brand-primary);
-    color: #000;
+    color: var(--on-brand-primary, #000000);
   }
 
   .unlinked-workspace-banner {

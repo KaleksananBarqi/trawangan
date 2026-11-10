@@ -230,7 +230,44 @@ export interface ObjectTreeItem {
   locked?: boolean;
 }
 
-export type ThemePresetId = 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'red_folder';
+export type ThemePresetId =
+  | 'signature'
+  | 'binance'
+  | 'bitunix'
+  | 'tradingview'
+  | 'coinglass'
+  | 'red_folder'
+  | 'ngrembaka'
+  | 'kopi_tubruk'
+  | 'pundi_arta'
+  | 'geni_mrengkang'
+  | 'rega_pasar'
+  | 'watu_putih'
+  | 'samodra_wengi'
+  | 'undhuh_dana'
+  | 'laku_batin'
+  | 'pasar_esuk'
+  | 'segara_jero'
+  | 'getih_segara'
+  | 'tutup_sasi'
+  | 'gading_ijo'
+  | 'kilat_wengi'
+  | 'sekar_jambon'
+  | 'kuning_kunir'
+  | 'mas_kencana'
+  | 'tengah_wengi'
+  | 'wangsit_lembah'
+  | 'dana_lestari'
+  | 'peken_ijo'
+  | 'surya_baskara'
+  | 'paring_eling'
+  | 'sapu_tirta'
+  | 'lembayung_awan'
+  | 'kopi_klotok'
+  | 'rame_sore'
+  | 'ayem_tentrem'
+  | 'banyu_segara'
+  | 'wates_dhuwur';
 export type ThemeId = ThemePresetId | string;
 
 /**
@@ -330,7 +367,7 @@ export interface AppSettings {
   showVolume?: boolean;
   showIndicatorPriceLabels?: boolean;
   showDrawingPriceLabels?: boolean;
-  theme?: 'signature' | 'binance' | 'bitunix' | 'tradingview' | 'coinglass' | 'red_folder' | 'obsidian';
+  theme?: ThemeId | 'obsidian';
   themePreset?: ThemeId;
   chartThemePreset?: ThemeId;
   syncChartWithAppTheme?: boolean;

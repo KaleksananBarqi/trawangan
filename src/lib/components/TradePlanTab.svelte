@@ -956,16 +956,12 @@
 
   .btn-apply.bull {
     background-color: var(--bull-color);
-    color: var(--bg-darkest);
-  }
-
-  :global([data-theme='red_folder']) .btn-apply.bull {
-    color: var(--text-main);
+    color: var(--on-bull-color, #0F0F0F);
   }
 
   .btn-apply.bear {
     background-color: var(--bear-color);
-    color: var(--bg-darkest);
+    color: var(--on-bear-color, #0F0F0F);
   }
 
   .btn-apply:hover:not(:disabled) {

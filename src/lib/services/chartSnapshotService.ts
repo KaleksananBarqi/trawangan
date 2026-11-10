@@ -936,7 +936,7 @@ export function resolveAttributionBarColors(
     };
   }
 
-  // Latar bingkai terang (seperti tema Red Folder News #EDEDE9 atau custom light background)
+  // Latar bingkai terang (seperti tema Warta Abang #EAEAE5 atau custom light background)
   return {
     textPrimary: tokens?.textMain || '#1A1A1A',
     textSecondary: tokens?.textMuted || '#4A4A4A',

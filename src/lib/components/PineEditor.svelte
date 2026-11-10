@@ -880,7 +880,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 
   .btn-primary {
     background: var(--brand-primary);
-    color: #FFFFFF;
+    color: var(--on-brand-primary, #000000);
     padding: 4px 10px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }

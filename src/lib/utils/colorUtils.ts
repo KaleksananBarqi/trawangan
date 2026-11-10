@@ -56,6 +56,82 @@ export function isDarkColor(color: string): boolean {
 }
 
 /**
+ * Menghitung Relative Luminance standar W3C WCAG 2.1 (rentang 0.0 hingga 1.0)
+ */
+export function getRelativeLuminance(color: string): number {
+  const c = parseRgb(color);
+  if (!c) return 0;
+  const linearize = (channel: number): number => {
+    const srgb = Math.max(0, Math.min(255, channel)) / 255;
+    return srgb <= 0.03928 ? srgb / 12.92 : Math.pow((srgb + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * linearize(c.r) + 0.7152 * linearize(c.g) + 0.0722 * linearize(c.b);
+}
+
+/**
+ * Menghitung rasio kontras WCAG 2.1 antara dua warna (rentang 1.0 hingga 21.0)
+ */
+export function getContrastRatio(colorA: string, colorB: string): number {
+  const lumA = getRelativeLuminance(colorA);
+  const lumB = getRelativeLuminance(colorB);
+  const lighter = Math.max(lumA, lumB);
+  const darker = Math.min(lumA, lumB);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Memilih warna teks kontras terbaik (#FFFFFF vs #0A0A0A) pada latar permukaan tertentu
+ * berdasarkan perbandingan rasio kontras WCAG 2.1 tertinggi.
+ */
+export function resolveContrastTextColor(
+  surfaceColor: string,
+  lightInk = '#FFFFFF',
+  darkInk = '#0A0A0A'
+): string {
+  const lightRatio = getContrastRatio(lightInk, surfaceColor);
+  const darkRatio = getContrastRatio(darkInk, surfaceColor);
+  return lightRatio >= darkRatio ? lightInk : darkInk;
+}
+
+/**
+ * Menghasilkan warna teks `--bull-text` yang terbaca aman (WCAG AA >= 4.5:1) di atas
+ * `bgSurface` maupun `bgPanel` menggunakan strategi Hybrid Semantik:
+ * - Pada tema terang dengan warna lilin bull cerah/pastel (`!isDarkColor`), gunakan hijau semantik `#166534`.
+ * - Pada warna bull jenuh/gelap (terang maupun gelap), pertahankan hue aslinya jika rasio kontras >= 4.5,
+ *   atau geser kecerahan secara bertahap hingga mencapai >= 4.8 terhadap kedua permukaan.
+ */
+export function resolveReadableBullText(
+  bgSurface: string,
+  bgPanel: string,
+  bullHex: string,
+  isDark: boolean
+): string {
+  const minSurfaceContrast = (candidate: string): number =>
+    Math.min(getContrastRatio(candidate, bgSurface), getContrastRatio(candidate, bgPanel));
+
+  if (!isDark && !isDarkColor(bullHex)) {
+    const semanticGreen = '#166534';
+    if (minSurfaceContrast(semanticGreen) >= 4.5) {
+      return semanticGreen;
+    }
+  }
+
+  if (minSurfaceContrast(bullHex) >= 4.5) {
+    return bullHex;
+  }
+
+  const targetAnchor = isDark ? '#FFFFFF' : '#000000';
+  for (let step = 1; step <= 45; step++) {
+    const candidate = mixColors(bullHex, targetAnchor, step * 0.02);
+    if (minSurfaceContrast(candidate) >= 4.8) {
+      return candidate;
+    }
+  }
+
+  return isDark ? '#86EFAC' : '#166534';
+}
+
+/**
  * Menambahkan atau mengganti nilai alpha channel pada warna
  */
 export function withAlpha(color: string, alpha: number): string {

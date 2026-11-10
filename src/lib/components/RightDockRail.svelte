@@ -208,7 +208,7 @@
     padding: 0 3px;
     border-radius: 7px;
     background: var(--bear-color);
-    color: var(--bg-darkest);
+    color: var(--on-bear-color, #0F0F0F);
     font-size: var(--font-size-2xs, 8.5px);
     font-weight: 700;
     display: flex;

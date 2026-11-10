@@ -409,7 +409,7 @@
     background-color: var(--brand-primary);
     border: 1px solid var(--brand-primary);
     border-radius: var(--radius-xs);
-    color: var(--bg-darkest);
+    color: var(--on-brand-primary, #000000);
     font-size: 11px;
     font-weight: 700;
     display: flex;
