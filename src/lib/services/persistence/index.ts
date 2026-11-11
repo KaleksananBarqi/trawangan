@@ -3,7 +3,6 @@ import type {
   SavedWorkspace,
   PineScriptRecord,
   PriceAlert,
-  QuickSymbolsConfig,
   AppSettings,
   SavedTradingPlanRecord,
 } from '../../types/market';
@@ -16,12 +15,6 @@ export const DEFAULT_WATCHLIST_SYMBOLS: string[] = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
   'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
 ];
-
-export const DEFAULT_QUICK_SYMBOLS_CONFIG: QuickSymbolsConfig = {
-  mode: 'watchlist',
-  customSymbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'DOGEUSDT'],
-  maxDisplayCount: 5,
-};
 
 function isTauriEnvironment(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -170,27 +163,6 @@ export class PersistenceService implements IPersistenceService {
   async saveAlerts(alerts: PriceAlert[]): Promise<void> {
     const json = JSON.stringify(alerts);
     await this.adapter.saveLayoutSlot('user_price_alerts', 'User Price Alerts', json);
-  }
-
-  // ─── Quick Symbols Config Persistence ───
-
-  async loadQuickSymbolsConfig(): Promise<QuickSymbolsConfig> {
-    const raw = await this.adapter.loadLayoutSlot('user_quick_symbols_config');
-    if (!raw) return { ...DEFAULT_QUICK_SYMBOLS_CONFIG };
-    try {
-      const parsed = JSON.parse(raw);
-      return {
-        ...DEFAULT_QUICK_SYMBOLS_CONFIG,
-        ...parsed,
-      };
-    } catch {
-      return { ...DEFAULT_QUICK_SYMBOLS_CONFIG };
-    }
-  }
-
-  async saveQuickSymbolsConfig(config: QuickSymbolsConfig): Promise<void> {
-    const json = JSON.stringify(config);
-    await this.adapter.saveLayoutSlot('user_quick_symbols_config', 'User Quick Symbols Config', json);
   }
 
   // ─── Workspaces Persistence ───
@@ -521,9 +493,6 @@ export const saveWatchlist = (symbols: string[]) => storage.saveWatchlist(symbol
 
 export const loadAlerts = () => storage.loadAlerts();
 export const saveAlerts = (alerts: PriceAlert[]) => storage.saveAlerts(alerts);
-
-export const loadQuickSymbolsConfig = () => storage.loadQuickSymbolsConfig();
-export const saveQuickSymbolsConfig = (cfg: QuickSymbolsConfig) => storage.saveQuickSymbolsConfig(cfg);
 
 export const loadWorkspaces = () => storage.loadWorkspaces();
 export const saveWorkspace = (w: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string }) => storage.saveWorkspace(w);

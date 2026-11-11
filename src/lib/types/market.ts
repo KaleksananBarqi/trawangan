@@ -467,11 +467,6 @@ export interface StrategyPerformanceSummary {
   };
   trades: StrategyTradeRecord[];
 }
-export interface QuickSymbolsConfig {
-  mode: 'watchlist' | 'custom';
-  customSymbols: string[];
-  maxDisplayCount: number;
-}
 
 export interface PriceScaleState {
   mode?: 'price' | 'log' | 'percent' | string;

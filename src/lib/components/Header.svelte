@@ -73,10 +73,6 @@
     systemIsDark?: boolean;
     onCycleColorMode?: () => void;
     onColorModeChange?: (mode: ColorModePreference) => void;
-    // Props opsional lama agar backward-compatible
-    watchlistSymbols?: string[];
-    quickSymbolsConfig?: any;
-    onQuickSymbolsConfigChange?: any;
   }
 
   let {
