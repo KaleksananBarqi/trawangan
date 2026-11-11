@@ -13,11 +13,19 @@
   import { alertService } from '../../services/alertService';
   import { isSameSymbol } from '../../services/instrumentIdentity';
   import { parseAdaptiveSymbol } from '../../services/market/symbolSearchService';
-  import { formatPriceLabel } from '../../services/priceScaleLabelService';
-  import type { PriceAlert } from '../../types/market';
+  import { formatPriceWithQuoteSymbol } from '../../services/priceScaleLabelService';
+  import {
+    buildAutoAlertLabel,
+    inferAlertConditionFromPrice,
+    mergeAlertSymbolSuggestions,
+    parseAlertPriceInput,
+    resolveAlertTargetSymbol,
+  } from '../../services/alertFormHelper';
+  import type { AlertCondition, PriceAlert } from '../../types/market';
 
   interface Props {
     activeSymbol: string;
+    availableSymbols?: string[];
     onSelectSymbol: (symbol: string, providerId?: string) => void;
     onRequestCreateAlert?: () => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
@@ -25,6 +33,7 @@
 
   let {
     activeSymbol,
+    availableSymbols = [],
     onSelectSymbol,
     onRequestCreateAlert,
     onRequestEditAlert,
@@ -32,8 +41,11 @@
 
   let alerts = $state<PriceAlert[]>(alertService.getAlerts());
   let alertFilterMode = $state<'all' | 'current'>('all');
+  let newAlertSymbol = $state('');
   let newAlertPrice = $state('');
+  let newAlertCondition = $state<'auto' | AlertCondition>('auto');
   let newAlertLabel = $state('');
+  let inlineAlertError = $state('');
   let showAddAlert = $state(false);
   let alertTickerMap = $state<Record<string, { price: number }>>({});
   let unsubAlerts: (() => void) | null = null;
@@ -46,14 +58,19 @@
     return alerts;
   });
 
+  const inlineSymbolSuggestions = $derived(
+    mergeAlertSymbolSuggestions(activeSymbol, availableSymbols, newAlertSymbol)
+  );
+
   // Ekstrak seluruh simbol unik pada alert agar ticker terpantau meski koin tidak ada di watchlist
   const subscribedAlertSymbols = $derived.by(() => {
     const unique = new Set<string>();
     for (const a of alerts) {
       if (a.symbol) unique.add(a.symbol);
     }
-    if (showAddAlert && activeSymbol) {
-      unique.add(activeSymbol);
+    if (showAddAlert) {
+      const targetSym = resolveAlertTargetSymbol(newAlertSymbol || activeSymbol, activeSymbol || 'BTCUSDT');
+      if (targetSym) unique.add(targetSym);
     }
     return [...unique];
   });
@@ -110,10 +127,7 @@
   function formatAlertPrice(p?: number, sym?: string): string {
     if (!p) return '--';
     const quote = sym ? parseAdaptiveSymbol(sym).quoteAsset : undefined;
-    if (quote === 'IDR') {
-      return `Rp ${formatPriceLabel(p, 'IDR')}`;
-    }
-    return `$${formatPriceLabel(p, quote)}`;
+    return formatPriceWithQuoteSymbol(p, quote);
   }
 
   function handleTriggerOpenCreateAlert() {
@@ -121,27 +135,40 @@
       onRequestCreateAlert();
     } else {
       showAddAlert = !showAddAlert;
+      if (showAddAlert) {
+        newAlertSymbol = activeSymbol || 'BTCUSDT';
+        newAlertCondition = 'auto';
+        inlineAlertError = '';
+      }
     }
   }
 
   async function handleCreateAlert(e: Event) {
     e.preventDefault();
-    const p = parseFloat(newAlertPrice);
-    if (!p) return;
+    const p = parseAlertPriceInput(newAlertPrice);
+    if (!p) {
+      inlineAlertError = 'Masukkan target harga yang valid (> 0).';
+      return;
+    }
 
-    const curP = resolveTickerPrice(activeSymbol);
-    const cond = curP > 0 ? (p > curP ? 'crossing_up' : 'crossing_down') : 'crossing';
+    const targetSym = resolveAlertTargetSymbol(newAlertSymbol || activeSymbol, activeSymbol || 'BTCUSDT');
+    const curP = resolveTickerPrice(targetSym);
+    const cond: AlertCondition =
+      newAlertCondition === 'auto'
+        ? inferAlertConditionFromPrice(p, curP)
+        : newAlertCondition;
 
     await alertService.addAlert({
-      symbol: activeSymbol,
+      symbol: targetSym,
       targetPrice: p,
       condition: cond,
       frequency: 'once',
-      label: newAlertLabel.trim() || `Target ${activeSymbol} @ ${p}`,
+      label: newAlertLabel.trim() || buildAutoAlertLabel(targetSym, p),
     });
 
     newAlertPrice = '';
     newAlertLabel = '';
+    inlineAlertError = '';
     showAddAlert = false;
   }
 
@@ -186,9 +213,8 @@
     const pct = (diff / cur) * 100;
     const isBull = diff > 0;
     const quote = parseAdaptiveSymbol(sym).quoteAsset;
-    const prefix = quote === 'IDR' ? 'Rp ' : '$';
     return {
-      diffText: `${isBull ? '+' : '-'}${prefix}${formatPriceLabel(Math.abs(diff), quote)}`,
+      diffText: `${isBull ? '+' : '-'}${formatPriceWithQuoteSymbol(Math.abs(diff), quote)}`,
       pctText: `${isBull ? '+' : ''}${pct.toFixed(2)}%`,
       isBull,
     };
@@ -227,13 +253,44 @@
 {#if showAddAlert}
   <form class="alert-form" onsubmit={handleCreateAlert}>
     <div class="alert-input-group">
+      <div class="alert-inline-row">
+        <input
+          type="text"
+          list="inline-alert-symbol-suggestions"
+          placeholder="Simbol (e.g. ETHUSDT)..."
+          bind:value={newAlertSymbol}
+          oninput={() => (inlineAlertError = '')}
+          class="add-input mono-nums sym-input"
+          aria-label="Simbol alert"
+          autocomplete="off"
+        />
+        <select
+          bind:value={newAlertCondition}
+          class="add-input cond-select"
+          aria-label="Kondisi pemicu alert"
+        >
+          <option value="auto">Otomatis</option>
+          <option value="crossing_up">↗ Crossing Up</option>
+          <option value="crossing_down">↘ Crossing Down</option>
+          <option value="crossing">↔ Crossing</option>
+          <option value="greater_than">≥ Greater</option>
+          <option value="less_than">≤ Less</option>
+        </select>
+      </div>
+      <datalist id="inline-alert-symbol-suggestions">
+        {#each inlineSymbolSuggestions as sym}
+          <option value={sym}></option>
+        {/each}
+      </datalist>
       <input
-        type="number"
-        step="any"
+        type="text"
+        inputmode="decimal"
         placeholder="Target harga (e.g. 69500)..."
         bind:value={newAlertPrice}
+        oninput={() => (inlineAlertError = '')}
         class="add-input mono-nums"
         aria-label="Target harga alert"
+        autocomplete="off"
         required
       />
       <input
@@ -243,6 +300,9 @@
         class="add-input"
         aria-label="Label catatan alert"
       />
+      {#if inlineAlertError}
+        <span class="inline-alert-error">{inlineAlertError}</span>
+      {/if}
     </div>
     <button type="submit" class="submit-add-btn">Set Alert</button>
   </form>
@@ -424,6 +484,29 @@
     flex-direction: column;
     gap: 4px;
     flex: 1;
+    min-width: 0;
+  }
+
+  .alert-inline-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+
+  .sym-input {
+    text-transform: uppercase;
+    font-weight: 600;
+    min-width: 0;
+  }
+
+  .cond-select {
+    min-width: 0;
+    cursor: pointer;
+  }
+
+  .inline-alert-error {
+    font-size: var(--font-size-xs, 9.5px);
+    color: var(--bear-color, #f6465d);
   }
 
   .add-input {

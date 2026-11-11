@@ -75,7 +75,11 @@
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
-    showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange,
+    showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange,
+    onActiveIndicatorsChange: (indicators) => {
+      priceScaleOverlayController.updateIndicators(indicators, showIndicatorPriceLabels);
+      onActiveIndicatorsChange?.(indicators);
+    },
     onVelaThemeSelect, onPersistableStateChange
   });
 
@@ -103,6 +107,9 @@
   let draggingAlertId = $state<string | null>(null);
   let draggingAlertPrice = $state<number | null>(null);
   let overlayTick = $state(0);
+  let alertYPositions = $state<Record<string, number | null>>({});
+  let drawingBadgeYPositions = $state<Record<string, number | null>>({});
+  let indicatorBadgeYPositions = $state<Record<string, number | null>>({});
   let drawingPriceBadges = $state<PriceScaleBadge[]>([]);
   let indicatorPriceBadges = $state<PriceScaleBadge[]>([]);
   let activePlans = $state<Array<any>>([]);
@@ -113,23 +120,42 @@
 
   let unsubAlerts: (() => void) | null = null;
   let unsubDrawingState: (() => void) | null = null;
+  let unsubDrawingDraft: (() => void) | null = null;
+  let unsubAttachWorkspace: (() => void) | null = null;
+  let unsubAttachOverlay: (() => void) | null = null;
   let unsubOverlay: (() => void) | null = null;
   let unsubFeedConnection: (() => void) | null = null;
   let dblClickPaneCaptureTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastPointerClientY: number | null = null;
+  let currentActiveDrawingTool: DrawingToolType | null = null;
+  let lastRawActivePlansRef: Array<any> | null = null;
+  let lastRawThesisGeometriesRef: Record<string, any> | null = null;
 
   function scheduleBadgePositionUpdate() { priceScaleOverlayController.scheduleUpdate(); }
 
-  function handleChartWrapperPointerDown() {
+  function handleChartWrapperPointerDown(e: PointerEvent) {
+    lastPointerClientY = e.clientY;
     scheduleBadgePositionUpdate();
   }
 
   function handleChartWrapperPointerMove(e: PointerEvent) {
-    if (e.buttons > 0) {
+    lastPointerClientY = e.clientY;
+    // Saat drawing tool aktif digambar ATAU handle posisi Long/Short di mode 'cursor' sedang digeser,
+    // pembaruan posisi badge sudah dijadwalkan oleh subscribeDraft() sekali per rAF.
+    if (
+      e.buttons > 0 &&
+      !chartDrawingController.isDraftInteractionActive() &&
+      (currentActiveDrawingTool === null ||
+        currentActiveDrawingTool === 'cursor' ||
+        currentActiveDrawingTool === 'handpull' ||
+        currentActiveDrawingTool === 'measure')
+    ) {
       scheduleBadgePositionUpdate();
     }
   }
 
   function handleChartWrapperPointerUp() {
+    chartDrawingController.clearDraftInteractionState();
     priceScaleOverlayController.scheduleContinuousSync(200);
     controller.capturePaneLayoutIfChanged();
   }
@@ -170,7 +196,6 @@
     const show = showDrawingPriceLabels;
     if (isMounted) {
       priceScaleOverlayController.updateDrawings(chartDrawingController.getSnapshot().activeDrawings || [], show);
-      scheduleBadgePositionUpdate();
     }
   });
   $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
@@ -180,7 +205,6 @@
       // untrack: mencegah effect ikut berlangganan overlayTick (loop reaktif tak berujung)
       untrack(() => {
         priceScaleOverlayController.updateAlerts(a, s);
-        scheduleBadgePositionUpdate();
       });
     }
   });
@@ -190,8 +214,10 @@
     if (isMounted) for (const c of controller.getAllCells()) c?.setWatermarkVisible?.(wm);
   });
   $effect(() => {
-    const ind = controller.getActiveIndicators(), lbl = showIndicatorPriceLabels;
-    priceScaleOverlayController.updateIndicators(ind, lbl);
+    const lbl = showIndicatorPriceLabels;
+    untrack(() => {
+      priceScaleOverlayController.updateIndicators(controller.getActiveIndicators(), lbl);
+    });
   });
 
   onMount(() => {
@@ -200,8 +226,14 @@
       controller.attach(chartContainer);
       const ws = controller.getWorkspace();
       if (ws) {
-        chartDrawingController.attachWorkspace(ws, () => symbol, () => timeframe, () => providerId, () => workspaceId);
-        priceScaleOverlayController.attachChart(chartContainer, ws);
+        unsubAttachWorkspace = chartDrawingController.attachWorkspace(
+          ws,
+          () => symbol,
+          () => timeframe,
+          () => providerId,
+          () => workspaceId
+        );
+        unsubAttachOverlay = priceScaleOverlayController.attachChart(chartContainer, ws);
       }
     }
     replaySession.bindDriver({
@@ -222,37 +254,57 @@
     unsubAlerts = alertService.subscribe((alerts) => {
       allAlerts = alerts;
       priceScaleOverlayController.updateAlerts(alerts, symbol);
-      scheduleBadgePositionUpdate();
+    });
+    unsubDrawingDraft = chartDrawingController.subscribeDraft((draftDrawings) => {
+      priceScaleOverlayController.updateDrawings(draftDrawings || [], showDrawingPriceLabels);
     });
     unsubDrawingState = chartDrawingController.subscribe((st) => {
-      isHandpullActive = st.activeTool === 'handpull';
+      currentActiveDrawingTool = st.activeTool;
+      const nextHandpull = st.activeTool === 'handpull';
+      if (isHandpullActive !== nextHandpull) isHandpullActive = nextHandpull;
       const prevGesture = isGestureActive;
-      isGestureActive = chartDrawingController.isGestureMode();
-      if (isGestureActive && !prevGesture) {
-        syncInkCanvasSize();
-      }
-      gestureCreationState = st.lastGestureCreation;
-      activePlans = st.activePlans || [];
-      showThesisCards = st.showThesisCards ?? true;
-      const nextGeoms: Record<string, { x: number; y: number; width: number; height: number; isWideMode: boolean; isMinimized: boolean }> = {};
-      for (const [planId, geo] of Object.entries(st.thesisCardGeometries || {})) {
-        if (geo && typeof geo === 'object') {
-          nextGeoms[planId] = {
-            x: geo.x,
-            y: geo.y,
-            width: geo.width,
-            height: geo.height ?? 420,
-            isWideMode: Boolean(geo.isWideMode),
-            isMinimized: Boolean(geo.isMinimized),
-          };
+      const nextGesture = chartDrawingController.isGestureMode();
+      if (nextGesture !== prevGesture) {
+        isGestureActive = nextGesture;
+        if (nextGesture) {
+          syncInkCanvasSize();
         }
       }
-      thesisCardGeometries = nextGeoms;
+      if (gestureCreationState !== st.lastGestureCreation) {
+        gestureCreationState = st.lastGestureCreation;
+      }
+      if (lastRawActivePlansRef !== st.activePlans) {
+        lastRawActivePlansRef = st.activePlans;
+        activePlans = st.activePlans || [];
+      }
+      const nextShowCards = st.showThesisCards ?? true;
+      if (showThesisCards !== nextShowCards) {
+        showThesisCards = nextShowCards;
+      }
+      if (lastRawThesisGeometriesRef !== st.thesisCardGeometries) {
+        lastRawThesisGeometriesRef = st.thesisCardGeometries;
+        const nextGeoms: Record<string, { x: number; y: number; width: number; height: number; isWideMode: boolean; isMinimized: boolean }> = {};
+        for (const [planId, geo] of Object.entries(st.thesisCardGeometries || {})) {
+          if (geo && typeof geo === 'object') {
+            nextGeoms[planId] = {
+              x: geo.x,
+              y: geo.y,
+              width: geo.width,
+              height: geo.height ?? 420,
+              isWideMode: Boolean(geo.isWideMode),
+              isMinimized: Boolean(geo.isMinimized),
+            };
+          }
+        }
+        thesisCardGeometries = nextGeoms;
+      }
       priceScaleOverlayController.updateDrawings(st.activeDrawings || [], showDrawingPriceLabels);
-      scheduleBadgePositionUpdate();
     });
     unsubOverlay = priceScaleOverlayController.subscribe((coords) => {
       overlayTick = coords.tick;
+      alertYPositions = coords.alertYPositions;
+      drawingBadgeYPositions = coords.drawingBadgeYPositions;
+      indicatorBadgeYPositions = coords.indicatorBadgeYPositions;
       drawingPriceBadges = coords.drawingPriceBadges;
       indicatorPriceBadges = coords.indicatorPriceBadges;
     });
@@ -268,7 +320,8 @@
       clearTimeout(dblClickPaneCaptureTimer);
       dblClickPaneCaptureTimer = null;
     }
-    unsubAlerts?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
+    unsubAlerts?.(); unsubDrawingDraft?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
+    unsubAttachWorkspace?.(); unsubAttachOverlay?.();
     window.removeEventListener('paste', handleCanvasPaste);
     replaySession.bindDriver(null); controller.destroy();
   });
@@ -541,7 +594,16 @@
       controller.fitChart();
     }
   }
-  export function getLastHoveredPrice(): number | null { return lastHoveredPrice; }
+  export function getLastHoveredPrice(): number | null {
+    if (lastPointerClientY !== null) {
+      const livePrice = priceScaleOverlayController.getPriceFromClientY(lastPointerClientY);
+      if (livePrice !== null) {
+        lastHoveredPrice = livePrice;
+        return livePrice;
+      }
+    }
+    return lastHoveredPrice;
+  }
   export function openChartSettings(section: string = 'Symbol'): void {
     const cell = controller.getWorkspace()?.active || controller.getAllCells()[0];
     const r = cell?.chart?.renderer?.renderer || cell?.chart?.renderer;
@@ -865,7 +927,7 @@
   {#each activeSymbolAlerts as a (a.id)}
     {@const isDragging = draggingAlertId === a.id}
     {@const displayPrice = isDragging && draggingAlertPrice ? draggingAlertPrice : a.targetPrice}
-    {@const yPos = getPriceY(displayPrice)}
+    {@const yPos = isDragging ? getPriceY(displayPrice) : (a.id in alertYPositions ? alertYPositions[a.id] : getPriceY(displayPrice))}
     {#if yPos !== null && yPos >= 0}
       <div class="chart-alert-line {a.triggered ? 'triggered' : ''} {a.active ? 'active' : 'paused'} {isDragging ? 'is-dragging' : ''}" style="top: {yPos}px;">
         <div
@@ -926,7 +988,7 @@
 
   {#if showDrawingPriceLabels}
     {#each drawingPriceBadges as badge (badge.id)}
-      {@const yPos = getPriceY(badge.price)}
+      {@const yPos = drawingBadgeYPositions[badge.id] ?? null}
       {#if yPos !== null && yPos >= 0}
         <div class="price-scale-badge-item mono-nums" style="top: {yPos}px; background-color: {badge.bgColor || badge.color}; color: #ffffff; border: 1px solid {badge.color}66;" title="{badge.title || badge.label}: {badge.label || formatPrice(badge.price)}">
           {#if badge.title}<span class="badge-tag">{badge.title}</span>{/if}
@@ -938,7 +1000,7 @@
 
   {#if showIndicatorPriceLabels}
     {#each indicatorPriceBadges as badge (badge.id)}
-      {@const yPos = getPriceY(badge.price)}
+      {@const yPos = indicatorBadgeYPositions[badge.id] ?? null}
       {#if yPos !== null && yPos >= 0}
         <div class="price-scale-badge-item indicator-badge mono-nums" style="top: {yPos}px; border-left: 3px solid {badge.color}; background-color: {badge.bgColor || '#0f172a'}; color: {badge.color}; border-top: 1px solid rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.08);" title="{badge.title || badge.label}: {badge.label || formatPrice(badge.price)}">
           {#if badge.title}<span class="badge-tag">{badge.title}</span>{/if}

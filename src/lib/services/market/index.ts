@@ -641,6 +641,91 @@ export class MarketFeedService implements IMarketFeedService {
 
   // ─── Direct Reader Methods ───
 
+  /**
+   * Membaca snapshot cache ticker terakhir untuk simbol tertentu tanpa melakukan request jaringan.
+   */
+  public getTickerSnapshot(symbol: string): TickerInfo | null {
+    if (!symbol || !symbol.trim()) return null;
+    const { providerId, cleanSymbol } = resolveSymbolProvider(symbol, this.activeProviderId);
+    const cached = this.getCachedTicker(symbol, providerId, cleanSymbol);
+    return cached && cached.price > 0 ? cached : null;
+  }
+
+  /**
+   * Mengambil harga ticker dari cache atau satu kali fetch ringan untuk referensi modal/panel.
+   * Mengembalikan null apabila simbol tidak tersedia atau jaringan sedang bermasalah.
+   */
+  public async getLatestOrFetchTicker(symbol: string): Promise<TickerInfo | null> {
+    if (!symbol || !symbol.trim()) return null;
+    const cached = this.getTickerSnapshot(symbol);
+    if (cached) return cached;
+    try {
+      const ticker = await this.getTicker(symbol);
+      return ticker && ticker.price > 0 ? ticker : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Memantau/mengambil harga referensi simbol secara non-reaktif di latar belakang (mendukung snapshot instan,
+   * debounce timer, dan guard pembatalan anti-race-condition untuk dipakai di komponen Svelte).
+   */
+  public watchSymbolTicker(
+    symbol: string,
+    onTicker: (ticker: TickerInfo | null) => void,
+    options?: {
+      debounceMs?: number;
+      onLoadingChange?: (loading: boolean) => void;
+    }
+  ): () => void {
+    const cleanSym = (symbol || '').trim();
+    if (!cleanSym || cleanSym.length < 3) {
+      onTicker(null);
+      options?.onLoadingChange?.(false);
+      return () => {};
+    }
+
+    const snap = this.getTickerSnapshot(cleanSym);
+    if (snap && snap.price > 0) {
+      onTicker(snap);
+      options?.onLoadingChange?.(false);
+      return () => {};
+    }
+
+    onTicker(null);
+    let cancelled = false;
+    let settled = false;
+    const debounceMs = options?.debounceMs ?? 260;
+    options?.onLoadingChange?.(true);
+
+    const finishLoading = () => {
+      if (!settled) {
+        settled = true;
+        options?.onLoadingChange?.(false);
+      }
+    };
+
+    const timer = setTimeout(async () => {
+      try {
+        const fetched = await this.getLatestOrFetchTicker(cleanSym);
+        if (!cancelled) {
+          onTicker(fetched && fetched.price > 0 ? fetched : null);
+        }
+      } finally {
+        if (!cancelled) {
+          finishLoading();
+        }
+      }
+    }, debounceMs);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      finishLoading();
+    };
+  }
+
   public async getTicker(symbol: string): Promise<TickerInfo> {
     const hasPrefix = symbol.includes(':');
     const { providerId, cleanSymbol } = resolveSymbolProvider(symbol, this.activeProviderId);

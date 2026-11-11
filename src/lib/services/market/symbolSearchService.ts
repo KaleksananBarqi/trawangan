@@ -1,5 +1,6 @@
 import type { MarketSearchResult } from '../../types/market';
 import type { MarketProviderAdapter, SearchSymbolsOptions } from './types';
+import { KNOWN_QUOTE_ASSETS } from '../instrumentIdentity';
 import { VERIFIED_CRYPTO_ASSETS } from './constants';
 
 /**
@@ -111,7 +112,7 @@ export interface ParsedSymbolPair {
   isPerp: boolean;
 }
 
-export const KNOWN_QUOTE_ASSETS = ['USDT', 'USDC', 'BTC', 'ETH', 'IDR', 'USD', 'EUR', 'BUSD', 'BNB', 'TRY'] as const;
+export { KNOWN_QUOTE_ASSETS };
 
 /**
  * Adaptive Quote Parser: Memecah query menjadi base & quote asset secara cerdas.

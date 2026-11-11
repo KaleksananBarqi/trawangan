@@ -8,7 +8,9 @@ import { isSameSymbol } from './instrumentIdentity';
 import { getAdaptiveTickSize, roundToTickSize } from './priceSnapService';
 import {
   inferZonePolarity,
+  normalizePlanSymbolToken,
   parseTradingPlan,
+  resolveCanonicalPlanSymbol,
   validatePlanSanity,
   type ContextZone,
   type ParsedTarget,
@@ -108,6 +110,7 @@ export interface BuildPlanFromDraftOptions {
 export const SAMPLE_MARKDOWN_PLAN = `|**Parameter**|**Nilai**|
 |---|---|
 |Bias|Bearish|
+|Symbol|BTCUSDT|
 |Entry|81200.0 (Limit sell di dalam area FVG LTF 81182.2 - 81236.7)|
 |Alasan Entry|Respek terhadap unfilled Bearish FVG LTF [FAKTA], likuiditas buy-side internal tersapu [INFERENSI]|
 |Stop Loss|81400.0|
@@ -118,6 +121,15 @@ export const SAMPLE_MARKDOWN_PLAN = `|**Parameter**|**Nilai**|
 |TP2|79429.0|
 |R multiple TP2|8.85R. Jarak TP2 = 1771.0|
 |Alasan TP2|Draw on liquidity SSL utama harian [SPEKULASI]|`;
+
+/**
+ * Membuat contoh Markdown Trade Plan dengan simbol awal sesuai konteks chart
+ * agar pengguna langsung melihat format baris `|Symbol|...|` dan bebas menggantinya.
+ */
+export function createSampleMarkdownPlan(symbol = 'BTCUSDT'): string {
+  const cleanSym = resolveCanonicalPlanSymbol(symbol, 'BTCUSDT');
+  return SAMPLE_MARKDOWN_PLAN.replace('|Symbol|BTCUSDT|', `|Symbol|${cleanSym}|`);
+}
 
 /**
  * Mengurai angka input pengguna secara toleran (mendukung koma desimal maupun pemisah ribuan).
@@ -300,9 +312,16 @@ export function planToFormDraft(
         }
       : undefined;
 
+  const normalizedPlanSym = plan.symbol
+    ? resolveCanonicalPlanSymbol(plan.symbol, fallbackSymbol || 'BTCUSDT')
+    : '';
+  const fallbackCleanSym = fallbackSymbol
+    ? normalizePlanSymbolToken(fallbackSymbol) || fallbackSymbol.trim().toUpperCase()
+    : '';
+
   return {
     bias: plan.bias && plan.bias !== 'neutral' ? plan.bias : 'bullish',
-    symbol: (plan.symbol || fallbackSymbol || '').trim().toUpperCase(),
+    symbol: normalizedPlanSym || fallbackCleanSym,
     setupStatus: plan.setupStatus || '',
     entryMode: hasDualEntries ? 'dual' : 'single',
     entry: formatNumericInput(plan.entry),
@@ -523,7 +542,10 @@ export function buildParsedPlanFromFormDraft(
 
   const bias: TradeBias = draft.bias || 'neutral';
   const isBearish = bias === 'bearish';
-  const symbol = draft.symbol?.trim() ? draft.symbol.trim().toUpperCase() : undefined;
+  const rawSym = draft.symbol?.trim() || '';
+  const symbol = rawSym
+    ? normalizePlanSymbolToken(rawSym) || rawSym.toUpperCase()
+    : undefined;
   const setupStatus = draft.setupStatus?.trim() ? draft.setupStatus.trim() : undefined;
   const stopLoss = maybeRound(parseDraftNumber(draft.stopLoss));
 
@@ -753,11 +775,37 @@ export function resolveSubModeTransition(input: SubModeTransitionInput): SubMode
   }
 
   if (nextSubMode === 'text') {
-    const needsSyncFromForm = lastEditedSource === 'form' || !textBuffer.trim();
+    const rawCandidateSymbol = formPreviewPlan.symbol || currentFormSymbol;
+    const resolvedFormSymbol = rawCandidateSymbol
+      ? resolveCanonicalPlanSymbol(rawCandidateSymbol, activeSymbol || 'BTCUSDT')
+      : undefined;
+
+    const hasMeaningfulFormDraft = Boolean(
+      formPreviewPlan.entry > 0 ||
+        formPreviewPlan.stopLoss > 0 ||
+        (formPreviewPlan.targets || []).some((t) => t.price > 0) ||
+        (formPreviewPlan.contextZones || []).length > 0 ||
+        formPreviewPlan.setupStatus?.trim() ||
+        formPreviewPlan.definition?.trim() ||
+        Object.values(formPreviewPlan.reasons || {}).some((r) => Boolean(r?.trim())) ||
+        Boolean(
+          resolvedFormSymbol &&
+            activeSymbol &&
+            !isSameSymbol(resolvedFormSymbol, activeSymbol)
+        )
+    );
+    // Hindari menyuntikkan template berisi '| Symbol | BTCUSDT |' saat Form masih benar-benar kosong
+    const needsSyncFromForm =
+      hasMeaningfulFormDraft && (lastEditedSource === 'form' || !textBuffer.trim());
+    const planForTextSync =
+      resolvedFormSymbol && resolvedFormSymbol !== formPreviewPlan.symbol
+        ? { ...formPreviewPlan, symbol: resolvedFormSymbol }
+        : formPreviewPlan;
+
     return {
       nextSubMode: 'text',
       ...(needsSyncFromForm
-        ? { nextTextBuffer: serializeTradingPlanToMarkdown(formPreviewPlan) }
+        ? { nextTextBuffer: serializeTradingPlanToMarkdown(planForTextSync) }
         : {}),
       shouldRefreshHistory: false,
       shouldFocusTextArea: true
@@ -777,11 +825,17 @@ export function resolveSubModeTransition(input: SubModeTransitionInput): SubMode
         };
       }
       const parsed = parseTradingPlan(textBuffer);
-      const converted = planToFormDraft(parsed, currentFormSymbol || activeSymbol);
+      const resolvedTextSymbol = parsed.symbol
+        ? resolveCanonicalPlanSymbol(parsed.symbol, currentFormSymbol || activeSymbol)
+        : undefined;
+      const parsedForForm = resolvedTextSymbol
+        ? { ...parsed, symbol: resolvedTextSymbol }
+        : parsed;
+      const converted = planToFormDraft(parsedForForm, currentFormSymbol || activeSymbol);
       return {
         nextSubMode: 'form',
         nextFormDraft: converted,
-        nextHasCustomRiskPct: hasCustomRiskPercent(parsed),
+        nextHasCustomRiskPct: hasCustomRiskPercent(parsedForForm),
         shouldOpenContextZones: converted.contextZones.length > 0,
         shouldRefreshHistory: false,
         shouldFocusTextArea: false
@@ -811,7 +865,7 @@ export function resolveCommitTickSize(
   chartTickSize?: number,
   currentPrice?: number | null
 ): number | undefined {
-  const targetSym = planCandidate.symbol || activeSymbol;
+  const targetSym = resolveCanonicalPlanSymbol(planCandidate.symbol, activeSymbol);
   const sameSymbolAsChart = !targetSym || isSameSymbol(targetSym, activeSymbol);
   if (sameSymbolAsChart && typeof chartTickSize === 'number' && chartTickSize > 0) {
     return chartTickSize;
@@ -860,7 +914,11 @@ export function finalizePlanFromTabSubmission(
     });
   }
 
-  const normalizedSymbol = (finalPlan.symbol || input.activeSymbol || '').trim().toUpperCase();
+  const rawRequestedSym =
+    input.subMode === 'text'
+      ? finalPlan.symbol
+      : input.effectiveFormDraft.symbol || finalPlan.symbol;
+  const normalizedSymbol = resolveCanonicalPlanSymbol(rawRequestedSym, input.activeSymbol || 'BTCUSDT');
   if (normalizedSymbol) {
     finalPlan = {
       ...finalPlan,
@@ -877,5 +935,70 @@ export function finalizePlanFromTabSubmission(
   return {
     plan: finalPlan,
     tickSize: commitTickSize
+  };
+}
+
+export interface ResolveTradePlanCommitActionInput {
+  subMode: TradePlanTabSubMode;
+  activeSymbol: string;
+  draftFormSymbol?: string;
+  textPreviewSymbol?: string;
+  editingPlan?: { id: string; symbol?: string } | null;
+  activePlans?: Array<{ id: string; symbol?: string }>;
+  stackAsAdditional?: boolean;
+}
+
+export interface TradePlanCommitAction {
+  mode: 'update' | 'apply';
+  planId?: string;
+  targetSymbol: string;
+  isSymbolChangedWhileEditing: boolean;
+  isDifferentFromActiveChart: boolean;
+  replaceExistingOnSymbol: boolean;
+}
+
+/**
+ * Menentukan target simbol kanonikal dan jalur eksekusi commit (`update` in-place vs `apply` baru):
+ * bila pengguna mengubah simbol di Form/Teks saat sedang mengedit plan koin lain (mis. BTCUSDT -> ETHUSDT),
+ * sesi edit otomatis dilepas ke jalur `apply` pada ETHUSDT agar plan BTCUSDT lama tetap utuh.
+ */
+export function resolveTradePlanCommitAction(
+  input: ResolveTradePlanCommitActionInput
+): TradePlanCommitAction {
+  const editingBaseSymbol = input.editingPlan?.symbol || input.activeSymbol || 'BTCUSDT';
+  const fallbackSymbol = input.editingPlan ? editingBaseSymbol : input.activeSymbol || 'BTCUSDT';
+  const rawExplicitSym =
+    input.subMode === 'text' ? input.textPreviewSymbol : input.draftFormSymbol;
+  const cleanExplicitToken = rawExplicitSym ? normalizePlanSymbolToken(rawExplicitSym) : '';
+  const targetSymbol = resolveCanonicalPlanSymbol(rawExplicitSym, fallbackSymbol);
+
+  const isSymbolChangedWhileEditing = Boolean(
+    input.editingPlan &&
+      cleanExplicitToken &&
+      !isSameSymbol(targetSymbol, editingBaseSymbol)
+  );
+
+  const isDifferentFromActiveChart = !isSameSymbol(targetSymbol, input.activeSymbol || 'BTCUSDT');
+
+  const mode: 'update' | 'apply' =
+    input.editingPlan && !isSymbolChangedWhileEditing ? 'update' : 'apply';
+
+  const existingOnTargetCount = (input.activePlans || []).filter((p) =>
+    isSameSymbol(p.symbol || input.activeSymbol, targetSymbol)
+  ).length;
+
+  const replaceExistingOnSymbol =
+    mode === 'apply' &&
+    !isSymbolChangedWhileEditing &&
+    existingOnTargetCount > 0 &&
+    !input.stackAsAdditional;
+
+  return {
+    mode,
+    ...(mode === 'update' && input.editingPlan ? { planId: input.editingPlan.id } : {}),
+    targetSymbol,
+    isSymbolChangedWhileEditing,
+    isDifferentFromActiveChart,
+    replaceExistingOnSymbol
   };
 }

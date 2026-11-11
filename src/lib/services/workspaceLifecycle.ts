@@ -434,6 +434,7 @@ export class WorkspaceAutoSaveCoordinator {
   private isSaving = false;
   private lastSavedFingerprint = '';
   private pendingInput: WorkspaceFingerprintInput | null = null;
+  private pendingBuilder: (() => WorkspaceFingerprintInput | null) | null = null;
   private activeSavePromise: Promise<SavedWorkspace | void> | null = null;
   private debounceMs: number;
   private onSave: (input: WorkspaceFingerprintInput) => Promise<SavedWorkspace | void>;
@@ -459,10 +460,28 @@ export class WorkspaceAutoSaveCoordinator {
       this.timer = null;
     }
     this.pendingInput = null;
+    this.pendingBuilder = null;
   }
 
   public isPending(): boolean {
     return this.timer !== null || this.isSaving;
+  }
+
+  /**
+   * Memicu auto-save ter-debounce tanpa membangun payload berat & fingerprint di hot path.
+   * Builder hanya dipanggil satu kali saat timer debounce jatuh tempo di `flushNow()`.
+   */
+  public triggerDeferred(builder: () => WorkspaceFingerprintInput | null): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.pendingInput = null;
+    this.pendingBuilder = builder;
+
+    this.timer = setTimeout(() => {
+      void this.flushNow();
+    }, this.debounceMs);
   }
 
   /**
@@ -496,13 +515,25 @@ export class WorkspaceAutoSaveCoordinator {
       this.timer = null;
     }
 
-    const input = overrideInput ?? this.pendingInput;
+    const deferredInput = this.pendingInput;
+    const deferredBuilder = this.pendingBuilder;
     this.pendingInput = null;
+    this.pendingBuilder = null;
 
     if (this.activeSavePromise) {
       try {
         await this.activeSavePromise;
       } catch (_) {}
+    }
+
+    let input = overrideInput ?? deferredInput;
+    if (!input && deferredBuilder) {
+      try {
+        input = deferredBuilder();
+      } catch (err) {
+        console.warn('[WorkspaceAutoSaveCoordinator] Gagal membangun payload tertunda:', err);
+        input = null;
+      }
     }
 
     if (!input) {

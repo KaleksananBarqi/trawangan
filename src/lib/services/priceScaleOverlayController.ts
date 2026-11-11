@@ -19,6 +19,51 @@ export interface OverlayPositionsSnapshot {
 
 type OverlaySubscriber = (snapshot: OverlayPositionsSnapshot) => void;
 
+interface PlotProjectionContext {
+  coords: any;
+  scale: any;
+  bounds: any;
+  top: number;
+  height: number;
+  plotOffset: number;
+}
+
+function areYMapsEqual(
+  a: Record<string, number | null>,
+  b: Record<string, number | null>
+): boolean {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    if (!Object.prototype.hasOwnProperty.call(b, key) || a[key] !== b[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areBadgeArraysEqual(a: PriceScaleBadge[], b: PriceScaleBadge[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ba = a[i];
+    const bb = b[i];
+    if (
+      ba.id !== bb.id ||
+      ba.price !== bb.price ||
+      ba.label !== bb.label ||
+      ba.color !== bb.color ||
+      ba.bgColor !== bb.bgColor ||
+      ba.kind !== bb.kind ||
+      ba.title !== bb.title
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * PriceScaleOverlayController - Deep Module untuk Penyelarasan Posisi Badge & Alert
  * Mengenkapsulasi kalkulasi matematis harga-ke-koordinat-pixel (Price-to-Y math),
@@ -44,6 +89,10 @@ export class PriceScaleOverlayController {
 
   private rafId: number | null = null;
   private continuousSyncTimer: any = null;
+  private drawingsDirty = false;
+  private indicatorsDirty = false;
+  private lastExtractedDrawingQuote = '';
+  private lastExtractedIndicatorQuote = '';
   private tick = 0;
   private subscribers = new Set<OverlaySubscriber>();
 
@@ -53,6 +102,8 @@ export class PriceScaleOverlayController {
   attachChart(container: HTMLElement | null, workspace: any): () => void {
     this.chartContainer = container;
     this.workspace = workspace;
+    this.drawingsDirty = true;
+    this.indicatorsDirty = true;
 
     // Pasang listener event workspace/chart jika tersedia
     const cleanupEvents = this.wireWorkspaceEvents(workspace);
@@ -70,6 +121,10 @@ export class PriceScaleOverlayController {
         cancelAnimationFrame(this.rafId);
         this.rafId = null;
       }
+      if (this.continuousSyncTimer !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(this.continuousSyncTimer);
+        this.continuousSyncTimer = null;
+      }
     };
   }
 
@@ -83,6 +138,13 @@ export class PriceScaleOverlayController {
 
     const onMotion = () => {
       this.scheduleContinuousSync(150);
+    };
+
+    // Event bar tick hanya perlu menyegarkan badge indikator 1x pada frame berikutnya
+    // tanpa menyalakan continuous 150ms rAF easing loop secara permanen.
+    const onBar = () => {
+      this.indicatorsDirty = true;
+      this.scheduleUpdate();
     };
 
     try {
@@ -101,12 +163,20 @@ export class PriceScaleOverlayController {
 
       const activeChart = workspace.active?.chart;
       if (activeChart && typeof activeChart.on === 'function') {
-        const uChartVp = activeChart.on('viewport:changed', onMotion);
-        const uChartBar = activeChart.on('bar', onMotion);
-        const uChartPane = activeChart.on('pane:changed', onMotion);
-        if (typeof uChartVp === 'function') cleanups.push(uChartVp);
-        if (typeof uChartBar === 'function') cleanups.push(uChartBar);
-        if (typeof uChartPane === 'function') cleanups.push(uChartPane);
+        const subscribeChartEvent = (eventName: string, handler: () => void) => {
+          const unsub = activeChart.on(eventName, handler);
+          if (typeof unsub === 'function') {
+            cleanups.push(unsub);
+          } else if (typeof activeChart.off === 'function') {
+            cleanups.push(() => activeChart.off(eventName, handler));
+          }
+        };
+        subscribeChartEvent('viewport:changed', onMotion);
+        subscribeChartEvent('bar', onBar);
+        subscribeChartEvent('history:complete', onBar);
+        subscribeChartEvent('data', onBar);
+        subscribeChartEvent('indicator:inputs', onBar);
+        subscribeChartEvent('pane:changed', onMotion);
       }
     } catch (_) {}
 
@@ -203,35 +273,51 @@ export class PriceScaleOverlayController {
   }
 
   /**
-   * Hitung koordinat pixel Y presisi untuk harga target pada grafik
+   * Membangun konteks proyeksi plot satu kali per frame agar pembacaan layout DOM
+   * (`getBoundingClientRect`) tidak diulang-ulang pada setiap item overlay.
    */
-  getPriceY(targetPrice: number): number | null {
+  private buildProjectionContext(): PlotProjectionContext | null {
     if (!this.workspace || !this.workspace.active) return null;
     try {
       const activeChart = this.workspace.active.chart as any;
       if (!activeChart) return null;
 
       const coords = this.getChartCoords(activeChart);
-      const renderer =
-        activeChart?.renderer?.renderer || activeChart?.renderer;
-      const pane = this.getPricePane(activeChart, renderer);
+      if (!coords || typeof coords.priceToY !== 'function') return null;
 
-      if (coords && typeof coords.priceToY === 'function') {
-        const scale = pane?.scale || activeChart.scale;
-        const bounds = pane?.bounds || activeChart.bounds;
-        const rawY = coords.priceToY(targetPrice, scale, bounds);
-        if (typeof rawY === 'number' && !isNaN(rawY)) {
-          const top = bounds?.top ?? 0;
-          const height = bounds?.height ?? 9999;
-          if (rawY < top - 24 || rawY > top + height + 24) {
-            return null;
-          }
-          const plotOffset = this.getPlotVerticalOffset(activeChart);
-          return Math.round(rawY + plotOffset);
+      const renderer = activeChart?.renderer?.renderer || activeChart?.renderer;
+      const pane = this.getPricePane(activeChart, renderer);
+      const scale = pane?.scale || activeChart.scale;
+      const bounds = pane?.bounds || activeChart.bounds;
+      const top = bounds?.top ?? 0;
+      const height = bounds?.height ?? 9999;
+      const plotOffset = this.getPlotVerticalOffset(activeChart);
+
+      return { coords, scale, bounds, top, height, plotOffset };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  private projectPriceToY(targetPrice: number, ctx: PlotProjectionContext | null): number | null {
+    if (!ctx) return null;
+    try {
+      const rawY = ctx.coords.priceToY(targetPrice, ctx.scale, ctx.bounds);
+      if (typeof rawY === 'number' && !isNaN(rawY)) {
+        if (rawY < ctx.top - 24 || rawY > ctx.top + ctx.height + 24) {
+          return null;
         }
+        return Math.round(rawY + ctx.plotOffset);
       }
     } catch (_) {}
     return null;
+  }
+
+  /**
+   * Hitung koordinat pixel Y presisi untuk harga target pada grafik
+   */
+  getPriceY(targetPrice: number): number | null {
+    return this.projectPriceToY(targetPrice, this.buildProjectionContext());
   }
 
   /**
@@ -300,9 +386,14 @@ export class PriceScaleOverlayController {
    * Perbarui daftar alerts dan simbol aktif
    */
   updateAlerts(alerts: PriceAlert[], activeSymbol: string): void {
+    const sameInputs = this.alerts === alerts && this.activeSymbol === activeSymbol;
+    const prevMap = this.alertYPositions;
     this.alerts = alerts;
     this.activeSymbol = activeSymbol;
     this.recomputeAlertPositions();
+    if (sameInputs && areYMapsEqual(prevMap, this.alertYPositions)) {
+      return;
+    }
     this.notify();
   }
 
@@ -312,6 +403,7 @@ export class PriceScaleOverlayController {
   updateDrawings(drawings: any[], showPriceLabels = true): void {
     this.activeDrawings = drawings;
     this.showDrawingLabels = showPriceLabels;
+    this.drawingsDirty = true;
     this.scheduleUpdate();
   }
 
@@ -321,6 +413,7 @@ export class PriceScaleOverlayController {
   updateIndicators(indicators: ActiveIndicatorInfo[], showPriceLabels = true): void {
     this.activeIndicators = indicators;
     this.showIndicatorLabels = showPriceLabels;
+    this.indicatorsDirty = true;
     this.scheduleUpdate();
   }
 
@@ -330,8 +423,9 @@ export class PriceScaleOverlayController {
   scheduleContinuousSync(durationMs = 200): void {
     const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const loop = () => {
-      this.computeAllPositions();
-      this.notify();
+      if (this.computeAllPositions()) {
+        this.notify();
+      }
       const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
       if (now - startTime < durationMs) {
         if (typeof requestAnimationFrame === 'function') {
@@ -362,63 +456,105 @@ export class PriceScaleOverlayController {
   scheduleUpdate(): void {
     if (this.rafId !== null) return;
     if (typeof requestAnimationFrame !== 'function') {
-      this.computeAllPositions();
-      this.notify();
+      if (this.computeAllPositions()) {
+        this.notify();
+      }
       return;
     }
 
     this.rafId = requestAnimationFrame(() => {
       this.rafId = null;
-      this.computeAllPositions();
-      this.notify();
+      if (this.computeAllPositions()) {
+        this.notify();
+      }
     });
   }
 
   /**
-   * Komputasi posisi seluruh badge dan alert
+   * Komputasi posisi seluruh badge dan alert dalam satu pass konteks proyeksi.
+   * Mengembalikan `true` hanya apabila ada perubahan posisi atau daftar badge dibanding frame sebelumnya.
    */
-  private computeAllPositions(): void {
+  private computeAllPositions(): boolean {
     const quote = this.getQuoteCurrency();
+    const ctx = this.buildProjectionContext();
 
     // 1. Drawing price badges
+    let nextDrawingBadges: PriceScaleBadge[];
+    let nextDrawingMap: Record<string, number | null>;
     if (this.showDrawingLabels && this.activeDrawings.length > 0) {
-      this.drawingPriceBadges = extractDrawingPriceBadges(this.activeDrawings, undefined, quote);
-      const drawMap: Record<string, number | null> = {};
-      for (const b of this.drawingPriceBadges) {
-        drawMap[b.id] = this.getPriceY(b.price);
+      if (this.drawingsDirty || this.lastExtractedDrawingQuote !== quote) {
+        nextDrawingBadges = extractDrawingPriceBadges(this.activeDrawings, undefined, quote);
+        this.drawingsDirty = false;
+        this.lastExtractedDrawingQuote = quote;
+      } else {
+        nextDrawingBadges = this.drawingPriceBadges;
       }
-      this.drawingBadgeYPositions = drawMap;
+      nextDrawingMap = {};
+      for (const b of nextDrawingBadges) {
+        nextDrawingMap[b.id] = this.projectPriceToY(b.price, ctx);
+      }
     } else {
-      this.drawingPriceBadges = [];
-      this.drawingBadgeYPositions = {};
+      nextDrawingBadges = [];
+      nextDrawingMap = {};
+      this.drawingsDirty = false;
     }
 
-    // 2. Indicator price badges
+    // 2. Indicator price badges (lewati ekstraksi mahal jika hanya drawing yang berubah)
+    let nextIndicatorBadges: PriceScaleBadge[];
+    let nextIndicatorMap: Record<string, number | null>;
     if (this.showIndicatorLabels && this.activeIndicators.length > 0) {
-      this.indicatorPriceBadges = extractIndicatorPriceBadges(this.activeIndicators, undefined, quote);
-      const indMap: Record<string, number | null> = {};
-      for (const b of this.indicatorPriceBadges) {
-        indMap[b.id] = this.getPriceY(b.price);
+      if (this.indicatorsDirty || this.lastExtractedIndicatorQuote !== quote) {
+        nextIndicatorBadges = extractIndicatorPriceBadges(this.activeIndicators, undefined, quote);
+        this.indicatorsDirty = false;
+        this.lastExtractedIndicatorQuote = quote;
+      } else {
+        nextIndicatorBadges = this.indicatorPriceBadges;
       }
-      this.indicatorBadgeYPositions = indMap;
+      nextIndicatorMap = {};
+      for (const b of nextIndicatorBadges) {
+        nextIndicatorMap[b.id] = this.projectPriceToY(b.price, ctx);
+      }
     } else {
-      this.indicatorPriceBadges = [];
-      this.indicatorBadgeYPositions = {};
+      nextIndicatorBadges = [];
+      nextIndicatorMap = {};
+      this.indicatorsDirty = false;
     }
 
     // 3. Alerts positions
-    this.recomputeAlertPositions();
+    const nextAlertMap = this.computeAlertPositionMap(ctx);
+
+    const changed =
+      !areBadgeArraysEqual(this.drawingPriceBadges, nextDrawingBadges) ||
+      !areBadgeArraysEqual(this.indicatorPriceBadges, nextIndicatorBadges) ||
+      !areYMapsEqual(this.drawingBadgeYPositions, nextDrawingMap) ||
+      !areYMapsEqual(this.indicatorBadgeYPositions, nextIndicatorMap) ||
+      !areYMapsEqual(this.alertYPositions, nextAlertMap);
+
+    if (!changed) {
+      return false;
+    }
+
+    this.drawingPriceBadges = nextDrawingBadges;
+    this.drawingBadgeYPositions = nextDrawingMap;
+    this.indicatorPriceBadges = nextIndicatorBadges;
+    this.indicatorBadgeYPositions = nextIndicatorMap;
+    this.alertYPositions = nextAlertMap;
     this.tick++;
+    return true;
+  }
+
+  private computeAlertPositionMap(ctx: PlotProjectionContext | null): Record<string, number | null> {
+    const matchingAlerts = this.alerts.filter((a) => isSameInstrument(a.symbol, this.activeSymbol));
+    const pos: Record<string, number | null> = {};
+    for (const a of matchingAlerts) {
+      pos[a.id] = this.projectPriceToY(a.targetPrice, ctx);
+    }
+    return pos;
   }
 
   private recomputeAlertPositions(): void {
-    const matchingAlerts = this.alerts.filter((a) => isSameInstrument(a.symbol, this.activeSymbol));
-
-    const pos: Record<string, number | null> = {};
-    for (const a of matchingAlerts) {
-      pos[a.id] = this.getPriceY(a.targetPrice);
-    }
-    this.alertYPositions = pos;
+    const ctx = this.buildProjectionContext();
+    this.alertYPositions = this.computeAlertPositionMap(ctx);
   }
 
   /**

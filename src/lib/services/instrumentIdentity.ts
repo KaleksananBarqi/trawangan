@@ -19,7 +19,25 @@ export interface InstrumentIdentity {
   contractType: 'spot' | 'perp' | 'futures';
 }
 
-const COMMON_QUOTES = ['USDT', 'USDC', 'USD', 'IDR', 'BUSD', 'BTC', 'ETH', 'EUR', 'GBP', 'TRY'];
+export const KNOWN_QUOTE_ASSETS = [
+  'USDT',
+  'USDC',
+  'FDUSD',
+  'BUSD',
+  'BTC',
+  'ETH',
+  'IDR',
+  'USD',
+  'EUR',
+  'GBP',
+  'BNB',
+  'TRY',
+] as const;
+
+const COMMON_QUOTES = KNOWN_QUOTE_ASSETS;
+const QUOTE_JOIN_PATTERN = KNOWN_QUOTE_ASSETS.join('|');
+const DELIM_QUOTE_REGEX = new RegExp(`^([A-Za-z0-9]+)[-_](${QUOTE_JOIN_PATTERN})(\\.P)?$`, 'i');
+const DEFAULT_EXACT_YAHOO_SYMBOLS = new Set(['QQQ', 'SPY']);
 
 /**
  * Memeriksa apakah simbol merupakan instrumen bursa Yahoo Finance
@@ -30,6 +48,120 @@ export function isYahooSymbol(symbol?: string | null): boolean {
   const clean = symbol.includes(':') ? symbol.split(':')[1].trim() : symbol.trim();
   const upper = clean.toUpperCase();
   return upper.endsWith('.JK') || upper.startsWith('^') || upper.endsWith('=F') || upper.includes('=F');
+}
+
+/**
+ * Menormalkan token simbol instrumen dari input tabel/teks/form (mendukung format slash `/`,
+ * awalan bursa `:`, instrumen Yahoo `.JK`/`=F`/`^`, serta sufiks derivatif `.P`/`-PERP`).
+ */
+export function normalizeInstrumentToken(raw?: string | null): string {
+  if (!raw || typeof raw !== 'string') return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+
+  const symMatch = trimmed.match(/([A-Za-z0-9_\-\.\/\:\=\^]+)/);
+  if (!symMatch) return '';
+
+  let token = symMatch[1].trim();
+  if (!token) return '';
+
+  // Hapus awalan nama bursa jika eksplisit (mis. "binance:ETH/USDT" -> "ETH/USDT")
+  const colonIdx = token.indexOf(':');
+  if (colonIdx >= 0) {
+    const afterColon = token.slice(colonIdx + 1).trim();
+    if (afterColon) {
+      token = afterColon;
+    }
+  }
+
+  // Satukan pasangan berpemisah slash (mis. "ETH/USDT" -> "ETHUSDT", "ETH/USDT.P" -> "ETHUSDT.P")
+  token = token.replace(/\//g, '');
+
+  // Gabungkan delimiter '-' atau '_' khusus pasangan kuotasi dikenal (bukan sufiks -PERP)
+  const delimQuoteMatch = token.match(DELIM_QUOTE_REGEX);
+  if (delimQuoteMatch) {
+    token = `${delimQuoteMatch[1]}${delimQuoteMatch[2]}${delimQuoteMatch[3] || ''}`;
+  }
+
+  return token.toUpperCase();
+}
+
+/**
+ * Mengkanonisasikan simbol target instrumen agar base pendek seperti "ETH" / "sol"
+ * otomatis dilengkapi dengan quote instrumen aktif (default USDT), sambil mempertahankan
+ * pasangan eksplisit, derivatif (.P / -PERP), dan instrumen Yahoo Finance (.JK, =F, ^, QQQ, SPY).
+ */
+export function resolveCanonicalInstrumentSymbol(
+  rawSymbol?: string | null,
+  fallbackSymbol = 'BTCUSDT',
+  exactSymbols?: ReadonlySet<string>
+): string {
+  const cleanFallback = fallbackSymbol
+    ? normalizeInstrumentToken(fallbackSymbol) || fallbackSymbol.trim().toUpperCase()
+    : 'BTCUSDT';
+
+  const token = rawSymbol ? normalizeInstrumentToken(rawSymbol) : '';
+  if (!token) return cleanFallback;
+
+  if (
+    isYahooSymbol(token) ||
+    DEFAULT_EXACT_YAHOO_SYMBOLS.has(token) ||
+    exactSymbols?.has(token)
+  ) {
+    return token;
+  }
+
+  if (token.endsWith('.P') || token.endsWith('PERP')) {
+    return token;
+  }
+
+  for (const q of KNOWN_QUOTE_ASSETS) {
+    const minLen = q === 'BTC' || q === 'ETH' || q === 'BNB' ? q.length + 3 : q.length + 1;
+    if (token.length >= minLen && token.endsWith(q)) {
+      return token;
+    }
+  }
+
+  // Untuk input base pendek saja (mis. "ETH" -> "ETHUSDT"), warisi quote dari instrumen referensi
+  let targetQuote = 'USDT';
+  if (
+    cleanFallback &&
+    !isYahooSymbol(cleanFallback) &&
+    !DEFAULT_EXACT_YAHOO_SYMBOLS.has(cleanFallback) &&
+    !exactSymbols?.has(cleanFallback)
+  ) {
+    const parsedFallback = parseInstrumentIdentity(cleanFallback);
+    if (parsedFallback.quote && parsedFallback.base !== parsedFallback.canonicalSymbol) {
+      targetQuote = parsedFallback.quote;
+    }
+  }
+
+  return `${token}${targetQuote}`;
+}
+
+/**
+ * Menyusun daftar saran simbol terurut, bebas duplikat, serta menyaring token header section (`#...`).
+ */
+export function buildSymbolSuggestionList(
+  primaryCandidates: Array<string | null | undefined>,
+  extraCandidates: ReadonlyArray<string | null | undefined> = []
+): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  const pushUnique = (raw?: string | null) => {
+    if (!raw || typeof raw !== 'string') return;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+    const token = normalizeInstrumentToken(trimmed) || trimmed.toUpperCase();
+    if (!token || token.startsWith('#') || seen.has(token)) return;
+    seen.add(token);
+    result.push(token);
+  };
+
+  for (const c of primaryCandidates) pushUnique(c);
+  for (const c of extraCandidates) pushUnique(c);
+  return result;
 }
 
 /**

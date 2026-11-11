@@ -4,11 +4,12 @@
   import {
     parseTradingPlan,
     formatPlanPrice,
+    resolveCanonicalPlanSymbol,
     type ParsedTradingPlan,
     type ZonePolarity
   } from '../services/planParserService';
   import {
-    SAMPLE_MARKDOWN_PLAN,
+    createSampleMarkdownPlan,
     buildParsedPlanFromFormDraft,
     computePlanFingerprint,
     createEmptyPlanFormDraft,
@@ -16,6 +17,7 @@
     hasCustomRiskPercent,
     planToFormDraft,
     resolveSubModeTransition,
+    resolveTradePlanCommitAction,
     serializeTradingPlanToMarkdown,
     type ApplyPlanFromTabOptions,
     type PlanFormDraft,
@@ -24,6 +26,7 @@
     type TradePlanTabSubMode,
     type UpdatePlanFromTabOptions
   } from '../services/tradePlanFormService';
+  import { marketFeed } from '../services/market';
   import {
     loadTradingPlanHistory,
     deleteTradingPlanFromHistory,
@@ -48,6 +51,7 @@
   interface Props {
     isActive?: boolean;
     activeSymbol?: string;
+    availableSymbols?: string[];
     currentPrice?: number | null;
     tickSize?: number;
     activePlans?: ActiveTradingPlan[];
@@ -62,6 +66,7 @@
   let {
     isActive = true,
     activeSymbol = 'BTCUSDT',
+    availableSymbols = [],
     currentPrice = null,
     tickSize,
     activePlans = [],
@@ -138,8 +143,49 @@
     subMode === 'text' ? textPreviewPlan : formPreviewPlan
   );
 
+  const commitAction = $derived.by(() =>
+    resolveTradePlanCommitAction({
+      subMode,
+      activeSymbol,
+      draftFormSymbol: formDraft.symbol,
+      textPreviewSymbol: textPreviewPlan.symbol,
+      editingPlan,
+      activePlans,
+      stackAsAdditional
+    })
+  );
+
+  let otherSymbolPrice = $state<number | null>(null);
+
+  $effect(() => {
+    const targetSym = commitAction.targetSymbol;
+    const chartSym = activeSymbol;
+    if (!targetSym || isSameSymbol(targetSym, chartSym)) {
+      otherSymbolPrice = null;
+      return;
+    }
+
+    if (!isActive) {
+      const snap = marketFeed.getTickerSnapshot(targetSym);
+      otherSymbolPrice = snap?.price && snap.price > 0 ? snap.price : null;
+      return;
+    }
+
+    return marketFeed.watchSymbolTicker(
+      targetSym,
+      (ticker) => {
+        otherSymbolPrice = ticker?.price && ticker.price > 0 ? ticker.price : null;
+      },
+      { debounceMs: 300 }
+    );
+  });
+
+  const effectiveTargetPrice = $derived.by<number | null>(() =>
+    isSameSymbol(commitAction.targetSymbol, activeSymbol) ? currentPrice : otherSymbolPrice
+  );
+
   const liveMarketStatus = $derived.by(() =>
-    evaluatePlanMarketStatus(activePreviewPlan, currentPrice, activeSymbol)
+    evaluatePlanMarketStatus(activePreviewPlan, effectiveTargetPrice, commitAction.targetSymbol)
   );
 
   const filledNarrativeCount = $derived.by(() => {
@@ -197,7 +243,7 @@
     editingPlanId = plan.id;
     isExplicitNewMode = false;
     stackAsAdditional = false;
-    formDraft = planToFormDraft(plan, activeSymbol);
+    formDraft = planToFormDraft(plan, plan.symbol || activeSymbol);
     textBuffer = plan.rawText || serializeTradingPlanToMarkdown(plan);
     hasCustomRiskPct = hasCustomRiskPercent(plan);
     autoCreateAlerts = alertService.hasActiveAlertsForPlan(plan.id);
@@ -245,7 +291,11 @@
       isExplicitNewMode = true;
       textBuffer = req.initialText;
       const parsed = parseTradingPlan(req.initialText);
-      formDraft = planToFormDraft(parsed, activeSymbol);
+      const resolvedExtSym = parsed.symbol
+        ? resolveCanonicalPlanSymbol(parsed.symbol, activeSymbol)
+        : undefined;
+      const normalizedExternal = resolvedExtSym ? { ...parsed, symbol: resolvedExtSym } : parsed;
+      formDraft = planToFormDraft(normalizedExternal, activeSymbol);
       hasCustomRiskPct = hasCustomRiskPercent(parsed);
       autoCreateAlerts = true;
       isDirty = true;
@@ -489,15 +539,15 @@
 
     isSubmitting = true;
     try {
-      const targetSymbolHint = editingPlanId && editingPlan ? editingPlan.symbol || activeSymbol : activeSymbol;
+      const action = commitAction;
       const { plan: finalPlan } = finalizePlanFromTabSubmission({
         subMode,
         textBuffer,
         effectiveFormDraft,
         previewPlan: activePreviewPlan,
-        activeSymbol: targetSymbolHint,
-        chartTickSize: tickSize,
-        currentPrice
+        activeSymbol: action.targetSymbol,
+        chartTickSize: isSameSymbol(action.targetSymbol, activeSymbol) ? tickSize : undefined,
+        currentPrice: effectiveTargetPrice
       });
 
       if (!finalPlan.validation.valid) {
@@ -505,20 +555,24 @@
         return;
       }
 
-      if (editingPlanId && editingPlan) {
+      if (action.mode === 'update' && editingPlanId && editingPlan) {
         const res = await onUpdatePlan(editingPlanId, finalPlan, { autoCreateAlerts });
         const updatedPlan: ActiveTradingPlan = res?.plan || {
           ...finalPlan,
           id: res?.planId || editingPlanId,
-          symbol: finalPlan.symbol || activeSymbol
+          symbol: finalPlan.symbol || editingPlan.symbol || activeSymbol
         };
         loadActivePlanIntoDraft(updatedPlan);
       } else {
-        const replaceExistingOnSymbol = scopedPlans.length > 0 && !stackAsAdditional;
+        if (action.isSymbolChangedWhileEditing) {
+          // Lepaskan referensi edit plan lama saat menerapkan ke koin berbeda agar plan lama tetap utuh
+          editingPlanId = null;
+          isExplicitNewMode = false;
+        }
         const res = await onApplyPlan(finalPlan, {
           autoCreateAlerts,
           isFromHistory: false,
-          replaceExistingOnSymbol
+          replaceExistingOnSymbol: action.replaceExistingOnSymbol
         });
         if (res?.plan) {
           loadActivePlanIntoDraft(res.plan);
@@ -653,6 +707,10 @@
   {#if subMode === 'form'}
     <TradePlanFormView
       {activeSymbol}
+      {availableSymbols}
+      resolvedTargetSymbol={commitAction.targetSymbol}
+      isSymbolChangedWhileEditing={commitAction.isSymbolChangedWhileEditing}
+      isDifferentFromActiveChart={commitAction.isDifferentFromActiveChart}
       {scopedPlans}
       {editingPlanId}
       {editingPlan}
@@ -725,6 +783,10 @@
   {:else if subMode === 'text'}
     <TradePlanTextView
       {activeSymbol}
+      resolvedTargetSymbol={commitAction.targetSymbol}
+      editingSymbol={editingPlan?.symbol || null}
+      isSymbolChangedWhileEditing={commitAction.isSymbolChangedWhileEditing}
+      isDifferentFromActiveChart={commitAction.isDifferentFromActiveChart}
       {textBuffer}
       {textPreviewPlan}
       {copyFeedback}
@@ -737,7 +799,7 @@
       }}
       onPasteFromClipboard={handlePasteFromClipboard}
       onLoadSampleText={() => {
-        textBuffer = SAMPLE_MARKDOWN_PLAN;
+        textBuffer = createSampleMarkdownPlan(commitAction.targetSymbol || activeSymbol);
         lastEditedSource = 'text';
         isDirty = true;
       }}
@@ -806,7 +868,13 @@
           title={activePreviewPlan.validation.valid ? 'Terapkan ke Chart (Ctrl+Enter)' : 'Lengkapi level valid terlebih dahulu'}
         >
           <Check size={13} />
-          <span>{editingPlanId ? 'Terapkan Perubahan' : 'Terapkan ke Chart'}</span>
+          <span>
+            {commitAction.mode === 'update'
+              ? 'Terapkan Perubahan'
+              : commitAction.isSymbolChangedWhileEditing || commitAction.isDifferentFromActiveChart
+                ? `Terapkan ke ${commitAction.targetSymbol}`
+                : 'Terapkan ke Chart'}
+          </span>
         </button>
       </div>
     </div>

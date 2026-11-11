@@ -4,6 +4,10 @@
 
   interface Props {
     activeSymbol: string;
+    resolvedTargetSymbol?: string;
+    editingSymbol?: string | null;
+    isSymbolChangedWhileEditing?: boolean;
+    isDifferentFromActiveChart?: boolean;
     textBuffer: string;
     textPreviewPlan: ParsedTradingPlan;
     copyFeedback: boolean;
@@ -18,6 +22,10 @@
 
   let {
     activeSymbol,
+    resolvedTargetSymbol,
+    editingSymbol = null,
+    isSymbolChangedWhileEditing = false,
+    isDifferentFromActiveChart = false,
     textBuffer,
     textPreviewPlan,
     copyFeedback,
@@ -120,12 +128,22 @@
       </div>
     {/if}
 
+    {#if isSymbolChangedWhileEditing && resolvedTargetSymbol}
+      <div class="sanity-box info compact" role="status">
+        Target berpindah dari <strong>{editingSymbol || activeSymbol}</strong> ke <strong>{resolvedTargetSymbol}</strong> (setup lama tetap dipertahankan).
+      </div>
+    {:else if isDifferentFromActiveChart && resolvedTargetSymbol}
+      <div class="sanity-box info compact" role="status">
+        Plan ini akan diterapkan untuk instrumen <strong>{resolvedTargetSymbol}</strong> (berbeda dari chart aktif <strong>{activeSymbol}</strong>).
+      </div>
+    {/if}
+
     {#if textPreviewPlan.entry > 0 || textPreviewPlan.stopLoss > 0 || textPreviewPlan.targets.length > 0}
       <div class="compact-metrics-grid mono-nums">
         <div class="compact-metric">
           <span class="cm-label">Bias / Sym</span>
           <span class="cm-val {textPreviewPlan.bias === 'bearish' ? 'bear' : 'bull'}">
-            {textPreviewPlan.bias.toUpperCase()} · {textPreviewPlan.symbol || activeSymbol}
+            {textPreviewPlan.bias.toUpperCase()} · {resolvedTargetSymbol || textPreviewPlan.symbol || activeSymbol}
           </span>
         </div>
         <div class="compact-metric">
@@ -301,6 +319,12 @@
     background-color: color-mix(in srgb, var(--status-warn) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--status-warn) 30%, transparent);
     color: var(--status-warn);
+  }
+
+  .sanity-box.info {
+    background-color: color-mix(in srgb, var(--brand-cyan) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand-cyan) 28%, transparent);
+    color: var(--brand-cyan);
   }
 
   .sanity-box ul {

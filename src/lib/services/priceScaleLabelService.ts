@@ -62,6 +62,42 @@ export function formatPriceLabel(price: number, quoteCurrency?: string): string 
 }
 
 /**
+ * Memformat angka harga lengkap dengan simbol/unit mata uang kuotasi yang tepat
+ * sesuai aturan Crypto-Denominated Precision (tanpa memaksakan prefix '$' pada pair BTC atau kripto non-USD).
+ */
+export function formatPriceWithQuoteSymbol(price: number, quoteCurrency?: string): string {
+  if (typeof price !== 'number' || !Number.isFinite(price)) return '--';
+  const upperQuote = (quoteCurrency || 'USDT').trim().toUpperCase();
+  const formatted = formatPriceLabel(price, upperQuote);
+
+  if (upperQuote === 'IDR') {
+    return `Rp ${formatted}`;
+  }
+  if (upperQuote === 'BTC') {
+    return formatted;
+  }
+  if (upperQuote === 'EUR') {
+    return `€${formatted}`;
+  }
+  if (upperQuote === 'GBP') {
+    return `£${formatted}`;
+  }
+  if (upperQuote === 'TRY') {
+    return `₺${formatted}`;
+  }
+  if (
+    upperQuote === 'USD' ||
+    upperQuote === 'USDT' ||
+    upperQuote === 'USDC' ||
+    upperQuote === 'FDUSD' ||
+    upperQuote === 'BUSD'
+  ) {
+    return `$${formatted}`;
+  }
+  return `${formatted} ${upperQuote}`;
+}
+
+/**
  * Mengekstrak label harga dari objek gambar aktif (khususnya Posisi Long/Short Risk-Reward & Garis Horisontal)
  */
 export function extractDrawingPriceBadges(

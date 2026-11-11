@@ -112,13 +112,14 @@ class AlertService {
     planRole?: 'entry' | 'sl' | string;
   }): Promise<PriceAlert> {
     const cleanTargetPrice = roundToTickSize(params.targetPrice);
+    const cleanSymbol = params.symbol.trim().toUpperCase();
     const newAlert: PriceAlert = {
       id: 'alt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-      symbol: params.symbol.toUpperCase(),
+      symbol: cleanSymbol,
       targetPrice: cleanTargetPrice,
       condition: params.condition || 'crossing',
       frequency: params.frequency || 'once',
-      label: params.label?.trim() || `Target ${params.symbol} @ ${cleanTargetPrice}`,
+      label: params.label?.trim() || `Target ${cleanSymbol} @ ${cleanTargetPrice}`,
       active: true,
       triggered: false,
       createdAt: Date.now(),
@@ -466,6 +467,14 @@ class AlertService {
   public async updateAlert(id: string, updates: Partial<PriceAlert>): Promise<PriceAlert | null> {
     let updatedTarget: PriceAlert | null = null;
     const cleanUpdates = { ...updates };
+    if (typeof cleanUpdates.symbol === 'string') {
+      const normalizedSymbol = cleanUpdates.symbol.trim().toUpperCase();
+      if (normalizedSymbol) {
+        cleanUpdates.symbol = normalizedSymbol;
+      } else {
+        delete cleanUpdates.symbol;
+      }
+    }
     if (typeof cleanUpdates.targetPrice === 'number') {
       cleanUpdates.targetPrice = roundToTickSize(cleanUpdates.targetPrice);
     }

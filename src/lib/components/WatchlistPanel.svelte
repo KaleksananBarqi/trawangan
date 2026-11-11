@@ -141,6 +141,7 @@
     'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
   ]);
   let lastSyncedHash = '';
+  const availableSymbolList = $derived(symbols.filter((s) => Boolean(s && !isSectionToken(s))));
 
   const activeWatchlist = $derived.by<WatchlistRecord>(() => {
     const found = registryWatchlists.find((w) => w.id === registryActiveId);
@@ -368,6 +369,7 @@
     {:else if activeTab === 'alerts'}
       <AlertsTab
         {activeSymbol}
+        availableSymbols={availableSymbolList}
         {onSelectSymbol}
         {onRequestCreateAlert}
         {onRequestEditAlert}
@@ -405,6 +407,7 @@
       <TradePlanTab
         isActive={isOpen && activeTab === 'plan'}
         {activeSymbol}
+        availableSymbols={availableSymbolList}
         {currentPrice}
         {tickSize}
         {activePlans}

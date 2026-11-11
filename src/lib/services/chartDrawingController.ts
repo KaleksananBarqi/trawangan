@@ -409,6 +409,12 @@ export class ChartDrawingController {
   private isRestoring = false;
   private persistedSnapMode: SnapMode | null = null;
   private thesisCardGeometries: Record<string, SavedThesisCardGeometry> = {};
+  private planRevision = 0;
+  private cachedSnapshotPlans: Array<ParsedTradingPlan & { id: string }> = [];
+  private cachedSnapshotPlansRev = -1;
+  private cachedSnapshotPlansSymbol = '';
+  private cachedSnapshotGeometriesSrc: Record<string, SavedThesisCardGeometry> | null = null;
+  private cachedSnapshotGeometriesOut: Record<string, SavedThesisCardGeometry> = {};
 
   private undoHistory: DrawingUndoAction[] = [];
   private redoHistory: DrawingUndoAction[] = [];
@@ -489,6 +495,7 @@ export class ChartDrawingController {
         this.redoHistory = [];
       },
       onStateChanged: () => {
+        this.planRevision++;
         this.persistDrawingDocument();
         this.notify();
       }
@@ -510,6 +517,9 @@ export class ChartDrawingController {
   }
 
   private subscribers = new Set<Subscriber>();
+  private draftSubscribers = new Set<(activeDrawings: any[]) => void>();
+  private draftRafId: number | null = null;
+  private draftInteractionActive = false;
 
   /**
    * Mengaitkan instance workspace Vela dan getter simbol/timeframe/provider/workspace aktif
@@ -545,11 +555,18 @@ export class ChartDrawingController {
       }
     }
 
+    const chartCleanups = new Map<any, () => void>();
+    const registerChartListeners = (chart: any) => {
+      if (!chart || chartCleanups.has(chart)) return;
+      const detach = this.attachChartListeners(chart);
+      chartCleanups.set(chart, detach);
+    };
+
     // Pasang listener pada seluruh cell yang ada dan sinkronkan snap/stay mode
     for (const cell of this.getAllCells()) {
       const chart = this.getChartForCell(cell);
       if (chart) {
-        this.attachChartListeners(chart);
+        registerChartListeners(chart);
         try {
           chart.drawings?.setSnapMode?.(this.snapMode);
           chart.drawings?.setStayMode?.(this.stayMode);
@@ -567,7 +584,7 @@ export class ChartDrawingController {
           const cell = workspace?.cell?.(id);
           const chart = this.getChartForCell(cell);
           if (chart) {
-            this.attachChartListeners(chart);
+            registerChartListeners(chart);
             try {
               chart.drawings?.setSnapMode?.(this.snapMode);
               chart.drawings?.setStayMode?.(this.stayMode);
@@ -605,7 +622,7 @@ export class ChartDrawingController {
 
           const activeChart = this.getActiveChart();
           if (activeChart) {
-            this.attachChartListeners(activeChart);
+            registerChartListeners(activeChart);
             try {
               activeChart.drawings?.setSnapMode?.(this.snapMode);
               activeChart.drawings?.setStayMode?.(this.stayMode);
@@ -624,6 +641,14 @@ export class ChartDrawingController {
     }
 
     return () => {
+      this.cancelScheduledDraft();
+      this.clearDraftInteractionState();
+      for (const detachChart of chartCleanups.values()) {
+        try {
+          detachChart();
+        } catch (_) {}
+      }
+      chartCleanups.clear();
       for (const unsub of wsUnsubs) {
         try {
           unsub();
@@ -1122,6 +1147,40 @@ export class ChartDrawingController {
   }
 
   /**
+   * Mengembalikan `true` apabila drag/pratinjau drawing (`drawing:draft`) sedang berlangsung
+   * termasuk saat menggeser handle objek gambar pada mode tool `'cursor'`.
+   */
+  public isDraftInteractionActive(): boolean {
+    return this.draftInteractionActive;
+  }
+
+  /**
+   * Mereset status interaksi draft aktif (misalnya saat pointer dilepas tanpa mutasi).
+   */
+  public clearDraftInteractionState(): void {
+    this.draftInteractionActive = false;
+  }
+
+  private cancelScheduledDraft(): void {
+    if (this.draftRafId !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.draftRafId);
+    }
+    this.draftRafId = null;
+  }
+
+  private scheduleDraftNotification(): void {
+    if (typeof requestAnimationFrame !== 'function') {
+      this.handleDrawingDraft({ draftOnly: true });
+      return;
+    }
+    if (this.draftRafId !== null) return;
+    this.draftRafId = requestAnimationFrame(() => {
+      this.draftRafId = null;
+      this.handleDrawingDraft({ draftOnly: true });
+    });
+  }
+
+  /**
    * Pasang listener event mutasi drawing dari engine Vela
    */
   attachChartListeners(chart: any): () => void {
@@ -1129,8 +1188,15 @@ export class ChartDrawingController {
     if (chart.__trawanganDrawingListenersAttached) return () => {};
     chart.__trawanganDrawingListenersAttached = true;
 
-    const onMutated = () => this.handleDrawingMutated();
-    const onDraft = () => this.handleDrawingDraft();
+    const onMutated = () => {
+      this.draftInteractionActive = false;
+      this.cancelScheduledDraft();
+      this.handleDrawingMutated();
+    };
+    const onDraft = () => {
+      this.draftInteractionActive = true;
+      this.scheduleDraftNotification();
+    };
     const onSelected = (payload: any) => {
       const selectedId =
         payload?.id ??
@@ -1154,6 +1220,8 @@ export class ChartDrawingController {
     }
 
     return () => {
+      this.draftInteractionActive = false;
+      this.cancelScheduledDraft();
       chart.__trawanganDrawingListenersAttached = false;
       if (typeof chart.off === 'function') {
         try {
@@ -1168,6 +1236,32 @@ export class ChartDrawingController {
         } catch (_) {}
       }
     };
+  }
+
+  private getStableActivePlans(): Array<ParsedTradingPlan & { id: string }> {
+    const curSymbol = typeof this.getSymbol === 'function' ? this.getSymbol() : '';
+    const rawPlans = this.planLifecycle.getActivePlans();
+    if (
+      this.cachedSnapshotPlansRev === this.planRevision &&
+      this.cachedSnapshotPlansSymbol === curSymbol &&
+      this.cachedSnapshotPlans.length === rawPlans.length &&
+      this.cachedSnapshotPlans.every((p, i) => p === rawPlans[i])
+    ) {
+      return this.cachedSnapshotPlans;
+    }
+    this.cachedSnapshotPlansRev = this.planRevision;
+    this.cachedSnapshotPlansSymbol = curSymbol;
+    this.cachedSnapshotPlans = rawPlans;
+    return rawPlans;
+  }
+
+  private getStableThesisCardGeometries(): Record<string, SavedThesisCardGeometry> {
+    if (this.cachedSnapshotGeometriesSrc === this.thesisCardGeometries) {
+      return this.cachedSnapshotGeometriesOut;
+    }
+    this.cachedSnapshotGeometriesSrc = this.thesisCardGeometries;
+    this.cachedSnapshotGeometriesOut = this.getThesisCardGeometries();
+    return this.cachedSnapshotGeometriesOut;
   }
 
   /**
@@ -1185,10 +1279,34 @@ export class ChartDrawingController {
       canUndo: this.canUndo,
       canRedo: this.canRedo,
       lastGestureCreation: this.getLastGestureCreation(),
-      activePlans: this.planLifecycle.getActivePlans(),
+      activePlans: this.getStableActivePlans(),
       showThesisCards: this.planLifecycle.isThesisCardsVisible(),
-      thesisCardGeometries: this.getThesisCardGeometries()
+      thesisCardGeometries: this.getStableThesisCardGeometries()
     };
+  }
+
+  /**
+   * Berlangganan khusus mutasi pratinjau `drawing:draft` berfrekuensi tinggi (maks. 1x per rAF)
+   * tanpa memicu rebuild state workspace atau daftar plan penuh pada tiap pointermove.
+   */
+  subscribeDraft(fn: (activeDrawings: any[]) => void): () => void {
+    this.draftSubscribers.add(fn);
+    fn([...this.activeDrawings]);
+    return () => {
+      this.draftSubscribers.delete(fn);
+    };
+  }
+
+  private notifyDraft(): void {
+    if (this.draftSubscribers.size === 0) return;
+    const drawings = [...this.activeDrawings];
+    for (const fn of this.draftSubscribers) {
+      try {
+        fn(drawings);
+      } catch (err) {
+        console.error('Error pada draftSubscriber DrawingController:', err);
+      }
+    }
   }
 
   /**
@@ -1677,6 +1795,7 @@ export class ChartDrawingController {
     await clearDrawings(curSym, curTf);
     await clearDrawings(curSym, 'GLOBAL');
 
+    this.planRevision++;
     this.planLifecycle.resetInMemoryState(true);
 
     this.activeDrawings = [];
@@ -2123,6 +2242,7 @@ export class ChartDrawingController {
    * Hapus rencana perdagangan tertentu beserta seluruh drawing terkait
    */
   removePlan(planId: string): void {
+    this.planRevision++;
     if (planId && this.thesisCardGeometries[planId]) {
       const next = { ...this.thesisCardGeometries };
       delete next[planId];
@@ -2135,6 +2255,7 @@ export class ChartDrawingController {
    * Bersihkan seluruh rencana perdagangan aktif beserta gambarnya dari kanvas
    */
   clearAllPlans(): void {
+    this.planRevision++;
     this.thesisCardGeometries = {};
     this.planLifecycle.clearAllPlans();
   }
@@ -2210,6 +2331,7 @@ export class ChartDrawingController {
    * Bersihkan state rencana perdagangan di memori tanpa menghapus objek gambar visual di kanvas
    */
   resetInMemoryPlanState(): void {
+    this.planRevision++;
     this.planLifecycle.resetInMemoryState(false);
     this.notify();
   }
@@ -2218,6 +2340,7 @@ export class ChartDrawingController {
    * Pulihkan koleksi rencana perdagangan aktif ke kanvas (Workspace Persistence)
    */
   restorePlans(plans: Array<ParsedTradingPlan & { id: string; symbol?: string }>, showCards: boolean = true): void {
+    this.planRevision++;
     this.planLifecycle.restorePlans(plans, showCards);
   }
 
@@ -2271,6 +2394,7 @@ export class ChartDrawingController {
 
         // Rekonsiliasi siklus hidup Trading Plan (Bidirectional Sync, Dual-Entry Delta-Shift, Orphan Cleanup)
         const envelope = this.planLifecycle.reconcileCanvasMutation(this.activeDrawings);
+        this.planRevision++;
 
         const doc = activeChart.drawings.toJSON?.();
         if (doc) {
@@ -2280,6 +2404,7 @@ export class ChartDrawingController {
         console.warn('Gagal memproses auto-save drawing:', err);
       }
     }
+    this.notifyDraft();
     this.notify();
   }
 
@@ -2314,16 +2439,21 @@ export class ChartDrawingController {
   }
 
   /**
-   * Tangani event drawing:draft saat drag interaktif berlangsung
+   * Tangani event drawing:draft saat drag interaktif berlangsung.
+   * Jika `draftOnly: true`, pembaruan hanya diteruskan ke `subscribeDraft` untuk badge harga ringan
+   * tanpa memicu reaktivitas state workspace/plan penuh sampai mutasi selesai.
    */
-  handleDrawingDraft(): void {
+  handleDrawingDraft(options?: { draftOnly?: boolean }): void {
     const activeChart = this.getActiveChart();
     if (activeChart?.drawings) {
       try {
         this.activeDrawings = [...(activeChart.drawings.all?.() || [])];
       } catch (_) {}
     }
-    this.notify();
+    this.notifyDraft();
+    if (!options?.draftOnly) {
+      this.notify();
+    }
   }
 
   /**
@@ -2351,6 +2481,7 @@ export class ChartDrawingController {
     try {
       // 2. Bersihkan kanvas aktif terlebih dahulu (clean slate) agar gambar bursa lama tidak bocor
       this.clearCanvasVisuals();
+      this.planRevision++;
       this.planLifecycle.resetInMemoryState(false);
 
       const sym = targetSymbol || (this.workspace?.active as any)?.symbol || this.getSymbol();
@@ -2388,6 +2519,7 @@ export class ChartDrawingController {
       if (doc) {
         // Pulihkan metadata dan activePlans jika tersimpan di payload _trawangan_meta
         if (doc._trawangan_meta) {
+          this.planRevision++;
           this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta);
         }
 
@@ -2425,6 +2557,7 @@ export class ChartDrawingController {
 
     this.isRestoring = true;
     try {
+      this.planRevision++;
       this.planLifecycle.resetInMemoryState(false);
       const ws = targetWorkspace || this.getWorkspaceId();
 
@@ -2470,6 +2603,7 @@ export class ChartDrawingController {
 
         if (doc) {
           if (doc._trawangan_meta) {
+            this.planRevision++;
             this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta);
           }
           if (typeof cellChart.drawings.fromJSON === 'function') {

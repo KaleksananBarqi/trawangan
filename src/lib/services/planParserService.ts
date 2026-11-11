@@ -5,6 +5,34 @@
  */
 
 import { roundToTickSize } from './priceSnapService';
+import {
+  normalizeInstrumentToken,
+  resolveCanonicalInstrumentSymbol,
+} from './instrumentIdentity';
+import { POPULAR_YAHOO_ASSETS } from './market/symbolSearchService';
+
+const YAHOO_EXACT_SYMBOL_SET = new Set(POPULAR_YAHOO_ASSETS.map((a) => a.symbol.toUpperCase()));
+
+/**
+ * Menormalkan token simbol instrumen dari input tabel/teks/form (membersihkan sintaks Markdown inline terlebih dahulu).
+ */
+export function normalizePlanSymbolToken(raw: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  const cleaned = stripInlineMarkdown(raw).trim();
+  if (!cleaned) return '';
+  return normalizeInstrumentToken(cleaned);
+}
+
+/**
+ * Mengkanonisasikan simbol target plan (alias ke SSOT `resolveCanonicalInstrumentSymbol`).
+ */
+export function resolveCanonicalPlanSymbol(
+  rawSymbol?: string | null,
+  fallbackSymbol = 'BTCUSDT'
+): string {
+  const cleanedRaw = typeof rawSymbol === 'string' ? stripInlineMarkdown(rawSymbol) : rawSymbol;
+  return resolveCanonicalInstrumentSymbol(cleanedRaw, fallbackSymbol, YAHOO_EXACT_SYMBOL_SET);
+}
 
 export type TradeBias = 'bullish' | 'bearish' | 'neutral';
 export type ZonePolarity = 'bull' | 'bear' | 'neutral';
@@ -875,9 +903,9 @@ export function parseTradingPlan(
       cleanKey === 'instrumen' ||
       cleanKey === 'ticker'
     ) {
-      const symMatch = cleanVal.match(/([A-Za-z0-9_\-\.]+)/);
-      if (symMatch) {
-        parsedSymbol = symMatch[1].replace('/', '').toUpperCase();
+      const normalizedToken = normalizePlanSymbolToken(cleanVal);
+      if (normalizedToken) {
+        parsedSymbol = normalizedToken;
       }
       continue;
     }

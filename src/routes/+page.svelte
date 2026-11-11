@@ -31,6 +31,8 @@
   } from '../lib/services/panelResizeHelper';
   import type { ParsedTradingPlan } from '../lib/services/planParserService';
   import { getAdaptiveTickSize } from '../lib/services/priceSnapService';
+  import { formatPriceWithQuoteSymbol } from '../lib/services/priceScaleLabelService';
+  import { parseAdaptiveSymbol } from '../lib/services/market/symbolSearchService';
   import {
     compositeSnapshot,
     captureSnapshot,
@@ -804,17 +806,22 @@
     ];
 
     const unsubDrawingState = chartDrawingController.subscribe((state) => {
-      activeDrawingTool = state.activeTool;
-      snapMode = state.snapMode;
-      stayMode = state.stayMode;
-      isDrawingsLocked = state.isLocked;
-      isDrawingsHidden = state.isHidden;
+      if (activeDrawingTool !== state.activeTool) activeDrawingTool = state.activeTool;
+      if (snapMode !== state.snapMode) snapMode = state.snapMode;
+      if (stayMode !== state.stayMode) stayMode = state.stayMode;
+      if (isDrawingsLocked !== state.isLocked) isDrawingsLocked = state.isLocked;
+      if (isDrawingsHidden !== state.isHidden) isDrawingsHidden = state.isHidden;
       activeDrawings = state.activeDrawings;
-      selectedDrawingId = state.selectedDrawingId;
-      currentActivePlans = state.activePlans || [];
-      hasActivePlans = Boolean(state.activePlans && state.activePlans.length > 0);
-      showThesisCards = state.showThesisCards ?? true;
-      currentThesisCardGeometries = state.thesisCardGeometries || {};
+      if (selectedDrawingId !== state.selectedDrawingId) selectedDrawingId = state.selectedDrawingId;
+      if (currentActivePlans !== state.activePlans) {
+        currentActivePlans = state.activePlans || [];
+        hasActivePlans = Boolean(state.activePlans && state.activePlans.length > 0);
+      }
+      const nextShowCards = state.showThesisCards ?? true;
+      if (showThesisCards !== nextShowCards) showThesisCards = nextShowCards;
+      if (currentThesisCardGeometries !== state.thesisCardGeometries) {
+        currentThesisCardGeometries = state.thesisCardGeometries || {};
+      }
     });
 
     chartDrawingController.setSymbolReadyHandler(async (targetSym) => {
@@ -1272,8 +1279,10 @@
     // KUNCI PENTING: Hanya jalankan auto-save jika ada activeWorkspace yang sedang dimuat!
     // Jika activeWorkspace === null (sedang membuat workspace baru/lepas), jangan auto-save untuk mencegah tabrakan/overwrite!
     if (!isAutoSaveWorkspace || !isPageMounted || isLoadingWorkspace || !chartComponent || !activeWorkspace) return;
-    const payload = buildCurrentWorkspacePayload(activeWorkspace.name, activeWorkspace.id);
-    workspaceCoordinator.trigger(payload);
+    const wsName = activeWorkspace.name;
+    const wsId = activeWorkspace.id;
+    // Tunda pembangunan payload lengkap + fingerprint sampai debounce flush dieksekusi
+    workspaceCoordinator.triggerDeferred(() => buildCurrentWorkspacePayload(wsName, wsId));
   }
 
   // Pantau perubahan parameter UI & sinyal chartDirtyTick untuk auto-save workspace ber-debounce
@@ -2048,19 +2057,30 @@
   <!-- Create & Edit Price Alert Modal -->
   <CreateAlertModal
     isOpen={isCreateAlertModalOpen}
+    chartSymbol={activeSymbol}
+    chartTickSize={ticker?.price ? getAdaptiveTickSize(ticker.price) : undefined}
     initialSymbol={createAlertSymbol}
     initialPrice={createAlertTargetPrice}
     editingAlert={editingAlert}
     currentMarketPrice={ticker?.price || 0}
+    availableSymbols={watchlistSymbols}
     onClose={() => {
       isCreateAlertModalOpen = false;
       editingAlert = null;
     }}
     onCreated={(newAlert: any) => {
-      addSystemLog(`Price Alert dibuat: ${newAlert.symbol} @ $${newAlert.targetPrice}`, 'success');
+      const priceStr = formatPriceWithQuoteSymbol(
+        newAlert.targetPrice,
+        parseAdaptiveSymbol(newAlert.symbol || activeSymbol).quoteAsset
+      );
+      addSystemLog(`Price Alert dibuat: ${newAlert.symbol} @ ${priceStr}`, 'success');
     }}
     onUpdated={(upAlert: any) => {
-      addSystemLog(`Price Alert diperbarui: ${upAlert.symbol} @ $${upAlert.targetPrice}`, 'success');
+      const priceStr = formatPriceWithQuoteSymbol(
+        upAlert.targetPrice,
+        parseAdaptiveSymbol(upAlert.symbol || activeSymbol).quoteAsset
+      );
+      addSystemLog(`Price Alert diperbarui: ${upAlert.symbol} @ ${priceStr}`, 'success');
     }}
   />
 

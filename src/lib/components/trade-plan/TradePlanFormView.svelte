@@ -9,6 +9,10 @@
     Trash2,
     X
   } from '@lucide/svelte';
+  import {
+    buildSymbolSuggestionList,
+    normalizeInstrumentToken
+  } from '../../services/instrumentIdentity';
   import type { ParsedTradingPlan } from '../../services/planParserService';
   import type { PlanFormDraft, PlanFormZoneDraft } from '../../services/tradePlanFormService';
   import type { ActiveTradingPlan, LivePlanEvaluation } from '../../services/tradingPlanLifecycle';
@@ -17,6 +21,10 @@
 
   interface Props {
     activeSymbol: string;
+    availableSymbols?: string[];
+    resolvedTargetSymbol?: string;
+    isSymbolChangedWhileEditing?: boolean;
+    isDifferentFromActiveChart?: boolean;
     scopedPlans: ActiveTradingPlan[];
     editingPlanId: string | null;
     editingPlan: ActiveTradingPlan | null;
@@ -57,6 +65,10 @@
 
   let {
     activeSymbol,
+    availableSymbols = [],
+    resolvedTargetSymbol,
+    isSymbolChangedWhileEditing = false,
+    isDifferentFromActiveChart = false,
     scopedPlans,
     editingPlanId,
     editingPlan,
@@ -94,6 +106,10 @@
     onUpdateContextZone,
     onToggleNarrative,
   }: Props = $props();
+
+  const symbolSuggestions = $derived.by(() =>
+    buildSymbolSuggestionList([activeSymbol, editingPlan?.symbol], availableSymbols)
+  );
 </script>
 
 <div class="plan-scroll-body">
@@ -217,7 +233,7 @@
     </div>
   {/if}
 
-  <!-- Seksi Inti: Bias & Symbol Read-Only -->
+  <!-- Seksi Inti: Bias & Symbol (Dapat Diubah Manual) -->
   <div class="form-card">
     <div class="form-row-2col">
       <div class="field-group">
@@ -243,12 +259,65 @@
       </div>
 
       <div class="field-group">
-        <span class="field-label">Symbol</span>
-        <div class="readonly-symbol-badge mono-nums" aria-label="Symbol Instrumen Aktif">
-          <span>{formDraft.symbol || activeSymbol}</span>
-        </div>
+        <label class="field-label" for="tp-symbol-input">
+          <span>Symbol</span>
+          {#if resolvedTargetSymbol && formDraft.symbol.trim() && normalizeInstrumentToken(formDraft.symbol) !== resolvedTargetSymbol}
+            <button
+              type="button"
+              class="inline-reset-link mono-nums"
+              title="Lengkapi menjadi pasangan penuh {resolvedTargetSymbol}"
+              onclick={() => onPatchDraft({ symbol: resolvedTargetSymbol })}
+            >
+              → {resolvedTargetSymbol}
+            </button>
+          {/if}
+        </label>
+        <input
+          id="tp-symbol-input"
+          type="text"
+          list="tp-form-symbol-suggestions"
+          class="form-input symbol-input mono-nums"
+          value={formDraft.symbol}
+          placeholder={activeSymbol}
+          aria-label="Symbol Instrumen Trade Plan"
+          oninput={(e) => onPatchDraft({ symbol: e.currentTarget.value.toUpperCase() })}
+          onblur={(e) => {
+            const raw = e.currentTarget.value;
+            const norm = normalizeInstrumentToken(raw);
+            if (norm && norm !== raw) {
+              onPatchDraft({ symbol: norm });
+            } else if (!raw.trim()) {
+              onPatchDraft({ symbol: editingPlan?.symbol || activeSymbol });
+            }
+          }}
+        />
+        <datalist id="tp-form-symbol-suggestions">
+          {#each symbolSuggestions as sym (sym)}
+            <option value={sym}></option>
+          {/each}
+        </datalist>
       </div>
     </div>
+
+    {#if isSymbolChangedWhileEditing && editingPlan && resolvedTargetSymbol}
+      <div class="conflict-banner info" role="status">
+        <div class="conflict-text">
+          <Info size={12} />
+          <span>
+            Target berpindah ke <strong>{resolvedTargetSymbol}</strong>. Setup <strong>{editingPlan.symbol || activeSymbol}</strong> lama tetap utuh.
+          </span>
+        </div>
+      </div>
+    {:else if isDifferentFromActiveChart && resolvedTargetSymbol}
+      <div class="conflict-banner info" role="status">
+        <div class="conflict-text">
+          <Info size={12} />
+          <span>
+            Plan ini akan diterapkan ke <strong>{resolvedTargetSymbol}</strong> (berbeda dari chart aktif <strong>{activeSymbol}</strong>).
+          </span>
+        </div>
+      </div>
+    {/if}
 
     {#if liveMarketStatus}
       <div class="live-market-strip {liveMarketStatus.badgeClass} mono-nums">
@@ -739,19 +808,10 @@
     letter-spacing: 0.03em;
   }
 
-  .readonly-symbol-badge {
-    display: flex;
-    align-items: center;
-    min-height: 27px;
-    padding: 4px 8px;
-    background-color: var(--bg-elevated);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-md);
-    color: var(--text-main);
-    font-size: var(--font-size-base);
+  .symbol-input {
     font-weight: 700;
     letter-spacing: 0.02em;
-    user-select: text;
+    text-transform: uppercase;
   }
 
   .inline-reset-link {
