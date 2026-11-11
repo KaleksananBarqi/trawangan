@@ -1907,11 +1907,6 @@
           onLog={(msg, level) => addSystemLog(msg, level || 'info')}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
-          onOpenSymbolSearch={() => {
-            symbolSearchInitialQuery = '';
-            symbolSearchTriggerSource = 'explicit';
-            isSymbolSearchOpen = true;
-          }}
         />
       {/if}
 
