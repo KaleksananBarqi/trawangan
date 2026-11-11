@@ -7,7 +7,8 @@
     Move,
     Coins,
     PenTool,
-    Layers
+    Layers,
+    Save
   } from '@lucide/svelte';
   import type { AppSettings } from '../../types/market';
 
@@ -16,6 +17,7 @@
     onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
     onClose: () => void;
     onOpenChartSettings?: (section?: string) => void;
+    onSaveChartAsDefault?: () => Promise<boolean> | boolean;
     onResetChartFactory?: () => void;
   }
 
@@ -24,6 +26,7 @@
     onUpdateSettings,
     onClose,
     onOpenChartSettings,
+    onSaveChartAsDefault,
     onResetChartFactory
   }: Props = $props();
 
@@ -44,6 +47,7 @@
     { id: '1M', label: '1M' }
   ];
 
+  let saveDefaultFeedback = $state<string | null>(null);
   let resetChartFeedback = $state<string | null>(null);
   let currentGridMode = $derived(settings.gridMode || (settings.showGrid === false ? 'hidden' : 'normal'));
 
@@ -70,6 +74,18 @@
       [key]: !currentSync[key]
     };
     onUpdateSettings({ syncConfig: updatedSync });
+  }
+
+  async function handleSaveChartAsDefaultClick() {
+    if (onSaveChartAsDefault) {
+      const ok = await onSaveChartAsDefault();
+      saveDefaultFeedback = ok
+        ? '✓ Konfigurasi chart disimpan sebagai default permanen!'
+        : 'Gagal menyimpan konfigurasi chart default.';
+      setTimeout(() => {
+        saveDefaultFeedback = null;
+      }, 3000);
+    }
   }
 
   function handleResetChartFactoryClick() {
@@ -233,6 +249,25 @@
     >
       <SlidersHorizontal size={13} />
       <span>Buka Chart Settings</span>
+    </button>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Simpan Konfigurasi Chart sebagai Default</span>
+      <span class="setting-desc">Jadikan warna lilin, skala, dan tampilan Vela saat ini sebagai template default permanen</span>
+      {#if saveDefaultFeedback}
+        <span class="notification-test-feedback mono-nums">{saveDefaultFeedback}</span>
+      {/if}
+    </div>
+    <button
+      type="button"
+      class="btn-test-notification"
+      onclick={handleSaveChartAsDefaultClick}
+      title="Simpan konfigurasi chart saat ini sebagai default permanen"
+    >
+      <Save size={12} />
+      <span>Simpan sebagai Default</span>
     </button>
   </div>
 

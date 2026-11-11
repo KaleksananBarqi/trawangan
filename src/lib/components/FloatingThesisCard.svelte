@@ -37,6 +37,8 @@
     initialY?: number;
     initialWidth?: number;
     initialHeight?: number;
+    initialIsWideMode?: boolean;
+    initialIsMinimized?: boolean;
     onClose?: (planId: string) => void;
     onHide?: (planId: string) => void;
     onEdit?: (planId: string) => void;
@@ -49,14 +51,16 @@
     initialY = 56,
     initialWidth = 340,
     initialHeight,
+    initialIsWideMode = false,
+    initialIsMinimized = false,
     onClose,
     onHide,
     onEdit,
     onGeometryChange
   }: Props = $props();
 
-  let isMinimized = $state(false);
-  let isWideMode = $state(false);
+  let isMinimized = $state(initialIsMinimized);
+  let isWideMode = $state(initialIsWideMode);
   let cardWidth = $state(initialWidth);
   let cardHeight = $state<number | null>(initialHeight || null);
   let posX = $state(initialX);
@@ -64,8 +68,7 @@
 
   let cardEl = $state<HTMLDivElement | null>(null);
 
-  // Laporkan sinkronisasi geometri posisi dan dimensi kartu ke komponen induk
-  $effect(() => {
+  function emitGeometryChange() {
     const currentH = cardHeight ?? (cardEl ? cardEl.offsetHeight : 420);
     onGeometryChange?.({
       planId: plan.id,
@@ -76,7 +79,7 @@
       isWideMode,
       isMinimized
     });
-  });
+  }
 
   // State Penyeretan Kartu (Dragging)
   let isDragging = $state(false);
@@ -91,6 +94,25 @@
   let resizeStartY = 0;
   let initialResizeWidth = 0;
   let initialResizeHeight = 0;
+
+  // Selaraskan state lokal saat geometri hasil restore workspace masuk via props
+  $effect(() => {
+    const _id = plan.id;
+    const nextX = initialX;
+    const nextY = initialY;
+    const nextW = initialWidth;
+    const nextH = initialHeight || null;
+    const nextWide = initialIsWideMode;
+    const nextMin = initialIsMinimized;
+    if (!isDragging && !isResizing) {
+      posX = nextX;
+      posY = nextY;
+      cardWidth = nextW;
+      cardHeight = nextH;
+      isWideMode = nextWide;
+      isMinimized = nextMin;
+    }
+  });
 
   function handleStartDrag(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -115,9 +137,13 @@
   }
 
   function handleStopDrag() {
+    const wasDragging = isDragging;
     isDragging = false;
     window.removeEventListener('mousemove', handleDragging);
     window.removeEventListener('mouseup', handleStopDrag);
+    if (wasDragging) {
+      emitGeometryChange();
+    }
   }
 
   function handleStartResize(e: MouseEvent) {
@@ -143,9 +169,13 @@
   }
 
   function handleStopResize() {
+    const wasResizing = isResizing;
     isResizing = false;
     window.removeEventListener('mousemove', handleResizing);
     window.removeEventListener('mouseup', handleStopResize);
+    if (wasResizing) {
+      emitGeometryChange();
+    }
   }
 
   onDestroy(() => {
@@ -163,6 +193,12 @@
       cardWidth = 580;
       isWideMode = true;
     }
+    emitGeometryChange();
+  }
+
+  function setMinimizedState(minimized: boolean) {
+    isMinimized = minimized;
+    emitGeometryChange();
   }
 
   const vm = $derived(
@@ -218,7 +254,7 @@
       type="button"
       class="pill-btn"
       title="Buka Tesis Lengkap"
-      onclick={() => (isMinimized = false)}
+      onclick={() => setMinimizedState(false)}
     >
       <Maximize2 size={11} />
     </button>
@@ -318,7 +354,7 @@
           type="button"
           class="card-btn"
           title="Perkecil ke Pill"
-          onclick={() => (isMinimized = true)}
+          onclick={() => setMinimizedState(true)}
         >
           <Minus size={12} />
         </button>

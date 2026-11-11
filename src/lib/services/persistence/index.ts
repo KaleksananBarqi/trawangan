@@ -10,6 +10,7 @@ import type {
 import type { IPersistenceService, PersistenceAdapter } from './types';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 import { TauriSqliteAdapter } from './tauriSqliteAdapter';
+import { normalizeWorkspace, WORKSPACE_SCHEMA_VERSION } from './workspaceSchema';
 
 export const DEFAULT_WATCHLIST_SYMBOLS: string[] = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
@@ -199,7 +200,7 @@ export class PersistenceService implements IPersistenceService {
     if (!raw) return [];
     try {
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? parsed.map((item) => normalizeWorkspace(item)) : [];
     } catch {
       return [];
     }
@@ -207,15 +208,16 @@ export class PersistenceService implements IPersistenceService {
 
   async saveWorkspace(workspace: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string }): Promise<SavedWorkspace> {
     const list = await this.loadWorkspaces();
+    const withVersion = { ...workspace, schemaVersion: workspace.schemaVersion ?? WORKSPACE_SCHEMA_VERSION };
     
     // 1. Jika ada ID yang ditentukan, timpa workspace dengan ID tersebut
-    if (workspace.id) {
-      const idx = list.findIndex((w) => w.id === workspace.id);
+    if (withVersion.id) {
+      const idx = list.findIndex((w) => w.id === withVersion.id);
       if (idx !== -1) {
         const updated: SavedWorkspace = {
           ...list[idx],
-          ...workspace,
-          id: workspace.id,
+          ...withVersion,
+          id: withVersion.id,
           timestamp: Date.now(),
         };
         list[idx] = updated;
@@ -225,11 +227,11 @@ export class PersistenceService implements IPersistenceService {
     }
 
     // 2. Jika nama sama persis sudah ada di daftar, timpa entri tersebut
-    const existingIndex = list.findIndex((w) => w.name.trim().toLowerCase() === workspace.name.trim().toLowerCase());
+    const existingIndex = list.findIndex((w) => w.name.trim().toLowerCase() === withVersion.name.trim().toLowerCase());
     if (existingIndex !== -1) {
       const updated: SavedWorkspace = {
         ...list[existingIndex],
-        ...workspace,
+        ...withVersion,
         id: list[existingIndex].id,
         timestamp: Date.now(),
       };
@@ -240,7 +242,7 @@ export class PersistenceService implements IPersistenceService {
 
     // 3. Simpan sebagai workspace baru
     const newWorkspace: SavedWorkspace = {
-      ...workspace,
+      ...withVersion,
       id: Date.now().toString(),
       timestamp: Date.now(),
     };
@@ -264,6 +266,56 @@ export class PersistenceService implements IPersistenceService {
     const list = await this.loadWorkspaces();
     const filtered = list.filter((w) => w.id !== id);
     await this.adapter.saveLayoutSlot('user_workspaces_list', 'User Saved Workspaces', JSON.stringify(filtered));
+  }
+
+  /**
+   * Menyalin seluruh dokumen drawing beserta `_trawangan_meta` dari workspace sumber ke workspace tujuan (Save As).
+   */
+  async cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number> {
+    if (!fromWsId || !toWsId) return 0;
+    const normFrom = fromWsId.trim().toLowerCase();
+    const normTo = toWsId.trim().toLowerCase();
+    if (!normFrom || !normTo || normFrom === normTo) return 0;
+
+    // Pastikan seluruh perubahan tertunda sudah tersimpan sebelum disalin
+    await this.flushDrawings();
+
+    if (typeof this.adapter.listDrawingKeys !== 'function') {
+      return 0;
+    }
+
+    const lowerPrefix = `${normFrom}:`;
+    const entries = await this.adapter.listDrawingKeys(lowerPrefix);
+    const prefixes = [lowerPrefix];
+
+    const rawTrimmedFrom = fromWsId.trim();
+    if (rawTrimmedFrom && rawTrimmedFrom !== normFrom) {
+      const rawPrefix = `${rawTrimmedFrom}:`;
+      prefixes.push(rawPrefix);
+      const rawEntries = await this.adapter.listDrawingKeys(rawPrefix);
+      for (const re of rawEntries) {
+        if (!entries.some((e) => e.symbol === re.symbol && e.timeframe === re.timeframe)) {
+          entries.push(re);
+        }
+      }
+    }
+
+    let copied = 0;
+    for (const entry of entries) {
+      const matchedPrefix = prefixes.find((p) => entry.symbol.startsWith(p));
+      if (!matchedPrefix) continue;
+      const suffix = entry.symbol.slice(matchedPrefix.length);
+      if (!suffix) continue;
+
+      const rawJson = await this.adapter.loadDrawings(entry.symbol, entry.timeframe);
+      if (!rawJson) continue;
+
+      const destSymbolKey = `${normTo}:${suffix}`;
+      await this.adapter.saveDrawings(destSymbolKey, entry.timeframe, rawJson);
+      copied++;
+    }
+
+    return copied;
   }
 
   // ─── Pine Scripts Persistence ───
@@ -477,6 +529,7 @@ export const loadWorkspaces = () => storage.loadWorkspaces();
 export const saveWorkspace = (w: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string }) => storage.saveWorkspace(w);
 export const updateWorkspace = (w: SavedWorkspace) => storage.updateWorkspace(w);
 export const deleteWorkspace = (id: string) => storage.deleteWorkspace(id);
+export const cloneWorkspaceDrawings = (fromWsId: string, toWsId: string) => storage.cloneWorkspaceDrawings(fromWsId, toWsId);
 export { getLastActiveWorkspaceId, setLastActiveWorkspaceId, computeWorkspaceFingerprint } from './workspaceService';
 
 export const loadScripts = () => storage.loadScripts();

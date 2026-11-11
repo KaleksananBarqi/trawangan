@@ -1,9 +1,10 @@
 // Modul Tauri IPC Commands yang dipanggil oleh Frontend
 use crate::db::{
     cache_candles, clear_drawings, delete_pine_script, delete_provider, get_cached_candles,
-    get_drawings, get_pine_scripts, get_providers, get_watchlist, get_workspace, save_drawings,
-    save_pine_script, save_provider, save_watchlist, save_workspace, set_active_provider,
-    Candle, DbState, PineScriptRecord, ProviderConfig,
+    get_drawings, get_pine_scripts, get_providers, get_watchlist, get_workspace,
+    list_drawing_keys as db_list_drawing_keys, save_drawings, save_pine_script, save_provider,
+    save_watchlist, save_workspace, set_active_provider, Candle, DbState, DrawingKeyEntry,
+    PineScriptRecord, ProviderConfig,
 };
 use crate::market::MarketService;
 use tauri::State;
@@ -173,6 +174,15 @@ pub fn clear_chart_drawings(
 ) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     clear_drawings(&conn, &symbol, &timeframe).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_drawing_keys(
+    db: State<'_, DbState>,
+    prefix: String,
+) -> Result<Vec<DrawingKeyEntry>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_list_drawing_keys(&conn, &prefix).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

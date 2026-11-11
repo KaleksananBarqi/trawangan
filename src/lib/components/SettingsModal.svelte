@@ -36,6 +36,7 @@
     onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
     onProviderChange?: (providerId: string) => void;
     onOpenChartSettings?: (section?: string) => void;
+    onSaveChartAsDefault?: () => Promise<boolean> | boolean;
     onResetChartFactory?: () => void;
     onOpenGestureGuide?: () => void;
   }
@@ -49,6 +50,7 @@
     onUpdateSettings,
     onProviderChange,
     onOpenChartSettings,
+    onSaveChartAsDefault,
     onResetChartFactory,
     onOpenGestureGuide
   }: Props = $props();
@@ -199,6 +201,7 @@
               {onUpdateSettings}
               {onClose}
               {onOpenChartSettings}
+              {onSaveChartAsDefault}
               {onResetChartFactory}
             />
           {:else if activeTab === 'profile'}

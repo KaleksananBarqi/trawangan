@@ -1,5 +1,5 @@
 // Adapter In-Memory & Web LocalStorage untuk Lingkungan Pengujian dan Web Fallback
-import type { PersistenceAdapter } from './types';
+import type { DrawingKeyEntry, PersistenceAdapter } from './types';
 import type { PineScriptRecord } from '../../types/market';
 
 export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
@@ -52,6 +52,39 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   async clearDrawings(symbol: string, timeframe: string): Promise<void> {
     const key = `trawangan_drawings_${symbol}_${timeframe}`;
     this.removeItem(key);
+  }
+
+  async listDrawingKeys(prefix: string): Promise<DrawingKeyEntry[]> {
+    const cleanPrefix = prefix || '';
+    const KEY_PREFIX = 'trawangan_drawings_';
+    const seen = new Map<string, DrawingKeyEntry>();
+
+    const inspectKey = (fullKey: string) => {
+      if (!fullKey.startsWith(KEY_PREFIX)) return;
+      const body = fullKey.slice(KEY_PREFIX.length);
+      const lastUnderscore = body.lastIndexOf('_');
+      if (lastUnderscore <= 0) return;
+      const symbol = body.slice(0, lastUnderscore);
+      const timeframe = body.slice(lastUnderscore + 1);
+      if (symbol.startsWith(cleanPrefix)) {
+        seen.set(`${symbol}::${timeframe}`, { symbol, timeframe });
+      }
+    };
+
+    for (const fullKey of this.memoryStore.keys()) {
+      inspectKey(fullKey);
+    }
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k) inspectKey(k);
+        }
+      } catch (_) {}
+    }
+
+    return Array.from(seen.values());
   }
 
   async loadWatchlist(): Promise<string[] | null> {

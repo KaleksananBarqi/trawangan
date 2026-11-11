@@ -376,6 +376,28 @@ pub fn get_drawings(conn: &Connection, symbol: &str, timeframe: &str) -> Result<
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrawingKeyEntry {
+    pub symbol: String,
+    pub timeframe: String,
+}
+
+/// Mengambil daftar kunci (symbol, timeframe) drawing dengan prefix workspace tertentu
+pub fn list_drawing_keys(conn: &Connection, prefix: &str) -> Result<Vec<DrawingKeyEntry>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT symbol, timeframe FROM drawings WHERE substr(symbol, 1, length(?1)) = ?1",
+    )?;
+    let mut rows = stmt.query(params![prefix])?;
+    let mut entries = Vec::new();
+    while let Some(row) = rows.next()? {
+        entries.push(DrawingKeyEntry {
+            symbol: row.get(0)?,
+            timeframe: row.get(1)?,
+        });
+    }
+    Ok(entries)
+}
+
 /// Hapus gambar analisis teknikal untuk simbol & timeframe tertentu
 pub fn clear_drawings(conn: &Connection, symbol: &str, timeframe: &str) -> Result<()> {
     conn.execute(
@@ -555,6 +577,19 @@ mod tests {
         clear_drawings(&conn, "BTCUSDT", "15m").unwrap();
         let loaded_after = get_drawings(&conn, "BTCUSDT", "15m").unwrap();
         assert_eq!(loaded_after, None);
+    }
+
+    #[test]
+    fn test_list_drawing_keys() {
+        let conn = setup_test_db();
+        save_drawings(&conn, "default_workspace:binance:BTCUSDT", "GLOBAL", "{}").unwrap();
+        save_drawings(&conn, "default_workspace:indodax:BTCIDR", "GLOBAL", "{}").unwrap();
+        save_drawings(&conn, "defaultXworkspace:binance:ETHUSDT", "GLOBAL", "{}").unwrap();
+
+        let keys = list_drawing_keys(&conn, "default_workspace:").unwrap();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.iter().any(|k| k.symbol == "default_workspace:binance:BTCUSDT" && k.timeframe == "GLOBAL"));
+        assert!(keys.iter().any(|k| k.symbol == "default_workspace:indodax:BTCIDR" && k.timeframe == "GLOBAL"));
     }
 
     #[test]

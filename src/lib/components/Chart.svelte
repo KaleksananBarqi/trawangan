@@ -46,6 +46,7 @@
     onOpenTradePlanPaste?: (initialText?: string) => void;
     onEditPlan?: (planId: string) => void;
     onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
+    onPersistableStateChange?: (reason: string) => void;
     themePreset?: ThemePresetId | string; fontSize?: number; timezone?: string;
     workspaceId?: string | null;
     gridMode?: GridMode;
@@ -65,7 +66,7 @@
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
-    onEditPlan, onVelaThemeSelect, securityWatermark, userProfile,
+    onEditPlan, onVelaThemeSelect, onPersistableStateChange, securityWatermark, userProfile,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -75,7 +76,7 @@
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange, onActiveIndicatorsChange,
-    onVelaThemeSelect
+    onVelaThemeSelect, onPersistableStateChange
   });
 
   let feedConnectionStatus = $state(marketFeed.getConnectionStatus());
@@ -129,6 +130,7 @@
 
   function handleChartWrapperPointerUp() {
     priceScaleOverlayController.scheduleContinuousSync(200);
+    controller.capturePaneLayoutIfChanged();
   }
   function formatPrice(p: number | null): string { return priceScaleOverlayController.formatPrice(p); }
   function getPriceY(p: number | null): number | null {
@@ -145,7 +147,7 @@
   $effect(() => {
     const wsId = workspaceId || 'default_workspace';
     chartDrawingController.setWorkspaceId(wsId);
-    if (isMounted && lastLoadedWorkspaceId !== null && lastLoadedWorkspaceId !== wsId) {
+    if (isMounted && lastLoadedWorkspaceId !== null && lastLoadedWorkspaceId !== wsId && !controller.isRestoring()) {
       chartDrawingController.restoreDrawings(symbol, timeframe, providerId, wsId).catch(() => {});
     }
     lastLoadedWorkspaceId = wsId;
@@ -231,6 +233,20 @@
       gestureCreationState = st.lastGestureCreation;
       activePlans = st.activePlans || [];
       showThesisCards = st.showThesisCards ?? true;
+      const nextGeoms: Record<string, { x: number; y: number; width: number; height: number; isWideMode: boolean; isMinimized: boolean }> = {};
+      for (const [planId, geo] of Object.entries(st.thesisCardGeometries || {})) {
+        if (geo && typeof geo === 'object') {
+          nextGeoms[planId] = {
+            x: geo.x,
+            y: geo.y,
+            width: geo.width,
+            height: geo.height ?? 420,
+            isWideMode: Boolean(geo.isWideMode),
+            isMinimized: Boolean(geo.isMinimized),
+          };
+        }
+      }
+      thesisCardGeometries = nextGeoms;
       priceScaleOverlayController.updateDrawings(st.activeDrawings || [], showDrawingPriceLabels);
       scheduleBadgePositionUpdate();
     });
@@ -287,17 +303,18 @@
     price: number;
   } | null>(null);
 
-  // Pelacakan geometri posisi & dimensi kartu tesis aktif untuk sinkronisasi snapshot
-  let thesisCardGeometries = $state<Record<string, { x: number; y: number; width: number; height: number; isWideMode: boolean }>>({});
+  // Pelacakan geometri posisi & dimensi kartu tesis aktif dari controller untuk sinkronisasi snapshot
+  let thesisCardGeometries = $state<Record<string, { x: number; y: number; width: number; height: number; isWideMode: boolean; isMinimized: boolean }>>({});
 
-  function handleThesisCardGeometryChange(geo: { planId: string; x: number; y: number; width: number; height: number; isWideMode: boolean }) {
-    thesisCardGeometries[geo.planId] = {
+  function handleThesisCardGeometryChange(geo: { planId: string; x: number; y: number; width: number; height: number; isWideMode: boolean; isMinimized: boolean }) {
+    chartDrawingController.setThesisCardGeometry(geo.planId, {
       x: geo.x,
       y: geo.y,
       width: geo.width,
       height: geo.height,
-      isWideMode: geo.isWideMode
-    };
+      isWideMode: geo.isWideMode,
+      isMinimized: geo.isMinimized,
+    });
   }
 
   async function refreshCachedCandles() {
@@ -419,18 +436,34 @@
     if (isAxis) {
       fitChart();
     }
+    // Deteksi reset tinggi pane setelah double-click separator
+    controller.capturePaneLayoutIfChanged();
+    setTimeout(() => controller.capturePaneLayoutIfChanged(), 0);
   }
 
   // Delegasi tunggal ke ChartSessionController
-  export function getPaneWeights(): number[] { return controller.getPaneWeights(); }
-  export function applyPaneWeights(weights: number[]): boolean { return controller.applyPaneWeights(weights); }
-  export function getPriceScaleState(): any { return controller.getPriceScaleState(); }
-  export function applyPriceScaleState(state: any): boolean { return controller.applyPriceScaleState(state); }
-  export function getPriceStyle(): string { return controller.getPriceStyle(); }
-  export function setPriceStyle(style: string): void { controller.setPriceStyle(style); }
+  export function getPaneWeights(cell?: any): number[] { return controller.getPaneWeights(cell); }
+  export function applyPaneWeights(weights: number[], cell?: any): boolean { return controller.applyPaneWeights(weights, cell); }
+  export function getPaneLayout(cell?: any) { return controller.getPaneLayout(cell); }
+  export function applyPaneLayout(entries: any[], options?: { timeoutMs?: number }, cell?: any) { return controller.applyPaneLayout(entries, options, cell); }
+  export function getNativeIndicators(cell?: any) { return controller.getNativeIndicators(cell); }
+  export function applyNativeIndicators(entries: any[], cell?: any) { return controller.applyNativeIndicators(entries, cell); }
+  export function getCellsSnapshot() { return controller.getCellsSnapshot(); }
+  export function getTrackSizes() { return controller.getTrackSizes(); }
+  export function getActiveCellIndex(): number { return controller.getActiveCellIndex(); }
+  export function applyCellsSnapshot(cells: any[], options?: any) { return controller.applyCellsSnapshot(cells, options); }
+  export function getVisibleRangeSnapshot(cell?: any) { return controller.getVisibleRangeSnapshot(cell); }
+  export function applyVisibleRange(vr: any, cell?: any) { return controller.applyVisibleRange(vr, cell); }
+  export function applyRendererConfig(cfg: any, cell?: any) { return controller.applyRendererConfig(cfg, cell); }
+  export function beginWorkspaceRestore(): void { controller.beginWorkspaceRestore(); }
+  export function endWorkspaceRestore(): void { controller.endWorkspaceRestore(); }
+  export function getPriceScaleState(cell?: any): any { return controller.getPriceScaleState(cell); }
+  export function applyPriceScaleState(state: any, cell?: any): boolean { return controller.applyPriceScaleState(state, cell); }
+  export function getPriceStyle(cell?: any): string { return controller.getPriceStyle(cell); }
+  export function setPriceStyle(style: string, cell?: any): void { controller.setPriceStyle(style, cell); }
   export function setTimeframe(tf: Timeframe): void { controller.setTimeframe(tf); }
-  export function getBarSpacing(): number { return controller.getBarSpacing(); }
-  export function setBarSpacing(spacing: number): void { controller.setBarSpacing(spacing); }
+  export function getBarSpacing(cell?: any): number { return controller.getBarSpacing(cell); }
+  export function setBarSpacing(spacing: number, cell?: any): void { controller.setBarSpacing(spacing, cell); }
   export function saveWorkspaceState(name?: string) { return controller.saveWorkspaceState(name); }
   export function loadWorkspaceState(snapshot: SavedWorkspace) { return controller.loadWorkspaceState(snapshot); }
   export function saveCurrentChartSettingsAsDefault(btn?: HTMLElement) { return controller.saveCurrentSettingsAsDefault(btn); }
@@ -923,10 +956,15 @@
 
   {#if showThesisCards}
     {#each scopedActivePlans as plan, idx (plan.id)}
+      {@const savedGeo = thesisCardGeometries[plan.id]}
       <FloatingThesisCard
         {plan}
-        initialX={16 + idx * 24}
-        initialY={56 + idx * 24}
+        initialX={savedGeo?.x ?? (16 + idx * 24)}
+        initialY={savedGeo?.y ?? (56 + idx * 24)}
+        initialWidth={savedGeo?.width ?? 340}
+        initialHeight={savedGeo?.height}
+        initialIsWideMode={savedGeo?.isWideMode ?? false}
+        initialIsMinimized={savedGeo?.isMinimized ?? false}
         onClose={(id) => chartDrawingController.removePlan(id)}
         onHide={() => chartDrawingController.setThesisCardsVisible(false)}
         onEdit={(id) => onEditPlan?.(id)}

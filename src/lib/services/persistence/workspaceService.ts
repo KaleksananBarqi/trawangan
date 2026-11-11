@@ -3,7 +3,14 @@
  * 
  * Melacak workspace aktif dan mengelola penyimpanan serta pembacaan ID workspace terakhir.
  */
-import type { SavedWorkspace } from '../../types/market';
+import type {
+  CellSnapshot,
+  NativeIndicatorSnapshot,
+  PaneLayoutEntry,
+  SavedWorkspace,
+  SnapMode,
+  VisibleRangeSnapshot,
+} from '../../types/market';
 import { loadWorkspaces, saveWorkspace, updateWorkspace, deleteWorkspace } from './index';
 
 export const LAST_WORKSPACE_STORAGE_KEY = 'trawangan_last_workspace_id';
@@ -52,25 +59,47 @@ export function setLastActiveWorkspaceId(id: string | null | undefined): void {
 
 /**
  * Parameter input komprehensif untuk fingerprinting workspace.
- * Menjamin deteksi perubahan pada 15 dimensi state workspace (visual, skala, dock, dan trading plan).
+ * Menjamin deteksi perubahan pada seluruh dimensi state workspace v2 (visual, pane layout, indikator native, viewport, multi-cell, skala, dock, dan trading plan).
  */
 export interface WorkspaceFingerprintInput {
   id?: string;
   name?: string;
+  schemaVersion?: number;
   symbol: string;
   timeframe: string;
   layout: string;
   providerId?: string;
   indicators?: Array<{ title?: string; source?: string; visible?: boolean; inputs?: any; props?: any }>;
   paneWeights?: number[];
+  paneLayout?: PaneLayoutEntry[];
   priceScaleState?: any;
   priceStyle?: string;
   barSpacing?: number;
   showVolume?: boolean;
+  nativeIndicators?: NativeIndicatorSnapshot[];
+  visibleRange?: VisibleRangeSnapshot | null;
+  cells?: CellSnapshot[];
+  trackSizes?: { cols?: number[]; rows?: number[] };
+  activeCellIndex?: number;
   activeRightDockPanel?: string | null;
   syncConfig?: any;
   activePlans?: any[];
   showThesisCards?: boolean;
+  thesisCardGeometry?: Record<string, any>;
+  drawingToolbar?: { snapMode?: SnapMode; stayMode?: boolean };
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringify(v)).join(',')}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj)
+    .filter((k) => obj[k] !== undefined)
+    .sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
 }
 
 /**
@@ -109,32 +138,51 @@ export function computeWorkspaceFingerprint(
 
     const indParts = (input.indicators || [])
       .map((i) => {
-        const inputsStr = i.inputs ? JSON.stringify(i.inputs) : '';
-        const propsStr = i.props ? JSON.stringify(i.props) : '';
+        const inputsStr = i.inputs ? stableStringify(i.inputs) : '';
+        const propsStr = i.props ? stableStringify(i.props) : '';
         return `${i.title || ''}:${i.source || ''}:${i.visible !== false}:${inputsStr}:${propsStr}`;
       })
       .sort()
       .join('|');
 
     const pwStr = (input.paneWeights || []).join(',');
-    const pssStr = input.priceScaleState ? JSON.stringify(input.priceScaleState) : '';
+    const plStr = input.paneLayout ? stableStringify(input.paneLayout) : '';
+    const niStr = input.nativeIndicators ? stableStringify(input.nativeIndicators) : '';
+    const pssStr = input.priceScaleState ? stableStringify(input.priceScaleState) : '';
     const styleStr = `${input.priceStyle || 'candles'}:${input.barSpacing ?? 8}:${input.showVolume !== false}`;
+    const vrStr = input.visibleRange ? stableStringify(input.visibleRange) : '';
     const dockStr = input.activeRightDockPanel || '';
-    const syncStr = input.syncConfig ? JSON.stringify(input.syncConfig) : '';
+    const syncStr = input.syncConfig ? stableStringify(input.syncConfig) : '';
+    const cellsStr = input.cells ? stableStringify(input.cells) : '';
+    const tracksStr = input.trackSizes ? stableStringify(input.trackSizes) : '';
+    const activeCellStr = input.activeCellIndex !== undefined ? String(input.activeCellIndex) : '';
+    const geomStr = input.thesisCardGeometry ? stableStringify(input.thesisCardGeometry) : '';
+    const tbStr = input.drawingToolbar ? stableStringify(input.drawingToolbar) : '';
 
+    // Mendukung kedua skema: ParsedTradingPlan (bias/entry/entries/targets) maupun legacy (side/entryPrice/takeProfits)
     const plansParts = (input.activePlans || [])
       .map((p: any) => {
-        const tps = Array.isArray(p.takeProfits)
-          ? p.takeProfits.map((t: any) => `${t.id || ''}:${t.price || 0}:${t.percent || 0}`).join(';')
+        const dir = p.bias ?? p.side ?? '';
+        const entryVal = p.entry ?? p.entryPrice ?? 0;
+        const entriesVal = Array.isArray(p.entries)
+          ? p.entries.map((e: any) => `${e.id || ''}:${e.price ?? 0}:${e.ratio ?? ''}`).join(',')
           : '';
-        return `${p.id || ''}:${p.symbol || ''}:${p.side || ''}:${p.entryPrice || 0}:${p.stopLoss || 0}:${tps}:${p.active !== false}`;
+        const targetList = Array.isArray(p.targets)
+          ? p.targets
+          : Array.isArray(p.takeProfits)
+            ? p.takeProfits
+            : [];
+        const tps = targetList
+          .map((t: any) => `${t.id || ''}:${t.price ?? 0}:${t.percent ?? t.allocationPct ?? 0}`)
+          .join(';');
+        return `${p.id || ''}:${p.symbol || ''}:${dir}:${entryVal}:[${entriesVal}]:${p.stopLoss ?? 0}:${tps}:${p.active !== false}`;
       })
       .sort()
       .join('|');
 
     const thesisStr = input.showThesisCards !== false ? 'thesis:on' : 'thesis:off';
 
-    return `${wsId}:${sym}:${tf}:${ly}:${pId}#[${indParts}]#pw:[${pwStr}]#scale:[${pssStr}]#vis:[${styleStr}]#dock:[${dockStr}]#sync:[${syncStr}]#plans:[${plansParts}]#${thesisStr}`;
+    return `${wsId}:${sym}:${tf}:${ly}:${pId}#[${indParts}]#pw:[${pwStr}]#pl:[${plStr}]#ni:[${niStr}]#scale:[${pssStr}]#vis:[${styleStr}]#vr:[${vrStr}]#dock:[${dockStr}]#sync:[${syncStr}]#cells:[${cellsStr}]#tracks:[${tracksStr}]#ac:${activeCellStr}#plans:[${plansParts}]#${thesisStr}#geom:[${geomStr}]#tb:[${tbStr}]`;
   }
 
   // Pemanggilan legacy 6 parameter posisi

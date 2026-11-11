@@ -51,7 +51,14 @@
   import { commandDispatcher } from '../lib/services/commandDispatcher';
   import { chartDrawingController, isSameSymbol } from '../lib/services/chartDrawingController';
   import { routeVenueForSymbol } from '../lib/services/instrumentIdentity';
-  import { executeWorkspaceLoadPipeline } from '../lib/services/workspaceLifecycle';
+  import {
+    executeWorkspaceLoadPipeline,
+    WorkspaceAutoSaveCoordinator,
+    buildWorkspaceSnapshotPayload,
+    executeExitFlush,
+    resolvePendingWorkspaceOverride,
+    clearPendingWorkspaceBackup,
+  } from '../lib/services/workspaceLifecycle';
   import { parseWatchlistEntry, formatWatchlistEntry, insertSymbolIntoSection, isSectionToken } from '../lib/services/watchlistUtils';
   import { watchlistRegistry } from '../lib/services/watchlistRegistryService';
   import {
@@ -85,6 +92,7 @@
     saveQuickSymbolsConfig,
     saveWorkspace,
     loadWorkspaces,
+    cloneWorkspaceDrawings,
     getLastActiveWorkspaceId,
     setLastActiveWorkspaceId,
     computeWorkspaceFingerprint,
@@ -139,6 +147,8 @@
   let isAutoSaveWorkspace = $state<boolean>(true);
   let isPageMounted = false;
   let isLoadingWorkspace = false;
+  let isClosingApp = false;
+  let chartDirtyTick = $state(0);
 
   // Multi-Chart Sync State
   let syncConfig = $state<MultiChartSyncConfig>({ ...DEFAULT_SYNC_CONFIG });
@@ -333,6 +343,7 @@
   let currentActivePlans = $state<any[]>([]);
   let hasActivePlans = $state(false);
   let showThesisCards = $state(true);
+  let currentThesisCardGeometries = $state<Record<string, any>>({});
 
   // Deep Link & Clipboard Sentry State
   let detectedChartLink = $state<{ target: ParsedChartTarget; rawUrl: string } | null>(null);
@@ -460,16 +471,22 @@
 
       isPageMounted = true;
 
-      // Auto-load workspace terakhir saat startup jika preferensi aktif
+      // Auto-load workspace terakhir saat startup jika preferensi aktif (disertai recovery pending backup bila ada)
       if (appSettings.autoLoadLastWorkspace !== false) {
         const lastWorkspaceId = getLastActiveWorkspaceId();
         if (lastWorkspaceId) {
-          loadWorkspaces().then((list) => {
+          loadWorkspaces().then(async (list) => {
             const target = list.find((w) => w.id === lastWorkspaceId);
             if (target) {
+              const { workspace: recoveredWs, usedPending } = resolvePendingWorkspaceOverride(target, lastWorkspaceId);
+              if (usedPending) {
+                try {
+                  await saveWorkspace(recoveredWs as any);
+                } catch (_) {}
+              }
               // Beri jeda singkat agar WebGL container mount sempurna sebelum inject layout & indikator
               setTimeout(() => {
-                handleLoadWorkspace(target).catch((err) => {
+                handleLoadWorkspace(recoveredWs).catch((err) => {
                   console.warn('[Startup] Gagal auto-load workspace terakhir:', err);
                 });
               }, 400);
@@ -499,14 +516,42 @@
       updateService.checkForUpdates(true);
     }, 3000);
 
-    // Auto-Flush gambar dan trigger auto-save workspace sebelum aplikasi ditutup (beforeunload)
+    // Auto-Flush gambar dan simpan pending backup + workspace sebelum aplikasi ditutup (beforeunload & Tauri onCloseRequested)
+    const runExitFlush = () =>
+      executeExitFlush({
+        flushDrawings: () => flushDrawings(),
+        buildSnapshot: () => {
+          if (!isAutoSaveWorkspace || !activeWorkspace || !chartComponent) return null;
+          return buildCurrentWorkspacePayload(activeWorkspace.name, activeWorkspace.id);
+        },
+        coordinator: isAutoSaveWorkspace ? workspaceCoordinator : null,
+      });
+
     const handleBeforeUnload = () => {
-      try {
-        flushDrawings();
-        triggerWorkspaceAutoSave();
-      } catch (_) {}
+      isClosingApp = true;
+      void runExitFlush();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
+
+    let unlistenCloseRequested: (() => void) | null = null;
+    import('@tauri-apps/api/window')
+      .then(({ getCurrentWindow }) => {
+        getCurrentWindow()
+          .onCloseRequested(async () => {
+            isClosingApp = true;
+            try {
+              await Promise.race([
+                runExitFlush(),
+                new Promise((resolve) => setTimeout(resolve, 1500)),
+              ]);
+            } catch (_) {}
+          })
+          .then((unsub) => {
+            unlistenCloseRequested = unsub;
+          })
+          .catch(() => {});
+      })
+      .catch(() => {});
 
     // Dengarkan event saat Price Alert terpicu secara real-time
     unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
@@ -720,6 +765,7 @@
       currentActivePlans = state.activePlans || [];
       hasActivePlans = Boolean(state.activePlans && state.activePlans.length > 0);
       showThesisCards = state.showThesisCards ?? true;
+      currentThesisCardGeometries = state.thesisCardGeometries || {};
     });
 
     chartDrawingController.setSymbolReadyHandler(async (targetSym) => {
@@ -789,6 +835,8 @@
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (unlistenCloseRequested) unlistenCloseRequested();
+      workspaceCoordinator.cancel();
       if (detachMediaQuery) detachMediaQuery();
       unbindGlobalListener();
       unsubTypeToSearch();
@@ -1029,48 +1077,79 @@
     addSystemLog(`Data provider beralih ke: ${newProviderId.toUpperCase()}`, 'success');
   }
 
-  async function handleSaveWorkspace(name: string, overwriteId?: string) {
-    if (autoSaveTimer) clearTimeout(autoSaveTimer);
-
-    // Ambil data indikator teranyar langsung dari chartComponent untuk memastikan inputValues modal tersimpan
-    const freshIndicators = chartComponent?.getActiveIndicators?.() || activeIndicators;
-    const indicatorsData = freshIndicators.map((i: ActiveIndicatorInfo) => ({
-      title: i.title,
-      source: i.source,
-      visible: i.visible,
-      inputs: i.inputs,
-      props: i.props,
-    }));
-
-    const targetId = overwriteId || (activeWorkspace?.name.trim().toLowerCase() === name.trim().toLowerCase() ? activeWorkspace.id : undefined);
-
-    const saved = await saveWorkspace({
-      id: targetId,
+  function buildCurrentWorkspacePayload(name: string, id?: string) {
+    return buildWorkspaceSnapshotPayload({
+      id,
       name,
       symbol: activeSymbol,
       timeframe: activeTimeframe,
       layout: currentLayout,
-      indicators: indicatorsData,
-      paneWeights: chartComponent?.getPaneWeights?.() || [],
-      priceScaleState: chartComponent?.getPriceScaleState?.() || null,
-      priceStyle: chartComponent?.getPriceStyle?.() || 'candles',
-      barSpacing: chartComponent?.getBarSpacing?.() || 8,
-      showVolume: appSettings.showVolume ?? true,
       providerId: activeProviderId,
-      activeRightDockPanel: shellState.isRightDockOpen ? shellState.activeRightDockTab : null,
+      showVolume: appSettings.showVolume ?? true,
       syncConfig: { ...syncConfig },
-      activePlans: chartDrawingController.getActivePlans(),
-      showThesisCards: chartDrawingController.isThesisCardsVisible(),
+      chart: chartComponent,
+      plan: chartDrawingController,
+      fallbackIndicators: activeIndicators,
+      activeRightDockPanel: shellState.isRightDockOpen ? shellState.activeRightDockTab : null,
     });
-    activeWorkspace = saved;
-    if (saved && saved.id) {
-      setLastActiveWorkspaceId(saved.id);
+  }
+
+  const workspaceCoordinator = new WorkspaceAutoSaveCoordinator({
+    debounceMs: 1500,
+    onSave: async (input) => {
+      if (!isAutoSaveWorkspace || isLoadingWorkspace || !activeWorkspace) return;
+      const saved = await saveWorkspace(input as any);
+      activeWorkspace = saved;
+      if (saved?.id) {
+        setLastActiveWorkspaceId(saved.id);
+        if (!isClosingApp) {
+          clearPendingWorkspaceBackup(saved.id);
+        }
+      }
+      return saved;
+    },
+    onError: (err) => {
+      console.warn('Auto-save workspace gagal:', err);
+    },
+  });
+
+  async function handleSaveWorkspace(name: string, overwriteId?: string) {
+    workspaceCoordinator.cancel();
+    const prevWsId = activeWorkspace?.id || 'default_workspace';
+    try { await flushDrawings(); } catch (_) {}
+
+    const targetId =
+      overwriteId ||
+      (activeWorkspace?.name.trim().toLowerCase() === name.trim().toLowerCase()
+        ? activeWorkspace.id
+        : undefined);
+
+    const payload = buildCurrentWorkspacePayload(name, targetId);
+    const saved = await saveWorkspace(payload as any);
+
+    // Klon seluruh drawing dari workspace sumber (misal default_workspace) SEBELUM activeWorkspace berubah
+    if (saved?.id && prevWsId !== saved.id) {
+      try {
+        await cloneWorkspaceDrawings(prevWsId, saved.id);
+      } catch (err) {
+        console.warn('[SaveWorkspace] Gagal menyalin drawings saat Save As:', err);
+      }
     }
+
+    activeWorkspace = saved;
+    if (saved?.id) {
+      setLastActiveWorkspaceId(saved.id);
+      clearPendingWorkspaceBackup(saved.id);
+    }
+    workspaceCoordinator.setSavedFingerprint(
+      computeWorkspaceFingerprint({ ...payload, id: saved?.id || payload.id })
+    );
     addSystemLog(`Workspace "${name}" disimpan`, 'success');
   }
 
   async function handleNewWorkspace() {
-    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    workspaceCoordinator.cancel();
+    workspaceCoordinator.setSavedFingerprint('');
     try { await flushDrawings(); } catch (_) {}
     activeWorkspace = null;
     setLastActiveWorkspaceId(null);
@@ -1081,13 +1160,14 @@
   }
 
   async function handleLoadWorkspace(w: SavedWorkspace) {
-    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    workspaceCoordinator.cancel();
     try { await flushDrawings(); } catch (_) {}
     isLoadingWorkspace = true;
     try {
       activeWorkspace = w;
       if (w && w.id) {
         setLastActiveWorkspaceId(w.id);
+        clearPendingWorkspaceBackup(w.id);
       }
 
       // Jalankan pipeline restorasi workspace melalui deep workspaceLifecycle engine
@@ -1098,10 +1178,10 @@
         shell: workspaceShellService,
         activeProviderId,
         onProviderChange: async (pId) => {
-          if (w.providerId) await handleProviderChange(w.providerId);
+          if (w.providerId) await handleProviderChange(pId || w.providerId);
         },
         onSymbolChange: async (sym) => {
-          await handleSymbolChange(w.symbol);
+          await handleSymbolChange(sym || w.symbol, w.providerId);
         },
         onTimeframeChange: (tf) => handleTimeframeChange(tf),
         onLayoutChange: (l) => handleLayoutChange(l),
@@ -1111,7 +1191,7 @@
         onLog: (msg, lvl) => addSystemLog(msg, (lvl as any) || 'info'),
       });
 
-      lastSavedWorkspaceFingerprint = res.fingerprint;
+      workspaceCoordinator.setSavedFingerprint(res.fingerprint);
     } catch (e) {
       console.warn('Gagal memuat workspace:', e);
       addSystemLog(`Gagal memuat workspace: ${e instanceof Error ? e.message : String(e)}`, 'warn');
@@ -1132,91 +1212,31 @@
     addSystemLog(`Auto-save workspace: ${isAutoSaveWorkspace ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
 
-  let lastSavedWorkspaceFingerprint = $state<string>('');
-  let autoSaveTimer: any = null;
   function triggerWorkspaceAutoSave() {
     // KUNCI PENTING: Hanya jalankan auto-save jika ada activeWorkspace yang sedang dimuat!
     // Jika activeWorkspace === null (sedang membuat workspace baru/lepas), jangan auto-save untuk mencegah tabrakan/overwrite!
     if (!isAutoSaveWorkspace || !isPageMounted || isLoadingWorkspace || !chartComponent || !activeWorkspace) return;
-
-    const targetName = activeWorkspace.name;
-    const targetId = activeWorkspace.id;
-    const freshIndicators = chartComponent?.getActiveIndicators?.() || activeIndicators;
-    const currentFingerprint = computeWorkspaceFingerprint({
-      id: targetId,
-      name: targetName,
-      symbol: activeSymbol,
-      timeframe: activeTimeframe,
-      layout: currentLayout,
-      providerId: activeProviderId,
-      indicators: freshIndicators,
-      paneWeights: chartComponent?.getPaneWeights?.() || [],
-      priceScaleState: chartComponent?.getPriceScaleState?.() || null,
-      priceStyle: chartComponent?.getPriceStyle?.() || 'candles',
-      barSpacing: chartComponent?.getBarSpacing?.() || 8,
-      showVolume: appSettings.showVolume ?? true,
-      activeRightDockPanel: shellState.isRightDockOpen ? shellState.activeRightDockTab : null,
-      syncConfig: { ...syncConfig },
-      activePlans: chartDrawingController.getActivePlans(),
-      showThesisCards: chartDrawingController.isThesisCardsVisible(),
-    });
-
-    // KUNCI GUARD: Jika fingerprint nilai sama persis dengan yang sudah tersimpan, abaikan!
-    if (lastSavedWorkspaceFingerprint && lastSavedWorkspaceFingerprint === currentFingerprint) {
-      return;
-    }
-
-    if (autoSaveTimer) clearTimeout(autoSaveTimer);
-    autoSaveTimer = setTimeout(async () => {
-      if (!isAutoSaveWorkspace || isLoadingWorkspace || !activeWorkspace) return;
-      const latestIndicators = chartComponent?.getActiveIndicators?.() || activeIndicators;
-      const indicatorsData = latestIndicators.map((i: ActiveIndicatorInfo) => ({
-        title: i.title,
-        source: i.source,
-        visible: i.visible,
-        inputs: i.inputs,
-        props: i.props,
-      }));
-
-      try {
-        const saved = await saveWorkspace({
-          id: targetId,
-          name: targetName,
-          symbol: activeSymbol,
-          timeframe: activeTimeframe,
-          layout: currentLayout,
-          indicators: indicatorsData,
-          paneWeights: chartComponent?.getPaneWeights?.() || [],
-          priceScaleState: chartComponent?.getPriceScaleState?.() || null,
-          priceStyle: chartComponent?.getPriceStyle?.() || 'candles',
-          barSpacing: chartComponent?.getBarSpacing?.() || 8,
-          showVolume: appSettings.showVolume ?? true,
-          providerId: activeProviderId,
-          activeRightDockPanel: shellState.isRightDockOpen ? shellState.activeRightDockTab : null,
-          syncConfig: { ...syncConfig },
-          activePlans: chartDrawingController.getActivePlans(),
-          showThesisCards: chartDrawingController.isThesisCardsVisible(),
-        });
-        activeWorkspace = saved;
-        if (saved && saved.id) {
-          setLastActiveWorkspaceId(saved.id);
-        }
-        lastSavedWorkspaceFingerprint = currentFingerprint;
-      } catch (err) {
-        console.warn('Auto-save workspace gagal:', err);
-      }
-    }, 3500);
+    const payload = buildCurrentWorkspacePayload(activeWorkspace.name, activeWorkspace.id);
+    workspaceCoordinator.trigger(payload);
   }
 
-  // Pantau perubahan parameter untuk auto-save workspace ber-debounce
+  // Pantau perubahan parameter UI & sinyal chartDirtyTick untuk auto-save workspace ber-debounce
   $effect(() => {
     const _s = activeSymbol;
     const _t = activeTimeframe;
     const _l = currentLayout;
     const _i = activeIndicators;
     const _sc = syncConfig;
-    const _p = chartDrawingController.getActivePlans();
-    const _tc = chartDrawingController.isThesisCardsVisible();
+    const _p = currentActivePlans;
+    const _tc = showThesisCards;
+    const _pr = activeProviderId;
+    const _do = shellState.isRightDockOpen;
+    const _dt = shellState.activeRightDockTab;
+    const _vol = appSettings.showVolume;
+    const _sm = snapMode;
+    const _st = stayMode;
+    const _tg = currentThesisCardGeometries;
+    const _cd = chartDirtyTick;
     if (isPageMounted && !isLoadingWorkspace) {
       triggerWorkspaceAutoSave();
     }
@@ -1741,6 +1761,7 @@
           }
           onEditPlan={(planId) => openRightPlanTab({ subMode: 'form', planId })}
           onVelaThemeSelect={handleVelaThemeSelect}
+          onPersistableStateChange={() => (chartDirtyTick += 1)}
         />
       </div>
 
@@ -1909,6 +1930,7 @@
     onUpdateSettings={handleUpdateSettings}
     onProviderChange={handleProviderChange}
     onOpenChartSettings={(sec?: string) => chartComponent?.openChartSettings(sec)}
+    onSaveChartAsDefault={() => chartComponent?.saveCurrentChartSettingsAsDefault() ?? false}
     onResetChartFactory={() => chartComponent?.resetChartSettingsToFactory()}
     onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
   />

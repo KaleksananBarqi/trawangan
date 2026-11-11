@@ -49,6 +49,15 @@ export interface ChartDrawingItem {
   [key: string]: unknown;
 }
 
+export interface SavedThesisCardGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height?: number;
+  isWideMode?: boolean;
+  isMinimized?: boolean;
+}
+
 export interface DrawingState {
   activeTool: DrawingToolType | null;
   snapMode: SnapMode;
@@ -62,6 +71,7 @@ export interface DrawingState {
   lastGestureCreation: GestureCreationState | null;
   activePlans: Array<ParsedTradingPlan & { id: string }>;
   showThesisCards: boolean;
+  thesisCardGeometries: Record<string, SavedThesisCardGeometry>;
 }
 
 type Subscriber = (state: DrawingState) => void;
@@ -79,6 +89,7 @@ import {
   resolveDrawingKey,
   resolveDrawingStorageKey,
   normalizeSymbolForMatching,
+  getCellMarketIdentity,
 } from './instrumentIdentity';
 export {
   isSameSymbol,
@@ -397,6 +408,7 @@ export class ChartDrawingController {
   private canRedo = true;
   private isRestoring = false;
   private persistedSnapMode: SnapMode | null = null;
+  private thesisCardGeometries: Record<string, SavedThesisCardGeometry> = {};
 
   private undoHistory: DrawingUndoAction[] = [];
   private redoHistory: DrawingUndoAction[] = [];
@@ -526,11 +538,15 @@ export class ChartDrawingController {
       }
     }
 
-    // Pasang listener pada seluruh cell yang ada
+    // Pasang listener pada seluruh cell yang ada dan sinkronkan snap/stay mode
     for (const cell of this.getAllCells()) {
       const chart = cell?.chart || cell?.inner;
       if (chart) {
         this.attachChartListeners(chart);
+        try {
+          chart.drawings?.setSnapMode?.(this.snapMode);
+          chart.drawings?.setStayMode?.(this.stayMode);
+        } catch (_) {}
       }
     }
 
@@ -540,11 +556,28 @@ export class ChartDrawingController {
         workspace.on('cell:created', ({ id }: { id: string }) => {
           const cell = workspace?.cell?.(id);
           const chart = cell?.chart || cell?.inner;
-          if (chart) this.attachChartListeners(chart);
+          if (chart) {
+            this.attachChartListeners(chart);
+            try {
+              chart.drawings?.setSnapMode?.(this.snapMode);
+              chart.drawings?.setStayMode?.(this.stayMode);
+            } catch (_) {}
+          }
         });
         workspace.on('cell:active', () => {
           const activeChart = this.getActiveChart();
-          if (activeChart) this.attachChartListeners(activeChart);
+          if (activeChart) {
+            this.attachChartListeners(activeChart);
+            try {
+              activeChart.drawings?.setSnapMode?.(this.snapMode);
+              activeChart.drawings?.setStayMode?.(this.stayMode);
+            } catch (_) {}
+            if (!this.isRestoring) {
+              this.activeDrawings = [...(activeChart.drawings?.all?.() || [])];
+              this.planLifecycle.reattachMetadataToDrawings(this.activeDrawings);
+              this.notify();
+            }
+          }
         });
       } catch (_) {}
     }
@@ -1084,7 +1117,8 @@ export class ChartDrawingController {
       canRedo: this.canRedo,
       lastGestureCreation: this.getLastGestureCreation(),
       activePlans: this.planLifecycle.getActivePlans(),
-      showThesisCards: this.planLifecycle.isThesisCardsVisible()
+      showThesisCards: this.planLifecycle.isThesisCardsVisible(),
+      thesisCardGeometries: this.getThesisCardGeometries()
     };
   }
 
@@ -1184,12 +1218,26 @@ export class ChartDrawingController {
    */
   setSnapMode(mode: SnapMode): void {
     this.snapMode = mode;
-    const activeChart = this.getActiveChart();
-    if (activeChart?.drawings) {
-      try {
-        activeChart.drawings.setSnapMode(mode);
-      } catch (e) {
-        console.warn('ChartDrawingController setSnapMode error:', e);
+    const cells = this.getAllCells();
+    if (cells.length > 0) {
+      for (const cell of cells) {
+        const chart = cell?.chart || cell?.inner;
+        if (chart?.drawings) {
+          try {
+            chart.drawings.setSnapMode(mode);
+          } catch (e) {
+            console.warn('ChartDrawingController setSnapMode error:', e);
+          }
+        }
+      }
+    } else {
+      const activeChart = this.getActiveChart();
+      if (activeChart?.drawings) {
+        try {
+          activeChart.drawings.setSnapMode(mode);
+        } catch (e) {
+          console.warn('ChartDrawingController setSnapMode error:', e);
+        }
       }
     }
     this.notify();
@@ -1238,12 +1286,26 @@ export class ChartDrawingController {
    */
   setStayMode(stay: boolean): void {
     this.stayMode = stay;
-    const activeChart = this.getActiveChart();
-    if (activeChart?.drawings) {
-      try {
-        activeChart.drawings.setStayMode(stay);
-      } catch (e) {
-        console.warn('ChartDrawingController setStayMode error:', e);
+    const cells = this.getAllCells();
+    if (cells.length > 0) {
+      for (const cell of cells) {
+        const chart = cell?.chart || cell?.inner;
+        if (chart?.drawings) {
+          try {
+            chart.drawings.setStayMode(stay);
+          } catch (e) {
+            console.warn('ChartDrawingController setStayMode error:', e);
+          }
+        }
+      }
+    } else {
+      const activeChart = this.getActiveChart();
+      if (activeChart?.drawings) {
+        try {
+          activeChart.drawings.setStayMode(stay);
+        } catch (e) {
+          console.warn('ChartDrawingController setStayMode error:', e);
+        }
       }
     }
     this.notify();
@@ -2009,6 +2071,11 @@ export class ChartDrawingController {
    * Hapus rencana perdagangan tertentu beserta seluruh drawing terkait
    */
   removePlan(planId: string): void {
+    if (planId && this.thesisCardGeometries[planId]) {
+      const next = { ...this.thesisCardGeometries };
+      delete next[planId];
+      this.thesisCardGeometries = next;
+    }
     this.planLifecycle.removePlan(planId);
   }
 
@@ -2016,7 +2083,86 @@ export class ChartDrawingController {
    * Bersihkan seluruh rencana perdagangan aktif beserta gambarnya dari kanvas
    */
   clearAllPlans(): void {
+    this.thesisCardGeometries = {};
     this.planLifecycle.clearAllPlans();
+  }
+
+  /**
+   * Membaca salinan geometri seluruh kartu tesis (posisi, ukuran, wide/minimized)
+   */
+  getThesisCardGeometries(): Record<string, SavedThesisCardGeometry> {
+    const out: Record<string, SavedThesisCardGeometry> = {};
+    for (const [planId, geo] of Object.entries(this.thesisCardGeometries)) {
+      if (geo && typeof geo === 'object') {
+        out[planId] = { ...geo };
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Memperbarui geometri satu kartu tesis dengan equality guard agar tidak memicu dirty save berulang
+   */
+  setThesisCardGeometry(planId: string, geo: SavedThesisCardGeometry): boolean {
+    if (!planId || !geo || typeof geo !== 'object') return false;
+    const normalized: SavedThesisCardGeometry = {
+      x: Number.isFinite(geo.x) ? geo.x : 16,
+      y: Number.isFinite(geo.y) ? geo.y : 56,
+      width: Number.isFinite(geo.width) ? geo.width : 340,
+      ...(typeof geo.height === 'number' && Number.isFinite(geo.height) ? { height: geo.height } : {}),
+      isWideMode: Boolean(geo.isWideMode),
+      isMinimized: Boolean(geo.isMinimized),
+    };
+
+    const prev = this.thesisCardGeometries[planId];
+    if (
+      prev &&
+      prev.x === normalized.x &&
+      prev.y === normalized.y &&
+      prev.width === normalized.width &&
+      prev.height === normalized.height &&
+      Boolean(prev.isWideMode) === Boolean(normalized.isWideMode) &&
+      Boolean(prev.isMinimized) === Boolean(normalized.isMinimized)
+    ) {
+      return false;
+    }
+
+    this.thesisCardGeometries = {
+      ...this.thesisCardGeometries,
+      [planId]: normalized,
+    };
+    this.notify();
+    return true;
+  }
+
+  /**
+   * Memulihkan seluruh geometri kartu tesis dari snapshot workspace
+   */
+  restoreThesisCardGeometries(geometries?: Record<string, SavedThesisCardGeometry> | null): void {
+    const next: Record<string, SavedThesisCardGeometry> = {};
+    if (geometries && typeof geometries === 'object') {
+      for (const [planId, geo] of Object.entries(geometries)) {
+        if (!planId || !geo || typeof geo !== 'object') continue;
+        next[planId] = {
+          x: typeof geo.x === 'number' && Number.isFinite(geo.x) ? geo.x : 16,
+          y: typeof geo.y === 'number' && Number.isFinite(geo.y) ? geo.y : 56,
+          width: typeof geo.width === 'number' && Number.isFinite(geo.width) ? geo.width : 340,
+          ...(typeof geo.height === 'number' && Number.isFinite(geo.height) ? { height: geo.height } : {}),
+          isWideMode: Boolean(geo.isWideMode),
+          isMinimized: Boolean(geo.isMinimized),
+        };
+      }
+    }
+    this.thesisCardGeometries = next;
+    this.notify();
+  }
+
+  /**
+   * Bersihkan state rencana perdagangan di memori tanpa menghapus objek gambar visual di kanvas
+   */
+  resetInMemoryPlanState(): void {
+    this.planLifecycle.resetInMemoryState(false);
+    this.notify();
   }
 
   /**
@@ -2204,6 +2350,90 @@ export class ChartDrawingController {
       }
     } catch (err) {
       console.warn('Gagal memulihkan drawings:', err);
+    } finally {
+      this.isRestoring = false;
+      this.notify();
+    }
+  }
+
+  /**
+   * Memulihkan seluruh gambar dan metadata trading plan pada setiap sel secara terisolasi per pasangan bursa:simbol.
+   */
+  async restoreAllCellDrawings(targetWorkspace?: string): Promise<void> {
+    const cells = this.getAllCells();
+    if (cells.length === 0) {
+      await this.restoreDrawings(undefined, undefined, undefined, targetWorkspace);
+      return;
+    }
+
+    try {
+      const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+      const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
+      const curWs = targetWorkspace || this.getWorkspaceId();
+      const curKey = resolveDrawingKey(curProv, curSym, curWs);
+      await flushDrawings(curKey, 'GLOBAL');
+    } catch (_) {}
+
+    this.isRestoring = true;
+    try {
+      this.planLifecycle.resetInMemoryState(false);
+      const ws = targetWorkspace || this.getWorkspaceId();
+
+      for (const cell of cells) {
+        const cellChart = cell?.chart || cell?.inner;
+        if (!cellChart?.drawings) continue;
+
+        if (typeof cellChart.drawings.fromJSON === 'function') {
+          cellChart.drawings.fromJSON({ version: 1, drawings: [] });
+        } else if (typeof cellChart.drawings.clear === 'function') {
+          cellChart.drawings.clear();
+        } else if (typeof cellChart.drawings.removeMany === 'function') {
+          const existing = cellChart.drawings.all?.() || [];
+          if (existing.length > 0) {
+            cellChart.drawings.removeMany(existing.map((d: any) => d.id));
+          }
+        }
+
+        const identity = getCellMarketIdentity(cell);
+        const sym = identity.symbol || (typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT');
+        const prov = identity.providerId || (typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance');
+        const tf = (cell as any)?.timeframe || (typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m');
+        const key = resolveDrawingKey(prov, sym, ws);
+
+        let doc = await loadDrawings(key, 'GLOBAL');
+        if (!doc) {
+          doc = await loadDrawings(key, tf);
+        }
+        if (!doc && ws) {
+          const legacyKey = `${(prov || 'binance').toLowerCase()}:${sym.toUpperCase()}`;
+          doc = await loadDrawings(legacyKey, 'GLOBAL');
+          if (!doc) {
+            doc = await loadDrawings(legacyKey, tf);
+          }
+        }
+        if (!doc && (prov || 'binance').toLowerCase() === 'binance') {
+          const legacySym = sym.includes(':') ? sym.split(':')[1] : sym;
+          doc = await loadDrawings(legacySym, 'GLOBAL');
+          if (!doc) {
+            doc = await loadDrawings(legacySym, tf);
+          }
+        }
+
+        if (doc) {
+          if (doc._trawangan_meta) {
+            this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta);
+          }
+          if (typeof cellChart.drawings.fromJSON === 'function') {
+            cellChart.drawings.fromJSON(doc);
+          }
+        }
+      }
+
+      const activeChart = this.getActiveChart();
+      this.activeDrawings = [...(activeChart?.drawings?.all?.() || [])] as ChartDrawingItem[];
+      this.planLifecycle.reattachMetadataToDrawings(this.activeDrawings);
+    } catch (err) {
+      console.warn('Gagal memulihkan drawings multi-cell:', err);
     } finally {
       this.isRestoring = false;
       this.notify();

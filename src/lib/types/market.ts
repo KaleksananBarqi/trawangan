@@ -475,33 +475,93 @@ export interface QuickSymbolsConfig {
   maxDisplayCount: number;
 }
 
+export interface PriceScaleState {
+  mode?: 'price' | 'log' | 'percent' | string;
+  log?: boolean;
+  invert?: boolean;
+  auto?: boolean;
+  manualScale?: { min: number; max: number } | null;
+}
+
+export interface PaneLayoutEntry {
+  signature: string;
+  weight: number;
+  collapsed?: boolean;
+}
+
+export interface NativeIndicatorSnapshot {
+  type: string;
+  inputs?: Record<string, unknown>;
+  visible: boolean;
+  placement: 'overlay' | 'own-pane';
+}
+
+export interface VisibleRangeSnapshot {
+  from: number;
+  to: number;
+  atLiveEdge?: boolean;
+}
+
+export interface CellSnapshot {
+  symbol: string;
+  timeframe: string;
+  providerId: string;
+  priceStyle?: string;
+  barSpacing?: number;
+  priceScaleState?: PriceScaleState | null;
+  paneLayout?: PaneLayoutEntry[];
+  indicators?: SavedWorkspaceIndicator[];
+  nativeIndicators?: NativeIndicatorSnapshot[];
+  visibleRange?: VisibleRangeSnapshot | null;
+  rendererConfig?: unknown;
+  session?: string;
+  bars?: number;
+}
+
+export interface SavedWorkspaceIndicator {
+  title: string;
+  source?: string;
+  visible: boolean;
+  inputs?: Record<string, any>;
+  props?: Record<string, any>;
+}
+
 export interface SavedWorkspace {
   id: string;
   name: string;
+  schemaVersion?: number;
   symbol: string;
   timeframe: string;
   layout: string;
   providerId?: string;
   paneWeights?: number[];
-  priceScaleState?: {
-    mode?: 'price' | 'log' | 'percent';
-    auto?: boolean;
-    manualScale?: { min: number; max: number } | null;
-  };
+  paneLayout?: PaneLayoutEntry[];
+  priceScaleState?: PriceScaleState | null;
   priceStyle?: string;
   barSpacing?: number;
   showVolume?: boolean;
+  nativeIndicators?: NativeIndicatorSnapshot[];
+  visibleRange?: VisibleRangeSnapshot | null;
+  cells?: CellSnapshot[];
+  trackSizes?: { cols?: number[]; rows?: number[] };
+  activeCellIndex?: number;
   activeRightDockPanel?: string | null;
   syncConfig?: MultiChartSyncConfig;
   activePlans?: any[];
   showThesisCards?: boolean;
-  indicators: {
-    title: string;
-    source?: string;
-    visible: boolean;
-    inputs?: Record<string, any>;
-    props?: Record<string, any>;
-  }[];
+  thesisCardGeometry?: Record<string, {
+    x: number;
+    y: number;
+    width: number;
+    height?: number;
+    isWideMode?: boolean;
+    isMinimized?: boolean;
+  }>;
+  drawingToolbar?: {
+    snapMode?: SnapMode;
+    stayMode?: boolean;
+  };
+  indicators: SavedWorkspaceIndicator[];
   timestamp: number;
 }
 

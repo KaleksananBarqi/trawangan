@@ -50,8 +50,8 @@ describe('Diagnosing Bugs Suite: Workspace Startup Crash, Chart Theme Decoupling
     test('3. handleLoadWorkspace pada startup dibungkus dengan catch handler agar tidak memicu unhandled rejection', () => {
       assert.match(
         pageContent,
-        /handleLoadWorkspace\(target\)\s*\.catch|\.catch\([^)]*handleLoadWorkspace/,
-        'Pemanggilan handleLoadWorkspace(target) di startup wajib memiliki catch handler'
+        /handleLoadWorkspace\((?:target|recoveredWs)\)\s*\.catch|\.catch\([^)]*handleLoadWorkspace/,
+        'Pemanggilan handleLoadWorkspace di startup wajib memiliki catch handler'
       );
     });
 
@@ -62,13 +62,13 @@ describe('Diagnosing Bugs Suite: Workspace Startup Crash, Chart Theme Decoupling
 
       assert.match(
         body,
-        /await\s+handleSymbolChange\s*\(\s*w\.symbol\s*\)/,
-        'handleSymbolChange(w.symbol) di handleLoadWorkspace wajib di-await agar activeProviderId diperbarui secara akurat'
+        /await\s+handleSymbolChange\s*\(\s*(?:sym\s*\|\|\s*)?w\.symbol(?:\s*,\s*w\.providerId)?\s*\)/,
+        'handleSymbolChange di handleLoadWorkspace wajib di-await agar activeProviderId diperbarui secara akurat'
       );
       assert.match(
         body,
-        /await\s+handleProviderChange\s*\(\s*w\.providerId\s*\)/,
-        'handleProviderChange(w.providerId) di handleLoadWorkspace wajib di-await'
+        /await\s+handleProviderChange\s*\(\s*(?:pId\s*\|\|\s*)?w\.providerId\s*\)/,
+        'handleProviderChange di handleLoadWorkspace wajib di-await'
       );
     });
   });

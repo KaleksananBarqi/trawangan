@@ -67,12 +67,12 @@ describe('Spec #158: Theming, Context Menu, Watermark & Auto-Save Guard Suite', 
       assert.notEqual(fpBase, fpDiffInput, 'Fingerprint harus berubah saat input indikator berubah');
     });
 
-    test('3. +page.svelte menggunakan debounce 3500ms dan mengeliminasi log spam autosave rutin', () => {
+    test('3. +page.svelte menggunakan WorkspaceAutoSaveCoordinator debounce 1500ms dan mengeliminasi log spam autosave rutin', () => {
       const pagePath = path.resolve(process.cwd(), 'src/routes/+page.svelte');
       const pageContent = fs.readFileSync(pagePath, 'utf8');
 
-      assert.match(pageContent, /3500/, 'Debounce auto-save workspace harus disetel ke 3500ms');
-      assert.match(pageContent, /computeWorkspaceFingerprint/, '+page.svelte harus menggunakan computeWorkspaceFingerprint');
+      assert.match(pageContent, /debounceMs:\s*1500/, 'Debounce auto-save workspace harus disetel ke 1500ms via WorkspaceAutoSaveCoordinator');
+      assert.match(pageContent, /computeWorkspaceFingerprint|WorkspaceAutoSaveCoordinator/, '+page.svelte harus menggunakan computeWorkspaceFingerprint / WorkspaceAutoSaveCoordinator');
       assert.doesNotMatch(
         pageContent,
         /addSystemLog\(`Auto-save: "\${targetName}" tersimpan otomatis`, 'info'\)/,

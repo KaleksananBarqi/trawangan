@@ -8,6 +8,11 @@ import type {
   SavedTradingPlanRecord,
 } from '../../types/market';
 
+export interface DrawingKeyEntry {
+  symbol: string;
+  timeframe: string;
+}
+
 /**
  * Adapter tingkat rendah di balik Seam penyimpanan.
  * Mengabstraksi apakah operasi disimpan ke SQLite via Tauri IPC atau In-Memory / LocalStorage.
@@ -17,6 +22,7 @@ export interface PersistenceAdapter {
   loadDrawings(symbol: string, timeframe: string): Promise<string | null>;
   saveDrawings(symbol: string, timeframe: string, dataJson: string): Promise<void>;
   clearDrawings(symbol: string, timeframe: string): Promise<void>;
+  listDrawingKeys?(prefix: string): Promise<DrawingKeyEntry[]>;
 
   // Daftar pantau koin (Watchlist)
   loadWatchlist(): Promise<string[] | null>;
@@ -60,6 +66,7 @@ export interface IPersistenceService {
   saveWorkspace(workspace: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string }): Promise<SavedWorkspace>;
   updateWorkspace(workspace: SavedWorkspace): Promise<void>;
   deleteWorkspace(id: string): Promise<void>;
+  cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number>;
 
   // Pine Scripts
   loadScripts(): Promise<PineScriptRecord[]>;

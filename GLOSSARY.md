@@ -280,9 +280,20 @@ _Avoid_: Hardcoded search, Raw ticker requirement
 Mekanisme sintesis lilin timeframe tingkat tinggi (seperti 2H atau 4H) dari kumpulan lilin dasar tingkat rendah (seperti 1H) pada sisi klien ketika bursa sumber tidak menyediakan resolusi tersebut secara native.
 _Avoid_: Missing timeframe error, Flat interval filler
 
+**Pane Signature**:
+Identitas deterministik untuk setiap sub-pane grafik (`'price'` untuk pane candlestick utama, `'study:empty'` untuk pane kosong, atau gabungan terurut judul indikator non-overlay seperti `'RSI|Stochastic'`), sehingga proporsi tinggi (`paneLayout`) tetap cocok meski urutan pane berubah akibat eksekusi worker Pine yang asinkron.
+_Avoid_: Positional pane index only, Fragile weight array index
 
+**Cell Snapshot**:
+Rekaman konfigurasi lengkap per sel individu dalam tata letak grafik majemuk (`cells`), mencakup `symbol`, `timeframe`, `providerId`, `priceStyle`, `barSpacing`, `priceScaleState`, `paneLayout`, `nativeIndicators`, `indicators`, `visibleRange`, dan `rendererConfig` sel tanpa mencampurkan objek `drawings` internal engine Vela.
+_Avoid_: Shared single-cell fallback, Raw Vela full-state overwrite
 
+**Workspace State v2**:
+Skema persistensi `SavedWorkspace` berversi (`schemaVersion: 2`) dengan migrasi backward-compatible otomatis dari v1 via `normalizeWorkspace`, yang menambahkan dukungan tata letak pane berbasis Pane Signature, konfigurasi/tinggi panel Volume native (`nativeIndicators`), state per-sel (`cells`, `trackSizes`, `activeCellIndex`), posisi scroll historis (`visibleRange`), geometri kartu tesis, serta status `drawingToolbar`.
+_Avoid_: Flat v1 workspace JSON, Partial session config
 
-
+**Exit Flush & Pending Override**:
+Lapisan penyelamat data penutupan aplikasi (`beforeunload` dan Tauri `onCloseRequested`) yang memaksa pengiriman perubahan tertunda secara sinkron ke cadangan `localStorage` berstempel waktu sambil melakukan flush SQLite, lalu mengecek keutuhan timestamp cadangan saat startup berikutnya lewat `resolvePendingWorkspaceOverride`.
+_Avoid_: Unflushed closing debounce, Silent close data loss
 
 

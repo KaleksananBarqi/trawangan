@@ -57,6 +57,7 @@ pub fn run() {
             commands::save_chart_drawings,
             commands::load_chart_drawings,
             commands::clear_chart_drawings,
+            commands::list_drawing_keys,
             commands::get_user_watchlist,
             commands::save_user_watchlist,
             commands::get_process_memory,
