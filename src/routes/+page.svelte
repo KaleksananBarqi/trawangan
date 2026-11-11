@@ -75,7 +75,6 @@
     AppSettings,
     ColorModePreference,
     ThemePresetId,
-    QuickSymbolsConfig,
     StrategyPerformanceSummary,
     PriceAlert,
     SavedWorkspace
@@ -83,15 +82,12 @@
   import {
     loadWatchlist,
     saveWatchlist,
-    loadQuickSymbolsConfig,
-    saveQuickSymbolsConfig,
     saveWorkspace,
     loadWorkspaces,
     cloneWorkspaceDrawings,
     getLastActiveWorkspaceId,
     setLastActiveWorkspaceId,
     computeWorkspaceFingerprint,
-    DEFAULT_QUICK_SYMBOLS_CONFIG,
     flushDrawings
   } from '../lib/services/persistence';
   import {
@@ -387,12 +383,11 @@
     activeStrategySummary = summary;
   }
 
-  // Watchlist & Quick Symbols State
+  // Watchlist State
   let watchlistSymbols = $state<string[]>([
     'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
     'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
   ]);
-  let quickSymbolsConfig = $state<QuickSymbolsConfig>(DEFAULT_QUICK_SYMBOLS_CONFIG);
 
   function handleNavigateWatchlist(direction: number) {
     const rawList = watchlistSymbols.length > 0 ? watchlistSymbols : [
@@ -616,10 +611,6 @@
     });
     watchlistRegistry.load().catch((err) => {
       console.warn('[Page] Gagal memuat multi-watchlist:', err);
-    });
-
-    loadQuickSymbolsConfig().then((cfg) => {
-      if (cfg) quickSymbolsConfig = cfg;
     });
 
     // ─── Daftarkan Binding Perintah Terminal ke Deep CommandDispatcher ───
@@ -1066,11 +1057,6 @@
     }
     handleWatchlistChange(next);
     await watchlistRegistry.updateActiveItems(next);
-  }
-
-  function handleQuickSymbolsConfigChange(newConfig: QuickSymbolsConfig) {
-    quickSymbolsConfig = newConfig;
-    saveQuickSymbolsConfig(newConfig);
   }
 
   async function handleProviderChange(newProviderId: string) {
@@ -1584,9 +1570,6 @@
     {activeIndicators}
     isDrawingToolbarVisible={!shellState.isLeftRailCollapsed}
     isReplayActive={replaySnapshot.active}
-    {watchlistSymbols}
-    {quickSymbolsConfig}
-    onQuickSymbolsConfigChange={handleQuickSymbolsConfigChange}
     onTimeframeChange={handleTimeframeChange}
     onLayoutChange={handleLayoutChange}
     onProviderChange={handleProviderChange}
