@@ -5,13 +5,10 @@
     Bell,
     BellOff,
     Palette,
-    Clipboard,
-    ClipboardCheck,
     Clock,
     Camera,
     Folder,
     FolderOpen,
-    ExternalLink,
     Sparkles
   } from '@lucide/svelte';
   import { THEME_PRESETS, resolveThemeConfig } from '../../constants/themes';
@@ -202,49 +199,6 @@
       <Palette size={13} />
       <span>{resolveThemeConfig(settings.themePreset || 'signature', settings.savedUserThemes)?.name || 'trawangan (Signature)'}</span>
     </button>
-  </div>
-
-  <!-- Smart Clipboard Link Sentry -->
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Smart Clipboard Link Sentry</span>
-      <span class="setting-desc">Deteksi otomatis saat menyalin tautan TradingView/bursa dari browser</span>
-    </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.clipboardWatcherEnabled !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ clipboardWatcherEnabled: settings.clipboardWatcherEnabled === false })}
-    >
-      {#if settings.clipboardWatcherEnabled !== false}
-        <ClipboardCheck size={14} /> Aktif
-      {:else}
-        <Clipboard size={14} /> Nonaktif
-      {/if}
-    </button>
-  </div>
-
-  {#if settings.clipboardWatcherEnabled !== false}
-    <div class="setting-row sub-row">
-      <div class="setting-info">
-        <span class="setting-label">Buka Tautan Langsung Tanpa Konfirmasi</span>
-        <span class="setting-desc">Langsung arahkan grafik saat link tersalin tanpa memunculkan toast konfirmasi</span>
-      </div>
-      <button
-        type="button"
-        class="toggle-btn {settings.clipboardAutoOpen ? 'active' : ''}"
-        onclick={() => onUpdateSettings({ clipboardAutoOpen: !settings.clipboardAutoOpen })}
-      >
-        {settings.clipboardAutoOpen ? 'Otomatis' : 'Tanya Dulu (Toast)'}
-      </button>
-    </div>
-  {/if}
-
-  <div class="setting-row sub-row bridge-tip-row">
-    <div class="setting-info">
-      <span class="setting-desc tip-text">
-        💡 <strong>Integrasi Browser Web:</strong> Untuk mengalihkan tautan secara otomatis saat browsing di TradingView/Binance, buka tab <strong>Bantuan & Shortcut</strong> atau <strong>Sistem & Skrip Browser</strong> untuk menyalin skrip Tampermonkey.
-      </span>
-    </div>
   </div>
 
   <!-- Pengaturan Tangkapan Layar & Snapshot (#95 & Save Directory Setting) -->

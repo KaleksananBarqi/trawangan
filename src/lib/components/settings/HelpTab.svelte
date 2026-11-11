@@ -10,7 +10,6 @@
     Sparkles
   } from '@lucide/svelte';
   import { SHORTCUT_GLOSSARY, filterShortcuts } from '../../services/commandDispatcher';
-  import BrowserBridgeGuide from './BrowserBridgeGuide.svelte';
 
   interface Props {
     onOpenGestureGuide?: () => void;
@@ -101,11 +100,6 @@
         </div>
       {/each}
     </div>
-  </div>
-
-  <!-- Panduan Skrip Browser (Deep Link Bridge) -->
-  <div class="section-group">
-    <BrowserBridgeGuide />
   </div>
 
   <!-- Panduan Fitur Inti (Quick Guide) -->

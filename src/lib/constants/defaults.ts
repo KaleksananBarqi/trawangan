@@ -46,8 +46,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   customTimeframes: [],
   autoSaveWorkspace: true,
   autoLoadLastWorkspace: true,
-  clipboardWatcherEnabled: true,
-  clipboardAutoOpen: false,
   showWorldClocks: true,
   worldClockCities: [...DEFAULT_WORLD_CLOCK_CITIES],
   // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting)
@@ -126,9 +124,16 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
       : (DEFAULT_APP_SETTINGS.securityWatermark?.showOnLiveCanvas ?? false),
   };
 
+  // Buang key legacy fitur yang telah dihapus agar tidak ikut tersebar ulang ke objek AppSettings
+  const {
+    clipboardWatcherEnabled: _legacyClipboardWatcher,
+    clipboardAutoOpen: _legacyClipboardAutoOpen,
+    ...sanitizedSaved
+  } = saved as Partial<AppSettings> & Record<string, unknown>;
+
   return {
     ...DEFAULT_APP_SETTINGS,
-    ...saved,
+    ...sanitizedSaved,
     gridMode:
       saved.gridMode === 'normal' || saved.gridMode === 'dimmed' || saved.gridMode === 'hidden'
         ? saved.gridMode
@@ -177,8 +182,6 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
         : (DEFAULT_APP_SETTINGS.activeLightChartPreset ?? 'red_folder'),
     autoSaveWorkspace: saved.autoSaveWorkspace ?? DEFAULT_APP_SETTINGS.autoSaveWorkspace ?? true,
     autoLoadLastWorkspace: saved.autoLoadLastWorkspace ?? DEFAULT_APP_SETTINGS.autoLoadLastWorkspace ?? true,
-    clipboardWatcherEnabled: saved.clipboardWatcherEnabled ?? DEFAULT_APP_SETTINGS.clipboardWatcherEnabled ?? true,
-    clipboardAutoOpen: saved.clipboardAutoOpen ?? DEFAULT_APP_SETTINGS.clipboardAutoOpen ?? false,
     showWorldClocks: saved.showWorldClocks ?? DEFAULT_APP_SETTINGS.showWorldClocks ?? true,
     worldClockCities: saved.worldClockCities ?? DEFAULT_APP_SETTINGS.worldClockCities ?? [
       ...DEFAULT_WORLD_CLOCK_CITIES,
