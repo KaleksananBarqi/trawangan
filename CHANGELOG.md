@@ -5,6 +5,33 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.43.0] - 2026-11-11
+
+### 🚀 Ditambahkan (Added)
+- **Skema Workspace State v2, Tata Letak Pane Adaptif & Persistensi Multi-Cell (ADR-0023):**
+  - Memperkenalkan `WORKSPACE_SCHEMA_VERSION = 2` (`workspaceSchema.ts`) dengan migrasi otomatis *backward-compatible* dari dokumen v1 ke v2 saat pemuatan.
+  - **Pane Layout Berbasis Signature & Guard Volume Native:** Menyimpan proporsi sub-pane indikator dan status *collapsed* menggunakan `PaneLayoutEntry` (`signature`, `weight`, `collapsed`) yang tahan terhadap pemuatan asinkron worker Pine Script, disertai `installEnsurePaneGuard` dan persistensi tinggi panel indikator Volume native (`getNativeIndicators` / `applyNativeIndicators`).
+  - **Multi-Cell Hybrid Restore (Keputusan K1):** Menyimpan serta memulihkan `trackSizes`, `activeCellIndex`, dan konfigurasi per sel (`symbol`, `timeframe`, `priceStyle`, `rendererConfig`, `indicators` per sel ketika sinkronisasi indikator nonaktif, serta gambar terisolasi per sel via `restoreAllCellDrawings`).
+  - **Kloning Drawing Lintas Workspace saat "Save As":** Menambahkan query SQLite `list_drawing_keys` di backend Rust (`db.rs`, `commands.rs`) dan `cloneWorkspaceDrawings()` agar seluruh objek gambar dan metadata trading plan ikut tersalin saat workspace baru disimpan dari sesi aktif.
+  - **Kelengkapan Viewport, Default Chart, Kartu Tesis, & Toolbar (K2 & K3):** Memulihkan posisi scroll historis (`visibleRange` ketika `atLiveEdge === false`) setelah data historis selesai dimuat, menambahkan tombol **"Simpan sebagai Default"** pada tab Pengaturan Grafik (`ChartTab.svelte`) dengan hirarki prioritas `workspace/cell > user default > factory`, serta menyimpan geometri `FloatingThesisCard` dan status `snapMode`/`stayMode` pada `DrawingToolbar`.
+- **Jaring Pengaman Exit Flush & Auto-Save Menyeluruh (`workspaceLifecycle.ts`):**
+  - Menghubungkan mutasi internal chart (`viewport`, `rendererConfig`, `priceStyle`, `priceScale`, `paneLayout`, `indicator:*`, `activeCell`, `trackSizes`) ke `WorkspaceAutoSaveCoordinator` (debounce 1500ms) dan menambahkan jaring pengaman sinkron saat menutup aplikasi via `beforeunload` serta Tauri `onCloseRequested` (`executeExitFlush`, `handleWindowCloseRequest`, `resolvePendingWorkspaceOverride`).
+
+### 🔄 Diubah (Changed)
+- **Isolasi Domain Visual Global & Peningkatan Performa Drag Posisi (`rendererConfigSanitizer.ts`, `chartDrawingController.ts`, `priceScaleOverlayController.ts`):**
+  - Memisahkan token tema global dari snapshot `rendererConfig` sel via `sanitizeRendererConfigForPersistence` / `sanitizeRendererConfigForApply` agar workspace lama tidak membekukan pergantian tema aplikasi.
+  - Mempercepat drag posisi Long/Short dan alat gambar saat banyak indikator aktif melalui jalur `subscribeDraft()` berbasis *requestAnimationFrame* tunggal, memoized `activePlans`/`thesisCardGeometries`, pass tunggal `computeAllPositions()` dengan *dirty flag* di `PriceScaleOverlayController`, serta `WorkspaceAutoSaveCoordinator.triggerDeferred()` yang menunda pembangunan payload hingga debounce berakhir.
+- **Klasifikasi & Fleksibilitas Simbol Trade Plan serta Helper Form Alert (`instrumentIdentity.ts`, `tradePlanFormService.ts`, `alertFormHelper.ts`):**
+  - Memusatkan normalisasi token instrumen (`normalizeInstrumentToken`, `resolveCanonicalInstrumentSymbol`, `buildSymbolSuggestionList`) dan ekstraksi utilitas form alert (`alertFormHelper.ts`) untuk parsing input harga manual multi-format dan isolasi harga referensi antar koin.
+
+### 🐛 Diperbaiki (Fixed)
+- **Sinkronisasi Simbol & Branch Edit pada Tab Trade Plan:**
+  - Menghindari injeksi paksa `| Symbol | BTCUSDT |` saat berpindah dari Form kosong ke mode Teks (`resolveSubModeTransition`), mendukung format simbol fleksibel (`ETH/USDT`, `binance:SOL/USDT.P`, base pendek seperti `eth`), dan melepas penguncian edit plan lama (`resolveTradePlanCommitAction`) ketika pengguna mengganti simbol target ke koin lain.
+- **Input Manual Price Alert & Isolasi Harga Simbol pada `CreateAlertModal`:**
+  - Memperbaiki input harga manual agar mendukung pemisah desimal titik/koma, pemisah ribuan, serta awalan/akhiran mata uang (`$`, `Rp`, `USDT`, `IDR`), mencegah pembaruan ticker live menimpa input pengguna melalui `buildAlertModalInitSignature`, mengisolasi harga pasar referensi per simbol agar harga chart aktif tidak bocor ke simbol lain (`resolveAlertReferenceMarketPrice`), dan menyesuaikan format simbol mata uang kuotasi (`formatPriceWithQuoteSymbol`).
+- **Ketahanan Lifecycle, Flush Perpindahan Sel & Kebersihan Memori (Audit ADR-0023):**
+  - Memastikan `ChartDrawingController` mem-flush gambar sel lama seketika saat event `cell:active` berpindah, menghormati geseran separator pane manual terhadap guard `ensurePane`, menjaga keakuratan *fingerprint* awal pemuatan workspace, serta membersihkan timer, promise waiter, dan listener secara deterministik saat `destroy()` / unmount.
+
 ## [0.42.0] - 2026-11-11
 
 ### 🚀 Ditambahkan (Added)
