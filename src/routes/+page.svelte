@@ -64,14 +64,6 @@
   } from '../lib/services/workspaceLifecycle';
   import { parseWatchlistEntry, formatWatchlistEntry, insertSymbolIntoSection, isSectionToken } from '../lib/services/watchlistUtils';
   import { watchlistRegistry } from '../lib/services/watchlistRegistryService';
-  import {
-    parseExternalChartUrl,
-    resolveChartTargetWithFallback,
-    normalizeSymbolAndContract,
-    type ParsedChartTarget
-  } from '../lib/services/urlInterceptorService';
-  import { ClipboardWatcherService } from '../lib/services/clipboardWatcherService';
-  import { Link2 } from '@lucide/svelte';
   import type {
     TickerInfo,
     Timeframe,
@@ -380,10 +372,6 @@
   let hasActivePlans = $state(false);
   let showThesisCards = $state(true);
   let currentThesisCardGeometries = $state<Record<string, any>>({});
-
-  // Deep Link & Clipboard Sentry State
-  let detectedChartLink = $state<{ target: ParsedChartTarget; rawUrl: string } | null>(null);
-  let clipboardWatcher: ClipboardWatcherService | null = null;
 
   // Pine Editor Content State
   let editorInitialCode = $state('');
@@ -831,46 +819,6 @@
       }
     });
 
-    // Deep Link & Clipboard Watcher Sentry
-    clipboardWatcher = new ClipboardWatcherService({
-      enabled: appSettings.clipboardWatcherEnabled !== false,
-      onDetected: (target, rawUrl) => {
-        if (appSettings.clipboardAutoOpen) {
-          handleOpenDetectedChartLink(target);
-        } else {
-          detectedChartLink = { target, rawUrl };
-        }
-      }
-    });
-    const detachClipboardFocus = clipboardWatcher.attachFocusListener();
-
-    let unlistenDeepLink: (() => void) | null = null;
-    import('@tauri-apps/api/event')
-      .then(({ listen }) => {
-        if (!isPageActive) return;
-        listen<string>('deep-link-received', (event) => {
-          if (event.payload) {
-            const target = parseExternalChartUrl(event.payload);
-            if (target) {
-              if (appSettings.clipboardAutoOpen) {
-                handleOpenDetectedChartLink(target);
-              } else {
-                detectedChartLink = { target, rawUrl: event.payload };
-              }
-            }
-          }
-        })
-          .then((unsub) => {
-            if (!isPageActive) {
-              unsub();
-              return;
-            }
-            unlistenDeepLink = unsub;
-          })
-          .catch(() => {});
-      })
-      .catch(() => {});
-
     const unbindGlobalListener = commandDispatcher.attachGlobalListener(window);
     const unsubTypeToSearch = commandDispatcher.onTypeToSearch((char) => {
       symbolSearchInitialQuery = char;
@@ -905,8 +853,6 @@
       unsubTypeToSearch();
       unsubTypeTimeframe();
       unsubDrawingState();
-      detachClipboardFocus();
-      if (unlistenDeepLink) unlistenDeepLink();
       commandUnbinds.forEach((u) => u());
     };
   });
@@ -1077,9 +1023,6 @@
     }
     if (newSettings.systemNotificationEnabled !== undefined) {
       alertService.setSystemNotificationEnabled(newSettings.systemNotificationEnabled);
-    }
-    if (newSettings.clipboardWatcherEnabled !== undefined && clipboardWatcher) {
-      clipboardWatcher.setEnabled(newSettings.clipboardWatcherEnabled);
     }
     persistAppSettings();
     addSystemLog(`Pengaturan aplikasi diperbarui.`, 'info');
@@ -1438,33 +1381,6 @@
     const code = source || found?.source || '// Kode indikator tidak tersedia';
     const title = found?.title || 'Indicator.pine';
     handleOpenInEditor(code, title, id);
-  }
-
-  async function handleOpenDetectedChartLink(target: ParsedChartTarget) {
-    detectedChartLink = null;
-    let finalProvider = target.providerId || activeProviderId || 'binance';
-    let finalSymbol = target.symbol;
-
-    try {
-      const searchEngine = typeof marketFeed.getSearchEngine === 'function' ? marketFeed.getSearchEngine() : null;
-      if (searchEngine) {
-        const resolved = await resolveChartTargetWithFallback(target, searchEngine);
-        finalProvider = resolved.providerId;
-        finalSymbol = resolved.symbol;
-        if (resolved.redirectedNotice) {
-          addSystemLog(`[Deep Link] ${resolved.redirectedNotice}`, 'warn');
-        }
-      } else {
-        const norm = normalizeSymbolAndContract(target.symbol);
-        finalSymbol = norm.cleanSymbol;
-      }
-    } catch (_) {
-      const norm = normalizeSymbolAndContract(target.symbol);
-      finalSymbol = norm.cleanSymbol;
-    }
-
-    addSystemLog(`[Deep Link] Mengarahkan ke ${finalProvider.toUpperCase()}:${finalSymbol}`, 'info');
-    handleSymbolChange(finalSymbol, finalProvider);
   }
 
   function addSystemLog(msg: string, level: 'info' | 'success' | 'warn') {
@@ -2116,57 +2032,6 @@
     onLog={(msg, type) => addSystemLog(msg, type || 'info')}
   />
 
-  <!-- Smart Clipboard Sentry / Deep Link Toast -->
-  {#if detectedChartLink}
-    <div class="clipboard-sentry-toast obsidian-card" role="alert">
-      <div class="toast-header">
-        <div class="toast-title-row">
-          <Link2 size={14} class="text-brand" />
-          <span class="toast-title">Tautan Chart Terdeteksi</span>
-        </div>
-        <button
-          type="button"
-          class="toast-close-btn"
-          title="Tutup"
-          onclick={() => (detectedChartLink = null)}
-        >
-          <X size={12} />
-        </button>
-      </div>
-
-      <div class="toast-body">
-        <div class="toast-symbol mono-nums">
-          <span class="venue-pill {detectedChartLink.target.providerId?.toLowerCase() || 'binance'}">
-            {(detectedChartLink.target.providerId || 'binance').toUpperCase()}
-          </span>
-          <span class="symbol-text">{detectedChartLink.target.symbol}</span>
-        </div>
-        <span class="toast-raw-url" title={detectedChartLink.rawUrl}>
-          {detectedChartLink.rawUrl.slice(0, 48)}...
-        </span>
-      </div>
-
-      <div class="toast-actions">
-        <button
-          type="button"
-          class="toast-btn dismiss"
-          onclick={() => (detectedChartLink = null)}
-        >
-          Abaikan
-        </button>
-        <button
-          type="button"
-          class="toast-btn open"
-          onclick={() => {
-            if (detectedChartLink) handleOpenDetectedChartLink(detectedChartLink.target);
-          }}
-        >
-          Buka di Trawangan
-        </button>
-      </div>
-    </div>
-  {/if}
-
   <!-- Kamus Glosarium Keyboard Shortcuts Modal (? / F1) -->
   <ShortcutCheatsheetModal
     isOpen={isShortcutCheatsheetOpen}
@@ -2372,175 +2237,11 @@
     color: var(--bull-color);
   }
 
-  /* Smart Clipboard Sentry / Deep Link Toast */
-  .clipboard-sentry-toast {
-    position: fixed;
-    right: 48px;
-    bottom: 34px;
-    z-index: 100;
-    width: 310px;
-    background-color: var(--bg-panel, #131722);
-    border: 1px solid var(--border-bright, #2a2e39);
-    border-left: 3px solid #2962ff;
-    border-radius: var(--radius-sm, 6px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75);
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    animation: slideInToast 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .toast-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .toast-title-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .toast-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-main);
-    letter-spacing: 0.3px;
-  }
-
-  .toast-close-btn {
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    padding: 2px;
-    border-radius: var(--radius-xs);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .toast-close-btn:hover {
-    color: var(--text-main);
-    background: rgba(255, 255, 255, 0.05);
-  }
-
-  .toast-body {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .toast-symbol {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 700;
-  }
-
-  .venue-pill {
-    font-size: 9px;
-    font-weight: 700;
-    padding: 1px 5px;
-    border-radius: 3px;
-    background-color: var(--bg-base);
-    color: var(--text-dim);
-    border: 1px solid var(--border-hairline);
-  }
-
-  .venue-pill.binance {
-    color: #f0b90b;
-    border-color: rgba(240, 185, 11, 0.3);
-    background: rgba(240, 185, 11, 0.1);
-  }
-
-  .venue-pill.bitunix {
-    color: #00f090;
-    border-color: rgba(0, 240, 144, 0.3);
-    background: rgba(0, 240, 144, 0.1);
-  }
-
-  .venue-pill.indodax {
-    color: #00b4d8;
-    border-color: rgba(0, 180, 216, 0.3);
-    background: rgba(0, 180, 216, 0.1);
-  }
-
-  .venue-pill.bybit {
-    color: #f7a600;
-    border-color: rgba(247, 166, 0, 0.3);
-    background: rgba(247, 166, 0, 0.1);
-  }
-
-  .symbol-text {
-    color: var(--text-main);
-  }
-
-  .toast-raw-url {
-    font-size: 10px;
-    color: var(--text-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: var(--font-mono);
-  }
-
-  .toast-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 6px;
-    margin-top: 2px;
-  }
-
-  .toast-btn {
-    font-size: 11px;
-    font-weight: 500;
-    padding: 4px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    border: 1px solid transparent;
-  }
-
-  .toast-btn.dismiss {
-    background: transparent;
-    color: var(--text-dim);
-    border-color: var(--border-hairline);
-  }
-
-  .toast-btn.dismiss:hover {
-    color: var(--text-main);
-    border-color: var(--border-bright);
-  }
-
-  .toast-btn.open {
-    background: #2962ff;
-    color: #ffffff;
-  }
-
-  .toast-btn.open:hover {
-    background: #1e53e5;
-  }
-
   @keyframes slideUp {
     from {
       transform: translateY(100%);
     }
     to {
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes slideInToast {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
       transform: translateY(0);
     }
   }
