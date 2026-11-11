@@ -5,6 +5,29 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.44.0] - 2026-11-11
+
+### 🚀 Ditambahkan (Added)
+- **Tombol Quick Watchlist (Bintang 1-Klik) di `Header` & Seam `WatchlistUtils` (Spec #164, #166):**
+  - Menambahkan tombol ikon **Bintang** tepat di antara pil pencarian simbol dan dropdown bursa aktif pada `Header` untuk memasukkan atau menghapus `(activeSymbol, activeProviderId)` ke/dari daftar pantau aktif dalam satu klik tanpa membuka paksa atau menutup Right Dock Panel.
+  - Mengonsolidasikan helper sadar-bursa (`isSymbolInWatchlist`, `toggleSymbolInWatchlist`, dan `removeSymbolFromWatchlist`) di `watchlistUtils.ts` dengan dukungan normalisasi `yahoo`, format legacy tanpa prefiks, pengabaian token `#section:`, serta pencatatan otomatis ke `Terminal Logs` melalui `WatchlistRegistryService.updateActiveItems`.
+  - Menggunakan token adaptif tema `var(--status-warn)` dan `color-mix()` sehingga ikon Bintang aktif tetap menjaga kontras di seluruh 37 preset tema gelap maupun terang.
+
+### 🔄 Diubah (Changed)
+- **Perampingan `Header`, `ActionsMenu`, & Pelestarian Penuh Pine Script v6 IDE (#165, Amends ADR-0004):**
+  - Menghapus badge `terminal`, switcher ganda `Terminal | Pine IDE` beserta divider ekstra, tombol `Fullscreen` di ujung kanan, CSS duplikat pada grup simbol, serta sub-item `"Buat Price Alert"` dari `ActionsMenu`.
+  - Mempertahankan 100% akses **Pine Script v6 IDE** melalui `Right Dock Rail` (`<>`), `Library Indikator` (`Edit di IDE`, `+ Buat Skrip Baru`, `Skrip Saya`), `Unified Object Tree` (`<>`), pintasan `Alt+E`, penyimpanan skrip lokal SQLite, serta pintasan `F11` & `Alt+A`. Panduan di `HelpTab` diperbarui menunjuk ke jalur akses aktif tersebut.
+- **Penyederhanaan Panel Watchlist (#167, Amends ADR-0008):**
+  - Menghapus baris `.sub-toolbar` duplikatif (`Cari simbol`, `Cari Pair`, `+`, tambah kategori), input tambah cepat inline, omni-search lokal panel, modal tambah kategori, *hook* yatim `lastActiveSectionId`, dan instance cadangan `SymbolSearchModal` di `WatchlistPanel`, sembari mempertahankan penuh `WatchlistSwitcher`, kontrol *section divider* kategori, drag-and-drop urutan, dan pencarian simbol global (`Header`, `Ctrl+K`, *Type-to-Search Canvas Guard*).
+  - Memperbarui pesan *empty-state* daftar pantau untuk mengarahkan pengguna ke tombol Bintang `Header` atau `Ctrl+K`.
+- **Rebalance Telemetri Live `StatusBar` (#168, Amends ADR-0004):**
+  - Menghapus tiga badge statis dekoratif di sisi kiri (`Engine: NATIVE_SYS_X64`, `SQLite Local ACTIVE`, `Pine Script v6 Runtime Ready`) dan merelokasi metrik telemetri live (`FPS`, `Ping / Feed Connection Guard + DELAYED 15M`, serta `RAM`) ke kluster kiri di sebelah pill `Update`, sambil mempertahankan jam lokal, `World Clocks`, `Buy Me Coffee`, dan `Terminal Logs`.
+- **Penghapusan End-to-End `Chart Deep Link Bridge`, Userscript, & `Smart Clipboard Watcher` (#169, Amends ADR-0007 Bagian 2–5):**
+  - Menghapus userscript Tampermonkey (`scripts/trawangan-browser-bridge.user.js`), `ClipboardWatcherService`, `UrlInterceptorService`, `BrowserBridgeGuide`, pengaturan/tips clipboard di `GeneralTab`, tampilan toast tautan clipboard, listener `deep-link-received`, serta dependensi Rust `tauri-plugin-deep-link` dan pin `rust-ini` sambil mempertahankan fokus/unminimize `single_instance`, peluncur URL eksternal `urlService`, dan kompatibilitas aman deserialisasi konfigurasi lama di `resolveAppSettings`.
+  - Mengubah label tab navigasi `system` di `SettingsModal` menjadi **`Sistem & Telemetri`**.
+- **Pembersihan Komponen Header Yatim & `QuickSymbolsConfig` (#170, Amends ADR-0008):**
+  - Menghapus komponen header yang tak terpakai (`WorkspaceMenu`, `LayoutGridSelector`, `QuickSymbolsDropdown`) serta antarmuka, default, dan metode persistensi mati `QuickSymbolsConfig` sembari menjaga keutuhan `WorkspaceLayoutMenu` dan status `watchlistSymbols` aktif.
+
 ## [0.43.0] - 2026-11-11
 
 ### 🚀 Ditambahkan (Added)
