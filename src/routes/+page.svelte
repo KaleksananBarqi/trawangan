@@ -62,7 +62,7 @@
     resolvePendingWorkspaceOverride,
     clearPendingWorkspaceBackup,
   } from '../lib/services/workspaceLifecycle';
-  import { parseWatchlistEntry, formatWatchlistEntry, insertSymbolIntoSection, isSectionToken } from '../lib/services/watchlistUtils';
+  import { isSectionToken, isSymbolInWatchlist, toggleSymbolInWatchlist } from '../lib/services/watchlistUtils';
   import { watchlistRegistry } from '../lib/services/watchlistRegistryService';
   import type {
     TickerInfo,
@@ -388,6 +388,9 @@
     'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
     'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
   ]);
+  const isActiveSymbolWatchlisted = $derived(
+    isSymbolInWatchlist(watchlistSymbols, activeSymbol, activeProviderId)
+  );
 
   function handleNavigateWatchlist(direction: number) {
     const rawList = watchlistSymbols.length > 0 ? watchlistSymbols : [
@@ -1033,30 +1036,32 @@
     watchlistSymbols = newSymbols;
   }
 
-  async function handleToggleWatchlistSymbolFromSearch(rawInput: string) {
-    let entry = rawInput;
-    if (!entry.includes(':')) {
-      entry = formatWatchlistEntry(rawInput, activeProviderId);
-    }
-    const target = parseWatchlistEntry(entry);
-    const exists = watchlistSymbols.some((s) => {
-      if (s === entry) return true;
-      const p = parseWatchlistEntry(s);
-      return p.symbol === target.symbol && p.providerId === target.providerId;
-    });
+  // Toggle cepat simbol & bursa aktif dari tombol Bintang Header tanpa mengubah status buka/tutup dock kanan (#166)
+  async function handleToggleActiveWatchlist() {
+    const res = toggleSymbolInWatchlist(watchlistSymbols, activeSymbol, activeProviderId);
+    if (!res.entry) return;
+    handleWatchlistChange(res.items);
+    await watchlistRegistry.updateActiveItems(res.items);
+    addSystemLog(
+      res.added
+        ? `Simbol ${res.entry} ditambahkan ke watchlist aktif.`
+        : `Simbol ${res.entry} dihapus dari watchlist aktif.`,
+      res.added ? 'success' : 'info'
+    );
+  }
 
-    let next: string[];
-    if (exists) {
-      next = watchlistSymbols.filter((s) => {
-        if (s === entry) return false;
-        const p = parseWatchlistEntry(s);
-        return !(p.symbol === target.symbol && p.providerId === target.providerId);
-      });
-    } else {
-      next = insertSymbolIntoSection(watchlistSymbols, entry, null);
-    }
-    handleWatchlistChange(next);
-    await watchlistRegistry.updateActiveItems(next);
+  async function handleToggleWatchlistSymbolFromSearch(rawInput: string) {
+    const providerHint = rawInput.includes(':') ? undefined : activeProviderId;
+    const res = toggleSymbolInWatchlist(watchlistSymbols, rawInput, providerHint);
+    if (!res.entry) return;
+    handleWatchlistChange(res.items);
+    await watchlistRegistry.updateActiveItems(res.items);
+    addSystemLog(
+      res.added
+        ? `Simbol ${res.entry} ditambahkan ke watchlist aktif.`
+        : `Simbol ${res.entry} dihapus dari watchlist aktif.`,
+      res.added ? 'success' : 'info'
+    );
   }
 
   async function handleProviderChange(newProviderId: string) {
@@ -1570,6 +1575,8 @@
     {activeIndicators}
     isDrawingToolbarVisible={!shellState.isLeftRailCollapsed}
     isReplayActive={replaySnapshot.active}
+    isWatchlisted={isActiveSymbolWatchlisted}
+    onToggleActiveWatchlist={handleToggleActiveWatchlist}
     onTimeframeChange={handleTimeframeChange}
     onLayoutChange={handleLayoutChange}
     onProviderChange={handleProviderChange}

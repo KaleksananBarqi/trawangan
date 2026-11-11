@@ -4,7 +4,7 @@
   import { marketFeed } from '../services/market';
   import { getSearchResultKey, parseAdaptiveSymbol } from '../services/market/symbolSearchService';
   import SymbolLogo from './common/SymbolLogo.svelte';
-  import { formatWatchlistEntry, parseWatchlistEntry, normalizeProviderId } from '../services/watchlistUtils';
+  import { formatWatchlistEntry, isSymbolInWatchlist } from '../services/watchlistUtils';
   import { applySearchInputFocus, type SearchTriggerSource } from '../services/symbolSearchFocusGuard';
   import type { MarketSearchResult } from '../types/market';
 
@@ -463,10 +463,7 @@
         {#if searchResults.length > 0}
           <div class="results-list" role="listbox">
             {#each searchResults as item, index (getSearchResultKey(item))}
-              {@const isWatchlisted = watchlistSymbols.some((w) => {
-                const p = parseWatchlistEntry(w);
-                return p.symbol === item.symbol.toUpperCase() && p.providerId === normalizeProviderId(item.provider);
-              })}
+              {@const isWatchlisted = isSymbolInWatchlist(watchlistSymbols, item.symbol, item.provider)}
               {@const isCurrentChart = activeSymbol === item.symbol}
               {@const isHighlighted = selectedIndex === index}
 
