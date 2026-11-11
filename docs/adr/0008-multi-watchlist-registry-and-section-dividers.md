@@ -1,5 +1,9 @@
 # 0008. Multi-Watchlist Registry and Section Dividers Architecture
 
+> **Amandemen (Spec #164, #166, #170):**
+> - **Penghapusan `Quick Symbols` & `QuickSymbolsConfig` (Tiket #170):** Bilah koin cepat yatim di Header (`QuickSymbolsDropdown`) beserta konfigurasi persistensi mati `QuickSymbolsConfig` telah dihapus sepenuhnya dari codebase.
+> - **Penambahan Tombol Bintang Header 1-Klik (Tiket #166):** Sebagai pengganti yang terintegrasi langsung dengan daftar pantau aktif, `Header` menyediakan tombol Bintang (Star) 1-klik di samping pil simbol aktif untuk menambah atau menghapus pasangan `(symbol, providerId)` melalui seam murni `WatchlistUtils` (`isSymbolInWatchlist` & `toggleSymbolInWatchlist`) dan **Multi-Watchlist Registry** (`WatchlistRegistryService.updateActiveItems`), sementara pengelolaan daftar multi-watchlist (*WatchlistSwitcher*) dan kategori (**Watchlist Section Divider**) tetap terisolasi di dalam panel sisi Watchlist.
+
 Untuk mengatasi keterbatasan daftar pantau tunggal (*single flat watchlist*) yang rentan tertimpa oleh *preset*, serta memberikan kebebasan bagi trader untuk mengkategorikan dan memisahkan instrumen pantauannya tanpa mengurangi kesederhanaan terminal, `trawangan` menetapkan keputusan arsitektur berikut:
 
 1. **Multi-Watchlist Registry Isolation**:

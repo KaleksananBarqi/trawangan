@@ -524,14 +524,14 @@
   }
 
   .watchlist-star-btn.active {
-    color: #f59e0b;
-    border-color: rgba(245, 158, 11, 0.4);
-    background-color: rgba(245, 158, 11, 0.12);
+    color: var(--status-warn);
+    border-color: color-mix(in srgb, var(--status-warn) 40%, transparent);
+    background-color: color-mix(in srgb, var(--status-warn) 12%, transparent);
   }
 
   .watchlist-star-btn.active:hover {
-    background-color: rgba(245, 158, 11, 0.2);
-    border-color: rgba(245, 158, 11, 0.65);
+    background-color: color-mix(in srgb, var(--status-warn) 20%, transparent);
+    border-color: color-mix(in srgb, var(--status-warn) 65%, transparent);
   }
 
   .provider-dropdown-container {

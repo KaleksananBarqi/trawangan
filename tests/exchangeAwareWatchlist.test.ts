@@ -12,6 +12,7 @@ import {
   reorderWatchlistItems,
   isSymbolInWatchlist,
   toggleSymbolInWatchlist,
+  removeSymbolFromWatchlist,
 } from '../src/lib/services/watchlistUtils';
 
 
@@ -296,6 +297,44 @@ describe('Tiket #166: Seam Pencocokan & Toggle Watchlist Sadar Bursa', () => {
       added: false,
       entry: '',
     });
+  });
+
+  it('7. removeSymbolFromWatchlist: menghapus entri kanonik/legacy tanpa merusak #section: dan bursa lain', () => {
+    const mixedList = [
+      'BTCUSDT',
+      '#section:sec_1:Layer 1:0',
+      'binance:BTCUSDT',
+      'bitunix:BTCUSDT',
+      'BTCIDR',
+      'indodax:BTCIDR',
+    ];
+
+    // Hapus via entri kanonik: bersihkan duplikat legacy + kanonik Binance, jaga Bitunix & #section:
+    const afterRemoveBinance = removeSymbolFromWatchlist(mixedList, 'binance:BTCUSDT');
+    assert.deepEqual(afterRemoveBinance, [
+      '#section:sec_1:Layer 1:0',
+      'bitunix:BTCUSDT',
+      'BTCIDR',
+      'indodax:BTCIDR',
+    ]);
+    assert.equal(mixedList.length, 6, 'Array input asal tidak boleh termutasi');
+
+    // Hapus via rawEntry legacy unprefixed 'BTCIDR': parseWatchlistEntry infer indodax & hapus BTCIDR + indodax:BTCIDR
+    const afterRemoveLegacyIdr = removeSymbolFromWatchlist(afterRemoveBinance, 'BTCIDR');
+    assert.deepEqual(afterRemoveLegacyIdr, [
+      '#section:sec_1:Layer 1:0',
+      'bitunix:BTCUSDT',
+    ]);
+
+    // Hapus dengan providerId eksplisit
+    assert.deepEqual(
+      removeSymbolFromWatchlist(['binance:BTCUSDT', 'bitunix:BTCUSDT'], 'BTCUSDT', 'bitunix'),
+      ['binance:BTCUSDT']
+    );
+
+    // Input kosong atau #section: diabaikan dengan aman
+    assert.deepEqual(removeSymbolFromWatchlist(mixedList, ''), mixedList);
+    assert.deepEqual(removeSymbolFromWatchlist(mixedList, '#section:sec_1:Layer 1:0'), mixedList);
   });
 });
 

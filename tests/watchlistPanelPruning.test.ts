@@ -64,6 +64,25 @@ describe('Tiket #167: Pemangkasan Sub-Toolbar Watchlist & Modal Redundan', () =>
       assert.match(content, /reorderWatchlistItems/);
       assert.match(content, /<SymbolLogo\b/);
     });
+
+    test('Menghapus hook spekulatif mati lastActiveSectionId, onSelectSectionId, dan getSectionIdForSymbol sambil mempertahankan menu kategori koin', () => {
+      assert.doesNotMatch(
+        content,
+        /\b(lastActiveSectionId|onSelectSectionId|getSectionIdForSymbol)\b/,
+        'Hook mati lastActiveSectionId/onSelectSectionId/getSectionIdForSymbol harus dihapus dari WatchlistTab'
+      );
+      assert.match(content, /const\s+currentSecId\s*=\s*group\.section\?\.id\s*\?\?\s*null/);
+    });
+
+    test('handleRemoveSymbol memakai helper bersama removeSymbolFromWatchlist tanpa duplikasi pencocokan parseWatchlistEntry', () => {
+      assert.match(content, /\bremoveSymbolFromWatchlist\b/);
+      const removeFnMatch = content.match(
+        /async function handleRemoveSymbol\([^)]*\)\s*\{([\s\S]*?)\n  \}/
+      );
+      assert.ok(removeFnMatch, 'Fungsi handleRemoveSymbol harus ditemukan di WatchlistTab.svelte');
+      assert.match(removeFnMatch[1], /removeSymbolFromWatchlist\(\s*symbols,\s*rawEntry\s*\)/);
+      assert.doesNotMatch(removeFnMatch[1], /parseWatchlistEntry/);
+    });
   });
 
   describe('2. Kontrak WatchlistPanel.svelte: Hapus modal SymbolSearchModal cadangan & prop onOpenSymbolSearch', () => {
@@ -86,14 +105,18 @@ describe('Tiket #167: Pemangkasan Sub-Toolbar Watchlist & Modal Redundan', () =>
       assert.match(panelContent, /\bisSectionToken\b/);
     });
 
-    test('Mempertahankan WatchlistTab, AlertsTab, LayersTab, TradePlanTab, applyWatchlistUpdate, dan watchlistRegistry', () => {
+    test('Mempertahankan WatchlistTab, AlertsTab, LayersTab, TradePlanTab, applyWatchlistUpdate, dan watchlistRegistry tanpa prop mati lastActiveSectionId/onSelectSectionId', () => {
+      assert.doesNotMatch(
+        panelContent,
+        /\b(lastActiveSectionId|onSelectSectionId)\b/,
+        'WatchlistPanel tidak boleh menyimpan atau meneruskan hook mati lastActiveSectionId/onSelectSectionId'
+      );
       assert.match(panelContent, /<WatchlistTab\b/);
       assert.match(panelContent, /<AlertsTab\b/);
       assert.match(panelContent, /<LayersTab\b/);
       assert.match(panelContent, /<TradePlanTab\b/);
       assert.match(panelContent, /applyWatchlistUpdate/);
       assert.match(panelContent, /watchlistRegistry/);
-      assert.match(panelContent, /lastActiveSectionId/);
       assert.match(panelContent, /onRequestCreateAlert/);
     });
   });
@@ -121,6 +144,19 @@ describe('Tiket #167: Pemangkasan Sub-Toolbar Watchlist & Modal Redundan', () =>
       const headerInvocation = pageContent.match(/<Header\b[\s\S]*?\n\s*\/>/);
       assert.ok(headerInvocation, '<Header> harus dirender di +page.svelte');
       assert.match(headerInvocation[0], /\bonOpenSymbolSearch=/);
+    });
+  });
+
+  describe('4. Dokumentasi Domain: Deprekasi Omni-Search Watchlist di GLOSSARY.md', () => {
+    test('GLOSSARY.md menandai Omni-Search Watchlist deprecated (Spec #164) dan merujuk Header, Ctrl+K, serta Type-to-Search Canvas Guard', () => {
+      const glossary = fs.readFileSync(path.join(rootDir, 'GLOSSARY.md'), 'utf-8');
+      const omniBlock =
+        glossary.match(/\*\*Omni-Search Watchlist\*\*[\s\S]*?(?=\n\n\*\*)/)?.[0] ?? '';
+      assert.ok(omniBlock.length > 0, 'Entri Omni-Search Watchlist harus tetap ada di GLOSSARY.md');
+      assert.match(omniBlock, /DEPRECATED\s*\/\s*Dihapus.*Spec #164/i);
+      assert.match(omniBlock, /\bHeader\b/);
+      assert.match(omniBlock, /Ctrl\+K/);
+      assert.match(omniBlock, /Type-to-Search Canvas Guard/);
     });
   });
 });

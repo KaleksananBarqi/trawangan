@@ -51,9 +51,23 @@ describe('Tiket #166: Tombol Bintang Quick Watchlist di Header & Konsolidasi Sea
       assert.match(headerContent, /onToggleActiveWatchlist\?\.\(\)/);
       assert.match(headerContent, /<Star\b[^>]*fill=\{isWatchlisted\s*\?\s*'currentColor'\s*:\s*'none'\}/);
 
-      // CSS .watchlist-star-btn dan .watchlist-star-btn.active tersedia
+      // CSS .watchlist-star-btn dan .watchlist-star-btn.active tersedia serta memakai token adaptif --status-warn
       assert.match(headerContent, /\.watchlist-star-btn\s*\{/);
-      assert.match(headerContent, /\.watchlist-star-btn\.active\s*\{/);
+      const starActiveCssMatch = headerContent.match(
+        /\.watchlist-star-btn\.active\s*\{([\s\S]*?)\}\s*\n\s*\.watchlist-star-btn\.active:hover\s*\{([\s\S]*?)\}/
+      );
+      assert.ok(
+        starActiveCssMatch,
+        'CSS .watchlist-star-btn.active dan .watchlist-star-btn.active:hover harus tersedia'
+      );
+      const starActiveBlock = `${starActiveCssMatch[1]}\n${starActiveCssMatch[2]}`;
+      assert.match(starActiveBlock, /var\(--status-warn\)/);
+      assert.match(starActiveBlock, /color-mix\(in srgb,\s*var\(--status-warn\)/);
+      assert.doesNotMatch(
+        starActiveBlock,
+        /#f59e0b|rgba\(\s*245,\s*158,\s*11/i,
+        'CSS .watchlist-star-btn.active tidak boleh hardcode #f59e0b atau rgba(245, 158, 11, ...)'
+      );
     });
   });
 
@@ -78,34 +92,43 @@ describe('Tiket #166: Tombol Bintang Quick Watchlist di Header & Konsolidasi Sea
       );
     });
 
-    test('handleToggleActiveWatchlist menyimpan via watchlistRegistry.updateActiveItems, menulis Terminal Logs, dan tidak menyentuh workspaceShellService', () => {
-      const fnMatch = pageContent.match(
-        /async function handleToggleActiveWatchlist\(\)\s*\{([\s\S]*?)\n  \}/
+    test('commitWatchlistToggle mengonsolidasikan toggleSymbolInWatchlist, updateActiveItems, addSystemLog, tanpa menyentuh workspaceShellService', () => {
+      const helperMatch = pageContent.match(
+        /async function commitWatchlistToggle\(\s*symbol:\s*string,\s*providerId\?:\s*string\s*\)\s*\{([\s\S]*?)\n  \}/
       );
-      assert.ok(fnMatch, 'Fungsi handleToggleActiveWatchlist harus didefinisikan di +page.svelte');
-      const fnBody = fnMatch[1];
+      assert.ok(helperMatch, 'Helper commitWatchlistToggle(symbol: string, providerId?: string) harus didefinisikan di +page.svelte');
+      const helperBody = helperMatch[1];
 
-      assert.match(fnBody, /toggleSymbolInWatchlist\(\s*watchlistSymbols,\s*activeSymbol,\s*activeProviderId\s*\)/);
-      assert.match(fnBody, /handleWatchlistChange\(/);
-      assert.match(fnBody, /watchlistRegistry\.updateActiveItems\(/);
-      assert.match(fnBody, /addSystemLog\(/);
+      assert.match(helperBody, /toggleSymbolInWatchlist\(\s*watchlistSymbols,\s*symbol,\s*providerId\s*\)/);
+      assert.match(helperBody, /if\s*\(\s*!res\.entry\s*\)\s*return;/);
+      assert.match(helperBody, /handleWatchlistChange\(\s*res\.items\s*\)/);
+      assert.match(helperBody, /await\s+watchlistRegistry\.updateActiveItems\(\s*res\.items\s*\)/);
+      assert.match(helperBody, /addSystemLog\(/);
       assert.doesNotMatch(
-        fnBody,
+        helperBody,
         /workspaceShellService/,
-        'handleToggleActiveWatchlist tidak boleh membuka atau menutup Right Dock Panel'
+        'commitWatchlistToggle tidak boleh membuka atau menutup Right Dock Panel'
       );
     });
 
-    test('handleToggleWatchlistSymbolFromSearch memakai seam toggleSymbolInWatchlist dan memperbarui watchlistRegistry', () => {
-      const fnMatch = pageContent.match(
+    test('handleToggleActiveWatchlist & handleToggleWatchlistSymbolFromSearch mendelegasikan ke commitWatchlistToggle tanpa duplikasi', () => {
+      const headerFnMatch = pageContent.match(
+        /async function handleToggleActiveWatchlist\(\)\s*\{([\s\S]*?)\n  \}/
+      );
+      assert.ok(headerFnMatch, 'Fungsi handleToggleActiveWatchlist harus didefinisikan di +page.svelte');
+      const headerFnBody = headerFnMatch[1];
+
+      assert.match(headerFnBody, /await\s+commitWatchlistToggle\(\s*activeSymbol,\s*activeProviderId\s*\)/);
+      assert.doesNotMatch(headerFnBody, /watchlistRegistry\.updateActiveItems|addSystemLog|workspaceShellService/);
+
+      const searchFnMatch = pageContent.match(
         /async function handleToggleWatchlistSymbolFromSearch\([^)]*\)\s*\{([\s\S]*?)\n  \}/
       );
-      assert.ok(fnMatch, 'Fungsi handleToggleWatchlistSymbolFromSearch harus ditemukan di +page.svelte');
-      const fnBody = fnMatch[1];
+      assert.ok(searchFnMatch, 'Fungsi handleToggleWatchlistSymbolFromSearch harus ditemukan di +page.svelte');
+      const searchFnBody = searchFnMatch[1];
 
-      assert.match(fnBody, /toggleSymbolInWatchlist\(/);
-      assert.match(fnBody, /watchlistRegistry\.updateActiveItems\(/);
-      assert.match(fnBody, /addSystemLog\(/);
+      assert.match(searchFnBody, /await\s+commitWatchlistToggle\(\s*rawInput,\s*providerHint\s*\)/);
+      assert.doesNotMatch(searchFnBody, /watchlistRegistry\.updateActiveItems|addSystemLog|workspaceShellService/);
     });
 
     test('<Header> di +page.svelte menerima isWatchlisted={isActiveSymbolWatchlisted} dan onToggleActiveWatchlist={handleToggleActiveWatchlist}', () => {
@@ -133,6 +156,19 @@ describe('Tiket #166: Tombol Bintang Quick Watchlist di Header & Konsolidasi Sea
         modalContent,
         /\{@const\s+isWatchlisted\s*=\s*isSymbolInWatchlist\(\s*watchlistSymbols,\s*item\.symbol,\s*item\.provider\s*\)\}/
       );
+    });
+  });
+
+  describe('4. Dokumentasi Domain: Amandemen ADR-0008 (Spec #164, #166, #170)', () => {
+    test('ADR-0008 memuat catatan Amandemen penghapusan Quick Symbols & penambahan Header Star toggle via WatchlistUtils + Multi-Watchlist Registry', () => {
+      const adr0008 = readProjectFile('docs/adr/0008-multi-watchlist-registry-and-section-dividers.md');
+      assert.match(adr0008, />\s*\*\*Amandemen \(Spec #164, #166, #170\):\*\*/);
+      assert.match(adr0008, /Quick Symbols/);
+      assert.match(adr0008, /QuickSymbolsConfig/);
+      assert.match(adr0008, /WatchlistUtils/);
+      assert.match(adr0008, /Multi-Watchlist Registry/);
+      assert.match(adr0008, /Bintang|Star/i);
+      assert.match(adr0008, /Watchlist Section Divider/);
     });
   });
 });

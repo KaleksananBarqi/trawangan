@@ -125,7 +125,6 @@
   let registryWatchlists = $state<WatchlistRecord[]>([]);
   let registryActiveId = $state<string>('default');
   let unsubRegistry: (() => void) | null = null;
-  let lastActiveSectionId = $state<string | null | undefined>(undefined);
   let symbols = $state<string[]>([
     'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
     'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
@@ -324,9 +323,7 @@
         {activeProviderId}
         {registryWatchlists}
         {activeWatchlist}
-        {lastActiveSectionId}
         {onSelectSymbol}
-        onSelectSectionId={(id) => (lastActiveSectionId = id)}
         onUpdateWatchlist={applyWatchlistUpdate}
       />
     {:else if activeTab === 'alerts'}

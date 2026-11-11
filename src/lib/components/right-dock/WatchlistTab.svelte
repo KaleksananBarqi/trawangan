@@ -18,6 +18,7 @@
     parseSectionToken,
     moveItemToSection,
     reorderWatchlistItems,
+    removeSymbolFromWatchlist,
     type WatchlistSectionToken
   } from '../../services/watchlistUtils';
   import { parseAdaptiveSymbol } from '../../services/market/symbolSearchService';
@@ -38,9 +39,7 @@
     activeProviderId: string;
     registryWatchlists: WatchlistRecord[];
     activeWatchlist: WatchlistRecord;
-    lastActiveSectionId: string | null | undefined;
     onSelectSymbol: (symbol: string, providerId?: string) => void;
-    onSelectSectionId: (sectionId: string | null | undefined) => void;
     onUpdateWatchlist: (nextSymbols: string[]) => Promise<void>;
   }
 
@@ -50,9 +49,7 @@
     activeProviderId,
     registryWatchlists,
     activeWatchlist,
-    lastActiveSectionId,
     onSelectSymbol,
-    onSelectSectionId,
     onUpdateWatchlist,
   }: Props = $props();
 
@@ -100,35 +97,15 @@
     }
   });
 
-  function getSectionIdForSymbol(sym: string): string | null {
-    let currentId: string | null = null;
-    for (const item of symbols) {
-      if (isSectionToken(item)) {
-        const parsed = parseSectionToken(item);
-        currentId = parsed ? parsed.id : null;
-      } else if (item === sym) {
-        return currentId;
-      }
-    }
-    return null;
-  }
-
   function handleSelectRowSymbol(rawEntry: string) {
     const { providerId, symbol } = parseWatchlistEntry(rawEntry);
-    onSelectSectionId(getSectionIdForSymbol(rawEntry));
     onSelectSymbol(symbol, providerId);
   }
 
   async function handleRemoveSymbol(e: MouseEvent, rawEntry: string) {
     e.stopPropagation();
     e.preventDefault();
-    const target = parseWatchlistEntry(rawEntry);
-    const next = symbols.filter((s) => {
-      if (s === rawEntry) return false;
-      const p = parseWatchlistEntry(s);
-      return !(p.symbol === target.symbol && p.providerId === target.providerId);
-    });
-    await onUpdateWatchlist(next);
+    await onUpdateWatchlist(removeSymbolFromWatchlist(symbols, rawEntry));
   }
 
   const groupedSections = $derived.by<SectionGroup[]>(() => {
@@ -168,7 +145,6 @@
   });
 
   async function handleToggleSectionCollapse(sectionId: string) {
-    onSelectSectionId(sectionId);
     const next = symbols.map((item) => {
       if (isSectionToken(item)) {
         const parsed = parseSectionToken(item);
@@ -456,7 +432,7 @@
                 </button>
 
                 {#if activeCoinMenuSymbol === sym}
-                  {@const currentSecId = getSectionIdForSymbol(sym)}
+                  {@const currentSecId = group.section?.id ?? null}
                   <button
                     type="button"
                     class="menu-backdrop-btn coin-backdrop"

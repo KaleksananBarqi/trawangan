@@ -241,4 +241,19 @@ describe('Tiket #165: Header Chrome Pruning, ActionsMenu, HelpTab & Pelestarian 
       assert.match(sqliteAdapterContent, /save_script/);
     });
   });
+
+  describe('5. Dokumentasi Domain: Amandemen ADR-0004 (Spec #164, #165, #168)', () => {
+    test('ADR-0004 memuat catatan Amandemen pemangkasan switcher Header, pelestarian Pine IDE, & rebalance telemetri StatusBar', () => {
+      const adr0004 = readProjectFile('docs/adr/0004-docked-structural-shell-and-side-by-side-ide.md');
+      assert.match(adr0004, />\s*\*\*Amandemen \(Spec #164, #165, #168\):\*\*/);
+      assert.match(adr0004, /Terminal \| Pine IDE/);
+      assert.match(adr0004, /Persistent Side-by-Side Pine IDE/);
+      assert.match(adr0004, /Right Dock Rail/);
+      assert.match(adr0004, /Unified Object Tree/);
+      assert.match(adr0004, /Alt\+E/);
+      assert.match(adr0004, /FPS/);
+      assert.match(adr0004, /Ping/);
+      assert.match(adr0004, /RAM/);
+    });
+  });
 });

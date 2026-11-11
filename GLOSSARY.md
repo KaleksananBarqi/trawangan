@@ -52,8 +52,8 @@ _Avoid_: Network monitor, Error catcher
 Pasangan perdagangan aset kripto dengan berbagai mata uang kuotasi (seperti IDR, USDT, USD) yang dapat dicari dan dianalisis lintas bursa.
 _Avoid_: Fiat pair, Non-USDT pair
 
-**Omni-Search Watchlist**:
-Bilah input pintar pada bilah sisi Watchlist yang menyatukan penyaringan instrumen lokal tersimpan dengan eksplorasi instrumen global bursa multi-provider secara real-time.
+**Omni-Search Watchlist** *(DEPRECATED / Dihapus pada Spec #164, Tiket #167)*:
+[Dihapus] Dahulu merupakan bilah input pintar pada bilah sisi Watchlist yang menyatukan penyaringan instrumen lokal tersimpan dengan eksplorasi instrumen global bursa multi-provider secara real-time. Pencarian pair global saat ini terpusat melalui **Header**, pintasan **Ctrl+K**, dan **Type-to-Search Canvas Guard**.
 _Avoid_: Local filter only, Disconnected search modal
 
 **Draggable Alert Line**:

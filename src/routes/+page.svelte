@@ -1036,9 +1036,9 @@
     watchlistSymbols = newSymbols;
   }
 
-  // Toggle cepat simbol & bursa aktif dari tombol Bintang Header tanpa mengubah status buka/tutup dock kanan (#166)
-  async function handleToggleActiveWatchlist() {
-    const res = toggleSymbolInWatchlist(watchlistSymbols, activeSymbol, activeProviderId);
+  // Helper terpadu untuk menyimpan toggle watchlist aktif dan mencatat log tanpa mengubah status dock kanan (#166)
+  async function commitWatchlistToggle(symbol: string, providerId?: string) {
+    const res = toggleSymbolInWatchlist(watchlistSymbols, symbol, providerId);
     if (!res.entry) return;
     handleWatchlistChange(res.items);
     await watchlistRegistry.updateActiveItems(res.items);
@@ -1050,18 +1050,14 @@
     );
   }
 
+  // Toggle cepat simbol & bursa aktif dari tombol Bintang Header tanpa mengubah status buka/tutup dock kanan (#166)
+  async function handleToggleActiveWatchlist() {
+    await commitWatchlistToggle(activeSymbol, activeProviderId);
+  }
+
   async function handleToggleWatchlistSymbolFromSearch(rawInput: string) {
     const providerHint = rawInput.includes(':') ? undefined : activeProviderId;
-    const res = toggleSymbolInWatchlist(watchlistSymbols, rawInput, providerHint);
-    if (!res.entry) return;
-    handleWatchlistChange(res.items);
-    await watchlistRegistry.updateActiveItems(res.items);
-    addSystemLog(
-      res.added
-        ? `Simbol ${res.entry} ditambahkan ke watchlist aktif.`
-        : `Simbol ${res.entry} dihapus dari watchlist aktif.`,
-      res.added ? 'success' : 'info'
-    );
+    await commitWatchlistToggle(rawInput, providerHint);
   }
 
   async function handleProviderChange(newProviderId: string) {
