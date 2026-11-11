@@ -416,6 +416,13 @@ export class ChartDrawingController {
   private gestureHudTimeout: any = null;
 
   private workspace: any = null;
+  private lastActiveCellIdentity: {
+    cell: any;
+    symbol: string;
+    timeframe: string;
+    providerId: string;
+    workspaceId: string | null;
+  } | null = null;
   private getSymbol: () => string = () => 'BTCUSDT';
   private getTimeframe: () => string = () => '15m';
   private getProviderId: () => string = () => 'binance';
@@ -540,7 +547,7 @@ export class ChartDrawingController {
 
     // Pasang listener pada seluruh cell yang ada dan sinkronkan snap/stay mode
     for (const cell of this.getAllCells()) {
-      const chart = cell?.chart || cell?.inner;
+      const chart = this.getChartForCell(cell);
       if (chart) {
         this.attachChartListeners(chart);
         try {
@@ -550,12 +557,15 @@ export class ChartDrawingController {
       }
     }
 
+    this.lastActiveCellIdentity = this.captureCellIdentity(this.workspace?.active);
+
     // Dengarkan pergantian cell aktif atau cell baru jika workspace mendukung event bus
+    const wsUnsubs: Array<() => void> = [];
     if (workspace && typeof workspace.on === 'function') {
       try {
-        workspace.on('cell:created', ({ id }: { id: string }) => {
+        const onCellCreated = ({ id }: { id: string }) => {
           const cell = workspace?.cell?.(id);
-          const chart = cell?.chart || cell?.inner;
+          const chart = this.getChartForCell(cell);
           if (chart) {
             this.attachChartListeners(chart);
             try {
@@ -563,8 +573,36 @@ export class ChartDrawingController {
               chart.drawings?.setStayMode?.(this.stayMode);
             } catch (_) {}
           }
-        });
-        workspace.on('cell:active', () => {
+        };
+        const uCreated = workspace.on('cell:created', onCellCreated);
+        wsUnsubs.push(typeof uCreated === 'function' ? uCreated : () => workspace.off?.('cell:created', onCellCreated));
+
+        const onCellActive = () => {
+          const currentActiveCell = this.workspace?.active;
+          const prev = this.lastActiveCellIdentity;
+
+          // Flush perubahan drawing yang tertunda pada sel sebelumnya dengan kunci sel lama sebelum konteks aktif berpindah
+          if (!this.isRestoring && prev?.cell && prev.cell !== currentActiveCell) {
+            const livePrev = getCellMarketIdentity(prev.cell);
+            const prevSym = livePrev.symbol || prev.symbol;
+            const prevProv = livePrev.providerId || prev.providerId;
+            const prevWs = this.getWorkspaceId() ?? prev.workspaceId;
+            const prevKey = resolveDrawingKey(prevProv, prevSym, prevWs);
+            const prevChart = this.getChartForCell(prev.cell);
+            if (prevChart?.drawings && typeof prevChart.drawings.toJSON === 'function') {
+              try {
+                const prevDoc = prevChart.drawings.toJSON();
+                if (prevDoc) {
+                  saveDrawingsDebounced(prevKey, 'GLOBAL', {
+                    ...prevDoc,
+                    _trawangan_meta: this.planLifecycle.toPersistedEnvelope()
+                  });
+                  void flushDrawings(prevKey, 'GLOBAL').catch(() => {});
+                }
+              } catch (_) {}
+            }
+          }
+
           const activeChart = this.getActiveChart();
           if (activeChart) {
             this.attachChartListeners(activeChart);
@@ -578,14 +616,45 @@ export class ChartDrawingController {
               this.notify();
             }
           }
-        });
+          this.lastActiveCellIdentity = this.captureCellIdentity(currentActiveCell);
+        };
+        const uActive = workspace.on('cell:active', onCellActive);
+        wsUnsubs.push(typeof uActive === 'function' ? uActive : () => workspace.off?.('cell:active', onCellActive));
       } catch (_) {}
     }
 
     return () => {
+      for (const unsub of wsUnsubs) {
+        try {
+          unsub();
+        } catch (_) {}
+      }
       if (this.workspace === workspace) {
         this.workspace = null;
       }
+      this.lastActiveCellIdentity = null;
+    };
+  }
+
+  /**
+   * Helper internal untuk mengambil instance chart dari objek cell
+   */
+  private getChartForCell(cell: any): any {
+    return cell?.chart || cell?.inner || null;
+  }
+
+  /**
+   * Merekam identitas pasar milik satu cell untuk menjaga isolasi kunci flush saat cell:active berganti
+   */
+  private captureCellIdentity(cell: any) {
+    if (!cell) return null;
+    const { providerId, symbol } = getCellMarketIdentity(cell);
+    return {
+      cell,
+      symbol: symbol || (typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT'),
+      timeframe: cell?.timeframe || (typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m'),
+      providerId: providerId || (typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance'),
+      workspaceId: this.getWorkspaceId()
     };
   }
 
@@ -606,7 +675,7 @@ export class ChartDrawingController {
    * Helper internal untuk mengambil instans active chart dari workspace
    */
   private getActiveChart(): any {
-    return this.workspace?.active?.chart ?? null;
+    return this.getChartForCell(this.workspace?.active);
   }
 
   private previousToolBeforeSpace: DrawingToolType | null = null;
@@ -1213,20 +1282,16 @@ export class ChartDrawingController {
     return nextMode;
   }
 
-  /**
-   * Atur mode snap magnet
-   */
-  setSnapMode(mode: SnapMode): void {
-    this.snapMode = mode;
+  private applyToAllCellDrawings(action: (drawings: any) => void, errorLabel: string): void {
     const cells = this.getAllCells();
     if (cells.length > 0) {
       for (const cell of cells) {
-        const chart = cell?.chart || cell?.inner;
+        const chart = this.getChartForCell(cell);
         if (chart?.drawings) {
           try {
-            chart.drawings.setSnapMode(mode);
+            action(chart.drawings);
           } catch (e) {
-            console.warn('ChartDrawingController setSnapMode error:', e);
+            console.warn(`ChartDrawingController ${errorLabel} error:`, e);
           }
         }
       }
@@ -1234,12 +1299,20 @@ export class ChartDrawingController {
       const activeChart = this.getActiveChart();
       if (activeChart?.drawings) {
         try {
-          activeChart.drawings.setSnapMode(mode);
+          action(activeChart.drawings);
         } catch (e) {
-          console.warn('ChartDrawingController setSnapMode error:', e);
+          console.warn(`ChartDrawingController ${errorLabel} error:`, e);
         }
       }
     }
+  }
+
+  /**
+   * Atur mode snap magnet
+   */
+  setSnapMode(mode: SnapMode): void {
+    this.snapMode = mode;
+    this.applyToAllCellDrawings((d) => d.setSnapMode(mode), 'setSnapMode');
     this.notify();
   }
 
@@ -1286,28 +1359,7 @@ export class ChartDrawingController {
    */
   setStayMode(stay: boolean): void {
     this.stayMode = stay;
-    const cells = this.getAllCells();
-    if (cells.length > 0) {
-      for (const cell of cells) {
-        const chart = cell?.chart || cell?.inner;
-        if (chart?.drawings) {
-          try {
-            chart.drawings.setStayMode(stay);
-          } catch (e) {
-            console.warn('ChartDrawingController setStayMode error:', e);
-          }
-        }
-      }
-    } else {
-      const activeChart = this.getActiveChart();
-      if (activeChart?.drawings) {
-        try {
-          activeChart.drawings.setStayMode(stay);
-        } catch (e) {
-          console.warn('ChartDrawingController setStayMode error:', e);
-        }
-      }
-    }
+    this.applyToAllCellDrawings((d) => d.setStayMode(stay), 'setStayMode');
     this.notify();
   }
 
@@ -2100,19 +2152,23 @@ export class ChartDrawingController {
     return out;
   }
 
+  private normalizeThesisCardGeometry(geo: SavedThesisCardGeometry): SavedThesisCardGeometry {
+    return {
+      x: typeof geo.x === 'number' && Number.isFinite(geo.x) ? geo.x : 16,
+      y: typeof geo.y === 'number' && Number.isFinite(geo.y) ? geo.y : 56,
+      width: typeof geo.width === 'number' && Number.isFinite(geo.width) ? geo.width : 340,
+      ...(typeof geo.height === 'number' && Number.isFinite(geo.height) ? { height: geo.height } : {}),
+      isWideMode: Boolean(geo.isWideMode),
+      isMinimized: Boolean(geo.isMinimized),
+    };
+  }
+
   /**
    * Memperbarui geometri satu kartu tesis dengan equality guard agar tidak memicu dirty save berulang
    */
   setThesisCardGeometry(planId: string, geo: SavedThesisCardGeometry): boolean {
     if (!planId || !geo || typeof geo !== 'object') return false;
-    const normalized: SavedThesisCardGeometry = {
-      x: Number.isFinite(geo.x) ? geo.x : 16,
-      y: Number.isFinite(geo.y) ? geo.y : 56,
-      width: Number.isFinite(geo.width) ? geo.width : 340,
-      ...(typeof geo.height === 'number' && Number.isFinite(geo.height) ? { height: geo.height } : {}),
-      isWideMode: Boolean(geo.isWideMode),
-      isMinimized: Boolean(geo.isMinimized),
-    };
+    const normalized = this.normalizeThesisCardGeometry(geo);
 
     const prev = this.thesisCardGeometries[planId];
     if (
@@ -2143,14 +2199,7 @@ export class ChartDrawingController {
     if (geometries && typeof geometries === 'object') {
       for (const [planId, geo] of Object.entries(geometries)) {
         if (!planId || !geo || typeof geo !== 'object') continue;
-        next[planId] = {
-          x: typeof geo.x === 'number' && Number.isFinite(geo.x) ? geo.x : 16,
-          y: typeof geo.y === 'number' && Number.isFinite(geo.y) ? geo.y : 56,
-          width: typeof geo.width === 'number' && Number.isFinite(geo.width) ? geo.width : 340,
-          ...(typeof geo.height === 'number' && Number.isFinite(geo.height) ? { height: geo.height } : {}),
-          isWideMode: Boolean(geo.isWideMode),
-          isMinimized: Boolean(geo.isMinimized),
-        };
+        next[planId] = this.normalizeThesisCardGeometry(geo);
       }
     }
     this.thesisCardGeometries = next;
@@ -2380,7 +2429,7 @@ export class ChartDrawingController {
       const ws = targetWorkspace || this.getWorkspaceId();
 
       for (const cell of cells) {
-        const cellChart = cell?.chart || cell?.inner;
+        const cellChart = this.getChartForCell(cell);
         if (!cellChart?.drawings) continue;
 
         if (typeof cellChart.drawings.fromJSON === 'function') {
@@ -2432,6 +2481,7 @@ export class ChartDrawingController {
       const activeChart = this.getActiveChart();
       this.activeDrawings = [...(activeChart?.drawings?.all?.() || [])] as ChartDrawingItem[];
       this.planLifecycle.reattachMetadataToDrawings(this.activeDrawings);
+      this.lastActiveCellIdentity = this.captureCellIdentity(this.workspace?.active);
     } catch (err) {
       console.warn('Gagal memulihkan drawings multi-cell:', err);
     } finally {

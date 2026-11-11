@@ -16,19 +16,7 @@ import {
   computeWorkspaceFingerprint,
 } from '../src/lib/services/persistence';
 import type { SavedWorkspace } from '../src/lib/types/market';
-
-function createFakeContainer(): any {
-  return {
-    nodeType: 1,
-    clientWidth: 1200,
-    clientHeight: 720,
-    style: { setProperty: () => {}, removeProperty: () => {} },
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1200, height: 720 }),
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    querySelector: () => null,
-  };
-}
+import { createMockChartContainer } from './helpers/mockChartContainer';
 
 function createFakeCell(opts: {
   id?: string;
@@ -236,7 +224,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       workspaceFactory: () => liveWs,
       onPersistableStateChange: (r) => persistReasons.push(r),
     });
-    ctrlLive.attach(createFakeContainer());
+    ctrlLive.attach(createMockChartContainer(1200, 720));
 
     const liveSnap = (ctrlLive as any).getVisibleRangeSnapshot();
     assert.ok(liveSnap, 'getVisibleRangeSnapshot harus mengembalikan range');
@@ -263,7 +251,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       workspaceFactory: () => histWs,
       onPersistableStateChange: (r) => histPersistReasons.push(r),
     });
-    ctrlHist.attach(createFakeContainer());
+    ctrlHist.attach(createMockChartContainer(1200, 720));
 
     const histSnap = (ctrlHist as any).getVisibleRangeSnapshot();
     assert.equal(histSnap.atLiveEdge, false, 'harus menandai atLiveEdge=false saat scroll ke historis');
@@ -281,7 +269,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       workspaceFactory: () => targetWs,
       onPersistableStateChange: (r) => histPersistReasons.push(r),
     });
-    ctrlTarget.attach(createFakeContainer());
+    ctrlTarget.attach(createMockChartContainer(1200, 720));
 
     const queued = (ctrlTarget as any).applyVisibleRange(histSnap);
     assert.equal(queued, true);
@@ -329,7 +317,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       timeframe: '15m',
       workspaceFactory: () => ws,
     });
-    controller.attach(createFakeContainer());
+    controller.attach(createMockChartContainer(1200, 720));
 
     // Tunggu hidrasi chartDefaultConfig saat attach()
     await (controller as any).hydrateChartDefaultConfig?.();
@@ -555,5 +543,102 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.ok(effectBlock.includes('snapMode'), '$effect auto-save harus memantau snapMode');
     assert.ok(effectBlock.includes('stayMode'), '$effect auto-save harus memantau stayMode');
     assert.ok(effectBlock.includes('thesisCardGeometries') || effectBlock.includes('ThesisCardGeometries'), '$effect auto-save harus memantau thesisCardGeometries');
+  });
+
+  test('5. K3 rendererConfig Sanitizer: kunci tema global disaring saat persist & restore, override kustom sel bertahan', async () => {
+    const rig = createFakeCell({
+      id: 'c1',
+      symbol: 'binance:BTCUSDT',
+      initialConfig: {
+        layout: { background: '#0D0E12', textColor: '#E5E7EB', fontSize: 12 },
+        grid: { vertLines: { visible: true, color: 'rgba(255,255,255,0.06)' }, horzLines: { visible: true } },
+        timeScale: { timezone: 'Asia/Jakarta' },
+        panes: { separatorColor: '#333333' },
+        priceScale: { mode: 'price', log: false, currentPriceLine: true, borderColor: '#444444' },
+        crosshair: { color: '#777777', labelBackground: '#222222', width: 2, style: 'dashed', opacity: 0.8 },
+        candles: { upColor: '#26a69a', downColor: '#ef5350', borderUpColor: '#26a69a', borderDownColor: '#ef5350', wickUpColor: '#26a69a', wickDownColor: '#ef5350', bodyVisible: true, borderVisible: true, wickVisible: false },
+        bars: { upColor: '#26a69a', downColor: '#ef5350' },
+        margins: { top: 0.18, bottom: 0.1 },
+      },
+    });
+    const ws = createFakeWorkspaceFromCells([rig.cell]);
+
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      themePreset: 'signature',
+      gridMode: 'normal',
+      timezone: 'Asia/Jakarta',
+      showCurrentPriceLine: true,
+      workspaceFactory: () => ws,
+    });
+    controller.attach(createMockChartContainer(1200, 720));
+
+    // Terapkan tema aktif signature (up=#26A69A, down=#EF5350) + grid normal
+    controller.setTheme('signature');
+
+    // Simulasikan getCellsSnapshot() saat tema warna sama persis dgn tema aktif + properti non-global (wickVisible=false, crosshair.width=2, margins.top=0.18)
+    const cellsSnap = controller.getCellsSnapshot();
+    const persistedRc = cellsSnap[0].rendererConfig as Record<string, any>;
+    assert.ok(persistedRc, 'rendererConfig non-global tetap harus tersimpan');
+    assert.equal(persistedRc.layout, undefined, 'layout global tidak boleh bocor ke workspace cell rendererConfig');
+    assert.equal(persistedRc.grid, undefined, 'grid global tidak boleh bocor ke workspace cell rendererConfig');
+    assert.equal(persistedRc.timeScale, undefined, 'timeScale.timezone global tidak boleh bocor ke workspace');
+    assert.equal(persistedRc.panes?.separatorColor, undefined, 'panes.separatorColor global tidak boleh bocor');
+    assert.equal(persistedRc.priceScale?.currentPriceLine, undefined, 'priceScale.currentPriceLine global tidak boleh bocor');
+    assert.equal(persistedRc.priceScale?.borderColor, undefined, 'priceScale.borderColor global tidak boleh bocor');
+    assert.equal(persistedRc.crosshair?.color, undefined, 'crosshair.color global tidak boleh bocor');
+    assert.equal(persistedRc.crosshair?.labelBackground, undefined, 'crosshair.labelBackground global tidak boleh bocor');
+    assert.equal(persistedRc.crosshair?.width, 2, 'crosshair.width non-global harus dipertahankan');
+    assert.equal(persistedRc.margins?.top, 0.18, 'margins.top harus dipertahankan');
+    assert.equal(persistedRc.candles?.wickVisible, false, 'flag candles.wickVisible harus dipertahankan');
+    assert.equal(persistedRc.candles?.upColor, undefined, 'candles.upColor yang identik dgn tema aktif tidak boleh mengunci warna tema');
+    assert.equal(persistedRc.bars, undefined, 'bars kosong setelah warna tema disaring harus dihilangkan');
+
+    // Sekarang ubah tema global & gridMode ke 'light' + 'hidden' + 'UTC', lalu muat workspace LAMA yg terlanjur membawa kunci global usang
+    controller.setTheme('light');
+    controller.setGridMode('hidden');
+    controller.setTimezone('UTC');
+    controller.setShowCurrentPriceLine(true);
+
+    const legacyWs: SavedWorkspace = {
+      id: 'ws-legacy-k3',
+      name: 'Legacy K3 Pollution',
+      schemaVersion: 2,
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      layout: '1',
+      providerId: 'binance',
+      indicators: [],
+      cells: [
+        {
+          symbol: 'BTCUSDT',
+          timeframe: '15m',
+          providerId: 'binance',
+          rendererConfig: {
+            layout: { background: '#990000', textColor: '#111111' },
+            grid: { vertLines: { visible: true, color: '#ff00ff' }, horzLines: { visible: true, color: '#ff00ff' } },
+            timeScale: { timezone: 'America/New_York' },
+            panes: { separatorColor: '#888888' },
+            priceScale: { currentPriceLine: false, borderColor: '#555555' },
+            crosshair: { color: '#aaaaaa', labelBackground: '#000000', width: 3 },
+            candles: { upColor: '#abcdef' },
+            margins: { top: 0.22 },
+          },
+        },
+      ],
+      timestamp: Date.now(),
+    };
+
+    await controller.loadWorkspaceState(legacyWs);
+    const afterRestoreCfg = rig.chart.renderer.getConfig();
+    assert.notEqual(afterRestoreCfg.layout?.background, '#990000', 'Restore workspace lama tidak boleh menimpa background tema global aktif');
+    assert.equal(afterRestoreCfg.grid?.vertLines?.visible, false, 'Restore workspace lama tidak boleh menyalakan ulang grid yang sedang hidden secara global');
+    assert.equal(afterRestoreCfg.priceScale?.currentPriceLine, true, 'currentPriceLine global wajib dipertahankan');
+    assert.equal(afterRestoreCfg.candles?.upColor, '#abcdef', 'Override candle kustom eksplisit dari workspace wajib tetap dipulihkan');
+    assert.equal(afterRestoreCfg.margins?.top, 0.22, 'Override margin eksplisit dari workspace wajib tetap dipulihkan');
+    assert.equal(afterRestoreCfg.crosshair?.width, 3, 'crosshair.width non-global wajib tetap dipulihkan');
+
+    controller.destroy();
   });
 });

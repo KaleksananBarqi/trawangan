@@ -2,18 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
 import { executeWorkspaceLoadPipeline, type WorkspacePlanPort } from '../src/lib/services/workspaceLifecycle';
-
-function createMockContainer() {
-  return {
-    nodeType: 1,
-    tagName: 'DIV',
-    clientWidth: 1000,
-    clientHeight: 600,
-    style: { setProperty: () => {} },
-    children: [],
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
-  } as any;
-}
+import { createMockChartContainer } from './helpers/mockChartContainer';
 
 function createFakePaneChartHarness() {
   const listeners = new Map<string, Set<(payload?: any) => void>>();
@@ -151,7 +140,7 @@ describe('Fase 2: Persistensi Tata Letak Panel Bawah (paneLayout)', () => {
   it('1. getPaneLayout menghasilkan entri berbasis signature yang tahan terhadap perubahan urutan pane', () => {
     const harness = createFakePaneChartHarness();
     const controller = new ChartSessionController();
-    controller.attach(createMockContainer(), { workspaceFactory: () => harness.ws });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
 
     harness.spawnStudyPane('ind_rsi', 'RSI', 0.45);
     harness.spawnStudyPane('ind_macd', 'MACD', 1.55);
@@ -168,7 +157,7 @@ describe('Fase 2: Persistensi Tata Letak Panel Bawah (paneLayout)', () => {
   it('2. applyPaneLayout menunggu sub-pane worker Pine secara event-driven dan mencocokkan via signature meski urutan terbalik', async () => {
     const harness = createFakePaneChartHarness();
     const controller = new ChartSessionController();
-    controller.attach(createMockContainer(), { workspaceFactory: () => harness.ws });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
 
     // Jalankan applyPaneLayout SEBELUM sub-pane tercipta (simulasi worker async)
     const applyPromise = controller.applyPaneLayout(
@@ -199,7 +188,7 @@ describe('Fase 2: Persistensi Tata Letak Panel Bawah (paneLayout)', () => {
   it('3. Guard ensurePane mempertahankan heightWeight yang sudah di-restore dari reset default Vela', async () => {
     const harness = createFakePaneChartHarness();
     const controller = new ChartSessionController();
-    controller.attach(createMockContainer(), { workspaceFactory: () => harness.ws });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
 
     harness.spawnStudyPane('ind_rsi', 'RSI', 1);
 
@@ -222,7 +211,7 @@ describe('Fase 2: Persistensi Tata Letak Panel Bawah (paneLayout)', () => {
     const controller = new ChartSessionController({
       onPersistableStateChange: (reason) => reasons.push(reason),
     });
-    controller.attach(createMockContainer(), { workspaceFactory: () => harness.ws });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
 
     harness.spawnStudyPane('ind_rsi', 'RSI', 1);
     // Rekam kondisi awal
@@ -244,7 +233,7 @@ describe('Fase 2: Persistensi Tata Letak Panel Bawah (paneLayout)', () => {
   it('5. executeWorkspaceLoadPipeline meneruskan w.paneLayout ke chart.applyPaneLayout', async () => {
     const harness = createFakePaneChartHarness();
     const controller = new ChartSessionController();
-    controller.attach(createMockContainer(), { workspaceFactory: () => harness.ws });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
     harness.spawnStudyPane('ind_rsi', 'RSI', 1);
 
     const mockPlan: WorkspacePlanPort = {
@@ -283,5 +272,69 @@ describe('Fase 2: Persistensi Tata Letak Panel Bawah (paneLayout)', () => {
 
     assert.equal(harness.panesMap.get('price')!.heightWeight, 3.7);
     assert.equal(harness.panesMap.get('pane-ind_rsi')!.heightWeight, 0.3);
+  });
+
+  it('6. R4: installEnsurePaneGuard menghormati flag userTouchedPaneLayout setelah user menggeser pane secara manual', async () => {
+    const receivedEnsurePaneArgs: any[] = [];
+    const panesMap = new Map<string, any>([
+      ['price', { id: 'price', kind: 'price', order: 0, heightWeight: 3, collapsed: false }],
+      ['pane-ind_rsi', { id: 'pane-ind_rsi', kind: 'study', order: 1, heightWeight: 1, collapsed: false }],
+    ]);
+    const panesList = [
+      { id: 'price', kind: 'price', order: 0, collapsed: false, indicators: [] },
+      { id: 'pane-ind_rsi', kind: 'study', order: 1, collapsed: false, indicators: [{ id: 'ind_rsi', title: 'RSI' }] },
+    ];
+
+    const nativeRenderer: any = {
+      scene: {
+        panes: panesMap,
+        orderedPanes: () => Array.from(panesMap.values()),
+      },
+      ensurePane: (pane: any) => {
+        receivedEnsurePaneArgs.push({ ...pane });
+        const target = panesMap.get(pane.id);
+        if (target && pane.heightWeight !== undefined) {
+          target.heightWeight = pane.heightWeight;
+        }
+      },
+      layoutPanes: () => {},
+      scheduler: { invalidate: () => {} },
+    };
+
+    const chart = {
+      renderer: nativeRenderer,
+      panes: { list: () => panesList },
+      indicators: () => [{ id: 'ind_rsi', title: 'RSI' }],
+      on: () => () => {},
+    };
+    const cell = { id: 'c1', symbol: 'binance:BTCUSDT', timeframe: '15', chart };
+    const ws = { cells: () => [cell], cell: () => cell, active: cell, on: () => () => {} };
+
+    const controller = new ChartSessionController();
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => ws });
+
+    await controller.applyPaneLayout([
+      { signature: 'price', weight: 3.6 },
+      { signature: 'RSI', weight: 0.35 },
+    ]);
+
+    // Sebelum user menyentuh layout, ensurePane tanpa heightWeight dijaga agar tetap 0.35
+    receivedEnsurePaneArgs.length = 0;
+    nativeRenderer.ensurePane({ id: 'pane-ind_rsi', kind: 'study', order: 1 });
+    assert.equal(receivedEnsurePaneArgs[0]?.heightWeight, 0.35);
+
+    // Simulasi user drag separator secara manual lalu tertangkap oleh capturePaneLayoutIfChanged
+    panesMap.get('price')!.heightWeight = 2.0;
+    panesMap.get('pane-ind_rsi')!.heightWeight = 2.0;
+    assert.equal(controller.capturePaneLayoutIfChanged(cell), true);
+
+    // Setelah userTouchedPaneLayout aktif, ensurePane tanpa heightWeight diteruskan apa adanya tanpa dipaksa bobot restore lama
+    receivedEnsurePaneArgs.length = 0;
+    nativeRenderer.ensurePane({ id: 'pane-ind_rsi', kind: 'study', order: 1 });
+    assert.equal(
+      receivedEnsurePaneArgs[0]?.heightWeight,
+      undefined,
+      'Guard harus mengalah pada ensurePane asli setelah user menggeser pane secara manual'
+    );
   });
 });

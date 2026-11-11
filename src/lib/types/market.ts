@@ -502,6 +502,11 @@ export interface VisibleRangeSnapshot {
   atLiveEdge?: boolean;
 }
 
+export interface WorkspaceTrackSizes {
+  cols?: number[];
+  rows?: number[];
+}
+
 export interface CellSnapshot {
   symbol: string;
   timeframe: string;
@@ -513,7 +518,7 @@ export interface CellSnapshot {
   indicators?: SavedWorkspaceIndicator[];
   nativeIndicators?: NativeIndicatorSnapshot[];
   visibleRange?: VisibleRangeSnapshot | null;
-  rendererConfig?: unknown;
+  rendererConfig?: Record<string, unknown>;
   session?: string;
   bars?: number;
 }
@@ -543,7 +548,7 @@ export interface SavedWorkspace {
   nativeIndicators?: NativeIndicatorSnapshot[];
   visibleRange?: VisibleRangeSnapshot | null;
   cells?: CellSnapshot[];
-  trackSizes?: { cols?: number[]; rows?: number[] };
+  trackSizes?: WorkspaceTrackSizes;
   activeCellIndex?: number;
   activeRightDockPanel?: string | null;
   syncConfig?: MultiChartSyncConfig;

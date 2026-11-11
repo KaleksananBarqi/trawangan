@@ -5,22 +5,14 @@ import {
   WorkspaceAutoSaveCoordinator,
   buildWorkspaceSnapshotPayload,
   executeExitFlush,
+  executeWorkspaceLoadPipeline,
+  handleWindowCloseRequest,
   resolvePendingWorkspaceOverride,
   PENDING_WORKSPACE_KEY_PREFIX,
   type WorkspacePlanPort,
 } from '../src/lib/services/workspaceLifecycle';
-
-function createMockContainer() {
-  return {
-    nodeType: 1,
-    tagName: 'DIV',
-    clientWidth: 1000,
-    clientHeight: 600,
-    style: { setProperty: () => {} },
-    children: [],
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
-  } as any;
-}
+import { computeWorkspaceFingerprint } from '../src/lib/services/persistence';
+import { createMockChartContainer } from './helpers/mockChartContainer';
 
 function createFakeChartEventHarness() {
   const listeners = new Map<string, Set<(payload?: any) => void>>();
@@ -168,7 +160,7 @@ describe('Fase 3: Pemicu Auto-Save Lengkap & Flush saat Exit', () => {
       onPersistableStateChange: (reason) => reasons.push(reason),
       viewportPersistDebounceMs: 20,
     });
-    controller.attach(createMockContainer(), { workspaceFactory: () => harness.ws });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
     reasons.length = 0;
 
     harness.emit('priceStyle:change', { from: 'candles', to: 'heikinashi' });
@@ -207,7 +199,7 @@ describe('Fase 3: Pemicu Auto-Save Lengkap & Flush saat Exit', () => {
       onPersistableStateChange: (reason) => reasons.push(reason),
       viewportPersistDebounceMs: 15,
     });
-    controller.attach(createMockContainer(), { workspaceFactory: () => harness.ws });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
     reasons.length = 0;
 
     // syncNativeVolumeColors memanggil handle.setInputs -> harness memancarkan indicator:inputs
@@ -272,7 +264,7 @@ describe('Fase 3: Pemicu Auto-Save Lengkap & Flush saat Exit', () => {
       layout: '1',
       providerId: 'binance',
     });
-    controller.attach(createMockContainer(), { workspaceFactory: () => harness.ws });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
 
     const allPlans = [
       { id: 'p-btc', symbol: 'BTCUSDT', bias: 'long', entry: 65000, stopLoss: 64000, targets: [{ price: 68000, percentage: 100 }] },
@@ -388,5 +380,260 @@ describe('Fase 3: Pemicu Auto-Save Lengkap & Flush saat Exit', () => {
     assert.equal(kept.usedPending, false);
     assert.equal(kept.workspace.timeframe, '1d');
     assert.equal(storage.getItem(`${PENDING_WORKSPACE_KEY_PREFIX}ws-exit`), null);
+  });
+
+  it('6. handleWindowCloseRequest memanggil preventDefault sinkron, menunggu flush (atau timeout), dan menutup via destroy sekali', async () => {
+    // 6a. Normal flush selesai sebelum timeout + guard re-entrancy double close click
+    let preventCount = 0;
+    let destroyCount = 0;
+    let flushCount = 0;
+    let resolveFlush!: () => void;
+    const state = { isClosing: false };
+
+    const flushPromise = handleWindowCloseRequest({
+      event: { preventDefault: () => { preventCount++; } },
+      appWindow: {
+        destroy: async () => { destroyCount++; },
+        close: async () => { throw new Error('close() tidak boleh dipanggil saat destroy() tersedia'); },
+      },
+      flush: () => new Promise<void>((resolve) => {
+        flushCount++;
+        resolveFlush = resolve;
+      }),
+      timeoutMs: 200,
+      state,
+    });
+
+    // preventDefault & state.isClosing wajib berubah SECARA SINKRON sebelum flush selesai
+    assert.equal(preventCount, 1, 'event.preventDefault() wajib dipanggil sinkron sebelum await');
+    assert.equal(state.isClosing, true);
+    assert.equal(destroyCount, 0, 'window tidak boleh dihancurkan sebelum flush selesai');
+
+    // Simulasikan klik close kedua saat flush sedang berjalan
+    await handleWindowCloseRequest({
+      event: { preventDefault: () => { preventCount++; } },
+      appWindow: { destroy: async () => { destroyCount++; } },
+      flush: async () => { flushCount++; },
+      timeoutMs: 200,
+      state,
+    });
+    assert.equal(preventCount, 2, 'Klik kedua tetap dicegah menutup paksa window yang sedang flush');
+    assert.equal(flushCount, 1, 'Flush kedua tidak boleh dijalankan saat penutupan sudah berlangsung');
+
+    resolveFlush();
+    await flushPromise;
+    assert.equal(destroyCount, 1, 'win.destroy() wajib dipanggil tepat 1 kali setelah flush selesai');
+
+    // 6b. Saat flush melewati timeout atau throw error, window tetap wajib di-destroy tanpa macet
+    let timeoutDestroyCount = 0;
+    await handleWindowCloseRequest({
+      event: { preventDefault: () => {} },
+      appWindow: { destroy: async () => { timeoutDestroyCount++; } },
+      flush: () => new Promise<void>(() => {}), // tidak pernah resolve
+      timeoutMs: 20,
+      state: { isClosing: false },
+    });
+    assert.equal(timeoutDestroyCount, 1, 'win.destroy() wajib tetap terpanggil ketika flush timeout');
+
+    let errorDestroyCount = 0;
+    await handleWindowCloseRequest({
+      event: { preventDefault: () => {} },
+      appWindow: { destroy: async () => { errorDestroyCount++; } },
+      flush: async () => { throw new Error('IPC error'); },
+      timeoutMs: 100,
+      state: { isClosing: false },
+    });
+    assert.equal(errorDestroyCount, 1, 'win.destroy() wajib tetap terpanggil meskipun flush melempar error');
+  });
+
+  it('7. Paritas Step 9 fingerprint: pipeline load workspace minimal menghasilkan fingerprint identik dengan buildWorkspaceSnapshotPayload', async () => {
+    const harness = createFakeChartEventHarness();
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      layout: '1',
+      providerId: 'binance',
+    });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
+
+    const planPort: WorkspacePlanPort = {
+      setWorkspaceId: () => {},
+      clearAllPlans: () => {},
+      restorePlans: () => {},
+      getActivePlans: () => [],
+      getAllActivePlans: () => [],
+      isThesisCardsVisible: () => true,
+      getSnapshot: () => ({ snapMode: 'off', stayMode: false }),
+      getThesisCardGeometries: () => ({}),
+    };
+
+    // Workspace minimal v1 tanpa paneLayout, nativeIndicators, priceScaleState, priceStyle, barSpacing, trackSizes
+    const minimalWs: any = {
+      id: 'ws-fp-parity',
+      name: 'Parity Check',
+      schemaVersion: 2,
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      layout: '1',
+      providerId: 'binance',
+      indicators: [{ title: 'RSI', source: 'plot(rsi)', visible: true }],
+      activeCellIndex: 0,
+      timestamp: Date.now(),
+    };
+
+    const loadRes = await executeWorkspaceLoadPipeline({
+      workspace: minimalWs,
+      chart: controller as any,
+      plan: planPort,
+      activeProviderId: 'binance',
+      onProviderChange: async () => {},
+      onSymbolChange: async () => {},
+      onTimeframeChange: () => {},
+      onLayoutChange: () => {},
+      onSyncIndicators: () => {},
+    });
+
+    assert.equal(loadRes.success, true);
+
+    const coordinator = new WorkspaceAutoSaveCoordinator({
+      onSave: async () => {},
+    });
+    coordinator.setSavedFingerprint(loadRes.fingerprint);
+
+    const livePayload = buildWorkspaceSnapshotPayload({
+      id: minimalWs.id,
+      name: minimalWs.name,
+      symbol: minimalWs.symbol,
+      timeframe: minimalWs.timeframe,
+      layout: minimalWs.layout,
+      providerId: minimalWs.providerId,
+      chart: controller as any,
+      plan: planPort,
+    });
+
+    const liveFp = computeWorkspaceFingerprint(livePayload as any);
+    assert.equal(liveFp, loadRes.fingerprint, 'Fingerprint Step 9 harus identik persis dgn buildWorkspaceSnapshotPayload');
+    assert.equal(
+      coordinator.trigger(livePayload as any),
+      null,
+      'Trigger auto-save segera setelah workspace dimuat tidak boleh menganggap workspace kotor'
+    );
+
+    controller.destroy();
+  });
+
+  it('8. R4: equality guard mencegah emisi priceScale & priceStyle berulang ketika nilai identik', () => {
+    const harness = createFakeChartEventHarness();
+    const reasons: string[] = [];
+    const controller = new ChartSessionController({
+      onPersistableStateChange: (reason) => reasons.push(reason),
+    });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => harness.ws });
+    reasons.length = 0;
+
+    // Panggilan setPriceStyle dengan nilai yang sudah aktif ('candles') -> no-op, tidak memancarkan 'priceStyle'
+    controller.setPriceStyle('candles');
+    assert.equal(reasons.filter((r) => r === 'priceStyle').length, 0);
+
+    // Panggilan setPriceStyle ke nilai baru ('bars') -> memancarkan 'priceStyle' sekali
+    controller.setPriceStyle('bars');
+    assert.equal(reasons.filter((r) => r === 'priceStyle').length, 1);
+
+    // Panggilan applyPriceScaleState identik dgn kondisi saat ini -> tidak memancarkan 'priceScale'
+    reasons.length = 0;
+    controller.applyPriceScaleState({ mode: 'price', log: false, invert: false, auto: true, manualScale: null });
+    assert.equal(reasons.length, 0, 'applyPriceScaleState no-op tidak boleh memancarkan event dirty');
+    controller.destroy();
+  });
+
+  it('9. R5: ChartSessionController.destroy() membatalkan timer aktif, waitlist applyPaneLayout, dan melepas listener workspace/chart', async () => {
+    const wsListeners = new Map<string, Set<(payload?: any) => void>>();
+    const chartListeners = new Map<string, Set<(payload?: any) => void>>();
+    let volSetInputsAfterDestroy = 0;
+    let isDestroyed = false;
+
+    const panesMap = new Map<string, any>([
+      ['price', { id: 'price', kind: 'price', order: 0, heightWeight: 3, collapsed: false }],
+    ]);
+    const volHandle = {
+      id: 'vol_native',
+      nativeType: 'volume',
+      title: 'Volume',
+      visible: true,
+      inputValues: () => ({ upColor: '#00ff00', downColor: '#ff0000', heightPct: 15 }),
+      setInputs: () => {
+        if (isDestroyed) volSetInputsAfterDestroy++;
+      },
+    };
+
+    const chart: any = {
+      renderer: {
+        scene: {
+          panes: panesMap,
+          orderedPanes: () => Array.from(panesMap.values()),
+        },
+        scheduler: { invalidate: () => {} },
+        setNativeData: () => {},
+        applyConfig: () => {},
+        getConfig: () => ({ series: { style: 'candles' }, priceScale: { mode: 'price' } }),
+      },
+      indicators: () => [volHandle],
+      panes: {
+        list: () => [{ id: 'price', kind: 'price', order: 0, collapsed: false, indicators: [] }],
+      },
+      on: (ev: string, cb: (payload?: any) => void) => {
+        if (!chartListeners.has(ev)) chartListeners.set(ev, new Set());
+        chartListeners.get(ev)!.add(cb);
+        return () => chartListeners.get(ev)?.delete(cb);
+      },
+      off: (ev: string, cb: (payload?: any) => void) => {
+        chartListeners.get(ev)?.delete(cb);
+      },
+    };
+    const cell = { id: 'c1', symbol: 'binance:BTCUSDT', timeframe: '15', chart };
+    const ws: any = {
+      cells: () => [cell],
+      cell: () => cell,
+      active: cell,
+      on: (ev: string, cb: (payload?: any) => void) => {
+        if (!wsListeners.has(ev)) wsListeners.set(ev, new Set());
+        wsListeners.get(ev)!.add(cb);
+        return () => wsListeners.get(ev)?.delete(cb);
+      },
+      off: (ev: string, cb: (payload?: any) => void) => {
+        wsListeners.get(ev)?.delete(cb);
+      },
+    };
+
+    const controller = new ChartSessionController();
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => ws });
+
+    assert.equal(wsListeners.get('cell:created')?.size ?? 0, 1);
+    assert.equal(wsListeners.get('cell:active')?.size ?? 0, 1);
+    assert.equal(wsListeners.get('state:changed')?.size ?? 0, 1);
+
+    // Jalankan applyPaneLayout dengan timeout panjang untuk study yang tidak pernah muncul
+    const startMs = Date.now();
+    const waitPromise = controller.applyPaneLayout(
+      [
+        { signature: 'price', weight: 3 },
+        { signature: 'RSI', weight: 1 },
+      ],
+      { timeoutMs: 2500 }
+    );
+
+    isDestroyed = true;
+    controller.destroy();
+
+    await waitPromise;
+    const elapsedMs = Date.now() - startMs;
+    assert.ok(elapsedMs < 300, `applyPaneLayout promise harus segera selesai saat destroy() (elapsed=${elapsedMs}ms)`);
+    assert.equal(wsListeners.get('cell:created')?.size ?? 0, 0, 'Listener cell:created harus dilepas saat destroy()');
+    assert.equal(wsListeners.get('cell:active')?.size ?? 0, 0, 'Listener cell:active harus dilepas saat destroy()');
+    assert.equal(wsListeners.get('state:changed')?.size ?? 0, 0, 'Listener state:changed harus dilepas saat destroy()');
+
+    // Tunggu melampaui timer 200ms attach() dan pastikan tidak ada callback berjalan pasca destroy
+    await new Promise((r) => setTimeout(r, 230));
+    assert.equal(volSetInputsAfterDestroy, 0, 'Timer attach 200ms tidak boleh mengeksekusi mutasi setelah destroy()');
   });
 });

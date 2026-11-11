@@ -19,6 +19,7 @@ import type {
   Timeframe,
   VisibleRangeSnapshot,
   SnapMode,
+  WorkspaceTrackSizes,
 } from '../types/market';
 import type { SavedThesisCardGeometry } from './chartDrawingController';
 import {
@@ -40,30 +41,31 @@ export interface PendingStorageAdapter {
 
 export interface WorkspaceChartPort {
   clearAllIndicators(): void;
-  addPineIndicator(source: string, title?: string, inputs?: any, props?: any): Promise<void>;
+  addPineIndicator(source: string, title?: string, inputs?: any, props?: any): Promise<void | boolean>;
   getActiveIndicators(): any[];
   toggleIndicatorVisibility(idOrTitle: string): void;
   setPriceStyle(style: string, cell?: any): void;
   getPriceStyle?(cell?: any): string;
   setBarSpacing(spacing: number, cell?: any): void;
   getBarSpacing?(cell?: any): number;
-  applyPriceScaleState(state: any, cell?: any): void;
+  applyPriceScaleState(state: any, cell?: any): void | boolean;
   getPriceScaleState?(cell?: any): any;
-  applyPaneWeights(weights: number[], cell?: any): void;
+  applyPaneWeights(weights: number[], cell?: any): void | boolean;
   getPaneWeights?(cell?: any): number[];
   getPaneLayout?(cell?: any): PaneLayoutEntry[];
   applyPaneLayout?(entries: PaneLayoutEntry[], options?: { timeoutMs?: number }, cell?: any): Promise<boolean>;
   getNativeIndicators?(cell?: any): NativeIndicatorSnapshot[];
   applyNativeIndicators?(entries: NativeIndicatorSnapshot[], cell?: any): Promise<void>;
   getCellsSnapshot?(): CellSnapshot[];
-  getTrackSizes?(): { cols?: number[]; rows?: number[] } | undefined;
-  getActiveCellIndex?(): number;
+  getTrackSizes?(): WorkspaceTrackSizes | undefined;
+  getActiveCellIndex?(): number | undefined;
   applyCellsSnapshot?(
     cells: CellSnapshot[],
     options?: {
-      trackSizes?: { cols?: number[]; rows?: number[] };
+      trackSizes?: WorkspaceTrackSizes;
       activeCellIndex?: number;
       layout?: string;
+      sharedIndicators?: SavedWorkspaceIndicator[];
     }
   ): Promise<void>;
   getVisibleRangeSnapshot?(cell?: any): VisibleRangeSnapshot | null;
@@ -83,7 +85,7 @@ export interface WorkspacePlanPort {
   getActivePlans(): any[];
   getAllActivePlans?(): any[];
   isThesisCardsVisible(): boolean;
-  getSnapshot?(): { snapMode?: SnapMode; stayMode?: boolean };
+  getSnapshot?(): { snapMode?: SnapMode; stayMode?: boolean } | undefined;
   setSnapMode?(mode: SnapMode): void;
   setStayMode?(stay: boolean): void;
   getThesisCardGeometries?(): Record<string, SavedThesisCardGeometry>;
@@ -118,6 +120,139 @@ export interface WorkspaceLoadResult {
   indicatorCount: number;
   indicatorTitles: string;
   error?: Error;
+}
+
+export interface RestoreWorkspaceChartAndPlansOptions {
+  workspace: SavedWorkspace;
+  chart: WorkspaceChartPort;
+  plan?: Partial<WorkspacePlanPort> | null;
+  onSyncIndicators?: () => void;
+  restoreCellDrawings?: boolean;
+  resetPlansWhenEmpty?: boolean;
+}
+
+/**
+ * Helper inti bersama untuk memulihkan visual sel, indikator Pine/native, tata letak pane,
+ * skala harga, rentang historis, serta rencana perdagangan & toolbar gambar (Single Source of Truth).
+ */
+export async function restoreWorkspaceChartAndPlans(
+  options: RestoreWorkspaceChartAndPlansOptions
+): Promise<void> {
+  const {
+    workspace: w,
+    chart,
+    plan,
+    onSyncIndicators,
+    restoreCellDrawings = true,
+    resetPlansWhenEmpty = true,
+  } = options;
+
+  const useMultiCellRestore =
+    Array.isArray(w.cells) &&
+    w.cells.length > 0 &&
+    typeof chart.applyCellsSnapshot === 'function' &&
+    (w.cells.length > 1 ||
+      w.trackSizes !== undefined ||
+      (w.activeCellIndex !== undefined && w.activeCellIndex > 0) ||
+      w.syncConfig?.indicators === false);
+
+  if (useMultiCellRestore) {
+    await chart.applyCellsSnapshot!(w.cells!, {
+      trackSizes: w.trackSizes,
+      activeCellIndex: w.activeCellIndex,
+      layout: w.layout,
+      sharedIndicators: w.indicators,
+    });
+    onSyncIndicators?.();
+  } else {
+    const primaryCellRendererConfig = w.cells?.[0]?.rendererConfig;
+    if (primaryCellRendererConfig && typeof chart.applyRendererConfig === 'function') {
+      chart.applyRendererConfig(primaryCellRendererConfig);
+    }
+
+    if (w.priceStyle) {
+      chart.setPriceStyle(w.priceStyle);
+    }
+
+    // Muat indikator Pine secara deterministik beserta inputs, props, dan status visible
+    if (Array.isArray(w.indicators) && w.indicators.length > 0) {
+      for (const ind of w.indicators) {
+        if (ind?.source || ind?.title) {
+          try {
+            await chart.addPineIndicator(ind.source || 'plot(close)', ind.title, ind.inputs, ind.props);
+            if (ind.visible === false && ind.title) {
+              const active = chart.getActiveIndicators();
+              const target = active.find((a: any) => a.title === ind.title);
+              if (target && target.visible) {
+                chart.toggleIndicatorVisibility(target.id || target.title);
+              } else if (!target) {
+                chart.toggleIndicatorVisibility(ind.title);
+              }
+            }
+          } catch (e) {
+            console.warn(`[WorkspaceLifecycle] Gagal memuat indikator ${ind.title}:`, e);
+          }
+        }
+      }
+    }
+
+    // Pulihkan konfigurasi indikator native (mis. tinggi & posisi pane Volume) sebelum tata letak pane diterapkan
+    if (Array.isArray(w.nativeIndicators) && w.nativeIndicators.length > 0 && typeof chart.applyNativeIndicators === 'function') {
+      try {
+        await chart.applyNativeIndicators(w.nativeIndicators);
+      } catch (e) {
+        console.warn('[WorkspaceLifecycle] Gagal memulihkan nativeIndicators:', e);
+      }
+    }
+
+    onSyncIndicators?.();
+
+    // Pulihkan tata letak pane terlebih dahulu, baru skala harga, barSpacing, dan visibleRange (Fase 5)
+    if (Array.isArray(w.paneLayout) && w.paneLayout.length > 0 && typeof chart.applyPaneLayout === 'function') {
+      await chart.applyPaneLayout(w.paneLayout, { timeoutMs: 3000 });
+    } else if (Array.isArray(w.paneWeights) && w.paneWeights.length > 0) {
+      chart.applyPaneWeights(w.paneWeights);
+    }
+
+    if (w.priceScaleState) {
+      chart.applyPriceScaleState(w.priceScaleState);
+    }
+    if (w.barSpacing) {
+      chart.setBarSpacing(w.barSpacing);
+    }
+
+    if (w.visibleRange && typeof chart.applyVisibleRange === 'function') {
+      chart.applyVisibleRange(w.visibleRange);
+    }
+  }
+
+  let hasRestoredCellDrawings = false;
+  if (restoreCellDrawings && typeof plan?.restoreAllCellDrawings === 'function') {
+    await plan.restoreAllCellDrawings(w.id);
+    hasRestoredCellDrawings = true;
+  }
+
+  if (Array.isArray(w.activePlans) && w.activePlans.length > 0) {
+    plan?.restorePlans?.(w.activePlans, w.showThesisCards ?? true);
+  } else if (resetPlansWhenEmpty && !hasRestoredCellDrawings) {
+    if (typeof plan?.resetInMemoryPlanState === 'function') {
+      plan.resetInMemoryPlanState();
+    } else {
+      plan?.clearAllPlans?.();
+    }
+  }
+
+  if (w.thesisCardGeometry || resetPlansWhenEmpty) {
+    plan?.restoreThesisCardGeometries?.(w.thesisCardGeometry || {});
+  }
+  if (w.drawingToolbar) {
+    if (w.drawingToolbar.snapMode && typeof plan?.setSnapMode === 'function') {
+      plan.setSnapMode(w.drawingToolbar.snapMode);
+    }
+    if (typeof w.drawingToolbar.stayMode === 'boolean' && typeof plan?.setStayMode === 'function') {
+      plan.setStayMode(w.drawingToolbar.stayMode);
+    }
+  }
 }
 
 /**
@@ -185,160 +320,72 @@ export async function executeWorkspaceLoadPipeline(
     // 4. Tahap 2 Clean-slate (Double-barrier): Pastikan chart benar-benar bersih sebelum memuat indikator baru
     chart.clearAllIndicators();
 
-    const useMultiCellRestore =
-      Array.isArray(w.cells) &&
-      w.cells.length > 0 &&
-      typeof chart.applyCellsSnapshot === 'function' &&
-      (w.cells.length > 1 ||
-        w.trackSizes !== undefined ||
-        (w.activeCellIndex !== undefined && w.activeCellIndex > 0) ||
-        w.syncConfig?.indicators === false);
+    // 5-8. Pulihkan konten grafik per sel, indikator, tata letak pane, viewport, plans, dan toolbar secara terpusat
+    await restoreWorkspaceChartAndPlans({
+      workspace: w,
+      chart,
+      plan,
+      onSyncIndicators,
+      restoreCellDrawings: true,
+      resetPlansWhenEmpty: true,
+    });
 
-    if (useMultiCellRestore) {
-      // 5-7 (Multi-cell Hybrid): Pulihkan seluruh state per-sel, trackSizes, activeCellIndex, indikator, nativeIndicators, dan paneLayout
-      await chart.applyCellsSnapshot!(w.cells!, {
-        trackSizes: w.trackSizes,
-        activeCellIndex: w.activeCellIndex,
-        layout: w.layout,
-      });
-      onSyncIndicators();
-    } else {
-      // 5. Muat indikator dari workspace secara deterministik dengan inputs & props lengkap
-      if (Array.isArray(w.indicators) && w.indicators.length > 0) {
-        for (const ind of w.indicators) {
-          if (ind?.source) {
-            try {
-              await chart.addPineIndicator(ind.source, ind.title, ind.inputs, ind.props);
-              if (ind.visible === false && ind.title) {
-                const active = chart.getActiveIndicators();
-                const target = active.find((a: any) => a.title === ind.title);
-                if (target && target.visible) {
-                  chart.toggleIndicatorVisibility(target.id || target.title);
+    // 9. Hitung fingerprint komprehensif melalui Single Source of Truth `buildWorkspaceSnapshotPayload` agar identik dgn auto-save guard
+    const step9ChartPort: Partial<WorkspaceChartPort> = {
+      getActiveIndicators: () => chart.getActiveIndicators(),
+      getPaneWeights: () => (typeof chart.getPaneWeights === 'function' ? chart.getPaneWeights() : (w.paneWeights ?? [])),
+      getPaneLayout: () => (typeof chart.getPaneLayout === 'function' ? chart.getPaneLayout() : (w.paneLayout ?? [])),
+      getNativeIndicators: () => (typeof chart.getNativeIndicators === 'function' ? chart.getNativeIndicators() : (w.nativeIndicators ?? [])),
+      getPriceScaleState: () => (typeof chart.getPriceScaleState === 'function' ? chart.getPriceScaleState() : (w.priceScaleState ?? null)),
+      getPriceStyle: () => (typeof chart.getPriceStyle === 'function' ? chart.getPriceStyle() : (w.priceStyle ?? 'candles')),
+      getBarSpacing: () => (typeof chart.getBarSpacing === 'function' ? chart.getBarSpacing() : (w.barSpacing ?? 8)),
+      getCellsSnapshot: () => {
+        const liveCells = typeof chart.getCellsSnapshot === 'function' ? chart.getCellsSnapshot() : undefined;
+        return liveCells && liveCells.length > 0 ? liveCells : (w.cells ?? []);
+      },
+      getTrackSizes: () => (typeof chart.getTrackSizes === 'function' ? chart.getTrackSizes() : w.trackSizes),
+      getActiveCellIndex: () => (typeof chart.getActiveCellIndex === 'function' ? chart.getActiveCellIndex() : w.activeCellIndex),
+      getVisibleRangeSnapshot: () =>
+        typeof chart.getVisibleRangeSnapshot === 'function'
+          ? (chart.getVisibleRangeSnapshot() ?? (w.visibleRange ?? null))
+          : (w.visibleRange ?? null),
+    };
+
+    const step9PlanPort: Partial<WorkspacePlanPort> = {
+      getActivePlans: () => plan.getActivePlans(),
+      ...(typeof plan.getAllActivePlans === 'function'
+        ? { getAllActivePlans: () => plan.getAllActivePlans!() }
+        : {}),
+      isThesisCardsVisible: () => plan.isThesisCardsVisible(),
+      getThesisCardGeometries: () =>
+        typeof plan.getThesisCardGeometries === 'function'
+          ? plan.getThesisCardGeometries()
+          : (w.thesisCardGeometry || {}),
+      getSnapshot: () =>
+        typeof plan.getSnapshot === 'function'
+          ? plan.getSnapshot()
+          : (w.drawingToolbar
+              ? {
+                  snapMode: w.drawingToolbar.snapMode,
+                  stayMode: w.drawingToolbar.stayMode,
                 }
-              }
-            } catch (e) {
-              console.warn(`[WorkspaceLifecycle] Gagal memuat indikator ${ind.title}:`, e);
-            }
-          }
-        }
-      }
+              : undefined),
+    };
 
-      // 5b. Pulihkan konfigurasi indikator native (mis. tinggi & posisi pane Volume) sebelum tata letak pane diterapkan
-      if (Array.isArray(w.nativeIndicators) && w.nativeIndicators.length > 0 && typeof chart.applyNativeIndicators === 'function') {
-        try {
-          await chart.applyNativeIndicators(w.nativeIndicators);
-        } catch (e) {
-          console.warn('[WorkspaceLifecycle] Gagal memulihkan nativeIndicators:', e);
-        }
-      }
-
-      // 6. Sinkronkan state indikator akhir ke UI
-      onSyncIndicators();
-
-      // 7. Pulihkan skala lilin, zoom barSpacing, skala harga, dan tata letak/bobot pane
-      if (w.priceStyle) {
-        chart.setPriceStyle(w.priceStyle);
-      }
-      if (w.barSpacing) {
-        chart.setBarSpacing(w.barSpacing);
-      }
-      if (w.priceScaleState) {
-        chart.applyPriceScaleState(w.priceScaleState);
-      }
-      if (Array.isArray(w.paneLayout) && w.paneLayout.length > 0 && typeof chart.applyPaneLayout === 'function') {
-        await chart.applyPaneLayout(w.paneLayout, { timeoutMs: 3000 });
-      } else if (Array.isArray(w.paneWeights) && w.paneWeights.length > 0) {
-        chart.applyPaneWeights(w.paneWeights);
-      }
-
-      const primaryCellRendererConfig = w.cells?.[0]?.rendererConfig;
-      if (primaryCellRendererConfig && typeof chart.applyRendererConfig === 'function') {
-        chart.applyRendererConfig(primaryCellRendererConfig);
-      }
-
-      if (w.visibleRange && typeof chart.applyVisibleRange === 'function') {
-        chart.applyVisibleRange(w.visibleRange);
-      }
-    }
-
-    // 8. Pulihkan gambar per-sel serta rencana perdagangan dan kartu tesis aktif (#116)
-    let hasRestoredCellDrawings = false;
-    if (typeof plan.restoreAllCellDrawings === 'function') {
-      await plan.restoreAllCellDrawings(w.id);
-      hasRestoredCellDrawings = true;
-    }
-
-    if (Array.isArray(w.activePlans) && w.activePlans.length > 0) {
-      plan.restorePlans(w.activePlans, w.showThesisCards ?? true);
-    } else if (!hasRestoredCellDrawings) {
-      if (typeof plan.resetInMemoryPlanState === 'function') {
-        plan.resetInMemoryPlanState();
-      } else {
-        plan.clearAllPlans();
-      }
-    }
-
-    // 8b. Pulihkan geometri kartu tesis & status drawing toolbar (Magnet Snap & Stay Mode)
-    plan.restoreThesisCardGeometries?.(w.thesisCardGeometry || {});
-    if (w.drawingToolbar) {
-      if (w.drawingToolbar.snapMode && typeof plan.setSnapMode === 'function') {
-        plan.setSnapMode(w.drawingToolbar.snapMode);
-      }
-      if (typeof w.drawingToolbar.stayMode === 'boolean' && typeof plan.setStayMode === 'function') {
-        plan.setStayMode(w.drawingToolbar.stayMode);
-      }
-    }
-
-    // 9. Hitung fingerprint komprehensif untuk auto-save guard
-    const latestIndicators = chart.getActiveIndicators();
-    const liveCells = typeof chart.getCellsSnapshot === 'function' ? chart.getCellsSnapshot() : undefined;
-    const liveTrackSizes = typeof chart.getTrackSizes === 'function' ? chart.getTrackSizes() : undefined;
-    const liveActiveCellIndex = typeof chart.getActiveCellIndex === 'function' ? chart.getActiveCellIndex() : undefined;
-    const liveVisibleRange =
-      typeof chart.getVisibleRangeSnapshot === 'function'
-        ? (w.visibleRange !== undefined ? (chart.getVisibleRangeSnapshot() ?? w.visibleRange) : chart.getVisibleRangeSnapshot())
-        : w.visibleRange;
-    const rawThesisGeoms =
-      typeof plan.getThesisCardGeometries === 'function'
-        ? plan.getThesisCardGeometries()
-        : w.thesisCardGeometry;
-    const liveThesisGeoms =
-      rawThesisGeoms && Object.keys(rawThesisGeoms).length > 0 ? rawThesisGeoms : undefined;
-    const livePlanSnap = typeof plan.getSnapshot === 'function' ? plan.getSnapshot() : undefined;
-    const liveDrawingToolbar = livePlanSnap
-      ? {
-          snapMode: livePlanSnap.snapMode ?? 'off',
-          stayMode: Boolean(livePlanSnap.stayMode),
-        }
-      : w.drawingToolbar;
-    const plansForFingerprint =
-      typeof plan.getAllActivePlans === 'function' ? plan.getAllActivePlans() : plan.getActivePlans();
-    const fingerprint = computeWorkspaceFingerprint({
+    const step9Snapshot = buildWorkspaceSnapshotPayload({
       id: w.id || w.name,
       name: w.name,
       symbol: w.symbol,
       timeframe: w.timeframe,
       layout: w.layout,
       providerId: w.providerId || activeProviderId,
-      indicators: latestIndicators.length > 0 ? latestIndicators : w.indicators || [],
-      paneWeights: w.paneWeights,
-      paneLayout: w.paneLayout,
-      nativeIndicators: w.nativeIndicators,
-      priceScaleState: w.priceScaleState,
-      priceStyle: w.priceStyle,
-      barSpacing: w.barSpacing,
-      visibleRange: liveVisibleRange,
       showVolume: w.showVolume,
-      activeRightDockPanel: w.activeRightDockPanel,
       syncConfig: w.syncConfig,
-      cells: liveCells && liveCells.length > 0 ? liveCells : w.cells,
-      trackSizes: liveTrackSizes ?? w.trackSizes,
-      activeCellIndex: liveActiveCellIndex !== undefined ? liveActiveCellIndex : w.activeCellIndex,
-      activePlans: plansForFingerprint,
-      showThesisCards: plan.isThesisCardsVisible(),
-      thesisCardGeometry: liveThesisGeoms,
-      drawingToolbar: liveDrawingToolbar,
+      chart: step9ChartPort,
+      plan: step9PlanPort,
+      activeRightDockPanel: w.activeRightDockPanel,
     });
+    const fingerprint = computeWorkspaceFingerprint(step9Snapshot as WorkspaceFingerprintInput);
 
     const indCount = w.indicators?.length || 0;
     const indTitles = w.indicators && w.indicators.length > 0
@@ -584,7 +631,7 @@ export function buildWorkspaceSnapshotPayload(
     barSpacing: chart?.getBarSpacing?.() ?? 8,
     ...(visibleRange !== undefined && visibleRange !== null ? { visibleRange } : {}),
     showVolume: showVolume ?? true,
-    activeRightDockPanel: activeRightDockPanel !== undefined ? activeRightDockPanel : undefined,
+    ...(activeRightDockPanel !== undefined ? { activeRightDockPanel } : {}),
     syncConfig: syncConfig ? { ...syncConfig } : undefined,
     ...(cells && cells.length > 0 ? { cells } : {}),
     ...(trackSizes ? { trackSizes } : {}),
@@ -753,4 +800,63 @@ export async function executeExitFlush(
   }
 
   return { pendingWritten, flushed };
+}
+
+export interface CloseRequestedEventLike {
+  preventDefault(): void;
+}
+
+export interface WindowCloseHandleLike {
+  destroy?: () => Promise<void>;
+  close?: () => Promise<void>;
+}
+
+export interface HandleWindowCloseRequestOptions {
+  event: CloseRequestedEventLike;
+  appWindow: WindowCloseHandleLike;
+  flush: () => Promise<unknown>;
+  timeoutMs?: number;
+  state: { isClosing: boolean };
+  onBeforeFlush?: () => void;
+}
+
+/**
+ * Mengoordinasikan event `closeRequested` Tauri secara deterministik:
+ * menahan penutupan jendela dengan `event.preventDefault()` secara sinkron,
+ * menjalankan flush (dibatasi timeout agar app tak macet), lalu menutup paksa via `destroy()`.
+ */
+export async function handleWindowCloseRequest(
+  options: HandleWindowCloseRequestOptions
+): Promise<void> {
+  const { event, appWindow, flush, timeoutMs = 1500, state, onBeforeFlush } = options;
+
+  // Langkah sinkron pertama sebelum await agar WebView/Tauri tidak menutup sebelum flush selesai
+  event.preventDefault();
+
+  if (state.isClosing) {
+    return;
+  }
+  state.isClosing = true;
+  onBeforeFlush?.();
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    await Promise.race([
+      Promise.resolve().then(() => flush()),
+      new Promise<void>((resolve) => {
+        timeoutHandle = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  } catch (_) {
+    // Tetap lanjutkan penutupan jendela meski flush gagal atau timeout
+  } finally {
+    if (timeoutHandle !== null) {
+      clearTimeout(timeoutHandle);
+    }
+    if (typeof appWindow.destroy === 'function') {
+      await appWindow.destroy().catch(() => {});
+    } else if (typeof appWindow.close === 'function') {
+      await appWindow.close().catch(() => {});
+    }
+  }
 }

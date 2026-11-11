@@ -114,4 +114,30 @@ describe('Fase 1: Skema SavedWorkspace v2 & Migrasi Backward-Compatible', () => 
     assert.equal(loaded[0].paneLayout?.[1].signature, 'Stoch');
     assert.equal(loaded[0].paneLayout?.[1].weight, 1);
   });
+
+  it('5. normalizeWorkspace: menyalin root indicators ke cells[0] saat syncConfig.indicators === false dan menghindarinya saat synced', () => {
+    const legacyPerCellV1: any = {
+      id: 'ws_v1_ind_false',
+      name: 'Per-Cell v1',
+      symbol: 'ETHUSDT',
+      timeframe: '1h',
+      layout: '1',
+      providerId: 'binance',
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: false },
+      indicators: [{ title: 'RSI', source: 'plot(rsi)', visible: true }],
+      timestamp: 1700000000000,
+    };
+
+    const normalizedPerCell = normalizeWorkspace(legacyPerCellV1);
+    assert.equal(normalizedPerCell.cells?.[0]?.indicators?.length, 1);
+    assert.equal(normalizedPerCell.cells?.[0]?.indicators?.[0]?.title, 'RSI');
+
+    // Jika syncConfig.indicators aktif (true/default), cells[0].indicators tidak diduplikasi dari root
+    const syncedDoc = normalizeWorkspace({
+      ...legacyPerCellV1,
+      id: 'ws_v1_ind_true',
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
+    });
+    assert.equal(syncedDoc.cells?.[0]?.indicators, undefined);
+  });
 });

@@ -9,18 +9,7 @@ import {
 } from '../src/lib/services/workspaceLifecycle';
 import { storage } from '../src/lib/services/persistence';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
-
-function createMockContainer() {
-  return {
-    nodeType: 1,
-    tagName: 'DIV',
-    clientWidth: 1200,
-    clientHeight: 800,
-    style: { setProperty: () => {} },
-    children: [],
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1200, height: 800 }),
-  } as any;
-}
+import { createMockChartContainer } from './helpers/mockChartContainer';
 
 function createFakeMultiCellVelaWorkspace(initialLayout: string = '4') {
   const wsListeners = new Map<string, Set<(payload?: any) => void>>();
@@ -383,7 +372,7 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
       providerId: 'bitunix',
       syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: false },
     });
-    controller.attach(createMockContainer(), { workspaceFactory: () => mock.ws });
+    controller.attach(createMockChartContainer(1200, 800), { workspaceFactory: () => mock.ws });
 
     const trackSizes = controller.getTrackSizes();
     assert.deepEqual(trackSizes, { cols: [1.3, 0.7], rows: [0.8, 1.2] });
@@ -434,7 +423,7 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
       layout: '1',
       onPersistableStateChange: (r) => reasons.push(r),
     });
-    controller.attach(createMockContainer(), { workspaceFactory: () => mock.ws });
+    controller.attach(createMockChartContainer(1200, 800), { workspaceFactory: () => mock.ws });
     reasons.length = 0;
 
     // Pasang indikator di cell 0 sebelum restore
@@ -466,7 +455,7 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
       providerId: 'binance',
       syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: false },
     });
-    controller.attach(createMockContainer(), { workspaceFactory: () => cleanMock.ws });
+    controller.attach(createMockChartContainer(1200, 800), { workspaceFactory: () => cleanMock.ws });
 
     const planPort: WorkspacePlanPort = {
       setWorkspaceId: () => {},
@@ -672,5 +661,239 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
       drawingCtrl.getSnapshot().activeDrawings.map((d: any) => d.id),
       ['d_eth']
     );
+  });
+
+  it('5. R3: Urutan restorasi applyCellsSnapshot sesuai Fase 5, getCellsSnapshot menyembunyikan cells[].indicators saat synced, & multi-cell memulihkan sharedIndicators', async () => {
+    const syncedMock = createFakeMultiCellVelaWorkspace('2v');
+    syncedMock.ws.setLayout('2v');
+    const [c1, c2] = syncedMock.ws.cells();
+    c1.setSymbol('binance:BTCUSDT');
+    c2.setSymbol('binance:ETHUSDT');
+
+    // Pasang indikator dan cek getCellsSnapshot dengan syncConfig.indicators = true (default)
+    const syncedCtrl = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      layout: '2v',
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
+    });
+    syncedCtrl.attach(createMockChartContainer(1200, 800), { workspaceFactory: () => syncedMock.ws });
+    await syncedCtrl.addPineIndicator('plot(close)', 'SharedEMA');
+
+    const syncedCellsSnap = syncedCtrl.getCellsSnapshot();
+    assert.equal(syncedCellsSnap.length, 2);
+    assert.equal(
+      syncedCellsSnap[0].indicators,
+      undefined,
+      'Saat syncConfig.indicators aktif, cells[].indicators tidak boleh menduplikasi Pine source'
+    );
+    assert.equal(syncedCellsSnap[1].indicators, undefined);
+
+    // Uji restorasi multi-cell dengan syncConfig.indicators = true & sharedIndicators pada root
+    const targetMock = createFakeMultiCellVelaWorkspace('1');
+    const eventOrder: string[] = [];
+    const targetCtrl = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      layout: '1',
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
+    });
+    targetCtrl.attach(createMockChartContainer(1200, 800), { workspaceFactory: () => targetMock.ws });
+
+    // Instrumentasi metode untuk memverifikasi urutan tepat Fase 5 pada applyCellsSnapshot
+    const origAddPine = targetCtrl.addPineIndicatorToCell.bind(targetCtrl);
+    const origApplyNative = targetCtrl.applyNativeIndicators.bind(targetCtrl);
+    const origApplyPane = targetCtrl.applyPaneLayout.bind(targetCtrl);
+    const origApplyScale = targetCtrl.applyPriceScaleState.bind(targetCtrl);
+    const origSetSpacing = targetCtrl.setBarSpacing.bind(targetCtrl);
+    const origApplyVr = targetCtrl.applyVisibleRange.bind(targetCtrl);
+
+    (targetCtrl as any).addPineIndicatorToCell = async (...args: any[]) => {
+      eventOrder.push('pine');
+      return origAddPine(...(args as [any, any, any, any, any, any]));
+    };
+    (targetCtrl as any).applyNativeIndicators = async (...args: any[]) => {
+      eventOrder.push('native');
+      return origApplyNative(...(args as [any, any]));
+    };
+    (targetCtrl as any).applyPaneLayout = async (...args: any[]) => {
+      eventOrder.push('paneLayout');
+      return origApplyPane(...(args as [any, any, any]));
+    };
+    (targetCtrl as any).applyPriceScaleState = (...args: any[]) => {
+      eventOrder.push('priceScale');
+      return origApplyScale(...(args as [any, any]));
+    };
+    (targetCtrl as any).setBarSpacing = (...args: any[]) => {
+      eventOrder.push('barSpacing');
+      return origSetSpacing(...(args as [any, any]));
+    };
+    (targetCtrl as any).applyVisibleRange = (...args: any[]) => {
+      eventOrder.push('visibleRange');
+      return origApplyVr(...(args as [any, any]));
+    };
+
+    const planPort: WorkspacePlanPort = {
+      setWorkspaceId: () => {},
+      clearAllPlans: () => {},
+      resetInMemoryPlanState: () => {},
+      restorePlans: () => {},
+      getActivePlans: () => [],
+      getAllActivePlans: () => [],
+      isThesisCardsVisible: () => true,
+    };
+
+    await executeWorkspaceLoadPipeline({
+      workspace: {
+        id: 'ws-synced-order',
+        name: 'Synced 2v',
+        schemaVersion: 2,
+        symbol: 'BTCUSDT',
+        timeframe: '15m',
+        layout: '2v',
+        providerId: 'binance',
+        syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
+        indicators: [{ title: 'SharedEMA', source: 'indicator("SharedEMA")\nplot(close)', visible: true }],
+        cells: [
+          {
+            symbol: 'BTCUSDT',
+            timeframe: '15m',
+            providerId: 'binance',
+            priceStyle: 'candles',
+            barSpacing: 12,
+            priceScaleState: { mode: 'log', log: true, invert: false, auto: true, manualScale: null },
+            nativeIndicators: [{ type: 'volume', inputs: { heightPct: 10 }, visible: true, placement: 'overlay' }],
+            paneLayout: [{ signature: 'price', weight: 3.5 }],
+            visibleRange: { from: 100, to: 200 },
+          },
+          {
+            symbol: 'ETHUSDT',
+            timeframe: '1h',
+            providerId: 'binance',
+            priceStyle: 'bars',
+            barSpacing: 9,
+            priceScaleState: { mode: 'price', log: false, invert: false, auto: true, manualScale: null },
+            nativeIndicators: [{ type: 'volume', inputs: { heightPct: 14 }, visible: true, placement: 'own-pane' }],
+            paneLayout: [{ signature: 'price', weight: 3.0 }],
+            visibleRange: { from: 150, to: 250 },
+          },
+        ],
+        timestamp: Date.now(),
+      },
+      chart: targetCtrl as any,
+      plan: planPort,
+      activeProviderId: 'binance',
+      onProviderChange: async () => {},
+      onSymbolChange: async () => {},
+      onTimeframeChange: () => {},
+      onLayoutChange: (l) => targetCtrl.setLayout(l),
+      onSyncConfigChange: (cfg) => targetCtrl.syncLayout(cfg),
+      onSyncIndicators: () => {},
+    });
+
+    // Kedua sel memulihkan SharedEMA dari root indicators
+    const finalCells = targetCtrl.getAllCells();
+    assert.deepEqual(
+      finalCells[0].chart.indicators().filter((i: any) => i.nativeType !== 'volume').map((i: any) => i.title),
+      ['SharedEMA']
+    );
+    assert.deepEqual(
+      finalCells[1].chart.indicators().filter((i: any) => i.nativeType !== 'volume').map((i: any) => i.title),
+      ['SharedEMA']
+    );
+
+    // Urutan per sel pertama wajib: pine -> native -> paneLayout -> priceScale -> barSpacing -> visibleRange
+    const firstCellSlice = eventOrder.slice(0, 6);
+    assert.deepEqual(
+      firstCellSlice,
+      ['pine', 'native', 'paneLayout', 'priceScale', 'barSpacing', 'visibleRange'],
+      `Urutan restorasi sel wajib mengikuti Fase 5, actual=${firstCellSlice.join('->')}`
+    );
+
+    syncedCtrl.destroy();
+    targetCtrl.destroy();
+  });
+
+  it('6. R4: perpindahan cell:active langsung mem-flush drawing sel sebelumnya dengan kunci sel lama sebelum beralih', async () => {
+    const adapter = new InMemoryLocalStorageAdapter();
+    const savedCalls: Array<{ symbol: string; tf: string; json: string }> = [];
+    const origSave = adapter.saveDrawings.bind(adapter);
+    adapter.saveDrawings = async (symbol: string, tf: string, data: string) => {
+      savedCalls.push({ symbol, tf, json: data });
+      return origSave(symbol, tf, data);
+    };
+    storage.setAdapter(adapter);
+
+    const mock = createFakeMultiCellVelaWorkspace('2v');
+    mock.ws.setLayout('2v');
+    const cells = mock.ws.cells();
+    cells[0].setSymbol('binance:BTCUSDT');
+    cells[1].setSymbol('binance:ETHUSDT');
+    mock.ws.setActiveCell('c1');
+
+    const drawingCtrl = new ChartDrawingController();
+    drawingCtrl.setWorkspaceId('ws-switch');
+    drawingCtrl.attachWorkspace(
+      mock.ws,
+      () => {
+        const sym = mock.ws.active?.symbol || 'BTCUSDT';
+        return sym.includes(':') ? sym.split(':')[1] : sym;
+      },
+      () => '15m',
+      () => {
+        const sym = mock.ws.active?.symbol || 'binance:BTCUSDT';
+        return sym.includes(':') ? sym.split(':')[0] : 'binance';
+      },
+      () => 'ws-switch'
+    );
+
+    // Simulasi user menggambar di c1 (BTCUSDT) lalu langsung klik pindah ke c2 (ETHUSDT) sebelum debounce 400ms
+    cells[0].chart.drawings.fromJSON({
+      version: 1,
+      drawings: [{ id: 'd_btc_unsaved', type: 'trendline' }],
+    });
+    mock.ws.setActiveCell('c2');
+
+    // Tunggu microtask flush asinkron
+    await new Promise((r) => setTimeout(r, 15));
+
+    const btcFlush = savedCalls.find((c) => c.symbol === 'ws-switch:binance:BTCUSDT');
+    assert.ok(btcFlush, 'Drawing sel c1 wajib langsung di-flush ke kunci BTCUSDT saat pindah ke c2');
+    assert.ok(
+      JSON.parse(btcFlush!.json).drawings.some((d: any) => d.id === 'd_btc_unsaved'),
+      'Payload flush wajib memuat d_btc_unsaved milik sel c1'
+    );
+    const leakedToEth = savedCalls.find(
+      (c) => c.symbol === 'ws-switch:binance:ETHUSDT' && c.json.includes('d_btc_unsaved')
+    );
+    assert.equal(leakedToEth, undefined, 'Drawing sel lama tidak boleh tertulis ke kunci sel baru');
+  });
+
+  it('7. R5: ChartDrawingController.attachWorkspace() cleanup melepas listener workspace.on (cell:created & cell:active)', () => {
+    const wsListeners = new Map<string, Set<(payload?: any) => void>>();
+    const chart: any = {
+      drawings: { all: () => [], toJSON: () => ({ version: 1, drawings: [] }) },
+      on: () => () => {},
+    };
+    const cell = { id: 'c1', symbol: 'binance:BTCUSDT', timeframe: '15', chart };
+    const ws: any = {
+      active: cell,
+      cells: () => [cell],
+      cell: () => cell,
+      on: (ev: string, cb: (payload?: any) => void) => {
+        if (!wsListeners.has(ev)) wsListeners.set(ev, new Set());
+        wsListeners.get(ev)!.add(cb);
+        return () => wsListeners.get(ev)?.delete(cb);
+      },
+    };
+
+    const drawingCtrl = new ChartDrawingController();
+    const detach = drawingCtrl.attachWorkspace(ws, () => 'BTCUSDT', () => '15m', () => 'binance');
+    assert.equal(wsListeners.get('cell:created')?.size ?? 0, 1);
+    assert.equal(wsListeners.get('cell:active')?.size ?? 0, 1);
+
+    detach();
+    assert.equal(wsListeners.get('cell:created')?.size ?? 0, 0, 'cell:created harus dilepas oleh detach()');
+    assert.equal(wsListeners.get('cell:active')?.size ?? 0, 0, 'cell:active harus dilepas oleh detach()');
   });
 });

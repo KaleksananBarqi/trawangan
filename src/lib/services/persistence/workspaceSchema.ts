@@ -92,6 +92,7 @@ export function normalizeWorkspace(raw: any): SavedWorkspace {
     ...(paneLayout ? { paneLayout } : {}),
     ...(Array.isArray(base.nativeIndicators) ? { nativeIndicators: base.nativeIndicators } : {}),
     ...(base.visibleRange !== undefined ? { visibleRange: base.visibleRange } : {}),
+    ...(indicators.length > 0 && base.syncConfig?.indicators === false ? { indicators } : {}),
   };
 
   let cells: CellSnapshot[];

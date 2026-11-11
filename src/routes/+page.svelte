@@ -56,6 +56,7 @@
     WorkspaceAutoSaveCoordinator,
     buildWorkspaceSnapshotPayload,
     executeExitFlush,
+    handleWindowCloseRequest,
     resolvePendingWorkspaceOverride,
     clearPendingWorkspaceBackup,
   } from '../lib/services/workspaceLifecycle';
@@ -223,6 +224,41 @@
   let unsubShell: (() => void) | null = null;
   let unsubAlertsList: (() => void) | null = null;
   let unsubWatchlistRegistry: (() => void) | null = null;
+  const pageManagedTimers = new Set<ReturnType<typeof setTimeout>>();
+  let resizeDispatchTimer: ReturnType<typeof setTimeout> | null = null;
+  let isPageDestroyed = false;
+
+  function schedulePageTimeout(fn: () => void, delayMs: number): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(() => {
+      pageManagedTimers.delete(timer);
+      if (isPageDestroyed) return;
+      fn();
+    }, delayMs);
+    pageManagedTimers.add(timer);
+    return timer;
+  }
+
+  function scheduleResizeDispatch(delayMs = 40) {
+    if (resizeDispatchTimer) {
+      clearTimeout(resizeDispatchTimer);
+      pageManagedTimers.delete(resizeDispatchTimer);
+    }
+    resizeDispatchTimer = schedulePageTimeout(() => {
+      resizeDispatchTimer = null;
+      window.dispatchEvent(new Event('resize'));
+    }, delayMs);
+  }
+
+  function clearPageManagedTimers() {
+    if (resizeDispatchTimer) {
+      clearTimeout(resizeDispatchTimer);
+      resizeDispatchTimer = null;
+    }
+    for (const timer of pageManagedTimers) {
+      clearTimeout(timer);
+    }
+    pageManagedTimers.clear();
+  }
 
   // Price Alerts Modals & Toast State
   let isCreateAlertModalOpen = $state(false);
@@ -265,9 +301,7 @@
     };
     workspaceShellService.openRightDockTab('plan');
     if (wasPine) {
-      setTimeout(() => {
-        window.dispatchEvent(new Event('resize'));
-      }, 40);
+      scheduleResizeDispatch(40);
     }
   }
 
@@ -423,13 +457,15 @@
   });
 
   onMount(() => {
+    let isPageActive = true;
+
     unsubReplay = replaySession.subscribe((snap) => {
       replaySnapshot = snap;
     });
 
     unsubShell = workspaceShellService.subscribe((s) => {
       shellState = s;
-      setTimeout(() => window.dispatchEvent(new Event('resize')), 40);
+      scheduleResizeDispatch(40);
     });
 
     unsubAlertsList = alertService.subscribe((list) => {
@@ -485,7 +521,8 @@
                 } catch (_) {}
               }
               // Beri jeda singkat agar WebGL container mount sempurna sebelum inject layout & indikator
-              setTimeout(() => {
+              schedulePageTimeout(() => {
+                if (!isPageActive) return;
                 handleLoadWorkspace(recoveredWs).catch((err) => {
                   console.warn('[Startup] Gagal auto-load workspace terakhir:', err);
                 });
@@ -512,7 +549,8 @@
     });
 
     // Pengecekan pembaruan otomatis di latar belakang (silent check)
-    setTimeout(() => {
+    schedulePageTimeout(() => {
+      if (!isPageActive) return;
       updateService.checkForUpdates(true);
     }, 3000);
 
@@ -534,19 +572,29 @@
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     let unlistenCloseRequested: (() => void) | null = null;
+    const closeRequestState = { isClosing: false };
     import('@tauri-apps/api/window')
       .then(({ getCurrentWindow }) => {
-        getCurrentWindow()
-          .onCloseRequested(async () => {
-            isClosingApp = true;
-            try {
-              await Promise.race([
-                runExitFlush(),
-                new Promise((resolve) => setTimeout(resolve, 1500)),
-              ]);
-            } catch (_) {}
+        if (!isPageActive) return;
+        const appWindow = getCurrentWindow();
+        appWindow
+          .onCloseRequested(async (event) => {
+            await handleWindowCloseRequest({
+              event,
+              appWindow,
+              flush: runExitFlush,
+              timeoutMs: 1500,
+              state: closeRequestState,
+              onBeforeFlush: () => {
+                isClosingApp = true;
+              },
+            });
           })
           .then((unsub) => {
+            if (!isPageActive) {
+              unsub();
+              return;
+            }
             unlistenCloseRequested = unsub;
           })
           .catch(() => {});
@@ -557,7 +605,8 @@
     unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
       triggeredAlertsToasts = [alert, ...triggeredAlertsToasts.slice(0, 3)];
       addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di $${actualPrice}`, 'warn');
-      setTimeout(() => {
+      schedulePageTimeout(() => {
+        if (!isPageActive) return;
         handleDismissAlertToast(alert.id);
       }, 12000);
     });
@@ -791,6 +840,7 @@
     let unlistenDeepLink: (() => void) | null = null;
     import('@tauri-apps/api/event')
       .then(({ listen }) => {
+        if (!isPageActive) return;
         listen<string>('deep-link-received', (event) => {
           if (event.payload) {
             const target = parseExternalChartUrl(event.payload);
@@ -804,6 +854,10 @@
           }
         })
           .then((unsub) => {
+            if (!isPageActive) {
+              unsub();
+              return;
+            }
             unlistenDeepLink = unsub;
           })
           .catch(() => {});
@@ -834,6 +888,8 @@
     }
 
     return () => {
+      isPageActive = false;
+      clearPageManagedTimers();
       window.removeEventListener('beforeunload', handleBeforeUnload);
       if (unlistenCloseRequested) unlistenCloseRequested();
       workspaceCoordinator.cancel();
@@ -849,6 +905,8 @@
   });
 
   onDestroy(() => {
+    isPageDestroyed = true;
+    clearPageManagedTimers();
     activePineResizeSession?.cancel();
     activePineResizeSession = null;
     if (unsubTicker) unsubTicker();
@@ -944,9 +1002,7 @@
   function handleWorkspaceModeChange(mode: WorkspaceMode) {
     workspaceMode = mode;
     addSystemLog(`Workspace beralih ke mode: ${mode === 'terminal' ? 'Trading Terminal' : 'Pine Script IDE'}`, 'info');
-    setTimeout(() => {
-      window.dispatchEvent(new Event('resize'));
-    }, 40);
+    scheduleResizeDispatch(40);
   }
 
   function handleStartResizePinePanel(e: PointerEvent) {
@@ -1222,21 +1278,23 @@
 
   // Pantau perubahan parameter UI & sinyal chartDirtyTick untuk auto-save workspace ber-debounce
   $effect(() => {
-    const _s = activeSymbol;
-    const _t = activeTimeframe;
-    const _l = currentLayout;
-    const _i = activeIndicators;
-    const _sc = syncConfig;
-    const _p = currentActivePlans;
-    const _tc = showThesisCards;
-    const _pr = activeProviderId;
-    const _do = shellState.isRightDockOpen;
-    const _dt = shellState.activeRightDockTab;
-    const _vol = appSettings.showVolume;
-    const _sm = snapMode;
-    const _st = stayMode;
-    const _tg = currentThesisCardGeometries;
-    const _cd = chartDirtyTick;
+    void [
+      activeSymbol,
+      activeTimeframe,
+      currentLayout,
+      activeIndicators,
+      syncConfig,
+      currentActivePlans,
+      showThesisCards,
+      activeProviderId,
+      shellState.isRightDockOpen,
+      shellState.activeRightDockTab,
+      appSettings.showVolume,
+      snapMode,
+      stayMode,
+      currentThesisCardGeometries,
+      chartDirtyTick,
+    ];
     if (isPageMounted && !isLoadingWorkspace) {
       triggerWorkspaceAutoSave();
     }
@@ -1359,7 +1417,7 @@
     editorInitialCode = code;
     editorInitialTitle = title;
     workspaceMode = 'pine';
-    setTimeout(() => {
+    schedulePageTimeout(() => {
       pineEditorComponent?.loadScript(code, title, id);
       window.dispatchEvent(new Event('resize'));
     }, 40);

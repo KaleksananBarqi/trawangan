@@ -36,8 +36,13 @@ import type {
   CellSnapshot,
   SavedWorkspaceIndicator,
   VisibleRangeSnapshot,
+  WorkspaceTrackSizes,
 } from '../types/market';
 import { WORKSPACE_SCHEMA_VERSION, computePaneSignature } from './persistence/workspaceSchema';
+import {
+  buildWorkspaceSnapshotPayload,
+  restoreWorkspaceChartAndPlans,
+} from './workspaceLifecycle';
 import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors, resolveThemeConfig } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
 import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
@@ -47,6 +52,12 @@ import {
   saveChartDefaultConfig,
   clearChartDefaultConfig
 } from './persistence';
+import {
+  cloneRendererConfigValue,
+  sanitizeRendererConfigForApply,
+  sanitizeRendererConfigForPersistence,
+  type ActiveThemeCandleColors,
+} from './persistence/rendererConfigSanitizer';
 import { deriveBorderColor, generateVelaThemeTokens, isDarkColor, withAlpha } from '../utils/colorUtils';
 
 export interface ChartSessionOptions {
@@ -371,6 +382,7 @@ export class ChartSessionController {
   private activeChartDefaultConfig: any = null;
   private userChartDefaultConfig: any = null;
   private workspaceRendererConfigByCell = new WeakMap<any, any>();
+  private lastAppliedThemeColors: ActiveThemeCandleColors | null = null;
   private chartDefaultHydrationEpoch = 0;
   private pendingVisibleRangeUnsubs = new WeakMap<any, () => void>();
   private pendingVisibleRangeEpoch = new WeakMap<any, number>();
@@ -390,6 +402,12 @@ export class ChartSessionController {
   private suppressAutoDrawingRestoreKey: string | null = null;
   private desiredPaneWeightsByCell = new WeakMap<any, Map<string, number>>();
   private lastCapturedPaneLayoutByCell = new WeakMap<any, string>();
+  private userTouchedPaneLayoutByCell = new WeakSet<any>();
+  private volumeHiddenByCell = new WeakMap<any, boolean>();
+  private managedTimers = new Set<ReturnType<typeof setTimeout>>();
+  private pendingWaitCleanups = new Set<() => void>();
+  private workspaceEventUnsubs: Array<() => void> = [];
+  private isDestroyed = false;
   private gridMode: GridMode = 'normal';
   private feedHealthSink: StreamHealthSink;
   private streamCoordinator: StreamGuardCoordinator;
@@ -688,6 +706,8 @@ export class ChartSessionController {
     if (options.workspaceFactory) this.workspaceFactory = options.workspaceFactory;
 
     this.container = container;
+    this.isDestroyed = false;
+    this.clearWorkspaceEventUnsubs();
     this.applyBackground();
     ensurePineEngine();
 
@@ -800,6 +820,7 @@ export class ChartSessionController {
     }
 
     // Pasang listener & price line guard ke seluruh cell awal
+    this.lastAppliedThemeColors = this.resolveActiveThemeCandleColors();
     for (const cell of this.getAllCells()) {
       this.attachCellListeners(cell);
     }
@@ -810,14 +831,15 @@ export class ChartSessionController {
       try {
         const rawDefault = localStorage.getItem('trawangan_chart_default_config');
         if (rawDefault && rawDefault.trim()) {
-          const parsedDefault = JSON.parse(rawDefault);
-          if (parsedDefault && typeof parsedDefault === 'object' && Object.keys(parsedDefault).length > 0) {
+          const parsedDefault = sanitizeRendererConfigForApply(JSON.parse(rawDefault));
+          if (parsedDefault && Object.keys(parsedDefault).length > 0) {
             this.userChartDefaultConfig = parsedDefault;
-            this.activeChartDefaultConfig = this.mergeRendererConfigs(parsedDefault, this.activeChartDefaultConfig);
+            this.activeChartDefaultConfig = this.mergeRendererConfigs(this.activeChartDefaultConfig, parsedDefault);
             for (const cell of this.getAllCells()) {
               const wsOverride = this.workspaceRendererConfigByCell.get(cell);
               const effective = wsOverride ? this.mergeRendererConfigs(parsedDefault, wsOverride) : parsedDefault;
               this.applyEffectiveRendererConfig(cell, effective);
+              this.syncGlobalVisualChromeToCells(cell);
             }
           }
         }
@@ -828,7 +850,9 @@ export class ChartSessionController {
     // Dengarkan pembuatan cell baru saat berganti layout grid
     if (this.workspace && typeof this.workspace.on === 'function') {
       try {
-        this.workspace.on('cell:created', ({ id }: { id: string }) => {
+        const wsRef = this.workspace;
+        let cellCreatedHandler: ((p: { id: string }) => void) | null = null;
+        const uCreated = this.workspace.on('cell:created', (cellCreatedHandler = ({ id }: { id: string }) => {
           const cell = this.workspace?.cell?.(id);
           if (cell) {
             this.attachCellListeners(cell);
@@ -843,9 +867,17 @@ export class ChartSessionController {
             }
           }
           this.applyBackground();
-        });
+        }));
+        this.workspaceEventUnsubs.push(
+          typeof uCreated === 'function'
+            ? uCreated
+            : () => {
+                if (cellCreatedHandler) wsRef.off?.('cell:created', cellCreatedHandler);
+              }
+        );
 
-        this.workspace.on('cell:active', () => {
+        let cellActiveHandler: (() => void) | null = null;
+        const uActive = this.workspace.on('cell:active', (cellActiveHandler = () => {
           if (this.isApplyingLayout) return;
           const cur = this.workspace?.active;
           if (cur) {
@@ -865,11 +897,26 @@ export class ChartSessionController {
           if (this.syncConfig.indicators === false) {
             this.notifyActiveIndicators();
           }
-        });
+        }));
+        this.workspaceEventUnsubs.push(
+          typeof uActive === 'function'
+            ? uActive
+            : () => {
+                if (cellActiveHandler) wsRef.off?.('cell:active', cellActiveHandler);
+              }
+        );
 
-        this.workspace.on('state:changed', () => {
+        let stateChangedHandler: (() => void) | null = null;
+        const uState = this.workspace.on('state:changed', (stateChangedHandler = () => {
           this.emitPersistableChange('trackSizes');
-        });
+        }));
+        this.workspaceEventUnsubs.push(
+          typeof uState === 'function'
+            ? uState
+            : () => {
+                if (stateChangedHandler) wsRef.off?.('state:changed', stateChangedHandler);
+              }
+        );
       } catch (_) {}
     }
 
@@ -903,10 +950,10 @@ export class ChartSessionController {
     this.notify();
 
     // Selaraskan warna volume saat data bar pertama kali tiba dan diaktifkan secara asinkron
-    setTimeout(() => {
+    this.scheduleManagedTimeout(() => {
       this.syncNativeVolumeColors();
     }, 200);
-    setTimeout(() => {
+    this.scheduleManagedTimeout(() => {
       this.syncNativeVolumeColors();
     }, 800);
 
@@ -923,11 +970,95 @@ export class ChartSessionController {
     this.suppressAutoDrawingRestoreKey = null;
     this.workspaceRendererConfigByCell = new WeakMap();
     this.pendingTargetVisibleRangeByCell = new WeakMap();
+    this.userTouchedPaneLayoutByCell = new WeakSet<any>();
     this.clearPendingVisibleRangeListeners();
+    this.clearPendingWaiters();
     if (this.viewportPersistTimer) {
       clearTimeout(this.viewportPersistTimer);
       this.viewportPersistTimer = null;
     }
+  }
+
+  private scheduleManagedTimeout(fn: () => void, delayMs: number): ReturnType<typeof setTimeout> {
+    const handle = setTimeout(() => {
+      this.managedTimers.delete(handle);
+      if (this.isDestroyed) return;
+      fn();
+    }, delayMs);
+    this.managedTimers.add(handle);
+    return handle;
+  }
+
+  private clearManagedTimers(): void {
+    for (const timer of this.managedTimers) {
+      clearTimeout(timer);
+    }
+    this.managedTimers.clear();
+  }
+
+  private clearPendingWaiters(): void {
+    for (const cleanup of Array.from(this.pendingWaitCleanups)) {
+      try { cleanup(); } catch (_) {}
+    }
+    this.pendingWaitCleanups.clear();
+  }
+
+  private clearWorkspaceEventUnsubs(): void {
+    for (const unsub of this.workspaceEventUnsubs) {
+      try { unsub(); } catch (_) {}
+    }
+    this.workspaceEventUnsubs = [];
+  }
+
+  private waitForChartCondition(
+    chart: any,
+    events: string[],
+    isReady: () => boolean,
+    timeoutMs: number
+  ): Promise<void> {
+    if (this.isDestroyed || isReady() || typeof chart?.on !== 'function') {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const unsubs: Array<() => void> = [];
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = () => {
+        if (settled) return;
+        settled = true;
+        this.pendingWaitCleanups.delete(cleanup);
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        for (const u of unsubs) {
+          try { u?.(); } catch (_) {}
+        }
+        resolve();
+      };
+
+      const check = () => {
+        if (this.isDestroyed || isReady()) {
+          cleanup();
+        }
+      };
+
+      this.pendingWaitCleanups.add(cleanup);
+
+      for (const ev of events) {
+        try {
+          const ret = chart.on(ev, check);
+          const unsub = typeof ret === 'function' ? ret : () => chart.off?.(ev, check);
+          unsubs.push(unsub);
+        } catch (_) {}
+      }
+
+      check();
+      if (!settled) {
+        timer = setTimeout(cleanup, timeoutMs);
+      }
+    });
   }
 
   private clearPendingVisibleRangeListeners(): void {
@@ -940,12 +1071,12 @@ export class ChartSessionController {
 
   private mergeRendererConfigs(base: any, override: any): any {
     if (!base || typeof base !== 'object') {
-      return override && typeof override === 'object' ? JSON.parse(JSON.stringify(override)) : override;
+      return cloneRendererConfigValue(override);
     }
     if (!override || typeof override !== 'object') {
-      return JSON.parse(JSON.stringify(base));
+      return cloneRendererConfigValue(base);
     }
-    const merged: Record<string, any> = JSON.parse(JSON.stringify(base));
+    const merged: Record<string, any> = cloneRendererConfigValue(base);
     for (const [key, val] of Object.entries(override)) {
       if (
         val !== null &&
@@ -957,7 +1088,7 @@ export class ChartSessionController {
       ) {
         merged[key] = this.mergeRendererConfigs(merged[key], val);
       } else {
-        merged[key] = val !== null && typeof val === 'object' ? JSON.parse(JSON.stringify(val)) : val;
+        merged[key] = cloneRendererConfigValue(val);
       }
     }
     return merged;
@@ -985,19 +1116,21 @@ export class ChartSessionController {
   public async hydrateChartDefaultConfig(expectedEpoch?: number): Promise<any | null> {
     const epoch = expectedEpoch ?? this.chartDefaultHydrationEpoch;
     try {
-      const loaded = await loadChartDefaultConfig();
+      const rawLoaded = await loadChartDefaultConfig();
       if (epoch !== this.chartDefaultHydrationEpoch || !this.workspace) {
         return null;
       }
-      if (!loaded || typeof loaded !== 'object' || Object.keys(loaded).length === 0) {
+      const loaded = sanitizeRendererConfigForApply(rawLoaded);
+      if (!loaded || Object.keys(loaded).length === 0) {
         return null;
       }
       this.userChartDefaultConfig = loaded;
-      this.activeChartDefaultConfig = this.mergeRendererConfigs(loaded, this.activeChartDefaultConfig);
+      this.activeChartDefaultConfig = this.mergeRendererConfigs(this.activeChartDefaultConfig, loaded);
       for (const cell of this.getAllCells()) {
         const wsOverride = this.workspaceRendererConfigByCell.get(cell);
         const effective = wsOverride ? this.mergeRendererConfigs(loaded, wsOverride) : loaded;
         this.applyEffectiveRendererConfig(cell, effective);
+        this.syncGlobalVisualChromeToCells(cell);
       }
       return loaded;
     } catch (err) {
@@ -1012,11 +1145,15 @@ export class ChartSessionController {
   public applyRendererConfig(config: any, cell?: any): void {
     const targetCell = this.resolveTargetCell(cell);
     if (!targetCell || !config || typeof config !== 'object') return;
-    this.workspaceRendererConfigByCell.set(targetCell, config);
-    const effective = this.userChartDefaultConfig
-      ? this.mergeRendererConfigs(this.userChartDefaultConfig, config)
-      : config;
-    this.applyEffectiveRendererConfig(targetCell, effective);
+    const sanitized = sanitizeRendererConfigForApply(config);
+    if (sanitized) {
+      this.workspaceRendererConfigByCell.set(targetCell, sanitized);
+      const effective = this.userChartDefaultConfig
+        ? this.mergeRendererConfigs(this.userChartDefaultConfig, sanitized)
+        : sanitized;
+      this.applyEffectiveRendererConfig(targetCell, effective);
+    }
+    this.syncGlobalVisualChromeToCells(targetCell);
   }
 
   /**
@@ -1217,7 +1354,7 @@ export class ChartSessionController {
     const originalEnsurePane = native.ensurePane.bind(native);
     native.ensurePane = function (pane: { id: string; kind: string; order: number; heightWeight?: number }) {
       let effectivePane = pane;
-      if (pane && pane.heightWeight === undefined) {
+      if (pane && pane.heightWeight === undefined && !self.userTouchedPaneLayoutByCell.has(cell)) {
         const desiredMap = self.desiredPaneWeightsByCell.get(cell);
         let sig = pane.kind === 'price' || pane.id === 'price' ? 'price' : '';
         if (!sig && chart?.panes && typeof chart.panes.list === 'function') {
@@ -1495,15 +1632,25 @@ export class ChartSessionController {
     this.notify();
   }
 
+  private syncCellVolumeHiddenState(cell: any, hidden: boolean): void {
+    if (!cell) return;
+    this.volumeHiddenByCell.set(cell, hidden);
+    const typedCell = cell as { volumeHidden?: boolean; chart?: { volumeHidden?: boolean }; inner?: { volumeHidden?: boolean } };
+    typedCell.volumeHidden = hidden;
+    const chart = typedCell.chart || typedCell.inner;
+    if (chart) {
+      chart.volumeHidden = hidden;
+    }
+  }
+
   /**
    * Menerapkan status visibilitas volume pasar native WebGL2 pada satu sel tertentu
    */
   public applyCellVolumeVisibility(cell: any, show: boolean): void {
     if (!cell) return;
-    cell.volumeHidden = !show;
+    this.syncCellVolumeHiddenState(cell, !show);
     const chart = cell.chart || cell.inner;
     if (chart) {
-      chart.volumeHidden = !show;
       if (typeof chart.indicators === 'function') {
         for (const ind of Array.from(chart.indicators() || []) as any[]) {
           if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
@@ -1645,7 +1792,7 @@ export class ChartSessionController {
         });
 
         if (effectiveInputs && Object.keys(effectiveInputs).length > 0) {
-          setTimeout(() => {
+          this.scheduleManagedTimeout(() => {
             this.withSuppressedPersistEvents(() => {
               for (const h of createdHandles) {
                 try {
@@ -1687,6 +1834,7 @@ export class ChartSessionController {
   public clearAllIndicators(): void {
     this.desiredPaneWeightsByCell = new WeakMap();
     this.lastCapturedPaneLayoutByCell = new WeakMap();
+    this.userTouchedPaneLayoutByCell = new WeakSet<any>();
     this.indicatorRegistry.clearAll(() => this.getAllCells());
     this.notifyActiveIndicators();
   }
@@ -2012,6 +2160,145 @@ export class ChartSessionController {
     this.notify();
   }
 
+  private resolveActiveThemeVisualState() {
+    const cfg = resolveThemeConfig(this.themePreset);
+    const isCustomPaletteActive = Boolean(this.customPalette && this.customPalette.enabled !== false);
+    const cp = this.customPalette;
+
+    const effectiveUp = isCustomPaletteActive && cp?.candles?.bullBody
+      ? cp.candles.bullBody
+      : this.customCandleColors?.bullColor || cfg.chart.upColor;
+
+    const effectiveDown = isCustomPaletteActive && cp?.candles?.bearBody
+      ? cp.candles.bearBody
+      : this.customCandleColors?.bearColor || cfg.chart.downColor;
+
+    const effectiveWickUp = isCustomPaletteActive && cp?.candles?.bullWick
+      ? cp.candles.bullWick
+      : this.customCandleColors?.bullColor || cfg.chart.wickUpColor || cfg.chart.upColor;
+
+    const effectiveWickDown = isCustomPaletteActive && cp?.candles?.bearWick
+      ? cp.candles.bearWick
+      : this.customCandleColors?.bearColor || cfg.chart.wickDownColor || cfg.chart.downColor;
+
+    const effectiveBorderUp = isCustomPaletteActive && cp?.candles?.bullBorder
+      ? cp.candles.bullBorder
+      : this.customCandleColors?.bullColor
+        ? deriveBorderColor(this.customCandleColors.bullColor, 0.15)
+        : cfg.chart.borderUpColor || cfg.chart.upColor;
+
+    const effectiveBorderDown = isCustomPaletteActive && cp?.candles?.bearBorder
+      ? cp.candles.bearBorder
+      : this.customCandleColors?.bearColor
+        ? deriveBorderColor(this.customCandleColors.bearColor, 0.15)
+        : cfg.chart.borderDownColor || cfg.chart.downColor;
+
+    const candleColors: ActiveThemeCandleColors = {
+      upColor: effectiveUp,
+      downColor: effectiveDown,
+      borderUpColor: effectiveBorderUp,
+      borderDownColor: effectiveBorderDown,
+      wickUpColor: effectiveWickUp,
+      wickDownColor: effectiveWickDown,
+    };
+
+    const { background: effectiveBg, textColor: effectiveText, isDark: dark } = resolveEffectiveThemeColors(this.themePreset, this.customPalette);
+    const effectiveGrid = this.resolveEffectiveGridColor(effectiveText, dark);
+    const effectiveBorder = dark ? withAlpha(effectiveText, 0.14) : withAlpha(effectiveText, 0.18);
+    const effectiveCrosshair = dark ? withAlpha(effectiveText, 0.45) : withAlpha(effectiveText, 0.55);
+    const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
+
+    const globalRendererPatch = {
+      layout: {
+        background: isCustomBg ? 'transparent' : effectiveBg,
+        textColor: effectiveText,
+        borderColor: effectiveBorder,
+      },
+      grid: {
+        vertLines: { visible: this.gridMode !== 'hidden', color: effectiveGrid },
+        horzLines: { visible: this.gridMode !== 'hidden', color: effectiveGrid },
+      },
+      crosshair: {
+        color: effectiveCrosshair,
+        labelBackground: effectiveText,
+      },
+      panes: {
+        separatorColor: effectiveBorder,
+      },
+      priceScale: {
+        borderColor: effectiveBorder,
+        currentPriceLine: this.showCurrentPriceLine !== false,
+      },
+      timeScale: {
+        timezone: this.timezone,
+      },
+    };
+
+    return {
+      candleColors,
+      effectiveBg,
+      effectiveText,
+      effectiveGrid,
+      effectiveBorder,
+      effectiveCrosshair,
+      isCustomBg,
+      themeObj: {
+        background: isCustomBg ? 'transparent' : effectiveBg,
+        surfaceBackground: effectiveBg,
+        textColor: effectiveText,
+        gridColor: effectiveGrid,
+        borderColor: effectiveBorder,
+        crosshair: effectiveCrosshair,
+        crosshairColor: effectiveCrosshair,
+        upColor: effectiveUp,
+        downColor: effectiveDown,
+        fontSize: Math.max(9, Math.min(32, Math.round(this.fontSize))),
+        fontFamily: "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+      },
+      globalRendererPatch,
+    };
+  }
+
+  private resolveActiveThemeCandleColors(): ActiveThemeCandleColors {
+    return this.resolveActiveThemeVisualState().candleColors;
+  }
+
+  /**
+   * Menyinkronkan domain visual global (tema background/teks, gridMode, timezone, currentPriceLine)
+   * tanpa menimpa override gaya candle/margin spesifik sel (K3).
+   */
+  public syncGlobalVisualChromeToCells(targetCell?: any): void {
+    if (!this.workspace) return;
+    const visual = this.resolveActiveThemeVisualState();
+    const cells = targetCell ? [targetCell] : this.getAllCells();
+    this.withSuppressedPersistEvents(() => {
+      for (const cell of cells) {
+        const chart = cell?.chart || cell?.inner;
+        const r = chart?.renderer?.renderer || chart?.renderer;
+        if (r) {
+          if (typeof r.applyConfig === 'function') {
+            try { r.applyConfig(cloneRendererConfigValue(visual.globalRendererPatch)); } catch (_) {}
+          }
+          if (r.scene) {
+            r.scene.background = visual.isCustomBg ? 'transparent' : visual.effectiveBg;
+            r.scene.textColor = visual.effectiveText;
+            r.scene.borderColor = visual.effectiveBorder;
+            r.scene.gridColor = visual.effectiveGrid;
+          }
+          if (typeof r.set === 'function') {
+            try { r.set('timezone', this.timezone); } catch (_) {}
+          }
+          if (r.coords) {
+            r.coords.timezone = this.timezone;
+          }
+          r.scheduler?.invalidate?.(7);
+        }
+        this.enforceCurrentPriceLine(cell);
+      }
+    });
+    this.applyBackground();
+  }
+
   /**
    * Menyelaraskan tema visual kanvas WebGL2 dan warna candlestick (bawaan tema maupun kustom)
    */
@@ -2034,95 +2321,31 @@ export class ChartSessionController {
     this.applyBackground();
 
     if (this.workspace) {
-      const cfg = resolveThemeConfig(preset);
-      const isCustomPaletteActive = Boolean(this.customPalette && this.customPalette.enabled !== false);
-      const cp = this.customPalette;
+      const visual = this.resolveActiveThemeVisualState();
+      this.lastAppliedThemeColors = visual.candleColors;
 
-      // 6 Atribut Lilin Individual (Bull & Bear: Body, Wick, Border)
-      const effectiveUp = isCustomPaletteActive && cp?.candles?.bullBody
-        ? cp.candles.bullBody
-        : this.customCandleColors?.bullColor || cfg.chart.upColor;
-
-      const effectiveDown = isCustomPaletteActive && cp?.candles?.bearBody
-        ? cp.candles.bearBody
-        : this.customCandleColors?.bearColor || cfg.chart.downColor;
-
-      const effectiveWickUp = isCustomPaletteActive && cp?.candles?.bullWick
-        ? cp.candles.bullWick
-        : this.customCandleColors?.bullColor || cfg.chart.wickUpColor || cfg.chart.upColor;
-
-      const effectiveWickDown = isCustomPaletteActive && cp?.candles?.bearWick
-        ? cp.candles.bearWick
-        : this.customCandleColors?.bearColor || cfg.chart.wickDownColor || cfg.chart.downColor;
-
-      const effectiveBorderUp = isCustomPaletteActive && cp?.candles?.bullBorder
-        ? cp.candles.bullBorder
-        : this.customCandleColors?.bullColor
-          ? deriveBorderColor(this.customCandleColors.bullColor, 0.15)
-          : cfg.chart.borderUpColor || cfg.chart.upColor;
-
-      const effectiveBorderDown = isCustomPaletteActive && cp?.candles?.bearBorder
-        ? cp.candles.bearBorder
-        : this.customCandleColors?.bearColor
-          ? deriveBorderColor(this.customCandleColors.bearColor, 0.15)
-          : cfg.chart.borderDownColor || cfg.chart.downColor;
-
-      // 3 Atribut Warna Umum & Turunan Adaptif Luminance
-      const { background: effectiveBg, textColor: effectiveText, isDark: dark } = resolveEffectiveThemeColors(preset, this.customPalette);
-
-      const effectiveGrid = this.resolveEffectiveGridColor(effectiveText, dark);
-
-      const effectiveBorder = dark
-        ? withAlpha(effectiveText, 0.14)
-        : withAlpha(effectiveText, 0.18);
-
-      const effectiveCrosshair = dark
-        ? withAlpha(effectiveText, 0.45)
-        : withAlpha(effectiveText, 0.55);
-
-      const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
-      const themeObj = {
-        background: isCustomBg ? 'transparent' : effectiveBg,
-        surfaceBackground: effectiveBg,
-        textColor: effectiveText,
-        gridColor: effectiveGrid,
-        borderColor: effectiveBorder,
-        crosshair: effectiveCrosshair,
-        crosshairColor: effectiveCrosshair,
-        upColor: effectiveUp,
-        downColor: effectiveDown,
-        fontSize: Math.max(9, Math.min(32, Math.round(this.fontSize))),
-        fontFamily: "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-      };
-
-      // Bangun patch konfigurasi candles dan bars untuk WebGL2 Renderer
+      // Bangun patch konfigurasi warna candles dan bars untuk WebGL2 Renderer (tanpa menimpa flag visibilitas lokal body/border/wick)
       const candleConfig = {
         candles: {
-          upColor: effectiveUp,
-          downColor: effectiveDown,
-          borderUpColor: effectiveBorderUp,
-          borderDownColor: effectiveBorderDown,
-          wickUpColor: effectiveWickUp,
-          wickDownColor: effectiveWickDown,
-          bodyVisible: true,
-          borderVisible: true,
-          wickVisible: true,
+          upColor: visual.candleColors.upColor,
+          downColor: visual.candleColors.downColor,
+          borderUpColor: visual.candleColors.borderUpColor,
+          borderDownColor: visual.candleColors.borderDownColor,
+          wickUpColor: visual.candleColors.wickUpColor,
+          wickDownColor: visual.candleColors.wickDownColor,
         },
         bars: {
-          upColor: effectiveUp,
-          downColor: effectiveDown,
+          upColor: visual.candleColors.upColor,
+          downColor: visual.candleColors.downColor,
         },
-        grid: {
-          vertLines: { visible: this.gridMode !== 'hidden', color: effectiveGrid },
-          horzLines: { visible: this.gridMode !== 'hidden', color: effectiveGrid }
-        }
+        grid: visual.globalRendererPatch.grid,
       };
 
       // Terapkan ke seluruh sel grafik aktif tanpa memicu dirty event tema global ke workspace
       this.withSuppressedPersistEvents(() => {
         try {
           if (typeof this.workspace.setTheme === 'function') {
-            this.workspace.setTheme(themeObj);
+            this.workspace.setTheme(visual.themeObj);
           }
         } catch (err) {
           console.warn('[ChartSessionController] setTheme error:', err);
@@ -2132,34 +2355,30 @@ export class ChartSessionController {
           for (const cell of this.getAllCells()) {
             const chart = cell?.chart || cell?.inner;
             if (chart && typeof chart.setTheme === 'function') {
-              try { chart.setTheme(themeObj); } catch (_) {}
+              try { chart.setTheme(visual.themeObj); } catch (_) {}
             }
             if (chart && typeof chart.setSurfaceBackground === 'function') {
-              try { chart.setSurfaceBackground(effectiveBg); } catch (_) {}
+              try { chart.setSurfaceBackground(visual.effectiveBg); } catch (_) {}
             }
             const r = chart?.renderer?.renderer || chart?.renderer;
             if (r) {
               if (typeof r.setTheme === 'function') {
-                try { r.setTheme(themeObj); } catch (_) {}
+                try { r.setTheme(visual.themeObj); } catch (_) {}
               }
               if (typeof r.applyConfig === 'function') {
                 r.applyConfig({
                   ...candleConfig,
-                  layout: {
-                    background: isCustomBg ? 'transparent' : effectiveBg,
-                    textColor: effectiveText,
-                    borderColor: effectiveBorder,
-                  },
+                  layout: visual.globalRendererPatch.layout,
                   crosshair: {
-                    color: effectiveCrosshair,
-                  }
+                    color: visual.effectiveCrosshair,
+                  },
                 });
               }
               if (r.scene) {
-                r.scene.background = isCustomBg ? 'transparent' : effectiveBg;
-                r.scene.textColor = effectiveText;
-                r.scene.borderColor = effectiveBorder;
-                r.scene.gridColor = effectiveGrid;
+                r.scene.background = visual.isCustomBg ? 'transparent' : visual.effectiveBg;
+                r.scene.textColor = visual.effectiveText;
+                r.scene.borderColor = visual.effectiveBorder;
+                r.scene.gridColor = visual.effectiveGrid;
               }
               r.scheduler?.invalidate?.(7);
             }
@@ -2342,7 +2561,7 @@ export class ChartSessionController {
         if (this.isRestoringWorkspace) {
           this.isApplyingLayout = false;
         } else {
-          setTimeout(() => {
+          this.scheduleManagedTimeout(() => {
             this.isApplyingLayout = false;
           }, 60);
         }
@@ -2537,7 +2756,9 @@ export class ChartSessionController {
       this.cloneIndicatorsToCells(activeSnapshot);
 
       // Selaraskan juga status volume native dari activeCell ke follower cells
-      const activeVolumeHidden = Boolean((activeCell as any).volumeHidden);
+      const activeVolumeHidden =
+        this.volumeHiddenByCell.get(activeCell) ??
+        Boolean((activeCell as { volumeHidden?: boolean }).volumeHidden);
       for (const cell of cells) {
         if (cell === activeCell) continue;
         this.applyCellVolumeVisibility(cell, !activeVolumeHidden);
@@ -2654,40 +2875,19 @@ export class ChartSessionController {
       const needsModelWait =
         !handle || (entry.placement === 'own-pane' && handle?.id && !isHandleInPaneList(handle.id));
       if (needsModelWait && typeof chart.on === 'function') {
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          const unsubs: Array<() => void> = [];
-          let timer: any = null;
-
-          const finish = () => {
-            if (settled) return;
-            settled = true;
-            if (timer) clearTimeout(timer);
-            for (const u of unsubs) {
-              try { u?.(); } catch (_) {}
-            }
-            resolve();
-          };
-
-          const check = () => {
+        await this.waitForChartCondition(
+          chart,
+          ['indicator:added', 'pane:changed'],
+          () => {
             handle = findNativeHandle(entry.type) || handle;
-            if (handle && (!entry.placement || entry.placement !== 'own-pane' || !handle.id || isHandleInPaneList(handle.id))) {
-              finish();
-            }
-          };
-
-          try {
-            const u1 = chart.on('indicator:added', check);
-            if (typeof u1 === 'function') unsubs.push(u1);
-            const u2 = chart.on('pane:changed', check);
-            if (typeof u2 === 'function') unsubs.push(u2);
-          } catch (_) {}
-
-          check();
-          if (!settled) {
-            timer = setTimeout(finish, 2000);
-          }
-        });
+            return Boolean(
+              handle &&
+                (!entry.placement || entry.placement !== 'own-pane' || !handle.id || isHandleInPaneList(handle.id))
+            );
+          },
+          2000
+        );
+        if (this.isDestroyed) return;
       }
 
       if (!handle) continue;
@@ -2705,7 +2905,7 @@ export class ChartSessionController {
           try {
             handle.setVisible(Boolean(entry.visible));
             if (entry.type === 'volume') {
-              (targetCell as any).volumeHidden = !entry.visible;
+              this.syncCellVolumeHiddenState(targetCell, !entry.visible);
             }
           } catch (_) {}
         }
@@ -2806,6 +3006,7 @@ export class ChartSessionController {
     if (!native?.scene) return false;
 
     this.installEnsurePaneGuard(targetCell);
+    this.userTouchedPaneLayoutByCell.delete(targetCell);
 
     let desiredMap = this.desiredPaneWeightsByCell.get(targetCell);
     if (!desiredMap) {
@@ -2863,40 +3064,13 @@ export class ChartSessionController {
     };
 
     if (!allTargetsReady() && typeof chart?.on === 'function') {
-      const timeoutMs = options.timeoutMs ?? 3000;
-      await new Promise<void>((resolve) => {
-        let settled = false;
-        const unsubs: Array<() => void> = [];
-        let timer: any = null;
-
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          if (timer) clearTimeout(timer);
-          for (const u of unsubs) {
-            try { u?.(); } catch (_) {}
-          }
-          resolve();
-        };
-
-        const check = () => {
-          if (allTargetsReady()) {
-            finish();
-          }
-        };
-
-        try {
-          const u1 = chart.on('indicator:added', check);
-          if (typeof u1 === 'function') unsubs.push(u1);
-          const u2 = chart.on('pane:changed', check);
-          if (typeof u2 === 'function') unsubs.push(u2);
-        } catch (_) {}
-
-        check();
-        if (!settled) {
-          timer = setTimeout(finish, timeoutMs);
-        }
-      });
+      await this.waitForChartCondition(
+        chart,
+        ['indicator:added', 'pane:changed'],
+        allTargetsReady,
+        options.timeoutMs ?? 3000
+      );
+      if (this.isDestroyed) return false;
     }
 
     const currentPanes = getListedPanesWithSig();
@@ -2993,7 +3167,8 @@ export class ChartSessionController {
     }
 
     this.lastCapturedPaneLayoutByCell.set(targetCell, serialized);
-    if (!options?.silent) {
+    if (!options?.silent && !this.isRestoringWorkspace) {
+      this.userTouchedPaneLayoutByCell.add(targetCell);
       this.emitPersistableChange('paneLayout');
     }
     return true;
@@ -3074,6 +3249,46 @@ export class ChartSessionController {
     return null;
   }
 
+  private isPriceScaleStateEqual(prev: any, next: any): boolean {
+    if (!prev || !next || typeof prev !== 'object' || typeof next !== 'object') return false;
+    const prevLog = Boolean(prev.log);
+    const prevMode = prevLog || prev.mode === 'log' ? 'log' : (prev.mode || 'price');
+    const prevInvert = Boolean(prev.invert);
+    const prevAuto = prev.auto !== undefined ? Boolean(prev.auto) : prev.manualScale == null;
+
+    const hasLogOrMode = next.log !== undefined || next.mode !== undefined;
+    const targetLog = hasLogOrMode ? (next.mode === 'log' || next.log === true) : prevLog;
+    const targetMode = hasLogOrMode
+      ? (targetLog ? 'log' : (next.mode || 'price'))
+      : prevMode;
+    const targetInvert = next.invert !== undefined ? Boolean(next.invert) : prevInvert;
+    const targetAuto = next.auto !== undefined ? Boolean(next.auto) : prevAuto;
+
+    if (
+      prevMode !== targetMode ||
+      prevLog !== targetLog ||
+      prevInvert !== targetInvert ||
+      prevAuto !== targetAuto
+    ) {
+      return false;
+    }
+
+    if (targetAuto) {
+      return prev.manualScale == null;
+    }
+
+    if (next.manualScale === undefined) {
+      return true;
+    }
+    if (prev.manualScale === next.manualScale) return true;
+    if (!prev.manualScale || !next.manualScale || typeof prev.manualScale !== 'object' || typeof next.manualScale !== 'object') {
+      return false;
+    }
+    const keysA = Object.keys(prev.manualScale);
+    const keysB = Object.keys(next.manualScale);
+    return keysA.length === keysB.length && keysA.every((k) => prev.manualScale[k] === next.manualScale[k]);
+  }
+
   /**
    * Menerapkan status skala harga tersimpan ke sumbu kanan grafik pada sel target atau sel aktif.
    */
@@ -3085,44 +3300,51 @@ export class ChartSessionController {
       const native = chart?.renderer?.renderer || chart?.renderer;
       if (!native) return false;
 
-      if (state.log !== undefined || state.mode !== undefined || state.invert !== undefined) {
-        const patch: any = { priceScale: {} };
-        if (state.mode === 'log' || state.log === true) {
-          patch.priceScale.log = true;
-          patch.priceScale.mode = 'price';
-        } else if (state.mode) {
-          patch.priceScale.mode = state.mode;
-          patch.priceScale.log = false;
-        }
-        if (state.invert !== undefined) {
-          patch.priceScale.invert = state.invert;
-        }
-        patch.priceScale.currentPriceLine = this.showCurrentPriceLine !== false;
-
-        native.applyConfig?.(patch);
-        if (native.scene) {
-          native.scene.showPriceLine = this.showCurrentPriceLine !== false;
-        }
+      const currentState = this.getPriceScaleState(targetCell);
+      if (currentState && this.isPriceScaleStateEqual(currentState, state)) {
+        return true;
       }
 
-      const pricePane =
-        native.scene?.panes?.get?.('price') ||
-        native.scene?.orderedPanes?.().find((p: any) => p.kind === 'price');
-      if (pricePane) {
-        if (state.auto === false && state.manualScale) {
-          if (typeof native.setManualScale === 'function') {
-            native.setManualScale(pricePane, state.manualScale);
-          } else {
-            pricePane.manualScale = { ...state.manualScale };
-            pricePane.scale = { ...state.manualScale };
+      this.withSuppressedPersistEvents(() => {
+        if (state.log !== undefined || state.mode !== undefined || state.invert !== undefined) {
+          const patch: any = { priceScale: {} };
+          if (state.mode === 'log' || state.log === true) {
+            patch.priceScale.log = true;
+            patch.priceScale.mode = 'price';
+          } else if (state.mode) {
+            patch.priceScale.mode = state.mode;
+            patch.priceScale.log = false;
           }
-        } else if (state.auto === true) {
-          pricePane.manualScale = null;
+          if (state.invert !== undefined) {
+            patch.priceScale.invert = state.invert;
+          }
+          patch.priceScale.currentPriceLine = this.showCurrentPriceLine !== false;
+
+          native.applyConfig?.(patch);
+          if (native.scene) {
+            native.scene.showPriceLine = this.showCurrentPriceLine !== false;
+          }
         }
-        if (native.scheduler?.invalidate) {
-          native.scheduler.invalidate(4);
+
+        const pricePane =
+          native.scene?.panes?.get?.('price') ||
+          native.scene?.orderedPanes?.().find((p: any) => p.kind === 'price');
+        if (pricePane) {
+          if (state.auto === false && state.manualScale) {
+            if (typeof native.setManualScale === 'function') {
+              native.setManualScale(pricePane, state.manualScale);
+            } else {
+              pricePane.manualScale = { ...state.manualScale };
+              pricePane.scale = { ...state.manualScale };
+            }
+          } else if (state.auto === true) {
+            pricePane.manualScale = null;
+          }
+          if (native.scheduler?.invalidate) {
+            native.scheduler.invalidate(4);
+          }
         }
-      }
+      });
       this.emitPersistableChange('priceScale');
       return true;
     } catch (err) {
@@ -3151,14 +3373,19 @@ export class ChartSessionController {
     if (!style) return;
     try {
       const targetCell = this.resolveTargetCell(cell) as any;
+      if (this.getPriceStyle(targetCell) === style) {
+        return;
+      }
       const chart = targetCell?.chart || targetCell?.inner;
       const native = chart?.renderer?.renderer || chart?.renderer;
-      if (native?.applyConfig) {
-        native.applyConfig({ series: { style } });
-      }
-      if (typeof targetCell?.setPriceStyle === 'function') {
-        targetCell.setPriceStyle(style);
-      }
+      this.withSuppressedPersistEvents(() => {
+        if (native?.applyConfig) {
+          native.applyConfig({ series: { style } });
+        }
+        if (typeof targetCell?.setPriceStyle === 'function') {
+          targetCell.setPriceStyle(style);
+        }
+      });
       this.emitPersistableChange('priceStyle');
     } catch (_) {}
   }
@@ -3212,10 +3439,10 @@ export class ChartSessionController {
   /**
    * Membaca proporsi lebar/tinggi kolom & baris grid multi-chart pada layout aktif.
    */
-  public getTrackSizes(): { cols?: number[]; rows?: number[] } | undefined {
+  public getTrackSizes(): WorkspaceTrackSizes | undefined {
     if (!this.workspace) return undefined;
     try {
-      let entry: { cols?: number[]; rows?: number[] } | undefined;
+      let entry: WorkspaceTrackSizes | undefined;
       if (typeof this.workspace.getState === 'function') {
         const st = this.workspace.getState();
         entry = st?.trackSizes?.[this.layout] ?? st?.trackSizes?.[st?.layout];
@@ -3280,14 +3507,10 @@ export class ChartSessionController {
         native?.getConfig?.() ??
         chart?.renderer?.getConfig?.();
 
-      let rendererConfig: unknown;
-      if (rawRendererConfig && typeof rawRendererConfig === 'object') {
-        try {
-          rendererConfig = JSON.parse(JSON.stringify(rawRendererConfig));
-        } catch (_) {
-          rendererConfig = { ...rawRendererConfig };
-        }
-      }
+      const rendererConfig = sanitizeRendererConfigForPersistence(
+        rawRendererConfig,
+        this.lastAppliedThemeColors ?? this.resolveActiveThemeCandleColors()
+      );
 
       const session = rawChart?.session ?? cell?.state?.session;
       const bars = rawChart?.bars ?? cell?.state?.bars;
@@ -3302,7 +3525,7 @@ export class ChartSessionController {
         priceScaleState: this.getPriceScaleState(cell),
         paneLayout: this.getPaneLayout(cell),
         nativeIndicators: this.getNativeIndicators(cell),
-        indicators: this.getCellIndicators(cell),
+        ...(this.syncConfig.indicators === false ? { indicators: this.getCellIndicators(cell) } : {}),
         ...(visibleRange ? { visibleRange } : {}),
         ...(rendererConfig !== undefined ? { rendererConfig } : {}),
         ...(session ? { session } : {}),
@@ -3318,9 +3541,10 @@ export class ChartSessionController {
   public async applyCellsSnapshot(
     cellsSnap: CellSnapshot[],
     options?: {
-      trackSizes?: { cols?: number[]; rows?: number[] };
+      trackSizes?: WorkspaceTrackSizes;
       activeCellIndex?: number;
       layout?: string;
+      sharedIndicators?: SavedWorkspaceIndicator[];
     }
   ): Promise<void> {
     if (!this.workspace || !Array.isArray(cellsSnap) || cellsSnap.length === 0) return;
@@ -3352,14 +3576,14 @@ export class ChartSessionController {
           this.ensureVelaProviderRegistered(prov);
           const velaSym = resolveVelaSymbol(snap.symbol || this.symbol, prov);
           const velaTf = this.toVelaIntervalString(snap.timeframe || this.timeframe);
-          const effectiveRendererConfig =
-            snap.rendererConfig && typeof snap.rendererConfig === 'object'
-              ? (this.userChartDefaultConfig
-                  ? this.mergeRendererConfigs(this.userChartDefaultConfig, snap.rendererConfig)
-                  : snap.rendererConfig)
-              : undefined;
-          if (liveCell && snap.rendererConfig && typeof snap.rendererConfig === 'object') {
-            this.workspaceRendererConfigByCell.set(liveCell, snap.rendererConfig);
+          const sanitizedSnapConfig = sanitizeRendererConfigForApply(snap.rendererConfig);
+          const effectiveRendererConfig = sanitizedSnapConfig
+            ? (this.userChartDefaultConfig
+                ? this.mergeRendererConfigs(this.userChartDefaultConfig, sanitizedSnapConfig)
+                : sanitizedSnapConfig)
+            : undefined;
+          if (liveCell && sanitizedSnapConfig) {
+            this.workspaceRendererConfigByCell.set(liveCell, sanitizedSnapConfig);
           }
           chartsDoc.push({
             id: liveCell?.id || `c${i + 1}`,
@@ -3396,7 +3620,7 @@ export class ChartSessionController {
         this.workspace.applyState(applyDoc);
       }
 
-      // 2. Selaraskan dan pulihkan properti per-sel pada live cells setelah applyState
+      // 2. Selaraskan dan pulihkan properti per-sel pada live cells sesuai urutan deterministik Fase 5
       const updatedCells = this.getAllCells();
       const applyCount = Math.min(cellsSnap.length, updatedCells.length);
       for (let i = 0; i < applyCount; i++) {
@@ -3417,25 +3641,26 @@ export class ChartSessionController {
           cell.setTimeframe(targetTf);
         }
 
-        if (snap.priceStyle) {
-          this.setPriceStyle(snap.priceStyle, cell);
-        }
-        if (typeof snap.barSpacing === 'number' && snap.barSpacing > 0) {
-          this.setBarSpacing(snap.barSpacing, cell);
-        }
-        if (snap.priceScaleState) {
-          this.applyPriceScaleState(snap.priceScaleState, cell);
-        }
+        // Langkah 2a: Konfigurasi gaya lokal & tipe chart terlebih dahulu sebelum membangun indikator & sub-pane
         if (snap.rendererConfig && typeof snap.rendererConfig === 'object') {
           this.applyRendererConfig(snap.rendererConfig, cell);
         }
-        if (snap.visibleRange) {
-          this.applyVisibleRange(snap.visibleRange, cell);
+        if (snap.priceStyle) {
+          this.setPriceStyle(snap.priceStyle, cell);
         }
 
-        // Pulihkan indikator Pine spesifik milik sel sebelum applyPaneLayout menunggu sub-pane terbentuk
+        // Langkah 2b: Pulihkan indikator Pine per sel (atau fallback ke sharedIndicators saat syncConfig.indicators aktif)
         const chart = cell?.chart || cell?.inner;
-        if (Array.isArray(snap.indicators)) {
+        const targetIndicators =
+          this.syncConfig.indicators === false
+            ? Array.isArray(snap.indicators)
+              ? snap.indicators
+              : undefined
+            : Array.isArray(snap.indicators)
+              ? snap.indicators
+              : options?.sharedIndicators;
+
+        if (Array.isArray(targetIndicators)) {
           if (chart && typeof chart.indicators === 'function') {
             for (const existingInd of Array.from(chart.indicators() || []) as any[]) {
               if (existingInd?.nativeType === 'volume') continue;
@@ -3444,7 +3669,7 @@ export class ChartSessionController {
               } catch (_) {}
             }
           }
-          for (const ind of snap.indicators) {
+          for (const ind of targetIndicators) {
             if (!ind?.title) continue;
             await this.addPineIndicatorToCell(
               cell,
@@ -3457,15 +3682,31 @@ export class ChartSessionController {
           }
         }
 
+        // Langkah 2c: Pulihkan indikator native (mis. Volume overlay / own-pane) sebelum tata letak pane
         if (Array.isArray(snap.nativeIndicators) && snap.nativeIndicators.length > 0) {
           await this.applyNativeIndicators(snap.nativeIndicators, cell);
         }
 
+        // Langkah 2d: Pulihkan bobot & status collapse tiap pane setelah seluruh indikator & sub-pane terbentuk
         if (Array.isArray(snap.paneLayout) && snap.paneLayout.length > 0) {
           await this.applyPaneLayout(snap.paneLayout, { timeoutMs: 3000 }, cell);
         }
 
+        // Langkah 2e: Pulihkan skala harga, zoom spacing, dan rentang historis setelah layout stabil
+        this.withSuppressedPersistEvents(() => {
+          if (snap.priceScaleState) {
+            this.applyPriceScaleState(snap.priceScaleState, cell);
+          }
+          if (typeof snap.barSpacing === 'number' && snap.barSpacing > 0) {
+            this.setBarSpacing(snap.barSpacing, cell);
+          }
+          if (snap.visibleRange) {
+            this.applyVisibleRange(snap.visibleRange, cell);
+          }
+        });
+
         this.enforceCurrentPriceLine(cell);
+        this.syncGlobalVisualChromeToCells(cell);
       }
 
       // 3. Pastikan active cell terfokus tepat sesuai activeCellIndex dan UI shell tersinkron
@@ -3486,7 +3727,7 @@ export class ChartSessionController {
 
         if (actSym && (actSym !== this.symbol || actProv !== this.providerId)) {
           this.suppressAutoDrawingRestoreKey = `${(actProv || 'binance').toLowerCase()}:${actSym.toUpperCase()}`;
-          setTimeout(() => {
+          this.scheduleManagedTimeout(() => {
             if (this.suppressAutoDrawingRestoreKey === `${(actProv || 'binance').toLowerCase()}:${actSym.toUpperCase()}`) {
               this.suppressAutoDrawingRestoreKey = null;
             }
@@ -3511,56 +3752,24 @@ export class ChartSessionController {
   }
 
   /**
-   * Mengambil snapshot kondisi workspace lengkap untuk disimpan ke persistence SQLite
+   * Mengambil snapshot kondisi workspace lengkap untuk disimpan ke persistence SQLite (Single Source of Truth)
    */
   public saveWorkspaceState(name: string = 'Workspace'): Omit<SavedWorkspace, 'id' | 'timestamp'> & { id?: string } {
-    const indicatorsData = this.getActiveIndicators().map((i: ActiveIndicatorInfo) => ({
-      title: i.title,
-      source: i.source,
-      visible: i.visible,
-      inputs: i.inputs,
-      props: i.props,
-    }));
-
-    const cells = this.getCellsSnapshot();
-    const trackSizes = this.getTrackSizes();
-    const activeCellIndex = this.getActiveCellIndex();
-    const visibleRange = this.getVisibleRangeSnapshot();
-    const drawingSnapshot = chartDrawingController.getSnapshot();
-    const thesisCardGeometry = chartDrawingController.getThesisCardGeometries();
-
-    return {
+    return buildWorkspaceSnapshotPayload({
       name,
-      schemaVersion: WORKSPACE_SCHEMA_VERSION,
       symbol: this.symbol,
       timeframe: this.timeframe,
       layout: this.layout,
       providerId: this.providerId,
-      indicators: indicatorsData,
-      paneWeights: this.getPaneWeights(),
-      paneLayout: this.getPaneLayout(),
-      nativeIndicators: this.getNativeIndicators(),
-      priceScaleState: this.getPriceScaleState(),
-      priceStyle: this.getPriceStyle(),
-      barSpacing: this.getBarSpacing(),
-      ...(visibleRange ? { visibleRange } : {}),
       showVolume: this.showVolume,
-      syncConfig: { ...this.syncConfig },
-      ...(cells.length > 0 ? { cells } : {}),
-      ...(trackSizes ? { trackSizes } : {}),
-      ...(cells.length > 1 || activeCellIndex > 0 ? { activeCellIndex } : {}),
-      activePlans: chartDrawingController.getAllActivePlans(),
-      showThesisCards: chartDrawingController.isThesisCardsVisible(),
-      ...(Object.keys(thesisCardGeometry).length > 0 ? { thesisCardGeometry } : {}),
-      drawingToolbar: {
-        snapMode: drawingSnapshot.snapMode,
-        stayMode: drawingSnapshot.stayMode,
-      },
-    };
+      syncConfig: this.syncConfig,
+      chart: this,
+      plan: chartDrawingController,
+    });
   }
 
   /**
-   * Memulihkan kondisi workspace lengkap secara atomik
+   * Memulihkan kondisi workspace lengkap secara atomik melalui helper pipeline terpusat
    */
   public async loadWorkspaceState(snapshot: SavedWorkspace): Promise<void> {
     if (!snapshot) return;
@@ -3593,84 +3802,13 @@ export class ChartSessionController {
         this.syncLayout(snapshot.syncConfig);
       }
 
-      const usePerCellRestore =
-        Array.isArray(snapshot.cells) &&
-        snapshot.cells.length > 0 &&
-        (snapshot.cells.length > 1 ||
-          snapshot.trackSizes !== undefined ||
-          (snapshot.activeCellIndex !== undefined && snapshot.activeCellIndex > 0) ||
-          snapshot.syncConfig?.indicators === false);
-
-      if (usePerCellRestore) {
-        await this.applyCellsSnapshot(snapshot.cells!, {
-          trackSizes: snapshot.trackSizes,
-          activeCellIndex: snapshot.activeCellIndex,
-          layout: snapshot.layout,
-        });
-      } else {
-        if (snapshot.priceScaleState) {
-          this.applyPriceScaleState(snapshot.priceScaleState);
-        }
-
-        if (snapshot.priceStyle) {
-          this.setPriceStyle(snapshot.priceStyle);
-        }
-
-        if (snapshot.barSpacing) {
-          this.setBarSpacing(snapshot.barSpacing);
-        }
-
-        if (Array.isArray(snapshot.indicators)) {
-          for (const ind of snapshot.indicators) {
-            if (!ind?.title) continue;
-            await this.addPineIndicator(
-              ind.source || 'plot(close)',
-              ind.title,
-              ind.inputs,
-              ind.props
-            );
-            if (ind.visible === false) {
-              this.toggleIndicatorVisibility(ind.title);
-            }
-          }
-        }
-
-        if (Array.isArray(snapshot.nativeIndicators) && snapshot.nativeIndicators.length > 0) {
-          await this.applyNativeIndicators(snapshot.nativeIndicators);
-        }
-
-        if (Array.isArray(snapshot.paneLayout) && snapshot.paneLayout.length > 0) {
-          await this.applyPaneLayout(snapshot.paneLayout, { timeoutMs: 3000 });
-        } else if (snapshot.paneWeights && snapshot.paneWeights.length > 0) {
-          this.applyPaneWeights(snapshot.paneWeights);
-        }
-
-        const primaryRendererConfig = snapshot.cells?.[0]?.rendererConfig;
-        if (primaryRendererConfig && typeof primaryRendererConfig === 'object') {
-          this.applyRendererConfig(primaryRendererConfig);
-        }
-
-        if (snapshot.visibleRange) {
-          this.applyVisibleRange(snapshot.visibleRange);
-        }
-      }
-
-      if (Array.isArray(snapshot.activePlans) && snapshot.activePlans.length > 0) {
-        chartDrawingController.restorePlans(snapshot.activePlans, snapshot.showThesisCards ?? true);
-      }
-
-      if (snapshot.thesisCardGeometry) {
-        chartDrawingController.restoreThesisCardGeometries(snapshot.thesisCardGeometry);
-      }
-
-      if (snapshot.drawingToolbar) {
-        if (snapshot.drawingToolbar.snapMode) {
-          chartDrawingController.setSnapMode(snapshot.drawingToolbar.snapMode);
-        }
-        if (typeof snapshot.drawingToolbar.stayMode === 'boolean') {
-          chartDrawingController.setStayMode(snapshot.drawingToolbar.stayMode);
-        }
-      }
+      await restoreWorkspaceChartAndPlans({
+        workspace: snapshot,
+        chart: this,
+        plan: chartDrawingController,
+        restoreCellDrawings: false,
+        resetPlansWhenEmpty: false,
+      });
 
       this.notify();
     } finally {
@@ -3679,9 +3817,9 @@ export class ChartSessionController {
   }
 
   /**
-   * Menyimpan konfigurasi visual chart saat ini sebagai setelan default permanen
+   * Menyimpan konfigurasi visual chart saat ini sebagai setelan default permanen (terisolasi dari kunci global K3)
    */
-  public async saveCurrentSettingsAsDefault(buttonEl?: HTMLElement): Promise<boolean> {
+  public async saveCurrentSettingsAsDefault(): Promise<boolean> {
     if (!this.workspace || !this.workspace.active) return false;
     try {
       const activeChart = this.workspace.active.chart as any;
@@ -3693,43 +3831,36 @@ export class ChartSessionController {
         return false;
       }
 
-      this.userChartDefaultConfig = currentConfig;
-      this.activeChartDefaultConfig = currentConfig;
-      await saveChartDefaultConfig(currentConfig);
+      const sanitizedConfig =
+        sanitizeRendererConfigForPersistence(
+          currentConfig,
+          this.lastAppliedThemeColors ?? this.resolveActiveThemeCandleColors()
+        ) ?? {};
+
+      this.userChartDefaultConfig = sanitizedConfig;
+      this.activeChartDefaultConfig = sanitizedConfig;
+      await saveChartDefaultConfig(sanitizedConfig);
 
       for (const cell of this.getAllCells()) {
         const chart = cell?.chart || cell?.inner;
         const r = chart?.renderer?.renderer || chart?.renderer;
         if (r) {
-          r.factoryConfig = currentConfig;
+          r.factoryConfig = cloneRendererConfigValue(sanitizedConfig);
         }
         if (chart?.renderer && chart.renderer !== r) {
-          chart.renderer.factoryConfig = currentConfig;
+          chart.renderer.factoryConfig = cloneRendererConfigValue(sanitizedConfig);
         }
       }
 
-      for (const cell of this.getAllCells()) {
-        if (cell !== this.workspace.active) {
-          const chart = cell?.chart || cell?.inner;
-          const r = chart?.renderer?.renderer || chart?.renderer;
-          r?.applyConfig?.(currentConfig);
+      this.withSuppressedPersistEvents(() => {
+        for (const cell of this.getAllCells()) {
+          if (cell !== this.workspace.active) {
+            const chart = cell?.chart || cell?.inner;
+            const r = chart?.renderer?.renderer || chart?.renderer;
+            r?.applyConfig?.(cloneRendererConfigValue(sanitizedConfig));
+          }
         }
-      }
-
-      if (buttonEl) {
-        buttonEl.classList.add('saved');
-        const prevContent = buttonEl.innerHTML;
-        buttonEl.innerHTML = `
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px; flex-shrink: 0;">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-          <span>✓ Tersimpan sebagai Default!</span>
-        `;
-        setTimeout(() => {
-          buttonEl.classList.remove('saved');
-          buttonEl.innerHTML = prevContent;
-        }, 2500);
-      }
+      });
 
       return true;
     } catch (err) {
@@ -3946,11 +4077,15 @@ export class ChartSessionController {
   }
 
   /**
-   * Menghancurkan sesi, melepaskan observer, dan membebaskan alokasi WebGL Context
+   * Menghancurkan sesi, melepaskan observer, timer, listener, dan membebaskan alokasi WebGL Context
    */
   public destroy(): void {
+    this.isDestroyed = true;
     this.chartDefaultHydrationEpoch++;
+    this.clearManagedTimers();
     this.clearPendingVisibleRangeListeners();
+    this.clearPendingWaiters();
+    this.clearWorkspaceEventUnsubs();
     if (this.viewportPersistTimer) {
       clearTimeout(this.viewportPersistTimer);
       this.viewportPersistTimer = null;
@@ -3980,7 +4115,9 @@ export class ChartSessionController {
 
     if (this.workspace) {
       try {
-        this.workspace.destroy();
+        if (typeof this.workspace.destroy === 'function') {
+          this.workspace.destroy();
+        }
       } catch (err) {
         console.warn('[ChartSessionController] Peringatan saat destroy VelaWorkspace:', err);
       }

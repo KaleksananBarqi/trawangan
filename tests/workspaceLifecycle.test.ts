@@ -185,10 +185,18 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
         },
         getActiveIndicators: () => [{ title: 'MACD', source: 'plot(macd)', visible: true }],
         toggleIndicatorVisibility: () => {},
-        setPriceStyle: (style) => appliedScales.push(`style:${style}`),
-        setBarSpacing: (bs) => appliedScales.push(`bs:${bs}`),
-        applyPriceScaleState: (st) => appliedScales.push(`scale:${st.mode}`),
-        applyPaneWeights: (pw) => appliedScales.push(`pane:${pw.join(',')}`),
+        setPriceStyle: (style) => {
+          appliedScales.push(`style:${style}`);
+        },
+        setBarSpacing: (bs) => {
+          appliedScales.push(`bs:${bs}`);
+        },
+        applyPriceScaleState: (st) => {
+          appliedScales.push(`scale:${st.mode}`);
+        },
+        applyPaneWeights: (pw) => {
+          appliedScales.push(`pane:${pw.join(',')}`);
+        },
       };
 
       const mockPlan: WorkspacePlanPort = {

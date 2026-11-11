@@ -115,6 +115,7 @@
   let unsubDrawingState: (() => void) | null = null;
   let unsubOverlay: (() => void) | null = null;
   let unsubFeedConnection: (() => void) | null = null;
+  let dblClickPaneCaptureTimer: ReturnType<typeof setTimeout> | null = null;
 
   function scheduleBadgePositionUpdate() { priceScaleOverlayController.scheduleUpdate(); }
 
@@ -262,7 +263,12 @@
   });
 
   onDestroy(() => {
-    isMounted = false; unsubAlerts?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
+    isMounted = false;
+    if (dblClickPaneCaptureTimer) {
+      clearTimeout(dblClickPaneCaptureTimer);
+      dblClickPaneCaptureTimer = null;
+    }
+    unsubAlerts?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
     window.removeEventListener('paste', handleCanvasPaste);
     replaySession.bindDriver(null); controller.destroy();
   });
@@ -438,7 +444,13 @@
     }
     // Deteksi reset tinggi pane setelah double-click separator
     controller.capturePaneLayoutIfChanged();
-    setTimeout(() => controller.capturePaneLayoutIfChanged(), 0);
+    if (dblClickPaneCaptureTimer) {
+      clearTimeout(dblClickPaneCaptureTimer);
+    }
+    dblClickPaneCaptureTimer = setTimeout(() => {
+      dblClickPaneCaptureTimer = null;
+      controller.capturePaneLayoutIfChanged();
+    }, 0);
   }
 
   // Delegasi tunggal ke ChartSessionController
@@ -466,7 +478,7 @@
   export function setBarSpacing(spacing: number, cell?: any): void { controller.setBarSpacing(spacing, cell); }
   export function saveWorkspaceState(name?: string) { return controller.saveWorkspaceState(name); }
   export function loadWorkspaceState(snapshot: SavedWorkspace) { return controller.loadWorkspaceState(snapshot); }
-  export function saveCurrentChartSettingsAsDefault(btn?: HTMLElement) { return controller.saveCurrentSettingsAsDefault(btn); }
+  export function saveCurrentChartSettingsAsDefault() { return controller.saveCurrentSettingsAsDefault(); }
   export function resetChartSettingsToFactory() { return controller.resetSettingsToFactory(); }
   export function enforceCurrentPriceLine(): void { controller.enforceCurrentPriceLine(); }
   export function enforceCurrentPriceLineOnCell(cell: any): void { controller.enforceCurrentPriceLine(cell); }

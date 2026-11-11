@@ -1,18 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
-
-function createMockContainer() {
-  return {
-    nodeType: 1,
-    tagName: 'DIV',
-    clientWidth: 1000,
-    clientHeight: 600,
-    style: { setProperty: () => {} },
-    children: [],
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
-  } as any;
-}
+import { createMockChartContainer } from './helpers/mockChartContainer';
 
 describe('Fase 2: Persistensi Volume Native (heightPct, placement, visibility)', () => {
   it('1. syncNativeVolumeColors mempertahankan inputs.heightPct yang dikustomisasi pengguna dan tidak menimpa ke 0.15', () => {
@@ -58,7 +47,7 @@ describe('Fase 2: Persistensi Volume Native (heightPct, placement, visibility)',
       on: () => () => {},
     };
 
-    controller.attach(createMockContainer(), { workspaceFactory: () => mockWs });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => mockWs });
     controller.syncNativeVolumeColors(mockCell, false);
 
     assert.equal(volInputs.heightPct, 8, 'heightPct pada handle wajib tetap 8');
@@ -109,7 +98,7 @@ describe('Fase 2: Persistensi Volume Native (heightPct, placement, visibility)',
       on: () => () => {},
     };
 
-    controller.attach(createMockContainer(), { workspaceFactory: () => mockWs });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => mockWs });
 
     const snapOverlay = controller.getNativeIndicators();
     assert.equal(snapOverlay.length, 1);
@@ -174,7 +163,7 @@ describe('Fase 2: Persistensi Volume Native (heightPct, placement, visibility)',
       on: () => () => {},
     };
 
-    controller.attach(createMockContainer(), { workspaceFactory: () => mockWs });
+    controller.attach(createMockChartContainer(), { workspaceFactory: () => mockWs });
 
     await controller.applyNativeIndicators([
       {

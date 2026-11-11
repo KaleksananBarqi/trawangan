@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import {
     SlidersHorizontal,
     RotateCcw,
@@ -49,6 +50,8 @@
 
   let saveDefaultFeedback = $state<string | null>(null);
   let resetChartFeedback = $state<string | null>(null);
+  let saveDefaultFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let resetChartFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   let currentGridMode = $derived(settings.gridMode || (settings.showGrid === false ? 'hidden' : 'normal'));
 
   function handleToggleFavFromSettings(tf: string) {
@@ -82,7 +85,11 @@
       saveDefaultFeedback = ok
         ? '✓ Konfigurasi chart disimpan sebagai default permanen!'
         : 'Gagal menyimpan konfigurasi chart default.';
-      setTimeout(() => {
+      if (saveDefaultFeedbackTimer) {
+        clearTimeout(saveDefaultFeedbackTimer);
+      }
+      saveDefaultFeedbackTimer = setTimeout(() => {
+        saveDefaultFeedbackTimer = null;
         saveDefaultFeedback = null;
       }, 3000);
     }
@@ -92,11 +99,26 @@
     if (onResetChartFactory) {
       onResetChartFactory();
       resetChartFeedback = '✓ Konfigurasi lilin dikembalikan ke default pabrik!';
-      setTimeout(() => {
+      if (resetChartFeedbackTimer) {
+        clearTimeout(resetChartFeedbackTimer);
+      }
+      resetChartFeedbackTimer = setTimeout(() => {
+        resetChartFeedbackTimer = null;
         resetChartFeedback = null;
       }, 3000);
     }
   }
+
+  onDestroy(() => {
+    if (saveDefaultFeedbackTimer) {
+      clearTimeout(saveDefaultFeedbackTimer);
+      saveDefaultFeedbackTimer = null;
+    }
+    if (resetChartFeedbackTimer) {
+      clearTimeout(resetChartFeedbackTimer);
+      resetChartFeedbackTimer = null;
+    }
+  });
 </script>
 
 <div class="section-group">
@@ -255,7 +277,7 @@
   <div class="setting-row">
     <div class="setting-info">
       <span class="setting-label">Simpan Konfigurasi Chart sebagai Default</span>
-      <span class="setting-desc">Jadikan warna lilin, skala, dan tampilan Vela saat ini sebagai template default permanen</span>
+      <span class="setting-desc">Jadikan warna lilin, skala, dan tampilan Vela saat ini sebagai preset konfigurasi default permanen</span>
       {#if saveDefaultFeedback}
         <span class="notification-test-feedback mono-nums">{saveDefaultFeedback}</span>
       {/if}
@@ -274,7 +296,7 @@
   <div class="setting-row">
     <div class="setting-info">
       <span class="setting-label">Reset Konfigurasi Lilin ke Default Pabrik</span>
-      <span class="setting-desc">Hapus template default yang pernah disimpan dan kembalikan ke warna awal bawaan Vela</span>
+      <span class="setting-desc">Hapus preset konfigurasi default yang pernah disimpan dan kembalikan ke warna awal bawaan Vela</span>
       {#if resetChartFeedback}
         <span class="notification-test-feedback mono-nums">{resetChartFeedback}</span>
       {/if}
