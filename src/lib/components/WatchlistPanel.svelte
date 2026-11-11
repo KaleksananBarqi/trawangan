@@ -1,13 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import {
-    parseWatchlistEntry,
-    formatWatchlistEntry,
-    isSectionToken,
-    insertSymbolIntoSection,
-    type WatchlistSectionToken
-  } from '../services/watchlistUtils';
-  import SymbolSearchModal from './SymbolSearchModal.svelte';
+  import { isSectionToken } from '../services/watchlistUtils';
   import TradePlanTab from './TradePlanTab.svelte';
   import WatchlistTab from './right-dock/WatchlistTab.svelte';
   import AlertsTab from './right-dock/AlertsTab.svelte';
@@ -56,7 +49,6 @@
     onWatchlistChange?: (symbols: string[]) => void;
     onRequestCreateAlert?: () => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
-    onOpenSymbolSearch?: () => void;
     activePlans?: ActiveTradingPlan[];
     showThesisCards?: boolean;
     onToggleThesisCards?: () => void;
@@ -98,7 +90,6 @@
     onWatchlistChange,
     onRequestCreateAlert,
     onRequestEditAlert,
-    onOpenSymbolSearch,
     activePlans = [],
     showThesisCards = true,
     onToggleThesisCards,
@@ -131,11 +122,9 @@
   let resizeDispatchTimer: ReturnType<typeof setTimeout> | null = null;
   let activeResizeSession: EdgeResizeSession | null = null;
 
-  let isSymbolSearchOpen = $state(false);
   let registryWatchlists = $state<WatchlistRecord[]>([]);
   let registryActiveId = $state<string>('default');
   let unsubRegistry: (() => void) | null = null;
-  let lastActiveSectionId = $state<string | null | undefined>(undefined);
   let symbols = $state<string[]>([
     'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
     'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
@@ -264,29 +253,6 @@
     await watchlistRegistry.updateActiveItems(newSymbols);
   }
 
-  async function handleToggleSymbolFromSearch(rawInput: string) {
-    let entry = rawInput;
-    if (!entry.includes(':')) {
-      entry = formatWatchlistEntry(rawInput, activeProviderId);
-    }
-    const target = parseWatchlistEntry(entry);
-    const exists = symbols.some((s) => {
-      if (s === entry) return true;
-      const p = parseWatchlistEntry(s);
-      return p.symbol === target.symbol && p.providerId === target.providerId;
-    });
-
-    const next = exists
-      ? symbols.filter((s) => {
-          if (s === entry) return false;
-          const p = parseWatchlistEntry(s);
-          return !(p.symbol === target.symbol && p.providerId === target.providerId);
-        })
-      : insertSymbolIntoSection(symbols, entry, lastActiveSectionId);
-
-    await applyWatchlistUpdate(next);
-  }
-
   onMount(() => {
     try {
       const savedStd = parseInt(localStorage.getItem(STORAGE_KEY_STANDARD_WIDTH) || '', 10);
@@ -357,14 +323,8 @@
         {activeProviderId}
         {registryWatchlists}
         {activeWatchlist}
-        {lastActiveSectionId}
         {onSelectSymbol}
-        onSelectSectionId={(id) => (lastActiveSectionId = id)}
         onUpdateWatchlist={applyWatchlistUpdate}
-        onOpenSymbolSearch={() => {
-          if (onOpenSymbolSearch) onOpenSymbolSearch();
-          else isSymbolSearchOpen = true;
-        }}
       />
     {:else if activeTab === 'alerts'}
       <AlertsTab
@@ -421,16 +381,6 @@
     </div>
   </aside>
 {/if}
-
-<SymbolSearchModal
-  isOpen={isSymbolSearchOpen}
-  {activeSymbol}
-  {activeProviderId}
-  watchlistSymbols={symbols}
-  {onSelectSymbol}
-  onToggleWatchlistSymbol={handleToggleSymbolFromSearch}
-  onClose={() => (isSymbolSearchOpen = false)}
-/>
 
 <style>
   .right-panel-resizer {

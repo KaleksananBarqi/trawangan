@@ -74,22 +74,6 @@ describe('Deep Persistence Module Unit Tests', () => {
     assert.strictEqual(loaded[0].targetPrice, 70000);
   });
 
-  test('Quick Symbols Config: memuat default dan menyimpan konfigurasi kustom', async () => {
-    const initial = await service.loadQuickSymbolsConfig();
-    assert.strictEqual(initial.mode, 'watchlist');
-    assert.strictEqual(initial.maxDisplayCount, 5);
-
-    const custom = {
-      mode: 'custom' as const,
-      customSymbols: ['SOLUSDT', 'SUIUSDT'],
-      maxDisplayCount: 2,
-    };
-
-    await service.saveQuickSymbolsConfig(custom);
-    const loaded = await service.loadQuickSymbolsConfig();
-    assert.deepStrictEqual(loaded, custom);
-  });
-
   test('Workspaces: alur CRUD penyimpanan dan penghapusan tata letak workspace', async () => {
     const initial = await service.loadWorkspaces();
     assert.deepStrictEqual(initial, []);

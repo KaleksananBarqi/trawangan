@@ -392,8 +392,6 @@ export interface AppSettings {
   syncConfig?: MultiChartSyncConfig;
   autoSaveWorkspace?: boolean;
   autoLoadLastWorkspace?: boolean;
-  clipboardWatcherEnabled?: boolean;
-  clipboardAutoOpen?: boolean;
   showWorldClocks?: boolean;
   worldClockCities?: string[];
   // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting, #132 Side-by-Side Thesis Layout)
@@ -468,11 +466,6 @@ export interface StrategyPerformanceSummary {
     unrealizedPnlPercent: number;
   };
   trades: StrategyTradeRecord[];
-}
-export interface QuickSymbolsConfig {
-  mode: 'watchlist' | 'custom';
-  customSymbols: string[];
-  maxDisplayCount: number;
 }
 
 export interface PriceScaleState {

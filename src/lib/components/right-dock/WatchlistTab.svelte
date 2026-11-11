@@ -1,14 +1,9 @@
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
   import {
-    Plus,
     X,
-    Search,
-    Globe,
     Check,
-    Loader2,
     ChevronDown,
-    FolderPlus,
     Pencil,
     MoreHorizontal,
     Folder,
@@ -18,22 +13,20 @@
   import { marketFeed } from '../../services/market';
   import {
     parseWatchlistEntry,
-    formatWatchlistEntry,
-    normalizeProviderId,
     isSectionToken,
     formatSectionToken,
     parseSectionToken,
-    insertSymbolIntoSection,
     moveItemToSection,
     reorderWatchlistItems,
+    removeSymbolFromWatchlist,
     type WatchlistSectionToken
   } from '../../services/watchlistUtils';
-  import { parseAdaptiveSymbol, getSearchResultKey } from '../../services/market/symbolSearchService';
+  import { parseAdaptiveSymbol } from '../../services/market/symbolSearchService';
   import { formatPriceLabel } from '../../services/priceScaleLabelService';
   import { watchlistRegistry } from '../../services/watchlistRegistryService';
   import WatchlistSwitcher from '../WatchlistSwitcher.svelte';
   import SymbolLogo from '../common/SymbolLogo.svelte';
-  import type { MarketSearchResult, WatchlistRecord } from '../../types/market';
+  import type { WatchlistRecord } from '../../types/market';
 
   interface SectionGroup {
     section: WatchlistSectionToken | null;
@@ -46,11 +39,8 @@
     activeProviderId: string;
     registryWatchlists: WatchlistRecord[];
     activeWatchlist: WatchlistRecord;
-    lastActiveSectionId: string | null | undefined;
     onSelectSymbol: (symbol: string, providerId?: string) => void;
-    onSelectSectionId: (sectionId: string | null | undefined) => void;
     onUpdateWatchlist: (nextSymbols: string[]) => Promise<void>;
-    onOpenSymbolSearch: () => void;
   }
 
   let {
@@ -59,30 +49,16 @@
     activeProviderId,
     registryWatchlists,
     activeWatchlist,
-    lastActiveSectionId,
     onSelectSymbol,
-    onSelectSectionId,
     onUpdateWatchlist,
-    onOpenSymbolSearch,
   }: Props = $props();
 
   let tickerMap = $state<
     Record<string, { price: number; change24h: number; high24h: number; low24h: number; volume24h: number }>
   >({});
-  let searchQuery = $state('');
-  let newSymbolInput = $state('');
-  let showAddInput = $state(false);
   let unsubWatchlistFeed: (() => void) | null = null;
 
-  // State omni-search dan timer debounce pencarian bursa
-  let exchangeSearchResults = $state<MarketSearchResult[]>([]);
-  let isSearchingExchange = $state(false);
-  let selectedOmniIndex = $state(0);
-  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
   // State modal dan menu kategori (section)
-  let showAddSectionModal = $state(false);
-  let newSectionName = $state('');
   let showRenameSectionModal = $state(false);
   let renameSectionId = $state<string | null>(null);
   let renameSectionValue = $state('');
@@ -114,155 +90,23 @@
     }
   });
 
-  $effect(() => {
-    const q = searchQuery.trim();
-    if (!q) {
-      exchangeSearchResults = [];
-      isSearchingExchange = false;
-      selectedOmniIndex = 0;
-      if (searchDebounceTimer !== null) {
-        clearTimeout(searchDebounceTimer);
-        searchDebounceTimer = null;
-      }
-      return;
-    }
-
-    // Respon instan < 5ms dari cache memori lokal sebelum query ke bursa
-    if (marketFeed.searchLocalSymbols) {
-      const instant = marketFeed.searchLocalSymbols(q);
-      exchangeSearchResults = instant.slice(0, 15);
-    }
-
-    if (searchDebounceTimer !== null) {
-      clearTimeout(searchDebounceTimer);
-    }
-    searchDebounceTimer = setTimeout(async () => {
-      searchDebounceTimer = null;
-      isSearchingExchange = true;
-      try {
-        const fullResults = await marketFeed.searchSymbols(q);
-        exchangeSearchResults = fullResults.slice(0, 25);
-      } catch (err) {
-        console.warn('Gagal mencari simbol bursa:', err);
-      } finally {
-        isSearchingExchange = false;
-      }
-    }, 150);
-
-    return () => {
-      if (searchDebounceTimer !== null) {
-        clearTimeout(searchDebounceTimer);
-        searchDebounceTimer = null;
-      }
-    };
-  });
-
   onDestroy(() => {
     if (unsubWatchlistFeed) {
       unsubWatchlistFeed();
       unsubWatchlistFeed = null;
     }
-    if (searchDebounceTimer !== null) {
-      clearTimeout(searchDebounceTimer);
-      searchDebounceTimer = null;
-    }
   });
-
-  function getSectionIdForSymbol(sym: string): string | null {
-    let currentId: string | null = null;
-    for (const item of symbols) {
-      if (isSectionToken(item)) {
-        const parsed = parseSectionToken(item);
-        currentId = parsed ? parsed.id : null;
-      } else if (item === sym) {
-        return currentId;
-      }
-    }
-    return null;
-  }
 
   function handleSelectRowSymbol(rawEntry: string) {
     const { providerId, symbol } = parseWatchlistEntry(rawEntry);
-    onSelectSectionId(getSectionIdForSymbol(rawEntry));
     onSelectSymbol(symbol, providerId);
-  }
-
-  async function handleAddSymbol(e: Event) {
-    e.preventDefault();
-    const clean = newSymbolInput.trim().toUpperCase();
-    if (!clean) return;
-
-    let formatted = clean;
-    if (clean.endsWith('.P')) {
-      const base = clean.slice(0, -2);
-      formatted = base.endsWith('USDT') ? clean : `${base}USDT.P`;
-    } else if (!clean.endsWith('USDT') && !clean.endsWith('IDR')) {
-      formatted = `${clean}USDT`;
-    }
-
-    const entry = formatWatchlistEntry(formatted, activeProviderId);
-    if (!symbols.includes(entry)) {
-      const next = insertSymbolIntoSection(symbols, entry, lastActiveSectionId);
-      await onUpdateWatchlist(next);
-    }
-    newSymbolInput = '';
-    showAddInput = false;
-  }
-
-  async function handleAddSymbolFromExchange(e: MouseEvent, sym: string, providerId?: string) {
-    e.stopPropagation();
-    e.preventDefault();
-    const entry = formatWatchlistEntry(sym, providerId || activeProviderId);
-    const target = parseWatchlistEntry(entry);
-    const exists = symbols.some((s) => {
-      if (s === entry) return true;
-      const p = parseWatchlistEntry(s);
-      return p.symbol === target.symbol && p.providerId === target.providerId;
-    });
-    if (!exists) {
-      const next = insertSymbolIntoSection(symbols, entry, lastActiveSectionId);
-      await onUpdateWatchlist(next);
-    }
-  }
-
-  function handleSearchKeyDown(e: KeyboardEvent) {
-    const totalOmniItems = filteredSymbols.length + exchangeSearchResults.length;
-    if (totalOmniItems === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      selectedOmniIndex = (selectedOmniIndex + 1) % totalOmniItems;
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      selectedOmniIndex = (selectedOmniIndex - 1 + totalOmniItems) % totalOmniItems;
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (selectedOmniIndex < filteredSymbols.length) {
-        handleSelectRowSymbol(filteredSymbols[selectedOmniIndex]);
-      } else {
-        const exItem = exchangeSearchResults[selectedOmniIndex - filteredSymbols.length];
-        if (exItem) {
-          handleSelectRowSymbol(exItem.symbol);
-        }
-      }
-    }
   }
 
   async function handleRemoveSymbol(e: MouseEvent, rawEntry: string) {
     e.stopPropagation();
     e.preventDefault();
-    const target = parseWatchlistEntry(rawEntry);
-    const next = symbols.filter((s) => {
-      if (s === rawEntry) return false;
-      const p = parseWatchlistEntry(s);
-      return !(p.symbol === target.symbol && p.providerId === target.providerId);
-    });
-    await onUpdateWatchlist(next);
+    await onUpdateWatchlist(removeSymbolFromWatchlist(symbols, rawEntry));
   }
-
-  const filteredSymbols = $derived(
-    symbols.filter((s) => !isSectionToken(s) && s.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
 
   const groupedSections = $derived.by<SectionGroup[]>(() => {
     const groups: SectionGroup[] = [];
@@ -300,21 +144,7 @@
     return list;
   });
 
-  async function handleAddSectionSubmit() {
-    const clean = newSectionName.trim().toUpperCase();
-    if (!clean) return;
-    const token = formatSectionToken(clean);
-    const parsed = parseSectionToken(token);
-    if (parsed) {
-      onSelectSectionId(parsed.id);
-    }
-    await onUpdateWatchlist([...symbols, token]);
-    newSectionName = '';
-    showAddSectionModal = false;
-  }
-
   async function handleToggleSectionCollapse(sectionId: string) {
-    onSelectSectionId(sectionId);
     const next = symbols.map((item) => {
       if (isSectionToken(item)) {
         const parsed = parseSectionToken(item);
@@ -422,84 +252,29 @@
   }
 </script>
 
-<!-- Toolbar Watchlist: Search & Add -->
-<div class="sub-toolbar">
-  <div class="search-box">
-    <span class="search-icon"><Search size={12} /></span>
-    <input
-      type="text"
-      placeholder="Cari simbol (e.g. RE, BTC, ETH)..."
-      bind:value={searchQuery}
-      onkeydown={handleSearchKeyDown}
-      class="search-input"
-      aria-label="Cari simbol di watchlist atau bursa"
-    />
-    {#if searchQuery}
-      <button
-        type="button"
-        class="clear-search-btn"
-        aria-label="Bersihkan pencarian"
-        onclick={() => (searchQuery = '')}
-      >
-        <X size={11} />
-      </button>
-    {/if}
-  </div>
-
-  <button
-    type="button"
-    class="symbol-search-trigger-btn"
-    title="Buka Pencarian Pair Kripto Valid (Spot / Perpetuals)"
-    onclick={onOpenSymbolSearch}
-  >
-    <Search size={11} />
-    <span>Cari Pair</span>
-  </button>
-
-  <button
-    type="button"
-    class="add-symbol-btn {showAddInput ? 'active' : ''}"
-    title="Input Cepat Simbol"
-    onclick={() => (showAddInput = !showAddInput)}
-  >
-    <Plus size={13} />
-  </button>
-
-  <button
-    type="button"
-    class="add-section-toolbar-btn"
-    title="Tambah Kategori / Section"
-    onclick={() => (showAddSectionModal = true)}
-  >
-    <FolderPlus size={13} />
-  </button>
-</div>
-
 <!-- Multi-Watchlist Switcher Popover -->
-{#if !searchQuery.trim()}
-  <WatchlistSwitcher
-    {activeWatchlist}
-    watchlists={registryWatchlists}
-    onSelectWatchlist={async (id) => {
-      await watchlistRegistry.setActiveWatchlistId(id);
-    }}
-    onCreateWatchlist={async (name) => {
-      await watchlistRegistry.createWatchlist(name);
-    }}
-    onRenameWatchlist={async (id, name) => {
-      await watchlistRegistry.renameWatchlist(id, name);
-    }}
-    onDuplicateWatchlist={async (id) => {
-      await watchlistRegistry.duplicateWatchlist(id);
-    }}
-    onDeleteWatchlist={async (id) => {
-      await watchlistRegistry.deleteWatchlist(id);
-    }}
-    onResetPreset={async (id) => {
-      await watchlistRegistry.resetPresetWatchlist(id);
-    }}
-  />
-{/if}
+<WatchlistSwitcher
+  {activeWatchlist}
+  watchlists={registryWatchlists}
+  onSelectWatchlist={async (id) => {
+    await watchlistRegistry.setActiveWatchlistId(id);
+  }}
+  onCreateWatchlist={async (name) => {
+    await watchlistRegistry.createWatchlist(name);
+  }}
+  onRenameWatchlist={async (id, name) => {
+    await watchlistRegistry.renameWatchlist(id, name);
+  }}
+  onDuplicateWatchlist={async (id) => {
+    await watchlistRegistry.duplicateWatchlist(id);
+  }}
+  onDeleteWatchlist={async (id) => {
+    await watchlistRegistry.deleteWatchlist(id);
+  }}
+  onResetPreset={async (id) => {
+    await watchlistRegistry.resetPresetWatchlist(id);
+  }}
+/>
 
 <!-- Feed Status & Header Kolom -->
 <div class="table-head mono-nums">
@@ -511,168 +286,9 @@
   <span class="col-change">24h %</span>
 </div>
 
-{#if showAddInput}
-  <form class="add-form" onsubmit={handleAddSymbol}>
-    <input
-      type="text"
-      placeholder="Ketik simbol (e.g. BTCUSDT.P, BTCIDR)..."
-      bind:value={newSymbolInput}
-      class="add-input mono-nums"
-      aria-label="Simbol baru untuk ditambahkan ke watchlist"
-    />
-    <button type="submit" class="submit-add-btn">Add</button>
-  </form>
-{/if}
-
-<!-- Daftar Watchlist & Hasil Omni-Search -->
+<!-- Daftar Watchlist -->
 <div class="items-list">
-  {#if searchQuery.trim()}
-    {#if filteredSymbols.length > 0}
-      <div class="omni-section-header">
-        <span>Di Watchlist ({filteredSymbols.length})</span>
-      </div>
-      {#each filteredSymbols as sym, idx (sym)}
-        {@const entry = parseWatchlistEntry(sym)}
-        {@const parsedPair = parseAdaptiveSymbol(entry.symbol)}
-        {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
-        {@const isBull = (ticker?.change24h ?? 0) >= 0}
-        {@const isHighlighted = selectedOmniIndex === idx}
-        {@const isCurrentActive = activeSymbol === entry.symbol && activeProviderId === entry.providerId}
-        <div class="watchlist-row {isCurrentActive ? 'active-row' : ''} {isHighlighted ? 'omni-highlighted' : ''}">
-          <button
-            type="button"
-            class="row-select-btn"
-            onclick={() => handleSelectRowSymbol(sym)}
-          >
-            <div class="row-symbol">
-              <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-              <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} size="sm" />
-              <span class="symbol-name">{parsedPair.baseAsset}</span>
-              <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
-              {#if entry.symbol.endsWith('.P')}
-                <span class="type-tag perp mono-nums">.P</span>
-              {:else if entry.symbol.endsWith('IDR')}
-                <span class="type-tag idr mono-nums">IDR</span>
-              {:else if parsedPair.quoteAsset && parsedPair.quoteAsset !== 'USDT'}
-                <span class="type-tag spot mono-nums">{parsedPair.quoteAsset}</span>
-              {:else}
-                <span class="type-tag spot mono-nums">SPOT</span>
-              {/if}
-            </div>
-
-            <div class="row-price mono-nums">
-              {formatPrice(ticker?.price, entry.symbol)}
-            </div>
-
-            <div class="row-change mono-nums">
-              {#if ticker?.change24h !== undefined}
-                <span class="change-pill {isBull ? 'pill-bull' : 'pill-bear'}">
-                  {#if isBull}+{/if}{ticker.change24h.toFixed(2)}%
-                </span>
-              {:else}
-                <span class="change-placeholder">--</span>
-              {/if}
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="delete-item-btn"
-            title="Hapus dari watchlist"
-            onclick={(e) => handleRemoveSymbol(e, sym)}
-          >
-            <X size={11} />
-          </button>
-        </div>
-      {/each}
-    {/if}
-
-    {#if exchangeSearchResults.length > 0}
-      <div class="omni-section-header exchange-header">
-        <div class="omni-header-left">
-          <Globe size={11} />
-          <span>Hasil dari Bursa ({exchangeSearchResults.length})</span>
-        </div>
-        {#if isSearchingExchange}
-          <span class="omni-loading-pip">
-            <Loader2 size={10} class="spin" />
-            <span>Memuat...</span>
-          </span>
-        {/if}
-      </div>
-
-      {#each exchangeSearchResults as item, exIdx (getSearchResultKey(item))}
-        {@const globalIdx = filteredSymbols.length + exIdx}
-        {@const isInWatchlist = symbols.some((w) => {
-          const p = parseWatchlistEntry(w);
-          return p.symbol === item.symbol.toUpperCase() && p.providerId === normalizeProviderId(item.provider);
-        })}
-        {@const isHighlighted = selectedOmniIndex === globalIdx}
-        <div class="watchlist-row exchange-row {activeSymbol === item.symbol ? 'active-row' : ''} {isHighlighted ? 'omni-highlighted' : ''}">
-          <button
-            type="button"
-            class="row-select-btn"
-            onclick={() => handleSelectRowSymbol(item.symbol)}
-          >
-            <div class="row-symbol">
-              <span class="status-pip {item.type === 'perp' ? 'pip-perp' : 'pip-spot'}"></span>
-              <SymbolLogo baseAsset={item.baseAsset} quoteAsset={item.quoteAsset} size="sm" />
-              <span class="symbol-name">{item.baseAsset}</span>
-              <span class="symbol-quote mono-nums">/{item.quoteAsset}</span>
-              {#if item.type === 'perp'}
-                <span class="type-tag perp mono-nums">.P</span>
-              {:else if item.quoteAsset === 'IDR'}
-                <span class="type-tag idr mono-nums">IDR</span>
-              {:else if item.quoteAsset && item.quoteAsset !== 'USDT'}
-                <span class="type-tag spot mono-nums">{item.quoteAsset}</span>
-              {:else}
-                <span class="type-tag spot mono-nums">SPOT</span>
-              {/if}
-            </div>
-
-            <div class="exchange-venue-desc">
-              {item.provider}
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="add-exchange-btn {isInWatchlist ? 'already-added' : ''}"
-            title={isInWatchlist ? 'Sudah ada di daftar pantau' : 'Tambahkan ke watchlist'}
-            onclick={(e) => handleAddSymbolFromExchange(e, item.symbol, item.provider)}
-            disabled={isInWatchlist}
-          >
-            {#if isInWatchlist}
-              <Check size={12} />
-            {:else}
-              <Plus size={12} />
-            {/if}
-          </button>
-        </div>
-      {/each}
-    {/if}
-
-    {#if filteredSymbols.length === 0 && exchangeSearchResults.length === 0}
-      <div class="empty-state omni-empty">
-        {#if isSearchingExchange}
-          <Loader2 size={20} class="spin" />
-          <span>Mencari di seluruh bursa...</span>
-        {:else}
-          <span>Tidak ada koin yang cocok dengan "{searchQuery}".</span>
-          <button
-            type="button"
-            class="btn-open-global-search"
-            onclick={onOpenSymbolSearch}
-          >
-            <Search size={11} />
-            <span>Cari Online di Menu Simbol (Ctrl+K)</span>
-          </button>
-        {/if}
-      </div>
-    {/if}
-
-  {:else}
-    {#each groupedSections as group (group.section ? group.section.id : '__uncat__')}
+  {#each groupedSections as group (group.section ? group.section.id : '__uncat__')}
       {#if group.section}
         {@const sec = group.section}
         {@const secTokenStr = symbols.find((s) => isSectionToken(s) && parseSectionToken(s)?.id === sec.id) || ''}
@@ -816,7 +432,7 @@
                 </button>
 
                 {#if activeCoinMenuSymbol === sym}
-                  {@const currentSecId = getSectionIdForSymbol(sym)}
+                  {@const currentSecId = group.section?.id ?? null}
                   <button
                     type="button"
                     class="menu-backdrop-btn coin-backdrop"
@@ -874,47 +490,12 @@
       {/if}
     {/each}
 
-    {#if symbols.filter((s) => !isSectionToken(s)).length === 0}
-      <div class="empty-state">
-        <span>Daftar pantau kosong. Tambahkan koin dengan tombol + di atas.</span>
-      </div>
-    {/if}
+  {#if symbols.filter((s) => !isSectionToken(s)).length === 0}
+    <div class="empty-state">
+      <span>Daftar pantau kosong. Tambahkan koin lewat tombol Bintang di Header atau tekan Ctrl+K.</span>
+    </div>
   {/if}
 </div>
-
-<!-- Modal Tambah Kategori / Section -->
-{#if showAddSectionModal}
-  <div class="modal-backdrop">
-    <div class="switcher-modal obsidian-modal" role="dialog" aria-modal="true" aria-label="Tambah Kategori Watchlist">
-      <div class="modal-header">
-        <span>Tambah Kategori Watchlist</span>
-        <button type="button" class="btn-close-modal" aria-label="Tutup modal" onclick={() => (showAddSectionModal = false)}>
-          <X size={13} />
-        </button>
-      </div>
-      <form onsubmit={(e) => { e.preventDefault(); handleAddSectionSubmit(); }}>
-        <div class="modal-body">
-          <label class="modal-label" for="add-section-name">Nama Kategori / Section</label>
-          <input
-            id="add-section-name"
-            type="text"
-            class="modal-input"
-            placeholder="e.g. DEFI, LAYER 1, MEMECOIN"
-            bind:value={newSectionName}
-          />
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn-modal-cancel" onclick={() => (showAddSectionModal = false)}>
-            Batal
-          </button>
-          <button type="submit" class="btn-modal-submit" disabled={!newSectionName.trim()}>
-            Simpan
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-{/if}
 
 <!-- Modal Ganti Nama Kategori / Section -->
 {#if showRenameSectionModal}
@@ -960,157 +541,6 @@
 {/if}
 
 <style>
-  .sub-toolbar {
-    padding: 6px 8px;
-    background-color: var(--bg-base);
-    border-bottom: 1px solid var(--border-hairline);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  .search-box {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background-color: var(--bg-container);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    padding: 3px 6px;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .search-box:focus-within {
-    border-color: var(--border-focus);
-  }
-
-  .search-icon {
-    color: var(--text-dim);
-    display: flex;
-    align-items: center;
-  }
-
-  .search-input {
-    background: none;
-    border: none;
-    color: var(--text-main);
-    font-size: var(--font-size-base, 11px);
-    width: 100%;
-    outline: none;
-  }
-
-  .clear-search-btn {
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    align-items: center;
-  }
-
-  .clear-search-btn:focus-visible {
-    outline: 1.5px solid var(--border-focus);
-    border-radius: var(--radius-xs);
-  }
-
-  .symbol-search-trigger-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background-color: color-mix(in srgb, var(--brand-cyan) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--brand-cyan) 32%, transparent);
-    border-radius: var(--radius-xs);
-    color: var(--brand-cyan);
-    font-size: var(--font-size-sm, 10px);
-    font-weight: 600;
-    padding: 3px 6px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-  }
-
-  .symbol-search-trigger-btn:hover {
-    background-color: color-mix(in srgb, var(--brand-cyan) 22%, transparent);
-    border-color: var(--brand-cyan);
-  }
-
-  .add-symbol-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    background-color: var(--bg-container);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    color: var(--brand-primary);
-    font-size: var(--font-size-base, 11px);
-    font-weight: 600;
-    padding: 3px 6px;
-    cursor: pointer;
-  }
-
-  .add-symbol-btn:hover,
-  .add-symbol-btn.active {
-    background-color: color-mix(in srgb, var(--brand-primary) 14%, transparent);
-    border-color: var(--brand-primary);
-  }
-
-  .add-section-toolbar-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--bg-container);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    color: var(--text-dim);
-    padding: 3px 6px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .add-section-toolbar-btn:hover {
-    color: var(--brand-primary);
-    background-color: color-mix(in srgb, var(--brand-primary) 14%, transparent);
-    border-color: var(--brand-primary);
-  }
-
-  .add-form {
-    padding: 6px 8px;
-    background-color: var(--bg-panel);
-    border-bottom: 1px solid var(--border-hairline);
-    display: flex;
-    gap: 6px;
-  }
-
-  .add-input {
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    color: var(--text-main);
-    font-size: var(--font-size-base, 11px);
-    padding: 4px 6px;
-    outline: none;
-    flex: 1;
-  }
-
-  .add-input:focus {
-    border-color: var(--border-focus);
-  }
-
-  .submit-add-btn {
-    background-color: var(--brand-primary);
-    color: var(--on-brand-primary, #000000);
-    border: none;
-    border-radius: var(--radius-xs);
-    font-size: var(--font-size-sm, 10px);
-    font-weight: 700;
-    padding: 0 8px;
-    cursor: pointer;
-  }
-
   .table-head {
     display: grid;
     grid-template-columns: 100px 1fr 65px;
@@ -1195,17 +625,12 @@
     flex-shrink: 0;
   }
 
-  .pip-bull,
-  .pip-spot {
+  .pip-bull {
     background-color: var(--bull-text);
   }
 
   .pip-bear {
     background-color: var(--bear-color);
-  }
-
-  .pip-perp {
-    background-color: var(--status-warn);
   }
 
   .symbol-name {
@@ -1511,141 +936,6 @@
     border-color: color-mix(in srgb, var(--status-danger) 40%, transparent);
   }
 
-  /* Omni-Search Watchlist Styles */
-  .omni-section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 5px 8px;
-    background-color: var(--bg-container);
-    border-bottom: 1px solid var(--border-hairline);
-    font-size: var(--font-size-xs, 9px);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-  }
-
-  .omni-section-header.exchange-header {
-    background-color: color-mix(in srgb, var(--brand-cyan) 12%, transparent);
-    border-top: 1px solid color-mix(in srgb, var(--brand-cyan) 30%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, var(--brand-cyan) 30%, transparent);
-    color: var(--brand-cyan);
-  }
-
-  .omni-header-left {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .omni-loading-pip {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: var(--font-size-xs, 9px);
-    color: var(--brand-cyan);
-    text-transform: none;
-  }
-
-  .watchlist-row.exchange-row .row-select-btn {
-    grid-template-columns: 1fr auto;
-    gap: 8px;
-  }
-
-  .symbol-quote {
-    font-size: var(--font-size-sm, 10px);
-    color: var(--text-dim);
-  }
-
-  .exchange-venue-desc {
-    font-size: var(--font-size-sm, 10px);
-    color: var(--text-dim);
-    text-align: right;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding-right: 28px;
-  }
-
-  .add-exchange-btn {
-    position: absolute;
-    right: 5px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 22px;
-    height: 22px;
-    border-radius: var(--radius-xs);
-    background-color: color-mix(in srgb, var(--brand-cyan) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--brand-cyan) 32%, transparent);
-    color: var(--brand-cyan);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    z-index: 5;
-    padding: 0;
-  }
-
-  .add-exchange-btn:hover:not(:disabled) {
-    background-color: var(--brand-cyan);
-    border-color: var(--brand-cyan);
-    color: var(--bg-darkest);
-  }
-
-  .add-exchange-btn.already-added {
-    background-color: color-mix(in srgb, var(--bull-text) 14%, transparent);
-    border-color: color-mix(in srgb, var(--bull-text) 32%, transparent);
-    color: var(--bull-text);
-    cursor: default;
-    opacity: 0.85;
-  }
-
-  .watchlist-row.omni-highlighted {
-    background-color: color-mix(in srgb, var(--brand-cyan) 14%, transparent) !important;
-    border-left: 2px solid var(--brand-cyan) !important;
-  }
-
-  .omni-empty {
-    padding: 24px 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    text-align: center;
-    color: var(--text-dim);
-  }
-
-  .btn-open-global-search {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    background-color: color-mix(in srgb, var(--brand-cyan) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--brand-cyan) 35%, transparent);
-    border-radius: var(--radius-xs);
-    color: var(--brand-cyan);
-    font-size: var(--font-size-base, 11px);
-    font-weight: 600;
-    padding: 5px 10px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-open-global-search:hover {
-    background-color: color-mix(in srgb, var(--brand-cyan) 24%, transparent);
-    border-color: var(--brand-cyan);
-  }
-
-  :global(.spin) {
-    animation: spin-anim 1s linear infinite;
-  }
-
-  @keyframes spin-anim {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
   /* Section Divider Row */
   .section-divider-row {
     display: flex;
@@ -1797,7 +1087,7 @@
     color: var(--text-dim);
   }
 
-  /* Modal Tambah & Rename Kategori */
+  /* Modal Rename Kategori */
   .modal-backdrop {
     position: fixed;
     inset: 0;

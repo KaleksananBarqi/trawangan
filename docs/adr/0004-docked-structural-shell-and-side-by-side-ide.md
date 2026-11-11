@@ -1,5 +1,9 @@
 # 0004. Docked Structural Shell and Persistent Side-by-Side Pine IDE
 
+> **Amandemen (Spec #164, #165, #168):**
+> - **Pemangkasan Mode Switcher Header (Tiket #165):** *Mode switcher* ganda `Terminal | Pine IDE` (beserta badge dekoratif `terminal` dan tombol `Fullscreen` duplikat `F11`) pada `Header` dihapus karena bersifat redundan. Kapabilitas **Persistent Side-by-Side Pine IDE** tetap dipertahankan utuh melalui ikon `<>` pada **Right Dock Rail**, **Indicator Library** (*Edit di IDE*, *+ Buat Skrip Baru*, *Skrip Saya*), **Unified Object Tree** (`<>`), serta pintasan keyboard `Alt+E`.
+> - **Rebalance Telemetri Live StatusBar (Tiket #168):** Tiga badge status statis dekoratif pada sisi kiri `StatusBar` (`Engine: NATIVE_SYS_X64`, `SQLite Local ACTIVE`, `Pine Script v6 Runtime Ready`) dihapus dan digantikan oleh relokasi telemetri *real-time* (`FPS`, `Ping` / *Feed Connection Guard*, `RAM`) ke kluster kiri `StatusBar`.
+
 Untuk mengatasi pengalaman canggung (*alien feeling*) bagi trader pengguna TradingView tanpa mengorbankan alur kerja pengkodean yang disukai pengguna, `trawangan` beralih dari model *floating overlay* ke arsitektur **Docked Structural Shell**:
 1. **Left Drawing Toolbar Rail**: Bilah alat gambar kiri dirombak menjadi rel vertikal struktural (lebar 44px) yang terpasang permanen pada tepi kiri jendela dan membatasi kanvas WebGL2, sehingga lilin (*candlestick*) tidak tertutup bilah alat. Bilah alat menyediakan tombol *collapse* halus ke 0px (shortcut `Alt+T`), sementara bilah alat favorit (*Favorites Bar*) tetap melayang bebas (*draggable*) di atas grafik.
 2. **Right Dock Rail**: Menggantikan tombol melayang `"PANEL"` lama dengan rel ikon vertikal permanen (lebar 38px) di tepi paling kanan untuk akses instan satu klik ke Watchlist, Price Alerts, dan Object Tree/Layers dengan mekanisme *toggle click-to-close* dan *hider chevron*.

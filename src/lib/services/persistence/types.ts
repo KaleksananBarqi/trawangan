@@ -3,7 +3,6 @@ import type {
   SavedWorkspace,
   PineScriptRecord,
   PriceAlert,
-  QuickSymbolsConfig,
   AppSettings,
   SavedTradingPlanRecord,
 } from '../../types/market';
@@ -56,10 +55,6 @@ export interface IPersistenceService {
   // Price Alerts
   loadAlerts(): Promise<PriceAlert[]>;
   saveAlerts(alerts: PriceAlert[]): Promise<void>;
-
-  // Quick Symbols
-  loadQuickSymbolsConfig(): Promise<QuickSymbolsConfig>;
-  saveQuickSymbolsConfig(config: QuickSymbolsConfig): Promise<void>;
 
   // Workspaces
   loadWorkspaces(): Promise<SavedWorkspace[]>;

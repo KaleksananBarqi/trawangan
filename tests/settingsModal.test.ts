@@ -61,4 +61,26 @@ test('Settings Modal & Tab Submodules Seam Suite', async (t) => {
     assert.equal(updated.themePreset, 'tradingview');
     assert.equal(updated.timezone, base.timezone);
   });
+
+  await t.test('4. Pembersihan Properti Clipboard & Toleransi Deserialisasi Legacy (#169)', () => {
+    // Pastikan default settings tidak lagi menyertakan konfigurasi clipboard watcher
+    assert.equal('clipboardWatcherEnabled' in DEFAULT_APP_SETTINGS, false);
+    assert.equal('clipboardAutoOpen' in DEFAULT_APP_SETTINGS, false);
+
+    // Simulasi JSON tersimpan dari versi lama yang masih membawa key clipboard legacy
+    const legacySaved = JSON.parse(
+      '{"timezone":"UTC","soundEnabled":false,"defaultTimeframe":"4h","clipboardWatcherEnabled":false,"clipboardAutoOpen":true}'
+    );
+
+    let resolved!: ReturnType<typeof resolveAppSettings>;
+    assert.doesNotThrow(() => {
+      resolved = resolveAppSettings(legacySaved);
+    });
+
+    assert.equal(resolved.timezone, 'UTC');
+    assert.equal(resolved.soundEnabled, false);
+    assert.equal(resolved.defaultTimeframe, '4h');
+    assert.equal('clipboardWatcherEnabled' in resolved, false, 'Key legacy clipboardWatcherEnabled wajib diabaikan saat deserialisasi');
+    assert.equal('clipboardAutoOpen' in resolved, false, 'Key legacy clipboardAutoOpen wajib diabaikan saat deserialisasi');
+  });
 });

@@ -1,25 +1,19 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import {
-    Activity,
-    Code,
-    Search,
-    Bell,
-    Flame,
     Settings,
-    Maximize2,
     Layers,
     Sparkles,
     ChevronDown,
     Check,
     Moon,
     Sun,
-    Monitor
+    Monitor,
+    Star
   } from '@lucide/svelte';
   import type {
     Timeframe,
     MultiChartSyncConfig,
-    WorkspaceMode,
     SavedWorkspace,
     ProviderConfig,
     ColorModePreference
@@ -41,20 +35,16 @@
     activeTimeframe: Timeframe;
     currentLayout: string;
     activeProviderId?: string;
-    workspaceMode?: WorkspaceMode;
     syncConfig?: MultiChartSyncConfig;
     activeIndicators?: { title: string; source?: string; visible: boolean }[];
     isDrawingToolbarVisible?: boolean;
-    isWatchlistOpen?: boolean;
     isReplayActive?: boolean;
     favoriteTimeframes?: Timeframe[];
     customTimeframes?: string[];
     onFavoriteTimeframesChange?: (tfs: Timeframe[]) => void;
     onCustomTimeframesChange?: (customs: string[]) => void;
-    onSymbolChange?: (sym: string) => void;
     onTimeframeChange: (tf: Timeframe) => void;
     onLayoutChange: (layout: string) => void;
-    onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
     onProviderChange?: (providerId: string) => void;
     activeWorkspace?: SavedWorkspace | null;
     isAutoSaveWorkspace?: boolean;
@@ -68,11 +58,9 @@
     onToggleSyncDrawings?: () => void;
     onToggleSyncIndicators?: () => void;
     onToggleDrawingToolbar?: () => void;
-    onToggleWatchlist?: () => void;
     onToggleReplay?: () => void;
     onOpenIndicatorModal: () => void;
     onOpenSettingsModal?: (tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help') => void;
-    onRequestCreateAlert?: () => void;
     onOpenSymbolSearch?: () => void;
     onRequestQuickCopySnapshot?: () => void;
     onRequestQuickDownloadSnapshot?: () => void;
@@ -86,11 +74,9 @@
     systemIsDark?: boolean;
     onCycleColorMode?: () => void;
     onColorModeChange?: (mode: ColorModePreference) => void;
-    // Props opsional lama agar backward-compatible
-    ticker?: any;
-    watchlistSymbols?: string[];
-    quickSymbolsConfig?: any;
-    onQuickSymbolsConfigChange?: any;
+    // Quick Watchlist Toggle pada grup simbol Header (#166)
+    isWatchlisted?: boolean;
+    onToggleActiveWatchlist?: () => void;
   }
 
   let {
@@ -98,11 +84,9 @@
     activeTimeframe,
     currentLayout,
     activeProviderId = 'binance',
-    workspaceMode = 'terminal',
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     activeIndicators = [],
     isDrawingToolbarVisible = true,
-    isWatchlistOpen = true,
     isReplayActive = false,
     favoriteTimeframes = ['1m', '5m', '15m', '1h', '4h', '1D'],
     customTimeframes = [],
@@ -110,7 +94,6 @@
     onCustomTimeframesChange,
     onTimeframeChange,
     onLayoutChange,
-    onWorkspaceModeChange,
     onProviderChange,
     activeWorkspace = null,
     isAutoSaveWorkspace = true,
@@ -124,11 +107,9 @@
     onToggleSyncDrawings,
     onToggleSyncIndicators,
     onToggleDrawingToolbar,
-    onToggleWatchlist,
     onToggleReplay,
     onOpenIndicatorModal,
     onOpenSettingsModal,
-    onRequestCreateAlert,
     onOpenSymbolSearch,
     onRequestQuickCopySnapshot,
     onRequestQuickDownloadSnapshot,
@@ -140,7 +121,9 @@
     colorModePreference = 'system',
     systemIsDark = true,
     onCycleColorMode,
-    onColorModeChange
+    onColorModeChange,
+    isWatchlisted = false,
+    onToggleActiveWatchlist
   }: Props = $props();
 
   function handleCycleColorMode() {
@@ -177,14 +160,6 @@
   onDestroy(() => {
     if (unsubUpdate) unsubUpdate();
   });
-
-  function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
-    }
-  }
 </script>
 
 <header class="header">
@@ -194,29 +169,6 @@
       <img src="/no background.svg" alt="trawangan logo" class="brand-logo-img" />
       <span class="brand-title">trawangan</span>
     </div>
-    <span class="version-tag">terminal</span>
-  </div>
-
-  <div class="divider"></div>
-
-  <!-- Workspace Mode Switcher (Dual Mode Switcher) -->
-  <div class="mode-switcher">
-    <button
-      class="mode-btn {workspaceMode === 'terminal' ? 'active' : ''}"
-      title="Mode Trading Terminal (Chart, Watchlist, Orderflow)"
-      onclick={() => onWorkspaceModeChange?.('terminal')}
-    >
-      <Activity size={12} />
-      <span>Terminal</span>
-    </button>
-    <button
-      class="mode-btn {workspaceMode === 'pine' ? 'active' : ''}"
-      title="Mode Pine Script v6 IDE & Backtester"
-      onclick={() => onWorkspaceModeChange?.('pine')}
-    >
-      <Code size={12} />
-      <span>Pine IDE</span>
-    </button>
   </div>
 
   <div class="divider"></div>
@@ -231,6 +183,18 @@
       <SymbolLogo baseAsset={activeParsedSymbol.baseAsset} quoteAsset={activeParsedSymbol.quoteAsset} size="sm" />
       <span class="active-sym-title mono-nums">{activeSymbol}</span>
       <span class="kbd-hint mono-nums">Ctrl+K</span>
+    </button>
+
+    <!-- Tombol Bintang 1-Klik Quick Watchlist Toggle (#166) -->
+    <button
+      type="button"
+      class="watchlist-star-btn {isWatchlisted ? 'active' : ''}"
+      aria-pressed={isWatchlisted}
+      aria-label={isWatchlisted ? `Hapus ${activeSymbol} dari Watchlist Aktif` : `Tambahkan ${activeSymbol} ke Watchlist Aktif`}
+      title={isWatchlisted ? 'Hapus dari Watchlist Aktif' : 'Tambahkan ke Watchlist Aktif'}
+      onclick={() => onToggleActiveWatchlist?.()}
+    >
+      <Star size={13} fill={isWatchlisted ? 'currentColor' : 'none'} />
     </button>
 
     <div class="provider-dropdown-container">
@@ -336,15 +300,12 @@
 
   <div class="divider"></div>
 
-  <!-- Actions Terpadu (Indikator, Replay, Draw, Sinkronisasi Multi-Chart) -->
+  <!-- Actions Terpadu (Replay, Draw, Sinkronisasi Multi-Chart) -->
   <ActionsMenu
-    {activeIndicators}
     {isReplayActive}
     {isDrawingToolbarVisible}
     {currentLayout}
     {syncConfig}
-    {onOpenIndicatorModal}
-    {onRequestCreateAlert}
     {onToggleReplay}
     {onToggleDrawingToolbar}
     {onToggleSyncCrosshair}
@@ -420,15 +381,6 @@
     >
       <Settings size={13} />
       <span>Setting</span>
-    </button>
-
-    <!-- Fullscreen Toggle -->
-    <button
-      class="action-btn icon-only"
-      title="Toggle Layar Penuh"
-      onclick={toggleFullscreen}
-    >
-      <Maximize2 size={13} />
     </button>
   </div>
 </header>
@@ -510,101 +462,11 @@
     text-transform: lowercase;
   }
 
-  .version-tag {
-    font-family: var(--font-mono);
-    font-size: 8.5px;
-    font-weight: 600;
-    background-color: rgba(255, 105, 180, 0.12);
-    color: var(--brand-primary);
-    padding: 2px 4.5px;
-    border-radius: var(--radius-xs);
-    border: 1px solid rgba(255, 105, 180, 0.28);
-    letter-spacing: 0.03em;
-    text-transform: lowercase;
-  }
-
   .divider {
     width: 1px;
     height: 16px;
     background-color: var(--border-hairline);
     flex-shrink: 0;
-  }
-
-  .mode-switcher {
-    display: flex;
-    align-items: center;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    padding: 2px;
-    gap: 2px;
-  }
-
-  .mode-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 7px;
-    font-size: 10.5px;
-    font-weight: 600;
-    color: var(--text-muted);
-    background: transparent;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .mode-btn:hover {
-    color: var(--text-main);
-  }
-
-  .mode-btn.active {
-    background-color: var(--bg-surface);
-    color: var(--brand-primary);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-  }
-
-  .symbol-section {
-    display: flex;
-    align-items: center;
-  }
-
-  .symbol-badge-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 8px;
-    height: 26px;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .symbol-badge-btn:hover {
-    background-color: var(--bg-hover);
-    border-color: var(--border-bright);
-  }
-
-  .search-icon {
-    color: var(--text-dim);
-  }
-
-  .active-sym-title {
-    font-size: var(--font-size-md, 12px);
-    font-weight: 700;
-    color: var(--text-main);
-    letter-spacing: 0.02em;
-  }
-
-  .provider-pill {
-    font-size: var(--font-size-2xs, 8.5px);
-    font-weight: 700;
-    padding: 1px 4px;
-    border-radius: 2px;
-    letter-spacing: 0.03em;
   }
 
   .symbol-section {
@@ -632,8 +494,44 @@
     border-color: var(--border-bright);
   }
 
-  .search-icon {
-    color: var(--text-dim);
+  .active-sym-title {
+    font-size: var(--font-size-md, 12px);
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: 0.02em;
+  }
+
+  .watchlist-star-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+
+  .watchlist-star-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+    border-color: var(--border-bright);
+  }
+
+  .watchlist-star-btn.active {
+    color: var(--status-warn);
+    border-color: color-mix(in srgb, var(--status-warn) 40%, transparent);
+    background-color: color-mix(in srgb, var(--status-warn) 12%, transparent);
+  }
+
+  .watchlist-star-btn.active:hover {
+    background-color: color-mix(in srgb, var(--status-warn) 20%, transparent);
+    border-color: color-mix(in srgb, var(--status-warn) 65%, transparent);
   }
 
   .provider-dropdown-container {

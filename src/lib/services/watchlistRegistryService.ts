@@ -147,7 +147,7 @@ export class WatchlistRegistryService {
     );
 
     // Selalu sinkronkan item watchlist aktif ke loadWatchlist/saveWatchlist lama
-    // untuk kompatibilitas ke Quick Symbols & komponen eksternal (dengan menyaring token #section:)
+    // untuk kompatibilitas komponen eksternal (dengan menyaring token #section:)
     const active = this.getActiveWatchlist();
     if (active) {
       const cleanTickers = active.items.filter((item) => !isSectionToken(item));

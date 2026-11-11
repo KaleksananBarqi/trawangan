@@ -10,6 +10,9 @@ import {
   insertSymbolIntoSection,
   moveItemToSection,
   reorderWatchlistItems,
+  isSymbolInWatchlist,
+  toggleSymbolInWatchlist,
+  removeSymbolFromWatchlist,
 } from '../src/lib/services/watchlistUtils';
 
 
@@ -170,6 +173,168 @@ describe('Tiket #68: Exchange-Aware Watchlist Data Model and Utilities', () => {
     // Pindahkan A ke sesudah C (index 0 -> setelah index 2)
     const res2 = reorderWatchlistItems(list, 0, 2, 'after');
     assert.deepEqual(res2, ['B', 'C', 'A', 'D']);
+  });
+});
+
+describe('Tiket #166: Seam Pencocokan & Toggle Watchlist Sadar Bursa', () => {
+  it('1. isSymbolInWatchlist: mencocokkan entri canonical provider:symbol secara terisolasi per bursa', () => {
+    const items = ['binance:BTCUSDT', 'indodax:BTCIDR', 'yahoo:BBCA.JK'];
+
+    assert.equal(isSymbolInWatchlist(items, 'BTCUSDT', 'binance'), true);
+    assert.equal(isSymbolInWatchlist(items, 'BTCUSDT', 'bitunix'), false);
+    assert.equal(isSymbolInWatchlist(items, 'BTCIDR', 'indodax'), true);
+    assert.equal(isSymbolInWatchlist(items, 'BTCIDR', 'binance'), false);
+    assert.equal(isSymbolInWatchlist(items, 'BBCA.JK', 'yahoo'), true);
+    assert.equal(isSymbolInWatchlist(items, 'BBCA.JK', 'Yahoo Finance'), true);
+  });
+
+  it('2. isSymbolInWatchlist: mendukung entri legacy tanpa prefix serta fallback parseWatchlistEntry saat providerId diabaikan', () => {
+    // Daftar memuat entri legacy tanpa prefix
+    const legacyItems = ['BTCUSDT', 'BTCIDR'];
+    assert.equal(isSymbolInWatchlist(legacyItems, 'BTCUSDT', 'binance'), true);
+    assert.equal(isSymbolInWatchlist(legacyItems, 'BTCUSDT', 'bitunix'), false);
+    assert.equal(isSymbolInWatchlist(legacyItems, 'BTCIDR', 'indodax'), true);
+    assert.equal(isSymbolInWatchlist(legacyItems, 'BTCIDR', 'binance'), false);
+
+    // Saat providerId tidak diberikan, fallback mengikuti parseWatchlistEntry (BTCIDR -> indodax)
+    const canonicalItems = ['indodax:BTCIDR', 'bitunix:ETHUSDT', 'binance:SOLUSDT'];
+    assert.equal(isSymbolInWatchlist(canonicalItems, 'BTCIDR'), true);
+    assert.equal(isSymbolInWatchlist(canonicalItems, 'SOLUSDT'), true);
+    assert.equal(isSymbolInWatchlist(canonicalItems, 'ETHUSDT'), false);
+    assert.equal(isSymbolInWatchlist(canonicalItems, 'bitunix:ETHUSDT'), true);
+  });
+
+  it('3. isSymbolInWatchlist: menormalkan huruf/spasi/nama bursa, mengabaikan token #section:, dan aman untuk input kosong', () => {
+    const items = [
+      '#section:sec_1:Layer 1:0',
+      '  binance:BTCUSDT  ',
+      '',
+      '#section:sec_2:DeFi:1',
+    ];
+
+    assert.equal(isSymbolInWatchlist(items, ' btcusdt ', 'Binance Official Public'), true);
+    assert.equal(isSymbolInWatchlist(items, 'binance:btcusdt'), true);
+    assert.equal(isSymbolInWatchlist(items, '#section:sec_1:Layer 1:0'), false);
+    assert.equal(isSymbolInWatchlist(items, '#section:sec_1:Layer 1:0', 'binance'), false);
+    assert.equal(isSymbolInWatchlist(items, ''), false);
+    assert.equal(isSymbolInWatchlist(items, '   ', 'binance'), false);
+    assert.equal(isSymbolInWatchlist(items, 'binance:', 'binance'), false);
+    assert.equal(isSymbolInWatchlist([], 'BTCUSDT', 'binance'), false);
+  });
+
+  it('4. toggleSymbolInWatchlist: menambahkan entri canonical di slot atas tanpa kategori meskipun #section: ada', () => {
+    // Kasus daftar datar tanpa kategori -> masuk ke indeks 0
+    const flat = ['binance:ETHUSDT'];
+    const addFlat = toggleSymbolInWatchlist(flat, 'btcusdt', 'binance');
+    assert.deepEqual(addFlat, {
+      items: ['binance:BTCUSDT', 'binance:ETHUSDT'],
+      added: true,
+      entry: 'binance:BTCUSDT',
+    });
+    assert.deepEqual(flat, ['binance:ETHUSDT'], 'Array input asal tidak boleh termutasi');
+
+    // Kasus daftar dengan kategori & item uncategorized -> masuk sebelum #section pertama
+    const withSections = ['binance:ETHUSDT', '#section:sec_l1:Layer 1:0', 'binance:SOLUSDT'];
+    const addBeforeSection = toggleSymbolInWatchlist(withSections, 'BTCUSDT', 'bitunix');
+    assert.deepEqual(addBeforeSection, {
+      items: ['binance:ETHUSDT', 'bitunix:BTCUSDT', '#section:sec_l1:Layer 1:0', 'binance:SOLUSDT'],
+      added: true,
+      entry: 'bitunix:BTCUSDT',
+    });
+
+    // Kasus daftar langsung diawali kategori -> masuk di indeks 0 sebelum #section pertama
+    const sectionsOnly = ['#section:sec_l1:Layer 1:0', 'binance:SOLUSDT'];
+    const addTopBeforeFirstSection = toggleSymbolInWatchlist(sectionsOnly, 'BTCUSDT', 'binance');
+    assert.deepEqual(addTopBeforeFirstSection, {
+      items: ['binance:BTCUSDT', '#section:sec_l1:Layer 1:0', 'binance:SOLUSDT'],
+      added: true,
+      entry: 'binance:BTCUSDT',
+    });
+
+    // Kasus providerId diabaikan untuk pair IDR -> infer indodax
+    const addLegacyIdr = toggleSymbolInWatchlist([], 'btcidr');
+    assert.deepEqual(addLegacyIdr, {
+      items: ['indodax:BTCIDR'],
+      added: true,
+      entry: 'indodax:BTCIDR',
+    });
+  });
+
+  it('5. toggleSymbolInWatchlist: menghapus entri canonical dan duplikat legacy tanpa menyentuh #section: atau bursa lain', () => {
+    const mixedList = [
+      'BTCUSDT',
+      '#section:sec_1:Layer 1:0',
+      'binance:BTCUSDT',
+      'bitunix:BTCUSDT',
+      'binance:SOLUSDT',
+    ];
+
+    const removedBinance = toggleSymbolInWatchlist(mixedList, 'BTCUSDT', 'binance');
+    assert.deepEqual(removedBinance, {
+      items: ['#section:sec_1:Layer 1:0', 'bitunix:BTCUSDT', 'binance:SOLUSDT'],
+      added: false,
+      entry: 'binance:BTCUSDT',
+    });
+
+    // Hapus item legacy BTCIDR tanpa providerId eksplisit (fallback ke indodax)
+    const removedLegacyIdr = toggleSymbolInWatchlist(['BTCIDR', 'binance:BTCUSDT'], 'BTCIDR');
+    assert.deepEqual(removedLegacyIdr, {
+      items: ['binance:BTCUSDT'],
+      added: false,
+      entry: 'indodax:BTCIDR',
+    });
+  });
+
+  it('6. toggleSymbolInWatchlist: mengabaikan input kosong atau token #section: dengan aman', () => {
+    const items = ['binance:BTCUSDT', '#section:sec_1:Layer 1:0'];
+    assert.deepEqual(toggleSymbolInWatchlist(items, ''), {
+      items: ['binance:BTCUSDT', '#section:sec_1:Layer 1:0'],
+      added: false,
+      entry: '',
+    });
+    assert.deepEqual(toggleSymbolInWatchlist(items, '#section:sec_1:Layer 1:0', 'binance'), {
+      items: ['binance:BTCUSDT', '#section:sec_1:Layer 1:0'],
+      added: false,
+      entry: '',
+    });
+  });
+
+  it('7. removeSymbolFromWatchlist: menghapus entri kanonik/legacy tanpa merusak #section: dan bursa lain', () => {
+    const mixedList = [
+      'BTCUSDT',
+      '#section:sec_1:Layer 1:0',
+      'binance:BTCUSDT',
+      'bitunix:BTCUSDT',
+      'BTCIDR',
+      'indodax:BTCIDR',
+    ];
+
+    // Hapus via entri kanonik: bersihkan duplikat legacy + kanonik Binance, jaga Bitunix & #section:
+    const afterRemoveBinance = removeSymbolFromWatchlist(mixedList, 'binance:BTCUSDT');
+    assert.deepEqual(afterRemoveBinance, [
+      '#section:sec_1:Layer 1:0',
+      'bitunix:BTCUSDT',
+      'BTCIDR',
+      'indodax:BTCIDR',
+    ]);
+    assert.equal(mixedList.length, 6, 'Array input asal tidak boleh termutasi');
+
+    // Hapus via rawEntry legacy unprefixed 'BTCIDR': parseWatchlistEntry infer indodax & hapus BTCIDR + indodax:BTCIDR
+    const afterRemoveLegacyIdr = removeSymbolFromWatchlist(afterRemoveBinance, 'BTCIDR');
+    assert.deepEqual(afterRemoveLegacyIdr, [
+      '#section:sec_1:Layer 1:0',
+      'bitunix:BTCUSDT',
+    ]);
+
+    // Hapus dengan providerId eksplisit
+    assert.deepEqual(
+      removeSymbolFromWatchlist(['binance:BTCUSDT', 'bitunix:BTCUSDT'], 'BTCUSDT', 'bitunix'),
+      ['binance:BTCUSDT']
+    );
+
+    // Input kosong atau #section: diabaikan dengan aman
+    assert.deepEqual(removeSymbolFromWatchlist(mixedList, ''), mixedList);
+    assert.deepEqual(removeSymbolFromWatchlist(mixedList, '#section:sec_1:Layer 1:0'), mixedList);
   });
 });
 

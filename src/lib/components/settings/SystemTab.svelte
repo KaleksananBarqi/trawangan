@@ -2,7 +2,6 @@
   import { onDestroy, onMount } from 'svelte';
   import { Database, Wifi } from '@lucide/svelte';
   import { telemetryService, type TelemetryData } from '../../services/telemetryService';
-  import BrowserBridgeGuide from './BrowserBridgeGuide.svelte';
 
   let telemetry = $state<TelemetryData>(telemetryService.getSnapshot());
   let unsubTelemetry: (() => void) | null = null;
@@ -65,11 +64,6 @@
       <span>Engine: <strong>Tauri v2 Native Rust Backend</strong></span>
     </div>
   </div>
-</div>
-
-<!-- SEKSI INTEGRASI BROWSER & DEEP LINK BRIDGE -->
-<div class="section-group">
-  <BrowserBridgeGuide />
 </div>
 
 <style>
@@ -160,135 +154,5 @@
     display: flex;
     align-items: center;
     gap: 6px;
-  }
-
-  /* Browser Bridge Card & Tutorial Styles */
-  .bridge-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .bridge-title-col {
-    flex: 1;
-  }
-
-  .copy-script-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background-color: rgba(0, 240, 144, 0.12);
-    border: 1px solid rgba(0, 240, 144, 0.35);
-    color: var(--brand-primary, #00f090);
-    padding: 6px 12px;
-    border-radius: var(--radius-sm, 4px);
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-  }
-
-  .copy-script-btn:hover {
-    background-color: rgba(0, 240, 144, 0.22);
-    transform: translateY(-1px);
-  }
-
-  .copy-script-btn.copied {
-    background-color: rgba(63, 185, 80, 0.2);
-    border-color: #3fb950;
-    color: #3fb950;
-  }
-
-  .tutorial-card {
-    background-color: var(--bg-surface, #161b22);
-    border: 1px solid var(--border-subtle, #30363d);
-    border-radius: 6px;
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .tutorial-step {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .step-num {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: var(--text-base, #ffffff);
-    font-size: 10px;
-    font-weight: 700;
-    flex-shrink: 0;
-  }
-
-  .step-content {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: 11px;
-    line-height: 1.4;
-  }
-
-  .step-content strong {
-    color: var(--text-base, #ffffff);
-  }
-
-  .step-content p {
-    margin: 0;
-    color: var(--text-dim, #6e7681);
-  }
-
-  .step-content code {
-    background: rgba(255, 255, 255, 0.08);
-    padding: 1px 4px;
-    border-radius: 3px;
-    color: var(--text-base, #ffffff);
-    font-family: monospace;
-  }
-
-  .test-row {
-    margin-top: 6px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border-subtle, #30363d);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .test-label {
-    font-size: 11px;
-    color: var(--text-dim, #6e7681);
-  }
-
-  .btn-test-link {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border-subtle, #30363d);
-    color: var(--brand-primary, #00f090);
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-size: 11px;
-    text-decoration: none;
-    font-weight: 600;
-    transition: all 0.15s ease;
-  }
-
-  .btn-test-link:hover {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: var(--brand-primary, #00f090);
   }
 </style>

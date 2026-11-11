@@ -9,20 +9,15 @@
     Coins,
     Share2,
     ChevronDown,
-    Check,
-    Sparkles,
-    Bell
+    Sparkles
   } from '@lucide/svelte';
   import type { MultiChartSyncConfig } from '../../types/market';
 
   interface Props {
-    activeIndicators?: { title: string; source?: string; visible: boolean }[];
     isReplayActive?: boolean;
     isDrawingToolbarVisible?: boolean;
     currentLayout?: string;
     syncConfig?: MultiChartSyncConfig;
-    onOpenIndicatorModal?: () => void;
-    onRequestCreateAlert?: () => void;
     onToggleReplay?: () => void;
     onToggleDrawingToolbar?: () => void;
     onToggleSyncCrosshair?: () => void;
@@ -33,13 +28,10 @@
   }
 
   let {
-    activeIndicators = [],
     isReplayActive = false,
     isDrawingToolbarVisible = true,
     currentLayout = '1',
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
-    onOpenIndicatorModal,
-    onRequestCreateAlert,
     onToggleReplay,
     onToggleDrawingToolbar,
     onToggleSyncCrosshair,
@@ -50,8 +42,6 @@
   }: Props = $props();
 
   let showMenu = $state(false);
-
-  let activeIndicatorCount = $derived(activeIndicators.length);
 
   function handleGlobalClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -66,7 +56,7 @@
 <div class="actions-menu-group">
   <button
     class="actions-trigger-btn {isReplayActive ? 'has-active' : ''}"
-    title="Aksi & Pengaturan Fitur (Alert, Replay, Draw, Sinkronisasi)"
+    title="Aksi & Pengaturan Fitur (Replay, Draw, Sinkronisasi)"
     onclick={() => (showMenu = !showMenu)}
   >
     <SlidersHorizontal size={13} class="trigger-icon" />
@@ -86,25 +76,7 @@
       </div>
 
       <div class="menu-items">
-        <!-- 1. Buat Price Alert Baru -->
-        <button
-          class="action-item-btn"
-          onclick={() => {
-            onRequestCreateAlert?.();
-            showMenu = false;
-          }}
-        >
-          <div class="item-left">
-            <Bell size={13} class="item-icon text-cyan-accent" />
-            <div class="item-text">
-              <span class="item-title">Buat Price Alert</span>
-              <span class="item-desc">Target harga & notifikasi OS</span>
-            </div>
-          </div>
-          <span class="item-shortcut mono-nums">Alt+A</span>
-        </button>
-
-        <!-- 2. Bar Replay -->
+        <!-- 1. Bar Replay -->
         <button
           class="action-item-btn {isReplayActive ? 'active-replay' : ''}"
           onclick={() => {
@@ -126,7 +98,7 @@
           </div>
         </button>
 
-        <!-- 3. Alat Gambar (Drawing Toolbar) -->
+        <!-- 2. Alat Gambar (Drawing Toolbar) -->
         <button
           class="action-item-btn {isDrawingToolbarVisible ? 'active-draw' : ''}"
           onclick={() => {
@@ -260,15 +232,6 @@
     flex-shrink: 0;
   }
 
-  .count-badge {
-    background-color: rgba(0, 240, 144, 0.2);
-    color: var(--brand-primary);
-    font-size: 9.5px;
-    font-weight: 700;
-    padding: 1px 4.5px;
-    border-radius: 9px;
-  }
-
   .replay-dot {
     width: 6px;
     height: 6px;
@@ -344,11 +307,6 @@
     border-color: var(--border-bright);
   }
 
-  .action-item-btn.highlight {
-    border-color: rgba(0, 240, 144, 0.25);
-    background-color: rgba(0, 240, 144, 0.03);
-  }
-
   .action-item-btn.active-replay {
     border-color: rgba(56, 189, 248, 0.35);
     background-color: rgba(56, 189, 248, 0.05);
@@ -364,10 +322,6 @@
   .item-icon {
     color: var(--text-muted);
     flex-shrink: 0;
-  }
-
-  .action-item-btn.highlight .item-icon {
-    color: var(--brand-primary);
   }
 
   .action-item-btn.active-replay .item-icon {
@@ -390,15 +344,6 @@
     font-size: 9px;
     color: var(--text-dim);
     line-height: 1.1;
-  }
-
-  .item-badge {
-    font-size: 9px;
-    background-color: rgba(0, 240, 144, 0.15);
-    color: var(--brand-primary);
-    padding: 1px 5px;
-    border-radius: var(--radius-xs);
-    font-weight: 600;
   }
 
   .item-shortcut {

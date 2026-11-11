@@ -4,7 +4,14 @@ import assert from 'node:assert/strict';
 import { WatchlistRegistryService } from '../src/lib/services/watchlistRegistryService';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import { PersistenceService } from '../src/lib/services/persistence';
-import { formatWatchlistEntry, parseWatchlistEntry, isSectionToken, insertSymbolIntoSection } from '../src/lib/services/watchlistUtils';
+import {
+  formatWatchlistEntry,
+  parseWatchlistEntry,
+  isSectionToken,
+  insertSymbolIntoSection,
+  isSymbolInWatchlist,
+  toggleSymbolInWatchlist,
+} from '../src/lib/services/watchlistUtils';
 
 function getTickerCount(items: string[]): number {
   return items.filter((item) => !item.startsWith('#section:')).length;
@@ -109,5 +116,96 @@ describe('Watchlist Sync & Persistence Bug Reproduction & Fix Suite', () => {
     const idx = cleanList.indexOf('binance:BTCUSDT');
     const nextIdx = (idx + 1) % cleanList.length;
     assert.equal(cleanList[nextIdx], 'binance:SOLUSDT');
+  });
+
+  it('4. Tiket #166 Round-trip: toggleSymbolInWatchlist + WatchlistRegistryService.updateActiveItems menjaga kategori, isolasi bursa, dan persistensi reload', async () => {
+    const custom = await service.createWatchlist('Scalp Multi-Exchange', [
+      '#section:sec_1:LAYER 1:0',
+      'binance:BTCUSDT',
+      'SOLUSDT', // entri legacy
+    ]);
+
+    const observedCounts: number[] = [];
+    const unsub = service.subscribe(({ watchlists, activeId }) => {
+      const active = watchlists.find((w) => w.id === activeId);
+      if (active) observedCounts.push(getTickerCount(active.items));
+    });
+
+    // Tambah bitunix:BTCUSDT (harus terisolasi dari binance:BTCUSDT dan masuk sebelum #section:)
+    assert.equal(isSymbolInWatchlist(service.getActiveWatchlist().items, 'BTCUSDT', 'bitunix'), false);
+    const addedBitunix = toggleSymbolInWatchlist(service.getActiveWatchlist().items, 'BTCUSDT', 'bitunix');
+    assert.equal(addedBitunix.added, true);
+    assert.equal(addedBitunix.entry, 'bitunix:BTCUSDT');
+    await service.updateActiveItems(addedBitunix.items);
+
+    assert.deepEqual(service.getActiveWatchlist().items, [
+      'bitunix:BTCUSDT',
+      '#section:sec_1:LAYER 1:0',
+      'binance:BTCUSDT',
+      'SOLUSDT',
+    ]);
+    assert.equal(isSymbolInWatchlist(service.getActiveWatchlist().items, 'BTCUSDT', 'bitunix'), true);
+    assert.equal(isSymbolInWatchlist(service.getActiveWatchlist().items, 'BTCUSDT', 'binance'), true);
+
+    // Toggle off bitunix:BTCUSDT tidak menyentuh binance:BTCUSDT ataupun #section:
+    const removedBitunix = toggleSymbolInWatchlist(service.getActiveWatchlist().items, 'BTCUSDT', 'bitunix');
+    assert.equal(removedBitunix.added, false);
+    await service.updateActiveItems(removedBitunix.items);
+
+    assert.deepEqual(service.getActiveWatchlist().items, [
+      '#section:sec_1:LAYER 1:0',
+      'binance:BTCUSDT',
+      'SOLUSDT',
+    ]);
+
+    // Toggle off legacy SOLUSDT via Header (providerId 'binance')
+    const removedLegacySol = toggleSymbolInWatchlist(service.getActiveWatchlist().items, 'SOLUSDT', 'binance');
+    assert.equal(removedLegacySol.added, false);
+    await service.updateActiveItems(removedLegacySol.items);
+
+    // Pastikan subscriber terpicu dan persistensi setelah reload utuh
+    assert.ok(observedCounts.includes(3));
+    assert.ok(observedCounts.includes(2));
+    assert.ok(observedCounts.includes(1));
+    unsub();
+
+    const freshService = new WatchlistRegistryService(persistence);
+    await freshService.load();
+    assert.equal(freshService.getActiveWatchlistId(), custom.id);
+    assert.deepEqual(freshService.getActiveWatchlist().items, [
+      '#section:sec_1:LAYER 1:0',
+      'binance:BTCUSDT',
+    ]);
+    // Daftar warisan loadWatchlist() tetap disinkronkan tanpa token #section:
+    const legacyMirror = await persistence.loadWatchlist();
+    assert.deepEqual(legacyMirror, ['binance:BTCUSDT']);
+  });
+
+  it('5. Tiket #166 Konsistensi lintas titik masuk: SymbolSearchModal dan Header Star berbagi representasi canonical yang sama', async () => {
+    await service.createWatchlist('Lintas Aset', []);
+
+    // Tambah dari SymbolSearchModal (formatWatchlistEntry('BBCA.JK', 'Yahoo Finance'))
+    const fromSearchInput = formatWatchlistEntry('BBCA.JK', 'Yahoo Finance');
+    assert.equal(fromSearchInput, 'yahoo:BBCA.JK');
+
+    const activeProviderId = 'binance';
+    const searchProviderHint = fromSearchInput.includes(':') ? undefined : activeProviderId;
+    const afterSearchAdd = toggleSymbolInWatchlist(
+      service.getActiveWatchlist().items,
+      fromSearchInput,
+      searchProviderHint
+    );
+    await service.updateActiveItems(afterSearchAdd.items);
+
+    // Header Star memeriksa dengan ('BBCA.JK', 'yahoo') -> harus true
+    assert.equal(isSymbolInWatchlist(service.getActiveWatchlist().items, 'BBCA.JK', 'yahoo'), true);
+    // SymbolSearchModal memeriksa dengan ('BBCA.JK', 'Yahoo Finance') -> harus true
+    assert.equal(isSymbolInWatchlist(service.getActiveWatchlist().items, 'BBCA.JK', 'Yahoo Finance'), true);
+
+    // Hapus via Header Star ('BBCA.JK', 'yahoo') -> modal juga langsung melihat false
+    const afterHeaderRemove = toggleSymbolInWatchlist(service.getActiveWatchlist().items, 'BBCA.JK', 'yahoo');
+    await service.updateActiveItems(afterHeaderRemove.items);
+    assert.equal(afterHeaderRemove.added, false);
+    assert.equal(isSymbolInWatchlist(service.getActiveWatchlist().items, 'BBCA.JK', 'Yahoo Finance'), false);
   });
 });
