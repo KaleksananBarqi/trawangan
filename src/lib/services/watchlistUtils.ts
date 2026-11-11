@@ -18,6 +18,7 @@ export function normalizeProviderId(rawProvider?: string): string {
   if (clean.includes('binance') || clean === 'binance') return 'binance';
   if (clean.includes('hyperliquid') || clean === 'hyperliquid') return 'hyperliquid';
   if (clean.includes('coinbase') || clean === 'coinbase') return 'coinbase';
+  if (clean.includes('yahoo') || clean === 'yahoo') return 'yahoo';
   return clean.replace(/[^a-z0-9_-]/g, '') || 'binance';
 }
 
@@ -26,8 +27,9 @@ export function normalizeProviderId(rawProvider?: string): string {
  * Mendukung kompatibilitas mundur untuk data warisan tanpa prefix bursa.
  */
 export function parseWatchlistEntry(rawEntry: string): ParsedWatchlistEntry {
-  if (!rawEntry || rawEntry.startsWith('#section:')) return { providerId: 'binance', symbol: '' };
+  if (!rawEntry) return { providerId: 'binance', symbol: '' };
   const trimmed = rawEntry.trim();
+  if (!trimmed || trimmed.startsWith('#section:')) return { providerId: 'binance', symbol: '' };
 
   if (trimmed.includes(':')) {
     const parts = trimmed.split(':');
@@ -217,5 +219,110 @@ export function reorderWatchlistItems(
   insertIdx = Math.max(0, Math.min(insertIdx, result.length));
   result.splice(insertIdx, 0, removed);
   return result;
+}
+
+interface ResolvedWatchlistTarget {
+  providerId: string;
+  symbol: string;
+  entry: string;
+}
+
+/**
+ * Mengurai target (symbol, providerId) menjadi bentuk kanonik providerId:symbol.
+ * Jika providerId diabaikan, menggunakan fallback parseWatchlistEntry (termasuk inferensi IDR -> indodax).
+ */
+function resolveWatchlistTarget(symbol: string, providerId?: string): ResolvedWatchlistTarget | null {
+  if (!symbol || typeof symbol !== 'string') return null;
+  const trimmed = symbol.trim();
+  if (!trimmed || isSectionToken(trimmed)) return null;
+
+  const hasExplicitProvider = typeof providerId === 'string' && providerId.trim().length > 0;
+  let targetProvider: string;
+  let cleanSymbol: string;
+
+  if (hasExplicitProvider) {
+    targetProvider = normalizeProviderId(providerId);
+    cleanSymbol = trimmed.includes(':') ? parseWatchlistEntry(trimmed).symbol : trimmed.toUpperCase();
+  } else {
+    const parsed = parseWatchlistEntry(trimmed);
+    targetProvider = parsed.providerId;
+    cleanSymbol = parsed.symbol;
+  }
+
+  if (!cleanSymbol) return null;
+  const entry = formatWatchlistEntry(cleanSymbol, targetProvider);
+  if (!entry) return null;
+
+  return {
+    providerId: targetProvider,
+    symbol: cleanSymbol,
+    entry,
+  };
+}
+
+/**
+ * Memeriksa apakah pasangan (symbol, providerId) sudah terdaftar dalam watchlist aktif.
+ * Mendukung entri kanonik provider:symbol, format legacy tanpa prefix, serta mengabaikan token #section:.
+ */
+export function isSymbolInWatchlist(
+  items: string[],
+  symbol: string,
+  providerId?: string
+): boolean {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  const target = resolveWatchlistTarget(symbol, providerId);
+  if (!target) return false;
+
+  for (const item of items) {
+    if (typeof item !== 'string') continue;
+    const trimmedItem = item.trim();
+    if (!trimmedItem || isSectionToken(trimmedItem)) continue;
+    if (trimmedItem === target.entry) return true;
+
+    const parsed = parseWatchlistEntry(trimmedItem);
+    if (parsed.symbol === target.symbol && parsed.providerId === target.providerId) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export interface ToggleWatchlistResult {
+  items: string[];
+  added: boolean;
+  entry: string;
+}
+
+/**
+ * Menambahkan atau menghapus pasangan (symbol, providerId) dari daftar watchlist secara murni.
+ * Saat ditambahkan, entri kanonik disisipkan di grup atas tanpa kategori melalui insertSymbolIntoSection(..., null).
+ * Saat dihapus, seluruh kecocokan entri kanonik maupun legacy tanpa prefix dibersihkan tanpa menyentuh #section:.
+ */
+export function toggleSymbolInWatchlist(
+  items: string[],
+  symbol: string,
+  providerId?: string
+): ToggleWatchlistResult {
+  const currentItems = Array.isArray(items) ? items : [];
+  const target = resolveWatchlistTarget(symbol, providerId);
+  if (!target) {
+    return { items: [...currentItems], added: false, entry: '' };
+  }
+
+  if (isSymbolInWatchlist(currentItems, target.symbol, target.providerId)) {
+    const next = currentItems.filter((item) => {
+      if (typeof item !== 'string') return true;
+      const trimmedItem = item.trim();
+      if (!trimmedItem || isSectionToken(trimmedItem)) return true;
+      if (trimmedItem === target.entry) return false;
+      const parsed = parseWatchlistEntry(trimmedItem);
+      return !(parsed.symbol === target.symbol && parsed.providerId === target.providerId);
+    });
+    return { items: next, added: false, entry: target.entry };
+  }
+
+  const next = insertSymbolIntoSection(currentItems, target.entry, null);
+  return { items: next, added: true, entry: target.entry };
 }
 

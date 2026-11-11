@@ -8,7 +8,8 @@
     Check,
     Moon,
     Sun,
-    Monitor
+    Monitor,
+    Star
   } from '@lucide/svelte';
   import type {
     Timeframe,
@@ -73,6 +74,9 @@
     systemIsDark?: boolean;
     onCycleColorMode?: () => void;
     onColorModeChange?: (mode: ColorModePreference) => void;
+    // Quick Watchlist Toggle pada grup simbol Header (#166)
+    isWatchlisted?: boolean;
+    onToggleActiveWatchlist?: () => void;
   }
 
   let {
@@ -117,7 +121,9 @@
     colorModePreference = 'system',
     systemIsDark = true,
     onCycleColorMode,
-    onColorModeChange
+    onColorModeChange,
+    isWatchlisted = false,
+    onToggleActiveWatchlist
   }: Props = $props();
 
   function handleCycleColorMode() {
@@ -177,6 +183,18 @@
       <SymbolLogo baseAsset={activeParsedSymbol.baseAsset} quoteAsset={activeParsedSymbol.quoteAsset} size="sm" />
       <span class="active-sym-title mono-nums">{activeSymbol}</span>
       <span class="kbd-hint mono-nums">Ctrl+K</span>
+    </button>
+
+    <!-- Tombol Bintang 1-Klik Quick Watchlist Toggle (#166) -->
+    <button
+      type="button"
+      class="watchlist-star-btn {isWatchlisted ? 'active' : ''}"
+      aria-pressed={isWatchlisted}
+      aria-label={isWatchlisted ? `Hapus ${activeSymbol} dari Watchlist Aktif` : `Tambahkan ${activeSymbol} ke Watchlist Aktif`}
+      title={isWatchlisted ? 'Hapus dari Watchlist Aktif' : 'Tambahkan ke Watchlist Aktif'}
+      onclick={() => onToggleActiveWatchlist?.()}
+    >
+      <Star size={13} fill={isWatchlisted ? 'currentColor' : 'none'} />
     </button>
 
     <div class="provider-dropdown-container">
@@ -481,6 +499,39 @@
     font-weight: 700;
     color: var(--text-main);
     letter-spacing: 0.02em;
+  }
+
+  .watchlist-star-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+
+  .watchlist-star-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+    border-color: var(--border-bright);
+  }
+
+  .watchlist-star-btn.active {
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.4);
+    background-color: rgba(245, 158, 11, 0.12);
+  }
+
+  .watchlist-star-btn.active:hover {
+    background-color: rgba(245, 158, 11, 0.2);
+    border-color: rgba(245, 158, 11, 0.65);
   }
 
   .provider-dropdown-container {
