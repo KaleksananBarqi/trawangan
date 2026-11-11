@@ -1662,10 +1662,8 @@
   <Header
     {activeSymbol}
     {activeTimeframe}
-    {ticker}
     {currentLayout}
     {activeProviderId}
-    {workspaceMode}
     {syncConfig}
     {activeIndicators}
     isDrawingToolbarVisible={!shellState.isLeftRailCollapsed}
@@ -1673,10 +1671,8 @@
     {watchlistSymbols}
     {quickSymbolsConfig}
     onQuickSymbolsConfigChange={handleQuickSymbolsConfigChange}
-    onSymbolChange={handleSymbolChange}
     onTimeframeChange={handleTimeframeChange}
     onLayoutChange={handleLayoutChange}
-    onWorkspaceModeChange={handleWorkspaceModeChange}
     onProviderChange={handleProviderChange}
     {activeWorkspace}
     {isAutoSaveWorkspace}
@@ -1705,7 +1701,6 @@
     customTimeframes={appSettings.customTimeframes}
     onFavoriteTimeframesChange={(tfs) => handleUpdateSettings({ favoriteTimeframes: tfs })}
     onCustomTimeframesChange={(customs) => handleUpdateSettings({ customTimeframes: customs })}
-    onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol, chartComponent?.getLastHoveredPrice?.() || ticker?.price)}
     onRequestQuickCopySnapshot={handleQuickCopySnapshot}
     onRequestQuickDownloadSnapshot={handleQuickDownloadSnapshot}
     onOpenSnapshotPreview={handleOpenSnapshotPreview}

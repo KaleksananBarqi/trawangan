@@ -130,8 +130,9 @@
           <span class="guide-card-title">Pine Script v6 IDE & Backtester</span>
         </div>
         <p class="guide-card-body">
-          Beralih ke mode <strong>Pine IDE</strong> di header kiri atas untuk membuat, mengedit, dan mengevaluasi indikator
-          serta strategi kuantitatif kustom secara instan menggunakan AST Engine Pine Script v6 di Web Worker independen.
+          Buka <strong>Pine Script v6 IDE</strong> lewat ikon <span class="mono-nums">&lt;&gt;</span> di <strong>Right Dock Rail</strong>,
+          <strong>Library Indikator</strong> (<strong>Edit di IDE</strong> / <strong>+ Buat Skrip Baru</strong>), ikon <span class="mono-nums">&lt;&gt;</span> pada <strong>Unified Object Tree</strong>,
+          atau pintasan <kbd class="kbd-key mono-nums">Alt+E</kbd> untuk membuat, menyunting, dan mengevaluasi indikator serta strategi kuantitatif di Web Worker independen.
         </p>
       </div>
 
