@@ -1,14 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import {
-    Cpu,
-    Database,
     HardDrive,
     Clock,
     Terminal,
     ChevronUp,
     ChevronDown,
-    Activity,
     Wifi,
     Zap,
     Coffee,
@@ -92,7 +89,7 @@
 </script>
 
 <footer class="system-status-bar">
-  <!-- Left Telemetry Cluster: Sistem Dasar -->
+  <!-- Kluster Kiri: Notifikasi Update & Telemetri Runtime Live -->
   <div class="left-cluster">
     {#if updateState.status === 'available' && updateState.updateInfo}
       <button
@@ -107,29 +104,7 @@
       <div class="divider"></div>
     {/if}
 
-    <div class="telemetry-pill">
-      <span class="live-pip"></span>
-      <span class="pill-text font-bold">Engine: NATIVE_SYS_X64</span>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="telemetry-pill">
-      <Database size={12} class="text-bull" />
-      <span class="pill-text">SQLite Local ACTIVE</span>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="telemetry-pill">
-      <Terminal size={12} class="text-bull" />
-      <span class="pill-text text-bull">Pine Script v6 Runtime Ready</span>
-    </div>
-  </div>
-
-  <!-- Right Time & Real-Time Performance Cluster -->
-  <div class="right-cluster">
-    <!-- Real-Time FPS Metric -->
+    <!-- Metrik FPS Render Real-Time -->
     <div
       class="telemetry-pill interactive mono-nums"
       title="Actual WebGL2 Render Frame Rate: {telemetry.fps} FPS"
@@ -142,7 +117,7 @@
 
     <div class="divider"></div>
 
-    <!-- Real-Time Network Latency (Ping) Metric & Feed Connection Guard Indicator -->
+    <!-- Metrik Latensi Jaringan (Ping) & Indikator Feed Connection Guard -->
     <div
       class="telemetry-pill interactive mono-nums"
       title="Status Feed: {feedStatus.state === 'blocked' ? 'Koneksi Terhambat / Diblokir ISP' : feedStatus.state === 'stalled' ? 'Koneksi Tersendat' : 'Terkoneksi Stabil'}. Round-Trip Ping ke {telemetry.providerName}: {telemetry.latencyMs !== null ? `${telemetry.latencyMs} ms` : 'Offline / Timeout'} (Packet Drops: {telemetry.packetDrops})"
@@ -166,7 +141,7 @@
 
     <div class="divider"></div>
 
-    <!-- Real-Time RAM Usage Metric -->
+    <!-- Metrik Pemakaian RAM Real-Time -->
     <div
       class="telemetry-pill interactive mono-nums"
       title="Pemakaian RAM Real-Time: {telemetry.nativeProcessMb ? `Working Set Windows: ${telemetry.nativeProcessMb} MB` : ''}{telemetry.jsHeapMb ? ` (JS Heap: ${telemetry.jsHeapMb} MB)` : ''}"
@@ -174,9 +149,10 @@
       <span class="icon-dim"><HardDrive size={11} /></span>
       <span class="pill-text">RAM: {telemetry.memoryMb.toFixed(1)}MB</span>
     </div>
+  </div>
 
-    <div class="divider"></div>
-
+  <!-- Kluster Kanan: Jam Lokal, Jam Bursa Dunia, Dukungan & Terminal Logs -->
+  <div class="right-cluster">
     <!-- Kluster Jam: Jam Lokal + Jam Bursa Dunia -->
     <div class="clocks-cluster">
       <!-- Jam Lokal Pengguna (Selalu Tampil) -->
@@ -323,47 +299,24 @@
     gap: 5px;
   }
 
-  .live-pip {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background-color: var(--bull-color);
-    box-shadow: 0 0 6px var(--bull-color);
-    animation: pulse 2s infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.9); }
-  }
-
   .pill-text {
     color: var(--text-muted);
-  }
-
-  .font-bold {
-    font-weight: 700;
-    color: var(--text-main);
   }
 
   .icon-dim {
     color: var(--text-dim);
   }
 
-  .text-bull {
+  .text-bull, .icon-dim :global(.text-bull) {
     color: var(--bull-color);
   }
 
-  .text-bear {
+  .icon-dim :global(.text-bear) {
     color: var(--bear-color);
   }
 
-  .text-amber {
+  .text-amber, .icon-dim :global(.text-amber) {
     color: #f59e0b;
-  }
-
-  .text-cyan {
-    color: #38bdf8;
   }
 
   .interactive {
