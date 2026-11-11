@@ -152,14 +152,27 @@ Jalankan rangkaian pengujian berikut secara berurutan:
    ```powershell
    gh run watch $runId --interval 15
    ```
-3. **Penanganan Otomatis jika Terjadi Kegagalan Jaringan Transient (HTTP 504 / Download Timeout):**
-   - Jika ada job yang gagal, periksa penyebab kegagalan:
+3. **Penanganan Kegagalan Transient & Job Macet (*Hung/Stalled*):**
+   - Jika ada job gagal, periksa log kegagalannya:
      ```powershell
      gh run view $runId --log-failed
      ```
-   - Jika kegagalan disebabkan oleh gangguan jaringan sesaat (seperti HTTP 504 saat runner mengunduh biner WiX atau AppImage), picu rerun otomatis untuk job yang gagal:
+   - Jika ada job masih `in_progress` namun satu step tertahan jauh melampaui durasi normal (mis. step setup Linux >5 menit yang normalnya ~30–40 detik), inspeksi status per step terlebih dahulu:
      ```powershell
-     gh run rerun $runId --failed
+     gh run view $runId --json jobs --jq '.jobs[] | {name, databaseId, status, activeStep: (.steps[] | select(.status == "in_progress"))}'
+     ```
+   - Endpoint log GitHub mengembalikan `HTTP 404` selama job masih berjalan. Untuk membuka log parsial job yang macet: batalkan run, tunggu status `completed`, lalu tarik log job dengan `--allow-escape-sequences`:
+     ```powershell
+     gh run cancel $runId
+     gh api --allow-escape-sequences repos/{owner}/{repo}/actions/jobs/<databaseId>/logs | tail -n 80
+     ```
+   - Jika log menunjukkan gangguan jaringan/DNS eksternal (mis. HTTP 504 pada WiX/AppImage atau `Temporary failure resolving 'azure.archive.ubuntu.com'`), cek apakah ada outage runner/Ubuntu yang masih aktif sebelum mengulang sia-sia:
+     ```powershell
+     gh issue list -R actions/runner-images --limit 5 --state open --json number,title,createdAt
+     ```
+   - Jika penyebabnya gangguan sementara atau outage sudah pulih, jalankan rerun **hanya** untuk job yang gagal/dibatalkan memakai `databaseId` (jangan memakai nomor langkah di URL web):
+     ```powershell
+     gh run rerun $runId --job <databaseId>
      gh run watch $runId --interval 15
      ```
 4. **Verifikasi Lampiran Aset Biner Resmi pada GitHub Release:**

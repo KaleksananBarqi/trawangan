@@ -10,29 +10,36 @@ on:
         description: 'Release Tag (contoh: v0.1.0)'
         required: true
         default: 'v0.1.0'
+      platform:
+        description: 'Target Platform'
+        required: false
+        type: choice
+        default: 'all'
+        options:
+          - 'all'
+          - 'ubuntu-22.04'
+          - 'windows-latest'
+          - 'macos-latest'
 
 permissions:
   contents: write
 
 jobs:
   release:
+    timeout-minutes: 30
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: 'windows-latest'
-            args: ''
-          - platform: 'ubuntu-22.04'
-            args: ''
-          - platform: 'macos-latest'
-            args: ''
+        platform: ${{ (github.event_name == 'workflow_dispatch' && inputs.platform != 'all' && inputs.platform != '') && fromJSON(format('["{0}"]', inputs.platform)) || fromJSON('["windows-latest", "ubuntu-22.04", "macos-latest"]') }}
 
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Determine release tag
         id: tag_info
@@ -65,9 +72,31 @@ jobs:
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+          APT_OPTS="-o APT::Update::Error-Mode=any -o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o DPkg::Lock::Timeout=60"
+          use_fallback_mirrors() {
+            echo "Default Ubuntu mirror unreachable/unresolvable; switching apt mirrors to fallback..."
+            if [ -f /etc/apt/apt-mirrors.txt ]; then
+              printf '%s\n' \
+                $'https://mirrors.edge.kernel.org/ubuntu/\tpriority:1' \
+                $'https://mirror.rackspace.com/ubuntu/\tpriority:2' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+            fi
+            sudo sed -i -E 's|https?://[a-zA-Z0-9.-]*ubuntu\.com/ubuntu|https://mirrors.edge.kernel.org/ubuntu|g' /etc/apt/sources.list
+            sudo find /etc/apt/sources.list.d/ -type f -name '*.list' -exec sed -i -E 's|https?://[a-zA-Z0-9.-]*ubuntu\.com/ubuntu|https://mirrors.edge.kernel.org/ubuntu|g' {} + 2>/dev/null || true
+          }
+          if ! curl -sfI --max-time 5 http://azure.archive.ubuntu.com/ubuntu/dists/jammy/InRelease >/dev/null 2>&1; then
+            use_fallback_mirrors
+          fi
+          for attempt in 1 2; do
+            if sudo DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS update && sudo DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2; then
+              exit 0
+            fi
+            echo "apt-get attempt $attempt failed, switching to fallback mirrors and retrying in 5s..."
+            use_fallback_mirrors
+            sleep 5
+          done
+          exit 1
 
       - name: Install frontend dependencies
         run: npm ci
@@ -116,7 +145,7 @@ jobs:
             *Filosofi: Penerawangan (ꦠꦿꦮꦔꦤ꧀) — Visi menembus kabut manipulasi pasar.*
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ''
 
       - name: Upload build artifacts as workflow artifacts
         uses: actions/upload-artifact@v4
