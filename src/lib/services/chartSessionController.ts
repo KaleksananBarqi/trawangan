@@ -51,10 +51,12 @@ import { isVolumeIndicator } from '../data/indicatorPresets';
 import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 import { applyLayoutTimeframePolicy } from '../constants/defaults';
 import {
+  storage,
   loadChartDefaultConfig,
   saveChartDefaultConfig,
   clearChartDefaultConfig
 } from './persistence';
+import type { IPersistenceService } from './persistence/types';
 import {
   cloneRendererConfigValue,
   sanitizeRendererConfigForApply,
@@ -88,6 +90,7 @@ export interface ChartSessionOptions {
   // Factory & Stream Guard opsional untuk dependency injection / headless unit testing
   workspaceFactory?: (container: HTMLElement, config: any) => any;
   feedHealthSink?: StreamHealthSink;
+  persistence?: IPersistenceService;
   providerFactories?: Partial<Record<string, () => any>>;
   streamWatchdogMs?: number;
   streamStaleMs?: number;
@@ -414,6 +417,8 @@ export class ChartSessionController {
   private isDestroyed = false;
   private gridMode: GridMode = 'normal';
   private feedHealthSink: StreamHealthSink;
+  private persistence: IPersistenceService;
+  private hasCustomPersistence = false;
   private streamCoordinator: StreamGuardCoordinator;
   private providerFactories?: Partial<Record<string, () => any>>;
   private streamWatchdogMs?: number;
@@ -455,6 +460,8 @@ export class ChartSessionController {
     this.onActiveCellChange = options.onActiveCellChange;
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
     this.workspaceFactory = options.workspaceFactory;
+    this.hasCustomPersistence = Boolean(options.persistence);
+    this.persistence = options.persistence ?? storage;
     this.feedHealthSink = options.feedHealthSink ?? marketFeed;
     this.streamCoordinator = new StreamGuardCoordinator(this.feedHealthSink);
     this.providerFactories = options.providerFactories;
@@ -536,7 +543,7 @@ export class ChartSessionController {
   }
 
   /**
-   * Mengumpulkan konfigurasi custom-* provider secara sinkron dari sink aktif, singleton marketFeed, dan localStorage
+   * Mengumpulkan konfigurasi custom-* provider secara sinkron dari PersistenceService dan sink aktif
    */
   private getKnownCustomConfigs(): ProviderConfig[] {
     const byId = new Map<string, ProviderConfig>();
@@ -550,17 +557,14 @@ export class ChartSessionController {
       }
     };
 
-    const sinkAny = this.feedHealthSink as any;
-    if (typeof sinkAny?.getKnownProviderConfigsSync === 'function') {
-      collect(sinkAny.getKnownProviderConfigsSync());
-    }
-    collect(marketFeed.getKnownProviderConfigsSync());
+    collect(this.persistence.getProvidersSync());
 
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const raw = localStorage.getItem('trawangan_providers');
-        if (raw) collect(JSON.parse(raw));
-      } catch (_) {}
+    const sinkAny = this.feedHealthSink as any;
+    if (
+      typeof sinkAny?.getKnownProviderConfigsSync === 'function' &&
+      !(this.hasCustomPersistence && sinkAny === marketFeed)
+    ) {
+      collect(sinkAny.getKnownProviderConfigsSync());
     }
 
     return Array.from(byId.values());
@@ -663,13 +667,16 @@ export class ChartSessionController {
     };
 
     try {
-      const res = await marketFeed.getSavedProviders();
+      const res = await this.persistence.loadProviders();
       if (epoch !== this.customHydrationEpoch) return;
       mergeList(res);
     } catch (_) {}
 
     const sinkAny = this.feedHealthSink as any;
-    if (typeof sinkAny?.getSavedProviders === 'function' && sinkAny !== marketFeed) {
+    if (
+      typeof sinkAny?.getSavedProviders === 'function' &&
+      !(this.hasCustomPersistence && sinkAny === marketFeed)
+    ) {
       try {
         const res = await sinkAny.getSavedProviders();
         if (epoch !== this.customHydrationEpoch) return;

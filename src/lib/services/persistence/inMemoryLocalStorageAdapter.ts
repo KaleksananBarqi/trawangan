@@ -4,11 +4,14 @@ import type {
   MultiWatchlistRegistry,
   PineScriptRecord,
   PriceAlert,
+  ProviderConfig,
   SavedTradingPlanRecord,
   SavedWorkspace,
 } from '../../types/market';
+import { DEFAULT_PROVIDERS } from '../market/constants';
 
 const PREF_KEY_PREFIX = 'trawangan_pref_';
+const PROVIDERS_STORAGE_KEY = 'trawangan_providers';
 
 export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   private memoryStore = new Map<string, string>();
@@ -317,6 +320,47 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     const list = await this.loadScripts();
     const filtered = list.filter((s) => s.id !== id);
     this.setItem('trawangan_scripts', JSON.stringify(filtered));
+  }
+
+  private readProvidersOrSeed(): ProviderConfig[] {
+    const raw = this.getItem(PROVIDERS_STORAGE_KEY);
+    if (raw !== null) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.map((p) => ({ ...p }));
+        }
+      } catch {
+        // Abaikan JSON rusak dan gunakan seed bawaan
+      }
+    }
+    return DEFAULT_PROVIDERS.map((p) => ({ ...p }));
+  }
+
+  async loadProviders(): Promise<ProviderConfig[]> {
+    return this.readProvidersOrSeed();
+  }
+
+  async saveProvider(provider: ProviderConfig): Promise<void> {
+    let list = this.readProvidersOrSeed().filter((p) => p.id !== provider.id);
+    if (provider.is_active) {
+      list = list.map((p) => ({ ...p, is_active: false }));
+    }
+    list.push({ ...provider });
+    this.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(list));
+  }
+
+  async setActiveProvider(id: string): Promise<void> {
+    const list = this.readProvidersOrSeed().map((p) => ({
+      ...p,
+      is_active: p.id === id,
+    }));
+    this.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(list));
+  }
+
+  async deleteProvider(id: string): Promise<void> {
+    const list = this.readProvidersOrSeed().filter((p) => p.id !== id);
+    this.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(list));
   }
 
   /**

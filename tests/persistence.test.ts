@@ -526,5 +526,162 @@ describe('Deep Persistence Module Unit Tests', () => {
       JSON.stringify({ soundEnabled: false })
     );
   });
+
+  test('Tiket #183: bootstrap() memuat providers paralel, getProvidersSync() aman sebelum bootstrap, dan CRUD provider menyinkronkan cache', async () => {
+    assert.strictEqual((globalThis as any).localStorage, undefined, 'Uji seam tidak boleh bergantung pada globalThis.localStorage');
+    assert.strictEqual(service.isBootstrapped(), false);
+
+    // Fallback aman sebelum bootstrap mengembalikan preset default dengan binance aktif
+    const preBootstrap = service.getProvidersSync();
+    assert.ok(preBootstrap.length >= 6);
+    assert.strictEqual(preBootstrap.find((p) => p.id === 'binance')?.is_active, true);
+
+    // Mutasi objek hasil getProvidersSync() tidak boleh merusak cache internal
+    preBootstrap[0].name = 'MUTATED';
+    assert.notStrictEqual(service.getProvidersSync()[0].name, 'MUTATED');
+
+    await adapter.saveProvider({
+      id: 'custom-node-1',
+      name: 'Node Satu',
+      rest_url: 'https://node1.example.com',
+      ws_url: 'wss://node1.example.com/ws',
+      is_active: true,
+    });
+
+    let loadProvidersCalls = 0;
+    const origLoadProviders = adapter.loadProviders.bind(adapter);
+    adapter.loadProviders = async () => {
+      loadProvidersCalls += 1;
+      return origLoadProviders();
+    };
+
+    await service.bootstrap();
+    assert.strictEqual(loadProvidersCalls, 1);
+    assert.strictEqual(service.isBootstrapped(), true);
+
+    const syncedAfterBoot = service.getProvidersSync();
+    assert.strictEqual(syncedAfterBoot.find((p) => p.id === 'custom-node-1')?.is_active, true);
+    assert.strictEqual(syncedAfterBoot.find((p) => p.id === 'binance')?.is_active, false);
+
+    // saveProvider memperbarui cache sinkron & mengganti status aktif
+    await service.saveProvider({
+      id: 'custom-node-2',
+      name: 'Node Dua',
+      rest_url: 'https://node2.example.com',
+      ws_url: '',
+      is_active: true,
+    });
+    assert.strictEqual(service.getProvidersSync().find((p) => p.id === 'custom-node-2')?.is_active, true);
+    assert.strictEqual(service.getProvidersSync().find((p) => p.id === 'custom-node-1')?.is_active, false);
+
+    // setActiveProvider memperbarui cache sinkron & adapter
+    await service.setActiveProvider('hyperliquid');
+    assert.strictEqual(service.getProvidersSync().find((p) => p.id === 'hyperliquid')?.is_active, true);
+    assert.strictEqual(service.getProvidersSync().find((p) => p.id === 'custom-node-2')?.is_active, false);
+    assert.strictEqual((await service.loadProviders()).find((p) => p.id === 'hyperliquid')?.is_active, true);
+
+    // deleteProvider menghapus dari cache sinkron & adapter
+    await service.deleteProvider('custom-node-1');
+    assert.strictEqual(service.getProvidersSync().some((p) => p.id === 'custom-node-1'), false);
+    assert.strictEqual((await adapter.loadProviders()).some((p) => p.id === 'custom-node-1'), false);
+
+    // setAdapter mereset cache provider kembali ke fallback default
+    service.setAdapter(new InMemoryLocalStorageAdapter());
+    assert.strictEqual(service.isBootstrapped(), false);
+    assert.strictEqual(service.getProvidersSync().some((p) => p.id === 'custom-node-2'), false);
+  });
+
+  test('Tiket #183: TauriSqliteAdapter memanggil IPC provider yang tepat & merge default Rust seed_defaults menjaga is_active', async () => {
+    const prevWindow = (globalThis as any).window;
+    const calls: Array<{ cmd: string; args: any }> = [];
+    const sqliteRows = [
+      {
+        id: 'binance',
+        name: 'Binance Official Public',
+        rest_url: 'https://api.binance.com',
+        ws_url: 'wss://stream.binance.com:9443',
+        is_active: false,
+      },
+      {
+        id: 'hyperliquid',
+        name: 'Hyperliquid DEX Perpetuals',
+        rest_url: 'https://api.hyperliquid.xyz',
+        ws_url: 'wss://api.hyperliquid.xyz/ws',
+        is_active: true,
+      },
+      {
+        id: 'coinbase',
+        name: 'Coinbase Exchange Spot',
+        rest_url: 'https://api.exchange.coinbase.com',
+        ws_url: 'wss://ws-feed.exchange.coinbase.com',
+        is_active: false,
+      },
+      {
+        id: 'bitunix',
+        name: 'Bitunix Futures',
+        rest_url: 'https://fapi.bitunix.com',
+        ws_url: 'wss://fapi.bitunix.com/public/',
+        is_active: false,
+      },
+    ];
+
+    (globalThis as any).window = {
+      __TAURI_INTERNALS__: {
+        invoke: async (cmd: string, args?: any) => {
+          calls.push({ cmd, args });
+          if (cmd === 'load_all_app_preferences') return [];
+          if (cmd === 'get_data_providers') return sqliteRows.map((r) => ({ ...r }));
+          return null;
+        },
+      },
+    };
+
+    try {
+      const tauriAdapter = new TauriSqliteAdapter();
+      const tauriService = new PersistenceService(tauriAdapter);
+      await tauriService.bootstrap();
+
+      const synced = tauriService.getProvidersSync();
+      // Pastikan indodax & yahoo tergabung dari DEFAULT_PROVIDERS tanpa merebut status aktif dari hyperliquid
+      assert.strictEqual(synced.some((p) => p.id === 'indodax'), true);
+      assert.strictEqual(synced.some((p) => p.id === 'yahoo'), true);
+      assert.strictEqual(synced.find((p) => p.id === 'hyperliquid')?.is_active, true);
+      assert.strictEqual(synced.find((p) => p.id === 'binance')?.is_active, false);
+
+      const customCfg = {
+        id: 'custom-sqlite-1',
+        name: 'Custom SQLite',
+        rest_url: 'https://sqlite-node.example.com',
+        ws_url: '',
+        is_active: false,
+      };
+      await tauriService.saveProvider(customCfg);
+      await tauriService.setActiveProvider('coinbase');
+      await tauriService.setActiveProvider('indodax');
+      await tauriService.deleteProvider('custom-sqlite-1');
+
+      assert.ok(calls.some((c) => c.cmd === 'get_data_providers'));
+      assert.ok(
+        calls.some((c) => c.cmd === 'add_or_update_provider' && c.args?.provider?.id === 'custom-sqlite-1')
+      );
+      assert.ok(
+        calls.some((c) => c.cmd === 'set_active_data_provider' && c.args?.id === 'coinbase')
+      );
+      // indodax belum di-seed oleh Rust, sehingga aktivasi indodax memastikannya tersimpan dengan is_active: true
+      assert.ok(
+        calls.some(
+          (c) =>
+            c.cmd === 'add_or_update_provider' &&
+            c.args?.provider?.id === 'indodax' &&
+            c.args?.provider?.is_active === true
+        )
+      );
+      assert.ok(
+        calls.some((c) => c.cmd === 'delete_data_provider' && c.args?.id === 'custom-sqlite-1')
+      );
+    } finally {
+      (globalThis as any).window = prevWindow;
+    }
+  });
 });
 
