@@ -96,6 +96,25 @@ export {
   normalizeSymbolForMatching,
 };
 
+export interface RestoreDrawingsResult {
+  hasAuthoritativePlanMeta: boolean;
+}
+
+/**
+ * Memeriksa apakah payload `_trawangan_meta` merupakan envelope metadata plan yang valid dan otoritatif.
+ */
+function isValidPlanEnvelope(meta: unknown): meta is Partial<SerializedPlanEnvelope> {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
+  const candidate = meta as Partial<SerializedPlanEnvelope>;
+  return (
+    Array.isArray(candidate.activePlans) ||
+    Array.isArray(candidate.planDrawingIds) ||
+    (candidate.drawingMetadata !== null &&
+      typeof candidate.drawingMetadata === 'object' &&
+      !Array.isArray(candidate.drawingMetadata))
+  );
+}
+
 /**
  * Memeriksa apakah dua kotak pembatas AABB (Axis-Aligned Bounding Box) beririsan/tumpang tindih
  */
@@ -2516,9 +2535,9 @@ export class ChartDrawingController {
     targetTimeframe?: string,
     targetProvider?: string,
     targetWorkspace?: string
-  ): Promise<void> {
+  ): Promise<RestoreDrawingsResult> {
     const activeChart = this.getActiveChart();
-    if (!activeChart?.drawings) return;
+    if (!activeChart?.drawings) return { hasAuthoritativePlanMeta: false };
 
     // 1. Flush gambar in-flight yang sedang aktif sebelum beralih konteks
     try {
@@ -2533,6 +2552,7 @@ export class ChartDrawingController {
       });
     } catch (_) {}
 
+    let hasAuthoritativePlanMeta = false;
     this.isRestoring = true;
     try {
       // 2. Bersihkan kanvas aktif terlebih dahulu (clean slate) agar gambar bursa lama tidak bocor
@@ -2551,7 +2571,8 @@ export class ChartDrawingController {
 
       if (doc) {
         // Pulihkan metadata dan activePlans jika tersimpan di payload _trawangan_meta
-        if (doc._trawangan_meta) {
+        if (isValidPlanEnvelope(doc._trawangan_meta)) {
+          hasAuthoritativePlanMeta = true;
           this.planRevision++;
           this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta);
         }
@@ -2568,16 +2589,16 @@ export class ChartDrawingController {
       this.isRestoring = false;
       this.notify();
     }
+    return { hasAuthoritativePlanMeta };
   }
 
   /**
    * Memulihkan seluruh gambar dan metadata trading plan pada setiap sel secara terisolasi per pasangan bursa:simbol.
    */
-  async restoreAllCellDrawings(targetWorkspace?: string): Promise<void> {
+  async restoreAllCellDrawings(targetWorkspace?: string): Promise<RestoreDrawingsResult> {
     const cells = this.getAllCells();
     if (cells.length === 0) {
-      await this.restoreDrawings(undefined, undefined, undefined, targetWorkspace);
-      return;
+      return await this.restoreDrawings(undefined, undefined, undefined, targetWorkspace);
     }
 
     try {
@@ -2592,6 +2613,7 @@ export class ChartDrawingController {
       });
     } catch (_) {}
 
+    let hasAuthoritativePlanMeta = false;
     this.isRestoring = true;
     try {
       this.planRevision++;
@@ -2627,7 +2649,8 @@ export class ChartDrawingController {
         });
 
         if (doc) {
-          if (doc._trawangan_meta) {
+          if (isValidPlanEnvelope(doc._trawangan_meta)) {
+            hasAuthoritativePlanMeta = true;
             this.planRevision++;
             this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta);
           }
@@ -2647,6 +2670,7 @@ export class ChartDrawingController {
       this.isRestoring = false;
       this.notify();
     }
+    return { hasAuthoritativePlanMeta };
   }
 
   /**
