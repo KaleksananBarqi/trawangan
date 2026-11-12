@@ -150,19 +150,11 @@ export class PersistenceService implements IPersistenceService {
   // ─── Price Alerts Persistence ───
 
   async loadAlerts(): Promise<PriceAlert[]> {
-    const raw = await this.adapter.loadLayoutSlot('user_price_alerts');
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+    return await this.adapter.listAlerts();
   }
 
   async saveAlerts(alerts: PriceAlert[]): Promise<void> {
-    const json = JSON.stringify(alerts);
-    await this.adapter.saveLayoutSlot('user_price_alerts', 'User Price Alerts', json);
+    await this.adapter.replaceAlerts(alerts);
   }
 
   // ─── Workspaces Persistence ───
@@ -313,13 +305,9 @@ export class PersistenceService implements IPersistenceService {
   // ─── Trade Plan Vault (Riwayat Rencana Perdagangan Otomatis - ADR-0019) ───
 
   async loadTradingPlanHistory(): Promise<SavedTradingPlanRecord[]> {
-    const raw = await this.adapter.loadLayoutSlot('user_trade_plan_vault');
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (_) {}
-    }
+    const list = await this.adapter.listTradingPlans();
+    if (list.length > 0) return list;
+
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         const local = window.localStorage.getItem('trawangan_trade_plan_vault');
@@ -332,12 +320,15 @@ export class PersistenceService implements IPersistenceService {
     return [];
   }
 
-  private async persistTradingPlanVaultList(list: SavedTradingPlanRecord[]): Promise<void> {
-    const json = JSON.stringify(list);
-    await this.adapter.saveLayoutSlot('user_trade_plan_vault', 'User Trade Plan Vault', json);
+  private syncVaultLocalStorageCache(list: SavedTradingPlanRecord[]): void {
+    // Sinkronkan cache localStorage browser secara sementara hingga konsolidasi Tiket #172
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
-        window.localStorage.setItem('trawangan_trade_plan_vault', json);
+        if (list.length === 0) {
+          window.localStorage.removeItem('trawangan_trade_plan_vault');
+        } else {
+          window.localStorage.setItem('trawangan_trade_plan_vault', JSON.stringify(list));
+        }
       } catch (_) {}
     }
   }
@@ -369,48 +360,43 @@ export class PersistenceService implements IPersistenceService {
       );
     });
 
-    if (existingIdx !== -1) {
-      const existing = list[existingIdx];
-      const updated: SavedTradingPlanRecord = {
-        ...existing,
-        ...record,
-        id: existing.id,
-        symbol: cleanSymbol,
-        createdAt: existing.createdAt || record.createdAt || now,
-        updatedAt: now,
-        plan: JSON.parse(JSON.stringify(record.plan)),
-      };
-      const remaining = list.filter((_, i) => i !== existingIdx);
-      const nextList = [updated, ...remaining].slice(0, 200);
-      await this.persistTradingPlanVaultList(nextList);
-      return updated;
-    }
+    const savedRecord: SavedTradingPlanRecord = existingIdx !== -1
+      ? {
+          ...list[existingIdx],
+          ...record,
+          id: list[existingIdx].id,
+          symbol: cleanSymbol,
+          createdAt: list[existingIdx].createdAt || record.createdAt || now,
+          updatedAt: now,
+          plan: JSON.parse(JSON.stringify(record.plan)),
+        }
+      : {
+          id: record.id || `vault_plan_${now}_${Math.random().toString(36).slice(2, 7)}`,
+          symbol: cleanSymbol,
+          providerId: record.providerId || 'binance',
+          timeframe: record.timeframe || '15m',
+          createdAt: record.createdAt || now,
+          updatedAt: now,
+          rawText: record.rawText || record.plan?.rawText || '',
+          plan: JSON.parse(JSON.stringify(record.plan)),
+        };
 
-    const newRecord: SavedTradingPlanRecord = {
-      id: record.id || `vault_plan_${now}_${Math.random().toString(36).slice(2, 7)}`,
-      symbol: cleanSymbol,
-      providerId: record.providerId || 'binance',
-      timeframe: record.timeframe || '15m',
-      createdAt: record.createdAt || now,
-      updatedAt: now,
-      rawText: record.rawText || record.plan?.rawText || '',
-      plan: JSON.parse(JSON.stringify(record.plan)),
-    };
-
-    const nextList = [newRecord, ...list].slice(0, 200);
-    await this.persistTradingPlanVaultList(nextList);
-    return newRecord;
+    await this.adapter.upsertTradingPlan(savedRecord);
+    const updatedList = await this.adapter.listTradingPlans();
+    this.syncVaultLocalStorageCache(updatedList);
+    return savedRecord;
   }
 
   async deleteTradingPlanFromHistory(id: string): Promise<SavedTradingPlanRecord[]> {
-    const list = await this.loadTradingPlanHistory();
-    const filtered = list.filter((item) => item.id !== id);
-    await this.persistTradingPlanVaultList(filtered);
+    await this.adapter.deleteTradingPlan(id);
+    const filtered = await this.adapter.listTradingPlans();
+    this.syncVaultLocalStorageCache(filtered);
     return filtered;
   }
 
   async clearTradingPlanHistory(): Promise<void> {
-    await this.persistTradingPlanVaultList([]);
+    await this.adapter.clearTradingPlans();
+    this.syncVaultLocalStorageCache([]);
   }
 
   // ─── Layout Slot Direct Access ───

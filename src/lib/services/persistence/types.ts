@@ -29,6 +29,16 @@ export interface PersistenceAdapter {
   upsertWorkspace(workspace: SavedWorkspace): Promise<void>;
   deleteWorkspace(id: string): Promise<void>;
 
+  // Price Alerts & Plan-Linked Auto-Alerts
+  listAlerts(): Promise<PriceAlert[]>;
+  replaceAlerts(alerts: PriceAlert[]): Promise<void>;
+
+  // Trade Plan Vault (kapasitas maksimal 200 entri terbaru)
+  listTradingPlans(): Promise<SavedTradingPlanRecord[]>;
+  upsertTradingPlan(record: SavedTradingPlanRecord): Promise<void>;
+  deleteTradingPlan(id: string): Promise<void>;
+  clearTradingPlans(): Promise<void>;
+
   // Daftar pantau koin (Watchlist)
   loadWatchlist(): Promise<string[] | null>;
   saveWatchlist(symbols: string[]): Promise<void>;

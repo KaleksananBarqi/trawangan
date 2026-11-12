@@ -248,5 +248,116 @@ describe('Deep Persistence Module Unit Tests', () => {
     const cleared = await service.loadChartDefaultConfig();
     assert.strictEqual(cleared, null);
   });
+
+  test('Price Alerts: menjaga urutan batch replacement & field Plan-Linked Auto-Alerts', async () => {
+    await service.saveAlerts([
+      {
+        id: 'a-2',
+        symbol: 'ETHUSDT',
+        targetPrice: 3100,
+        condition: 'crossing_up',
+        frequency: 'once',
+        label: 'TP1',
+        active: true,
+        triggered: false,
+        createdAt: 2000,
+        planId: 'plan-77',
+        planRole: 'tp1',
+      },
+      {
+        id: 'a-1',
+        symbol: 'BTCUSDT',
+        targetPrice: 88000,
+        condition: 'crossing_down',
+        frequency: 'every_time',
+        label: 'SL',
+        active: false,
+        triggered: true,
+        createdAt: 1000,
+        triggeredAt: 2500,
+        triggeredPrice: 87990,
+        planId: 'plan-77',
+        planRole: 'sl',
+      },
+    ]);
+
+    const loaded = await service.loadAlerts();
+    assert.strictEqual(loaded.length, 2);
+    assert.strictEqual(loaded[0].id, 'a-2');
+    assert.strictEqual(loaded[0].planRole, 'tp1');
+    assert.strictEqual(loaded[1].id, 'a-1');
+    assert.strictEqual(loaded[1].triggeredAt, 2500);
+
+    await service.saveAlerts([
+      {
+        id: 'a-3',
+        symbol: 'SOLUSDT',
+        targetPrice: 200,
+        condition: 'crossing',
+        frequency: 'once',
+        label: 'Baru',
+        active: true,
+        triggered: false,
+        createdAt: 3000,
+      },
+    ]);
+    const replaced = await service.loadAlerts();
+    assert.strictEqual(replaced.length, 1);
+    assert.strictEqual(replaced[0].id, 'a-3');
+  });
+
+  test('Trade Plan Vault: deduplikasi, batas 200 entri terbaru, delete satu entri, dan clear', async () => {
+    await service.clearTradingPlanHistory();
+
+    // Simpan lebih dari 200 plan berbeda (entry berbeda agar tidak terdeduplikasi)
+    for (let i = 0; i < 205; i++) {
+      await service.saveTradingPlanToHistory({
+        id: `vault_${i}`,
+        symbol: 'BTCUSDT',
+        providerId: 'binance',
+        timeframe: '15m',
+        rawText: `Plan ${i}`,
+        plan: {
+          bias: 'LONG',
+          entry: 50000 + i,
+          stopLoss: 49000,
+          targets: [{ price: 52000 + i, label: 'TP1' }],
+        } as any,
+      });
+    }
+
+    const capped = await service.loadTradingPlanHistory();
+    assert.strictEqual(capped.length, 200);
+    assert.strictEqual(capped[0].id, 'vault_204');
+    assert.ok(!capped.some((p) => p.id === 'vault_0'));
+
+    // Deduplikasi berdasarkan signature sama memperbarui entri yang ada
+    const updated = await service.saveTradingPlanToHistory({
+      symbol: 'BTCUSDT.P',
+      providerId: 'binance',
+      timeframe: '1h',
+      rawText: 'Plan 204 revised',
+      plan: {
+        bias: 'LONG',
+        entry: 50204,
+        stopLoss: 49000,
+        targets: [{ price: 52204, label: 'TP1' }],
+      } as any,
+    });
+    assert.strictEqual(updated.id, 'vault_204');
+    const afterDedupe = await service.loadTradingPlanHistory();
+    assert.strictEqual(afterDedupe.length, 200);
+    assert.strictEqual(afterDedupe[0].timeframe, '1h');
+
+    // Delete satu entri
+    const afterDelete = await service.deleteTradingPlanFromHistory('vault_204');
+    assert.strictEqual(afterDelete.length, 199);
+    assert.ok(!afterDelete.some((p) => p.id === 'vault_204'));
+
+    // Clear penuh
+    await service.clearTradingPlanHistory();
+    const afterClear = await service.loadTradingPlanHistory();
+    assert.strictEqual(afterClear.length, 0);
+  });
 });
 

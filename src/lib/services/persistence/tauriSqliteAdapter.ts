@@ -1,6 +1,11 @@
 // Adapter Native SQLite via Tauri IPC Command
 import type { DrawingKeyEntry, PersistenceAdapter } from './types';
-import type { PineScriptRecord, SavedWorkspace } from '../../types/market';
+import type {
+  PineScriptRecord,
+  PriceAlert,
+  SavedTradingPlanRecord,
+  SavedWorkspace,
+} from '../../types/market';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 
 export class TauriSqliteAdapter implements PersistenceAdapter {
@@ -156,6 +161,38 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
   async deleteWorkspace(id: string): Promise<void> {
     const invoke = await this.getInvoke();
     await invoke('delete_workspace', { id });
+  }
+
+  async listAlerts(): Promise<PriceAlert[]> {
+    const invoke = await this.getInvoke();
+    const list = await invoke<PriceAlert[]>('list_price_alerts');
+    return Array.isArray(list) ? list : [];
+  }
+
+  async replaceAlerts(alerts: PriceAlert[]): Promise<void> {
+    const invoke = await this.getInvoke();
+    await invoke('replace_price_alerts', { alertsJson: JSON.stringify(alerts) });
+  }
+
+  async listTradingPlans(): Promise<SavedTradingPlanRecord[]> {
+    const invoke = await this.getInvoke();
+    const list = await invoke<SavedTradingPlanRecord[]>('list_trading_plans');
+    return Array.isArray(list) ? list : [];
+  }
+
+  async upsertTradingPlan(record: SavedTradingPlanRecord): Promise<void> {
+    const invoke = await this.getInvoke();
+    await invoke('upsert_trading_plan', { planRecordJson: JSON.stringify(record) });
+  }
+
+  async deleteTradingPlan(id: string): Promise<void> {
+    const invoke = await this.getInvoke();
+    await invoke('delete_trading_plan', { id });
+  }
+
+  async clearTradingPlans(): Promise<void> {
+    const invoke = await this.getInvoke();
+    await invoke('clear_trading_plans');
   }
 
   async loadLayoutSlot(id: string): Promise<string | null> {

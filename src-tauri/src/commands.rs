@@ -1,10 +1,15 @@
 // Modul Tauri IPC Commands yang dipanggil oleh Frontend
 use crate::db::{
+    alerts::{list_price_alerts as db_list_price_alerts, replace_price_alerts as db_replace_price_alerts},
     cache_candles, clear_drawings, delete_pine_script, delete_provider,
     drawings::clone_workspace_drawings as db_clone_workspace_drawings, get_cached_candles,
     get_drawings, get_pine_scripts, get_providers, get_watchlist, get_workspace,
     list_drawing_keys as db_list_drawing_keys, save_drawings, save_pine_script, save_provider,
     save_watchlist, save_workspace, set_active_provider,
+    trading_plans::{
+        clear_trading_plans as db_clear_trading_plans, delete_trading_plan as db_delete_trading_plan,
+        list_trading_plans as db_list_trading_plans, upsert_trading_plan as db_upsert_trading_plan,
+    },
     workspaces::{
         delete_workspace as db_delete_workspace, list_workspaces as db_list_workspaces,
         upsert_workspace as db_upsert_workspace,
@@ -121,6 +126,51 @@ pub fn clone_workspace_drawings(
 ) -> Result<usize, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     db_clone_workspace_drawings(&conn, &from_ws_id, &to_ws_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_price_alerts(db: State<'_, DbState>) -> Result<Vec<serde_json::Value>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_list_price_alerts(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn replace_price_alerts(
+    db: State<'_, DbState>,
+    alerts_json: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_replace_price_alerts(&conn, &alerts_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_trading_plans(db: State<'_, DbState>) -> Result<Vec<serde_json::Value>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_list_trading_plans(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn upsert_trading_plan(
+    db: State<'_, DbState>,
+    plan_record_json: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_upsert_trading_plan(&conn, &plan_record_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_trading_plan(
+    db: State<'_, DbState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_delete_trading_plan(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn clear_trading_plans(db: State<'_, DbState>) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_clear_trading_plans(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

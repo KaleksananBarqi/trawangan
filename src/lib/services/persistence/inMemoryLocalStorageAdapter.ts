@@ -1,6 +1,11 @@
 // Adapter In-Memory & Web LocalStorage untuk Lingkungan Pengujian dan Web Fallback
 import type { DrawingKeyEntry, PersistenceAdapter } from './types';
-import type { PineScriptRecord, SavedWorkspace } from '../../types/market';
+import type {
+  PineScriptRecord,
+  PriceAlert,
+  SavedTradingPlanRecord,
+  SavedWorkspace,
+} from '../../types/market';
 
 export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   private memoryStore = new Map<string, string>();
@@ -173,6 +178,52 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
         }
       }
     }
+  }
+
+  async listAlerts(): Promise<PriceAlert[]> {
+    const raw = this.getItem('trawangan_price_alerts');
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async replaceAlerts(alerts: PriceAlert[]): Promise<void> {
+    this.setItem('trawangan_price_alerts', JSON.stringify(alerts));
+  }
+
+  async listTradingPlans(): Promise<SavedTradingPlanRecord[]> {
+    const raw = this.getItem('trawangan_trade_plan_vault');
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return [...parsed].sort((a, b) => (b?.updatedAt || 0) - (a?.updatedAt || 0));
+    } catch {
+      return [];
+    }
+  }
+
+  async upsertTradingPlan(record: SavedTradingPlanRecord): Promise<void> {
+    const list = await this.listTradingPlans();
+    const remaining = list.filter((item) => item.id !== record.id);
+    const nextList = [record, ...remaining]
+      .sort((a, b) => (b?.updatedAt || 0) - (a?.updatedAt || 0))
+      .slice(0, 200);
+    this.setItem('trawangan_trade_plan_vault', JSON.stringify(nextList));
+  }
+
+  async deleteTradingPlan(id: string): Promise<void> {
+    const list = await this.listTradingPlans();
+    const filtered = list.filter((item) => item.id !== id);
+    this.setItem('trawangan_trade_plan_vault', JSON.stringify(filtered));
+  }
+
+  async clearTradingPlans(): Promise<void> {
+    this.removeItem('trawangan_trade_plan_vault');
   }
 
   async loadWatchlist(): Promise<string[] | null> {

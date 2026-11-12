@@ -67,7 +67,35 @@ pub fn prune_to_limit(conn: &Connection, max_rows: usize) -> Result<()> {
     Ok(())
 }
 
-/// Ganti seluruh baris `trading_plans` dari string JSON array (shim sementara hingga Tiket #177)
+/// Simpan atau perbarui satu entri Trade Plan Vault dan pangkas otomatis hingga batas 200 baris terbaru
+pub fn upsert_trading_plan(conn: &Connection, plan_record_json: &str) -> Result<()> {
+    let item: Value = serde_json::from_str(plan_record_json).map_err(|e| {
+        rusqlite::Error::InvalidParameterName(format!("JSON trading plan tidak valid: {e}"))
+    })?;
+    super::with_transaction(conn, "BEGIN IMMEDIATE;", || {
+        let inserted = upsert_plan_value(conn, &item)?;
+        if !inserted {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "Trading plan record wajib memiliki field id yang tidak kosong".to_string(),
+            ));
+        }
+        prune_to_limit(conn, MAX_TRADING_PLANS)
+    })
+}
+
+/// Hapus satu entri Trade Plan Vault berdasarkan ID
+pub fn delete_trading_plan(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM trading_plans WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Bersihkan seluruh isi Trade Plan Vault
+pub fn clear_trading_plans(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM trading_plans", [])?;
+    Ok(())
+}
+
+/// Ganti seluruh baris `trading_plans` dari string JSON array (shim sementara hingga Tiket #180)
 pub fn replace_plans_from_json(conn: &Connection, json: &str) -> Result<()> {
     let Ok(items) = serde_json::from_str::<Vec<Value>>(json) else {
         return Ok(());
@@ -81,8 +109,8 @@ pub fn replace_plans_from_json(conn: &Connection, json: &str) -> Result<()> {
     })
 }
 
-/// Ekspor seluruh baris `trading_plans` menjadi JSON array (shim sementara hingga Tiket #177)
-pub fn export_plans_as_json(conn: &Connection) -> Result<Option<String>> {
+/// Baca seluruh baris `trading_plans` terurut terbaru-lebih-dulu
+pub fn list_trading_plans(conn: &Connection) -> Result<Vec<Value>> {
     let mut stmt = conn.prepare_cached(
         "SELECT id, symbol, provider_id, timeframe, created_at, updated_at, raw_text, plan_json
          FROM trading_plans
@@ -110,6 +138,12 @@ pub fn export_plans_as_json(conn: &Connection) -> Result<Option<String>> {
         obj.insert("plan".to_string(), plan_val);
         list.push(Value::Object(obj));
     }
+    Ok(list)
+}
+
+/// Ekspor seluruh baris `trading_plans` menjadi JSON array (shim sementara hingga Tiket #180)
+pub fn export_plans_as_json(conn: &Connection) -> Result<Option<String>> {
+    let list = list_trading_plans(conn)?;
     if list.is_empty() {
         Ok(None)
     } else {

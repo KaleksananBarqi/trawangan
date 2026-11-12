@@ -656,4 +656,123 @@ mod tests {
         );
         assert_eq!(get_drawings(&conn, "ws_new:binance:ETHUSDT", "GLOBAL").unwrap(), None);
     }
+
+    #[test]
+    fn test_price_alerts_crud_preserves_order_and_plan_fields() {
+        let conn = setup_v1_test_db();
+        let initial = serde_json::json!([
+            {
+                "id": "alert-2",
+                "symbol": "ETHUSDT",
+                "targetPrice": 3200.5,
+                "condition": "crossing_up",
+                "frequency": "once",
+                "label": "TP1",
+                "active": true,
+                "triggered": false,
+                "createdAt": 1000,
+                "planId": "plan-99",
+                "planRole": "tp1"
+            },
+            {
+                "id": "alert-1",
+                "symbol": "BTCUSDT",
+                "targetPrice": 90000.0,
+                "condition": "crossing_down",
+                "frequency": "every_time",
+                "label": "SL",
+                "active": false,
+                "triggered": true,
+                "createdAt": 900,
+                "triggeredAt": 1500,
+                "triggeredPrice": 89950.0,
+                "planId": "plan-99",
+                "planRole": "sl"
+            }
+        ]);
+
+        alerts::replace_price_alerts(&conn, &initial.to_string()).unwrap();
+        let loaded = alerts::list_price_alerts(&conn).unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0]["id"], "alert-2");
+        assert_eq!(loaded[0]["planId"], "plan-99");
+        assert_eq!(loaded[0]["planRole"], "tp1");
+        assert_eq!(loaded[1]["id"], "alert-1");
+        assert_eq!(loaded[1]["triggeredAt"], 1500);
+        assert_eq!(loaded[1]["triggeredPrice"], 89950.0);
+
+        // Penggantian batch kedua menghapus alert lama sepenuhnya
+        let replacement = serde_json::json!([
+            {
+                "id": "alert-3",
+                "symbol": "SOLUSDT",
+                "targetPrice": 180.0,
+                "condition": "crossing",
+                "frequency": "once",
+                "label": "Entry",
+                "active": true,
+                "triggered": false,
+                "createdAt": 2000
+            }
+        ]);
+        alerts::replace_price_alerts(&conn, &replacement.to_string()).unwrap();
+        let after_replace = alerts::list_price_alerts(&conn).unwrap();
+        assert_eq!(after_replace.len(), 1);
+        assert_eq!(after_replace[0]["id"], "alert-3");
+
+        // JSON rusak harus gagal dengan error eksplisit (tidak ditelan)
+        assert!(alerts::replace_price_alerts(&conn, "{bad-json").is_err());
+    }
+
+    #[test]
+    fn test_trading_plans_upsert_200_cap_delete_and_clear() {
+        let conn = setup_v1_test_db();
+
+        for i in 0..205 {
+            let rec = serde_json::json!({
+                "id": format!("plan-{i}"),
+                "symbol": "BTCUSDT",
+                "providerId": "binance",
+                "timeframe": "15m",
+                "createdAt": 1000 + i,
+                "updatedAt": 2000 + i,
+                "rawText": format!("Plan {i}"),
+                "plan": { "bias": "LONG", "entry": 100.0 + (i as f64), "stopLoss": 90.0, "targets": [] }
+            });
+            trading_plans::upsert_trading_plan(&conn, &rec.to_string()).unwrap();
+        }
+
+        let all = trading_plans::list_trading_plans(&conn).unwrap();
+        assert_eq!(all.len(), trading_plans::MAX_TRADING_PLANS);
+        // Terbaru (plan-204) di depan, 5 tertua (plan-0..plan-4) terpangkas
+        assert_eq!(all[0]["id"], "plan-204");
+        assert_eq!(all[199]["id"], "plan-5");
+
+        // Upsert record yang sudah ada memperbarui updatedAt tanpa menambah baris
+        let updated = serde_json::json!({
+            "id": "plan-5",
+            "symbol": "BTCUSDT",
+            "providerId": "binance",
+            "timeframe": "1h",
+            "createdAt": 1005,
+            "updatedAt": 99999,
+            "rawText": "Plan 5 updated",
+            "plan": { "bias": "SHORT", "entry": 200.0, "stopLoss": 210.0, "targets": [] }
+        });
+        trading_plans::upsert_trading_plan(&conn, &updated.to_string()).unwrap();
+        let after_update = trading_plans::list_trading_plans(&conn).unwrap();
+        assert_eq!(after_update.len(), 200);
+        assert_eq!(after_update[0]["id"], "plan-5");
+        assert_eq!(after_update[0]["timeframe"], "1h");
+
+        // Delete satu record
+        trading_plans::delete_trading_plan(&conn, "plan-5").unwrap();
+        let after_delete = trading_plans::list_trading_plans(&conn).unwrap();
+        assert_eq!(after_delete.len(), 199);
+        assert!(!after_delete.iter().any(|p| p["id"] == "plan-5"));
+
+        // Clear seluruh vault
+        trading_plans::clear_trading_plans(&conn).unwrap();
+        assert!(trading_plans::list_trading_plans(&conn).unwrap().is_empty());
+    }
 }
