@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DRAWING_TOOL_GROUPS,
+  DrawingToolsPreferenceStore,
   getToolMeta,
   getAllSupportedTools,
   getLastUsedTool,
@@ -15,6 +16,8 @@ import {
   type DrawingToolId,
   type DrawingGroupId,
 } from '../src/lib/services/drawingToolsService.js';
+import { PersistenceService } from '../src/lib/services/persistence';
+import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 
 describe('Drawing Tools Service & Catalog Suite', () => {
   it('1. Katalog: Mendefinisikan seluruh grup kategori gambar teknikal secara komprehensif', () => {
@@ -181,6 +184,63 @@ describe('Drawing Tools Service & Catalog Suite', () => {
       assert.ok(p.color.startsWith('#'), `Color untuk preset ${p.id} harus kode hex yang valid`);
       assert.ok(p.label, `Label untuk preset ${p.id} harus ada`);
     }
+  });
+
+  it('11. Tiket #184: DrawingToolsPreferenceStore menghidrasi state pasca-bootstrap dan menyinkronkan mutasi ke PersistenceService tanpa localStorage', async () => {
+    const adapter = new InMemoryLocalStorageAdapter();
+    await adapter.setPreference('drawings_last_used', JSON.stringify({ lines: 'ray', fib_gann: 'fibfan' }));
+    await adapter.setPreference('drawings_favorites', JSON.stringify(['trendline', 'gannbox']));
+    await adapter.setPreference('drawings_fav_pos', JSON.stringify({ x: 140, y: 260 }));
+
+    const persistence = new PersistenceService(adapter);
+    const store = new DrawingToolsPreferenceStore(persistence);
+
+    // Sebelum bootstrap: state awal berada di default aman
+    assert.equal(store.getLastUsedTool('lines'), 'trendline');
+    assert.deepEqual(store.getFavoritesBarPosition(), { x: 52, y: 300 });
+
+    let notifyCount = 0;
+    let lastNotifiedFavs: DrawingToolId[] = [];
+    const unsub = store.subscribe((state) => {
+      notifyCount += 1;
+      lastNotifiedFavs = state.favorites;
+    });
+
+    await persistence.bootstrap();
+    store.hydrateFromPersistence();
+
+    assert.equal(notifyCount, 1);
+    assert.equal(store.getLastUsedTool('lines'), 'ray');
+    assert.equal(store.getLastUsedTool('fib_gann'), 'fibfan');
+    assert.deepEqual(store.getFavoriteTools(), ['trendline', 'gannbox']);
+    assert.deepEqual(lastNotifiedFavs, ['trendline', 'gannbox']);
+    assert.deepEqual(store.getFavoritesBarPosition(), { x: 140, y: 260 });
+
+    // Mutasi memperbarui cache sinkron PersistenceService, adapter, dan memberitahu subscriber
+    store.setLastUsedTool('lines', 'extendedline');
+    store.toggleFavoriteTool('elliottimpulse');
+    store.saveFavoritesBarPosition({ x: 210, y: 340 });
+
+    assert.equal(notifyCount, 4);
+    assert.deepEqual(
+      persistence.getUiPreferenceSync<Record<string, DrawingToolId>>('drawings_last_used')?.lines,
+      'extendedline'
+    );
+    assert.deepEqual(
+      persistence.getUiPreferenceSync<DrawingToolId[]>('drawings_favorites'),
+      ['trendline', 'gannbox', 'elliottimpulse']
+    );
+    assert.deepEqual(
+      persistence.getUiPreferenceSync<{ x: number; y: number }>('drawings_fav_pos'),
+      { x: 210, y: 340 }
+    );
+
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(
+      JSON.parse((await adapter.getPreference('drawings_last_used')) || '{}').lines,
+      'extendedline'
+    );
+    unsub();
   });
 });
 

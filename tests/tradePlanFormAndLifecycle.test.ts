@@ -43,6 +43,8 @@ import {
   startEdgeResizeSession,
   type ResizeWindowTarget
 } from '../src/lib/services/panelResizeHelper';
+import { PersistenceService } from '../src/lib/services/persistence';
+import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import type { SavedTradingPlanRecord } from '../src/lib/types/market';
 
 class InMemoryPlanEditHost implements TradingPlanHostPort {
@@ -847,7 +849,7 @@ describe('Trade Plan Right Panel Form, Markdown Serializer & In-Place Update Sui
       assert.equal(adjustPanelWidthByKeyboard('Enter', false, 360, 310, 680, 'left-edge'), null);
     });
 
-    it('startEdgeResizeSession menangani pointermove/pointerup ke storage serta membersihkan seluruh listener saat cancel()', () => {
+    it('startEdgeResizeSession menangani pointermove/pointerup ke PersistenceService serta membersihkan seluruh listener saat cancel()', async () => {
       const listeners = new Map<string, Set<(ev: any) => void>>();
       const mockWindow: ResizeWindowTarget = {
         innerWidth: 1440,
@@ -860,12 +862,8 @@ describe('Trade Plan Right Panel Form, Markdown Serializer & In-Place Update Sui
         }
       };
 
-      const stored = new Map<string, string>();
-      const mockStorage = {
-        setItem: (k: string, v: string) => {
-          stored.set(k, v);
-        }
-      };
+      const adapter = new InMemoryLocalStorageAdapter();
+      const persistence = new PersistenceService(adapter);
 
       let latestWidth = 360;
       let endedCommit: boolean | null = null;
@@ -877,10 +875,10 @@ describe('Trade Plan Right Panel Form, Markdown Serializer & In-Place Update Sui
         maxCap: 680,
         viewportMaxRatio: 0.58,
         edge: 'left-edge',
-        storageKey: 'trawangan_right_plan_width',
+        preferenceKey: 'right_plan_width',
         dispatchResizeEvent: false,
         windowTarget: mockWindow,
-        storage: mockStorage,
+        persistence,
         onResize: (w) => {
           latestWidth = w;
         },
@@ -899,28 +897,29 @@ describe('Trade Plan Right Panel Form, Markdown Serializer & In-Place Update Sui
       }
       assert.equal(latestWidth, 440);
 
-      // Lepas pointer => simpan ke storage & lepas seluruh listener
+      // Lepas pointer => simpan ke PersistenceService & lepas seluruh listener
       for (const fn of listeners.get('pointerup') || []) {
         fn({});
       }
       assert.equal(endedCommit, true);
-      assert.equal(stored.get('trawangan_right_plan_width'), '440');
+      assert.equal(persistence.getUiPreferenceSync<number>('right_plan_width'), 440);
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(await adapter.getPreference('right_plan_width'), '440');
       assert.equal(listeners.get('pointermove')?.size, 0);
       assert.equal(listeners.get('pointerup')?.size, 0);
       assert.equal(listeners.get('pointercancel')?.size, 0);
 
-      // Uji cancel() pada sesi kedua: seluruh listener harus langsung dilepas tanpa menyimpan ke storage
-      stored.clear();
+      // Uji cancel() pada sesi kedua: seluruh listener harus langsung dilepas tanpa menyimpan ke PersistenceService
       endedCommit = null;
       const cancelSession = startEdgeResizeSession({
         startClientX: 900,
         startWidth: 300,
         minWidth: 270,
         maxCap: 620,
-        storageKey: 'trawangan_right_panel_width',
+        preferenceKey: 'right_panel_width',
         dispatchResizeEvent: false,
         windowTarget: mockWindow,
-        storage: mockStorage,
+        persistence,
         onResize: (w) => {
           latestWidth = w;
         },
@@ -931,7 +930,8 @@ describe('Trade Plan Right Panel Form, Markdown Serializer & In-Place Update Sui
       assert.equal(listeners.get('pointermove')?.size, 1);
       cancelSession.cancel();
       assert.equal(endedCommit, false);
-      assert.equal(stored.size, 0);
+      assert.equal(persistence.getUiPreferenceSync<number>('right_panel_width'), null);
+      assert.equal(await adapter.getPreference('right_panel_width'), null);
       assert.equal(listeners.get('pointermove')?.size, 0);
       assert.equal(listeners.get('pointerup')?.size, 0);
       assert.equal(listeners.get('pointercancel')?.size, 0);

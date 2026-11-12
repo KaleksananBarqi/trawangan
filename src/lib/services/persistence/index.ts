@@ -7,7 +7,7 @@ import type {
   SavedTradingPlanRecord,
   MultiWatchlistRegistry,
 } from '../../types/market';
-import type { AppPreferenceKey, IPersistenceService, PersistenceAdapter } from './types';
+import type { AppPreferenceKey, IPersistenceService, PersistenceAdapter, UiPreferenceKey } from './types';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 import { TauriSqliteAdapter } from './tauriSqliteAdapter';
 import { normalizeWorkspace, WORKSPACE_SCHEMA_VERSION } from './workspaceSchema';
@@ -99,6 +99,41 @@ export class PersistenceService implements IPersistenceService {
     return this.preferenceCache.get(key) ?? null;
   }
 
+  /**
+   * Membaca dan mem-parsing preferensi UI bertipe dari cache bootstrap secara sinkron.
+   */
+  getUiPreferenceSync<T>(key: UiPreferenceKey): T | null {
+    const raw = this.getPreferenceSync(key);
+    if (raw === null) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch (err) {
+      console.warn(`[PersistenceService] Gagal parsing JSON preferensi UI "${key}":`, err);
+      return null;
+    }
+  }
+
+  /**
+   * Menyimpan preferensi UI bertipe ke adapter `app_preferences` dan menyinkronkan cache secara langsung.
+   */
+  async setUiPreference<T>(key: UiPreferenceKey, value: T): Promise<void> {
+    if (value === undefined) {
+      throw new Error(`Nilai preferensi UI "${key}" tidak boleh undefined (JSON tidak valid)`);
+    }
+    const json = JSON.stringify(value);
+    if (typeof json !== 'string') {
+      throw new Error(`Nilai preferensi UI "${key}" gagal diserialisasi ke JSON`);
+    }
+    await this.setAndSyncPreference(key, json);
+  }
+
+  /**
+   * Menghapus preferensi UI dari adapter `app_preferences` dan cache memori.
+   */
+  async removeUiPreference(key: UiPreferenceKey): Promise<void> {
+    await this.deleteAndSyncPreference(key);
+  }
+
   private async getAndSyncPreference(key: AppPreferenceKey): Promise<string | null> {
     const raw = await this.adapter.getPreference(key);
     if (raw !== null) {
@@ -110,13 +145,32 @@ export class PersistenceService implements IPersistenceService {
   }
 
   private async setAndSyncPreference(key: AppPreferenceKey, valueJson: string): Promise<void> {
-    await this.adapter.setPreference(key, valueJson);
+    // Perbarui cache secara optimistik agar pembaca sinkron langsung konsisten, lalu rollback bila adapter gagal
+    const prev = this.preferenceCache.get(key);
     this.preferenceCache.set(key, valueJson);
+    try {
+      await this.adapter.setPreference(key, valueJson);
+    } catch (err) {
+      if (prev !== undefined) {
+        this.preferenceCache.set(key, prev);
+      } else {
+        this.preferenceCache.delete(key);
+      }
+      throw err;
+    }
   }
 
   private async deleteAndSyncPreference(key: AppPreferenceKey): Promise<void> {
-    await this.adapter.deletePreference(key);
+    const prev = this.preferenceCache.get(key);
     this.preferenceCache.delete(key);
+    try {
+      await this.adapter.deletePreference(key);
+    } catch (err) {
+      if (prev !== undefined) {
+        this.preferenceCache.set(key, prev);
+      }
+      throw err;
+    }
   }
 
   // ─── Drawings Persistence (Debounced) ───
@@ -498,9 +552,13 @@ export class PersistenceService implements IPersistenceService {
 export const storage = new PersistenceService();
 
 // Export fungsi pembantu langsung untuk kompatibilitas & leverage pemanggil
+export type { AppPreferenceKey, IPersistenceService, UiPreferenceKey } from './types';
 export const bootstrapPersistence = () => storage.bootstrap();
 export const isPersistenceBootstrapped = () => storage.isBootstrapped();
 export const getPreferenceSync = (key: AppPreferenceKey) => storage.getPreferenceSync(key);
+export const getUiPreferenceSync = <T>(key: UiPreferenceKey) => storage.getUiPreferenceSync<T>(key);
+export const setUiPreference = <T>(key: UiPreferenceKey, value: T) => storage.setUiPreference<T>(key, value);
+export const removeUiPreference = (key: UiPreferenceKey) => storage.removeUiPreference(key);
 
 export const loadDrawings = (sym: string, tf: string) => storage.loadDrawings(sym, tf);
 export const saveDrawingsDebounced = (sym: string, tf: string, doc: any) => storage.saveDrawingsDebounced(sym, tf, doc);

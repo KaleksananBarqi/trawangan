@@ -3,6 +3,8 @@
  * Mengelola event listener `window` secara deterministik dan menyediakan fungsi `cancel()`
  * untuk pembersihan aman pada `onDestroy` agar tidak terjadi memory leak.
  */
+import { storage } from './persistence';
+import type { IPersistenceService, UiPreferenceKey } from './persistence/types';
 
 export interface ResizeWindowTarget {
   innerWidth: number;
@@ -20,7 +22,9 @@ export interface EdgeResizeOptions {
   viewportMaxRatio?: number;
   /** Tepi panel yang ditarik: `'left-edge'` untuk panel dock kanan, `'right-edge'` untuk panel kiri */
   edge?: 'left-edge' | 'right-edge';
-  /** Kunci `localStorage` opsional untuk menyimpan lebar final saat pointer dilepas */
+  /** Kunci preferensi UI PersistenceService untuk menyimpan lebar final saat pointer dilepas */
+  preferenceKey?: UiPreferenceKey;
+  /** Kunci storage kustom opsional (hanya dipakai jika `storage` disuntikkan eksplisit) */
   storageKey?: string;
   /** Pancarkan `window.dispatchEvent(new Event('resize'))` setelah selesai drag (default `true`) */
   dispatchResizeEvent?: boolean;
@@ -28,6 +32,7 @@ export interface EdgeResizeOptions {
   onEnd?: (finalWidth: number, committed: boolean) => void;
   /** Dependency injection opsional untuk pengujian unit tanpa DOM global */
   windowTarget?: ResizeWindowTarget | null;
+  persistence?: Pick<IPersistenceService, 'setUiPreference'> | null;
   storage?: Pick<Storage, 'setItem'> | null;
 }
 
@@ -131,15 +136,15 @@ export function startEdgeResizeSession(options: EdgeResizeOptions): EdgeResizeSe
     cleanup();
 
     if (committed) {
-      if (options.storageKey) {
-        const storageObj =
-          options.storage !== undefined
-            ? options.storage
-            : typeof localStorage !== 'undefined'
-              ? localStorage
-              : null;
+      if (options.preferenceKey) {
+        const persistenceService =
+          options.persistence !== undefined ? options.persistence : storage;
+        if (persistenceService) {
+          void persistenceService.setUiPreference(options.preferenceKey, latestWidth).catch(() => {});
+        }
+      } else if (options.storageKey && options.storage) {
         try {
-          storageObj?.setItem(options.storageKey, String(latestWidth));
+          options.storage.setItem(options.storageKey, String(latestWidth));
         } catch (_) {}
       }
 
