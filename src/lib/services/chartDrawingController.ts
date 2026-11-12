@@ -635,7 +635,7 @@ export class ChartDrawingController {
                   };
                   this.persistence.saveScopedDrawingsDebounced(prevScope, {
                     ...prevDoc,
-                    _trawangan_meta: this.planLifecycle.toPersistedEnvelope()
+                    _trawangan_meta: this.planLifecycle.toPersistedEnvelope(prevSym)
                   });
                   void this.persistence.flushScopedDrawings(prevScope).catch(() => {});
                 }
@@ -1629,7 +1629,7 @@ export class ChartDrawingController {
       },
       {
         ...doc,
-        _trawangan_meta: envelope ?? this.planLifecycle.toPersistedEnvelope()
+        _trawangan_meta: envelope ?? this.planLifecycle.toPersistedEnvelope(curSym)
       }
     );
   }
@@ -2464,7 +2464,7 @@ export class ChartDrawingController {
         }
 
         // Rekonsiliasi siklus hidup Trading Plan (Bidirectional Sync, Dual-Entry Delta-Shift, Orphan Cleanup)
-        const envelope = this.planLifecycle.reconcileCanvasMutation(this.activeDrawings);
+        const envelope = this.planLifecycle.reconcileCanvasMutation(this.activeDrawings, activeSym);
         this.planRevision++;
 
         const doc = activeChart.drawings.toJSON?.();
@@ -2560,21 +2560,20 @@ export class ChartDrawingController {
       this.planRevision++;
       this.planLifecycle.resetInMemoryState(false);
 
-      const doc = await this.persistence.loadScopedDrawings(
-        this.resolveActiveDrawingScope({
-          symbol: targetSymbol,
-          timeframe: targetTimeframe,
-          providerId: targetProvider,
-          workspaceId: targetWorkspace,
-        })
-      );
+      const scope = this.resolveActiveDrawingScope({
+        symbol: targetSymbol,
+        timeframe: targetTimeframe,
+        providerId: targetProvider,
+        workspaceId: targetWorkspace,
+      });
+      const doc = await this.persistence.loadScopedDrawings(scope);
 
       if (doc) {
         // Pulihkan metadata dan activePlans jika tersimpan di payload _trawangan_meta
         if (isValidPlanEnvelope(doc._trawangan_meta)) {
           hasAuthoritativePlanMeta = true;
           this.planRevision++;
-          this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta);
+          this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta, scope.symbol);
         }
 
         if (activeChart.drawings) {
@@ -2652,7 +2651,7 @@ export class ChartDrawingController {
           if (isValidPlanEnvelope(doc._trawangan_meta)) {
             hasAuthoritativePlanMeta = true;
             this.planRevision++;
-            this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta);
+            this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta, sym);
           }
           if (typeof cellChart.drawings.fromJSON === 'function') {
             cellChart.drawings.fromJSON(doc);

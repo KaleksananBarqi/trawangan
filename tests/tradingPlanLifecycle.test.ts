@@ -334,4 +334,173 @@ describe('TradingPlanLifecycle (Deep Module & Dual-Entry Drift Fix)', () => {
     const diffSymbol = evaluatePlanMarketStatus(parsed, 2150.0, 'BTCUSDT');
     assert.equal(diffSymbol, null);
   });
+
+  it('toPersistedEnvelope(symbolFilter?) mengisolasi activePlans, planDrawingIds, dan drawingMetadata secara kanonikal per instrumen', () => {
+    const parsedBtc = parseTradingPlan(DUAL_ENTRY_BEARISH_MD);
+    parsedBtc.symbol = 'binance:BTCUSDT.P';
+    host.symbol = 'BTCUSDT';
+    lifecycle.projectPlan(parsedBtc, { planId: 'plan_btc_1' });
+
+    host.symbol = 'ETHUSDT';
+    const parsedEth = parseTradingPlan(DUAL_ENTRY_BEARISH_MD);
+    parsedEth.symbol = 'ETHUSDT';
+    lifecycle.projectPlan(parsedEth, { planId: 'plan_eth_1' });
+
+    // Tanpa filter mengembalikan seluruh plan lintas instrumen
+    const fullEnvelope = lifecycle.toPersistedEnvelope();
+    assert.deepEqual(
+      fullEnvelope.activePlans.map((p) => p.id).sort(),
+      ['plan_btc_1', 'plan_eth_1']
+    );
+
+    // Filter BTCUSDT (kanonikal cocok dengan binance:BTCUSDT.P) hanya menyertakan state BTCUSDT
+    const btcEnvelope = lifecycle.toPersistedEnvelope('BTCUSDT');
+    assert.deepEqual(btcEnvelope.activePlans.map((p) => p.id), ['plan_btc_1']);
+    assert.deepEqual(btcEnvelope.planDrawingIds.map(([pid]) => pid), ['plan_btc_1']);
+    const btcDrawingIds = new Set(btcEnvelope.planDrawingIds[0][1]);
+    assert.ok(btcDrawingIds.size > 0);
+    for (const [did, meta] of Object.entries(btcEnvelope.drawingMetadata)) {
+      assert.equal(meta?.planId, 'plan_btc_1');
+      assert.ok(btcDrawingIds.has(did));
+    }
+
+    // Filter ETHUSDT hanya menyertakan state ETHUSDT
+    const ethEnvelope = lifecycle.toPersistedEnvelope('ETHUSDT');
+    assert.deepEqual(ethEnvelope.activePlans.map((p) => p.id), ['plan_eth_1']);
+    assert.deepEqual(ethEnvelope.planDrawingIds.map(([pid]) => pid), ['plan_eth_1']);
+    const ethDrawingIds = new Set(ethEnvelope.planDrawingIds[0][1]);
+    assert.ok(ethDrawingIds.size > 0);
+    for (const [did, meta] of Object.entries(ethEnvelope.drawingMetadata)) {
+      assert.equal(meta?.planId, 'plan_eth_1');
+      assert.ok(ethDrawingIds.has(did));
+    }
+
+    // Metadata non-plan tanpa planId lintas simbol tetap aman, sedangkan metadata terkait plan asing tersaring
+    lifecycle.hydrateFromEnvelope({
+      drawingMetadata: {
+        d_free_note: { role: 'note', text: 'catatan kanvas' },
+        d_orphan_eth_meta: { planId: 'plan_eth_1', role: 'entry' }
+      }
+    });
+    const btcAfterHydrate = lifecycle.toPersistedEnvelope('BTCUSDT');
+    assert.ok(btcAfterHydrate.drawingMetadata.d_free_note);
+    assert.equal(btcAfterHydrate.drawingMetadata.d_orphan_eth_meta, undefined);
+  });
+
+  it('reconcileCanvasMutation mengisolasi envelope hasil per simbol dan tidak memicu penulisan Trade Plan Vault saat drag kanvas', () => {
+    const parsedBtc = parseTradingPlan(DUAL_ENTRY_BEARISH_MD);
+    parsedBtc.symbol = 'BTCUSDT';
+    host.symbol = 'BTCUSDT';
+    lifecycle.projectPlan(parsedBtc, { planId: 'plan_btc_vault' });
+    const btcDrawings = host.drawings.filter((d) => d.metadata?.planId === 'plan_btc_vault');
+
+    host.symbol = 'ETHUSDT';
+    host.drawings = [];
+    const parsedEth = parseTradingPlan(DUAL_ENTRY_BEARISH_MD);
+    parsedEth.symbol = 'ETHUSDT';
+    lifecycle.projectPlan(parsedEth, { planId: 'plan_eth_vault' });
+    assert.equal(host.vaultRecords.length, 2, 'Hanya projectPlan yang boleh menulis ke Trade Plan Vault');
+
+    // edit form dengan skipVaultSave: true tidak boleh menulis ke Vault
+    lifecycle.updatePlan(
+      'plan_eth_vault',
+      { ...parsedEth, stopLoss: 2195 },
+      { skipVaultSave: true }
+    );
+    assert.equal(host.vaultRecords.length, 2, 'updatePlan dengan skipVaultSave: true tidak menulis ke Vault');
+
+    // edit form normal menulis ke Vault
+    lifecycle.updatePlan('plan_eth_vault', { ...parsedEth, stopLoss: 2196 });
+    assert.equal(host.vaultRecords.length, 3, 'updatePlan tanpa skipVaultSave menulis ke Vault');
+
+    // Drag Stop Loss di kanvas ETHUSDT melalui Bidirectional Sync (reconcileCanvasMutation)
+    const ethStage1 = host.drawings.find(
+      (d) => d.type === 'position' && d.metadata?.planId === 'plan_eth_vault' && d.metadata?.stageIndex === 1
+    );
+    assert.ok(ethStage1);
+    ethStage1.anchors[1].price = 2205;
+
+    const returnedEnvelope = lifecycle.reconcileCanvasMutation(host.drawings, 'ETHUSDT');
+    assert.equal(
+      host.vaultRecords.length,
+      3,
+      'Drag kanvas via reconcileCanvasMutation dilarang menulis ke Trade Plan Vault (ADR-0019)'
+    );
+    assert.deepEqual(
+      returnedEnvelope.activePlans.map((p) => p.id),
+      ['plan_eth_vault'],
+      'Envelope kembalian reconcileCanvasMutation wajib terisolasi hanya untuk simbol aktif ETHUSDT'
+    );
+    assert.equal(returnedEnvelope.activePlans[0].stopLoss, 2205);
+
+    // State BTCUSDT tetap utuh di memori TradingPlanLifecycle
+    assert.equal(lifecycle.getActivePlans('BTCUSDT').length, 1);
+    assert.equal(btcDrawings.length > 0, true);
+  });
+
+  it('hydrateFromEnvelope(meta, symbolFilter?) menyaring state plan lintas instrumen saat memulihkan satu sel', () => {
+    lifecycle.hydrateFromEnvelope(
+      {
+        activePlans: [
+          {
+            id: 'plan_btc_clean',
+            symbol: 'BTCUSDT',
+            bias: 'LONG',
+            entry: 65000,
+            stopLoss: 63000,
+            targets: [{ price: 68000, label: 'TP1' }],
+            reasons: [],
+            rawText: ''
+          } as any,
+          {
+            id: 'plan_eth_leaked',
+            symbol: 'ETHUSDT',
+            bias: 'SHORT',
+            entry: 3200,
+            stopLoss: 3300,
+            targets: [{ price: 3000, label: 'TP1' }],
+            reasons: [],
+            rawText: ''
+          } as any,
+          {
+            id: 'plan_legacy_no_symbol',
+            bias: 'LONG',
+            entry: 64000,
+            stopLoss: 62000,
+            targets: [{ price: 67000, label: 'TP1' }],
+            reasons: [],
+            rawText: ''
+          } as any
+        ],
+        planDrawingIds: [
+          ['plan_btc_clean', ['d_btc_pos']],
+          ['plan_eth_leaked', ['d_eth_pos']],
+          ['plan_legacy_no_symbol', ['d_leg_pos']]
+        ],
+        drawingMetadata: {
+          d_btc_pos: { planId: 'plan_btc_clean', role: 'position' },
+          d_eth_pos: { role: 'position' },
+          d_eth_orphan: { planId: 'plan_eth_leaked', role: 'box' },
+          d_leg_pos: { role: 'position' }
+        }
+      },
+      'BTCUSDT'
+    );
+
+    const allPlans = lifecycle.getAllActivePlans();
+    assert.deepEqual(
+      allPlans.map((p) => p.id).sort(),
+      ['plan_btc_clean', 'plan_legacy_no_symbol']
+    );
+    const legacyPlan = allPlans.find((p) => p.id === 'plan_legacy_no_symbol');
+    assert.equal(legacyPlan?.symbol, 'BTCUSDT', 'Plan warisan tanpa symbol wajib ditandai dengan symbol sel pemulih');
+
+    // Pastikan plan & metadata ETHUSDT tidak bocor ke envelope BTCUSDT maupun ETHUSDT
+    const ethEnv = lifecycle.toPersistedEnvelope('ETHUSDT');
+    assert.equal(ethEnv.activePlans.length, 0);
+    assert.equal(ethEnv.planDrawingIds.length, 0);
+    assert.equal(ethEnv.drawingMetadata.d_eth_pos, undefined);
+    assert.equal(ethEnv.drawingMetadata.d_eth_orphan, undefined);
+    assert.equal(ethEnv.drawingMetadata.d_leg_pos, undefined);
+  });
 });
