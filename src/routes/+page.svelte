@@ -890,16 +890,20 @@
     if (unsubWatchlistRegistry) unsubWatchlistRegistry();
   });
 
-  async function switchCellProviderContext(nextProviderId: string) {
-    if (!nextProviderId || nextProviderId === activeProviderId) return;
+  async function flushDrawingsWithLog(context: string): Promise<void> {
     try {
       await flushDrawings();
     } catch (err) {
       addSystemLog(
-        `Gagal menguras gambar sebelum beralih provider sel: ${err instanceof Error ? err.message : String(err)}`,
+        `Gagal menguras gambar ${context}: ${err instanceof Error ? err.message : String(err)}`,
         'error'
       );
     }
+  }
+
+  async function switchCellProviderContext(nextProviderId: string) {
+    if (!nextProviderId || nextProviderId === activeProviderId) return;
+    await flushDrawingsWithLog('sebelum beralih provider sel');
     activeProviderId = nextProviderId;
     marketFeed.setActiveProviderContext(nextProviderId);
     telemetryService.setActiveProvider(nextProviderId);
@@ -921,14 +925,7 @@
     }
 
     if (activeSymbol && activeSymbol !== nextSym) {
-      try {
-        await flushDrawings();
-      } catch (err) {
-        addSystemLog(
-          `Gagal menguras gambar sebelum ganti simbol: ${err instanceof Error ? err.message : String(err)}`,
-          'error'
-        );
-      }
+      await flushDrawingsWithLog('sebelum ganti simbol');
     }
     activeSymbol = nextSym;
     addSystemLog(`Simbol berganti ke ${nextSym} (${targetProvider.toUpperCase()})`, 'info');
@@ -1113,14 +1110,7 @@
   }
 
   async function handleProviderChange(newProviderId: string) {
-    try {
-      await flushDrawings();
-    } catch (err) {
-      addSystemLog(
-        `Gagal menguras gambar sebelum beralih provider: ${err instanceof Error ? err.message : String(err)}`,
-        'error'
-      );
-    }
+    await flushDrawingsWithLog('sebelum beralih provider');
     activeProviderId = newProviderId;
     marketFeed.setActiveProvider(newProviderId);
     telemetryService.setActiveProvider(newProviderId);
@@ -1170,14 +1160,7 @@
   async function handleSaveWorkspace(name: string, overwriteId?: string): Promise<boolean> {
     workspaceCoordinator.cancel();
     const prevWsId = activeWorkspace?.id || 'default_workspace';
-    try {
-      await flushDrawings();
-    } catch (err) {
-      addSystemLog(
-        `Gagal menguras gambar sebelum menyimpan workspace "${name}": ${err instanceof Error ? err.message : String(err)}`,
-        'error'
-      );
-    }
+    await flushDrawingsWithLog(`sebelum menyimpan workspace "${name}"`);
 
     const targetId =
       overwriteId ||
@@ -1225,14 +1208,7 @@
   async function handleNewWorkspace() {
     workspaceCoordinator.cancel();
     workspaceCoordinator.setSavedFingerprint('');
-    try {
-      await flushDrawings();
-    } catch (err) {
-      addSystemLog(
-        `Gagal menguras gambar sebelum membuat workspace baru: ${err instanceof Error ? err.message : String(err)}`,
-        'error'
-      );
-    }
+    await flushDrawingsWithLog('sebelum membuat workspace baru');
     activeWorkspace = null;
     try {
       await setLastActiveWorkspaceId(null);
@@ -1250,14 +1226,7 @@
 
   async function handleLoadWorkspace(w: SavedWorkspace) {
     workspaceCoordinator.cancel();
-    try {
-      await flushDrawings();
-    } catch (err) {
-      addSystemLog(
-        `Gagal menguras gambar sebelum memuat workspace "${w.name}": ${err instanceof Error ? err.message : String(err)}`,
-        'error'
-      );
-    }
+    await flushDrawingsWithLog(`sebelum memuat workspace "${w.name}"`);
     isLoadingWorkspace = true;
     try {
       activeWorkspace = w;

@@ -33,7 +33,7 @@ export interface AppPreferenceRecord {
   updated_at: number;
 }
 
-export type PersistenceErrorOperation = 'saveDrawingsDebounced' | (string & {});
+export type PersistenceErrorOperation = 'saveDrawingsDebounced';
 
 /**
  * Payload terstruktur yang dikirim ke subscriber `onError` saat operasi latar belakang gagal.

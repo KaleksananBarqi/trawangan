@@ -324,8 +324,7 @@ export class PersistenceService implements IPersistenceService {
       this.debounceTimers.delete(key);
       this.pendingDebounceData.delete(key);
       try {
-        const dataJson = typeof doc === 'string' ? doc : JSON.stringify(doc);
-        await this.adapter.saveDrawings(symbol, timeframe, dataJson);
+        await this.persistPendingDrawing(symbol, timeframe, doc);
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         const message = `Gagal menyimpan gambar (${key}): ${detail}`;
@@ -345,9 +344,9 @@ export class PersistenceService implements IPersistenceService {
     this.debounceTimers.set(key, timer);
   }
 
-  private async persistPendingDrawing(pending: { symbol: string; timeframe: string; doc: any }): Promise<void> {
-    const dataJson = typeof pending.doc === 'string' ? pending.doc : JSON.stringify(pending.doc);
-    await this.adapter.saveDrawings(pending.symbol, pending.timeframe, dataJson);
+  private async persistPendingDrawing(symbol: string, timeframe: string, doc: any): Promise<void> {
+    const dataJson = typeof doc === 'string' ? doc : JSON.stringify(doc);
+    await this.adapter.saveDrawings(symbol, timeframe, dataJson);
   }
 
   async flushDrawings(targetSymbol?: string, targetTimeframe?: string): Promise<void> {
@@ -360,7 +359,7 @@ export class PersistenceService implements IPersistenceService {
       const pending = this.pendingDebounceData.get(key);
       this.pendingDebounceData.delete(key);
       if (pending) {
-        await this.persistPendingDrawing(pending);
+        await this.persistPendingDrawing(pending.symbol, pending.timeframe, pending.doc);
       }
     } else if (targetSymbol) {
       const prefix = `${targetSymbol}:`;
@@ -383,7 +382,9 @@ export class PersistenceService implements IPersistenceService {
           pendingItems.push(pending);
         }
       }
-      await Promise.all(pendingItems.map((pending) => this.persistPendingDrawing(pending)));
+      await Promise.all(
+        pendingItems.map((pending) => this.persistPendingDrawing(pending.symbol, pending.timeframe, pending.doc))
+      );
     } else {
       for (const timer of this.debounceTimers.values()) {
         clearTimeout(timer);
@@ -391,7 +392,9 @@ export class PersistenceService implements IPersistenceService {
       const pendingItems = [...this.pendingDebounceData.values()];
       this.debounceTimers.clear();
       this.pendingDebounceData.clear();
-      await Promise.all(pendingItems.map((pending) => this.persistPendingDrawing(pending)));
+      await Promise.all(
+        pendingItems.map((pending) => this.persistPendingDrawing(pending.symbol, pending.timeframe, pending.doc))
+      );
     }
   }
 

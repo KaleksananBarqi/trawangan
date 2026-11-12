@@ -92,14 +92,28 @@
     }
   }
 
+  function scheduleWorkspaceListRefresh(delayMs = 120, onRefresh?: () => void) {
+    setTimeout(() => {
+      onRefresh?.();
+      void loadWorkspacesList();
+    }, delayMs);
+  }
+
+  function resetInputAndRefreshWorkspaceList() {
+    workspaceNameInput = '';
+    scheduleWorkspaceListRefresh(120);
+  }
+
+  function flashSaveFeedback(setFeedback: (active: boolean) => void) {
+    setFeedback(true);
+    scheduleWorkspaceListRefresh(1500, () => setFeedback(false));
+  }
+
   async function handleSaveWorkspace() {
     const name = workspaceNameInput.trim();
     if (!name || !onSaveWorkspace) return;
     if (await executeSaveWorkspace(name)) {
-      workspaceNameInput = '';
-      setTimeout(() => {
-        void loadWorkspacesList();
-      }, 120);
+      resetInputAndRefreshWorkspaceList();
     }
   }
 
@@ -113,30 +127,23 @@
   async function handleOverwriteActive() {
     if (!activeWorkspace || !onSaveWorkspace) return;
     if (!(await executeSaveWorkspace(activeWorkspace.name, activeWorkspace.id))) return;
-    overwriteFeedback = true;
-    setTimeout(() => {
-      overwriteFeedback = false;
-      void loadWorkspacesList();
-    }, 1500);
+    flashSaveFeedback((active) => {
+      overwriteFeedback = active;
+    });
   }
 
   async function handleOverwriteItem(w: SavedWorkspace) {
     if (!onSaveWorkspace) return;
     if (!(await executeSaveWorkspace(w.name, w.id))) return;
-    itemOverwriteFeedbackId = w.id;
-    setTimeout(() => {
-      itemOverwriteFeedbackId = null;
-      void loadWorkspacesList();
-    }, 1500);
+    flashSaveFeedback((active) => {
+      itemOverwriteFeedbackId = active ? w.id : null;
+    });
   }
 
   async function handleConfirmOverwriteDuplicate(target: SavedWorkspace) {
     if (!onSaveWorkspace) return;
     if (await executeSaveWorkspace(target.name, target.id)) {
-      workspaceNameInput = '';
-      setTimeout(() => {
-        void loadWorkspacesList();
-      }, 120);
+      resetInputAndRefreshWorkspaceList();
     }
   }
 
