@@ -54,7 +54,6 @@ pub fn run() {
             commands::save_chart_drawings,
             commands::load_chart_drawings,
             commands::clear_chart_drawings,
-            commands::list_drawing_keys,
             commands::load_watchlist_registry,
             commands::save_watchlist_registry,
             commands::get_app_preference,

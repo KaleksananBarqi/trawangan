@@ -1,12 +1,5 @@
 // Sub-modul dokumen gambar analisis teknikal (drawings) berkolom terstruktur
 use rusqlite::{params, Connection, Result};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DrawingKeyEntry {
-    pub symbol: String,
-    pub timeframe: String,
-}
 
 /// Pastikan tabel drawings v1 beserta indeks workspace tersedia
 pub fn create_table(conn: &Connection) -> Result<()> {
@@ -41,19 +34,6 @@ pub fn split_composite_key(raw: &str) -> (String, String, String) {
     }
 }
 
-/// Merangkai kembali key komposit untuk kompatibilitas caller/IPC sementara sebelum kontrak scope baru
-pub fn format_composite_key(workspace_id: &str, provider_id: &str, symbol: &str) -> String {
-    if workspace_id.is_empty() {
-        if provider_id == "binance" && !symbol.contains(':') {
-            symbol.to_string()
-        } else {
-            format!("{}:{}", provider_id, symbol)
-        }
-    } else {
-        format!("{}:{}:{}", workspace_id, provider_id, symbol)
-    }
-}
-
 /// Simpan dokumen gambar analisis teknikal menggunakan pemecahan key komposit di batas storage
 pub fn save_drawings(conn: &Connection, symbol: &str, timeframe: &str, data_json: &str) -> Result<()> {
     let now = chrono::Utc::now().timestamp_millis();
@@ -81,29 +61,6 @@ pub fn get_drawings(conn: &Connection, symbol: &str, timeframe: &str) -> Result<
     } else {
         Ok(None)
     }
-}
-
-/// Mengambil daftar kunci drawing berdasarkan prefix (kompatibilitas sementara hingga Tiket #173/#180)
-pub fn list_drawing_keys(conn: &Connection, prefix: &str) -> Result<Vec<DrawingKeyEntry>> {
-    let mut stmt = conn.prepare_cached(
-        "SELECT workspace_id, provider_id, symbol, timeframe FROM drawings",
-    )?;
-    let mut rows = stmt.query([])?;
-    let mut entries = Vec::new();
-    while let Some(row) = rows.next()? {
-        let ws_id: String = row.get(0)?;
-        let provider_id: String = row.get(1)?;
-        let symbol: String = row.get(2)?;
-        let timeframe: String = row.get(3)?;
-        let full_key = format_composite_key(&ws_id, &provider_id, &symbol);
-        if full_key.starts_with(prefix) {
-            entries.push(DrawingKeyEntry {
-                symbol: full_key,
-                timeframe,
-            });
-        }
-    }
-    Ok(entries)
 }
 
 /// Hapus dokumen gambar analisis teknikal

@@ -1,5 +1,5 @@
 // Adapter In-Memory & Web LocalStorage untuk Lingkungan Pengujian dan Web Fallback
-import type { AppPreferenceKey, AppPreferenceRecord, DrawingKeyEntry, PersistenceAdapter } from './types';
+import type { AppPreferenceKey, AppPreferenceRecord, PersistenceAdapter } from './types';
 import type {
   MultiWatchlistRegistry,
   PineScriptRecord,
@@ -13,18 +13,36 @@ import { DEFAULT_PROVIDERS } from '../market/constants';
 const PREF_KEY_PREFIX = 'trawangan_pref_';
 const PROVIDERS_STORAGE_KEY = 'trawangan_providers';
 
+export interface InMemoryLocalStorageAdapterOptions {
+  /** Jika true, adapter beroperasi murni di memori tanpa membaca/menulis globalThis.localStorage */
+  memoryOnly?: boolean;
+}
+
 export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   private memoryStore = new Map<string, string>();
   private preferenceTimestamps = new Map<string, number>();
+  private readonly memoryOnly: boolean;
+
+  constructor(options?: InMemoryLocalStorageAdapterOptions) {
+    this.memoryOnly = options?.memoryOnly ?? false;
+  }
+
+  private getBrowserLocalStorage(): Storage | null {
+    if (this.memoryOnly || typeof localStorage === 'undefined') {
+      return null;
+    }
+    return localStorage ?? null;
+  }
 
   private getItem(key: string): string | null {
     if (this.memoryStore.has(key)) {
-      return this.memoryStore.get(key) || null;
+      return this.memoryStore.get(key) ?? null;
     }
-    if (typeof localStorage !== 'undefined') {
+    const storage = this.getBrowserLocalStorage();
+    if (storage) {
       try {
-        const val = localStorage.getItem(key);
-        if (val !== null) {
+        const val = storage.getItem(key);
+        if (val !== null && val !== undefined) {
           this.memoryStore.set(key, val);
           return val;
         }
@@ -35,18 +53,20 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
 
   private setItem(key: string, value: string): void {
     this.memoryStore.set(key, value);
-    if (typeof localStorage !== 'undefined') {
+    const storage = this.getBrowserLocalStorage();
+    if (storage) {
       try {
-        localStorage.setItem(key, value);
+        storage.setItem(key, value);
       } catch (_) {}
     }
   }
 
   private removeItem(key: string): void {
     this.memoryStore.delete(key);
-    if (typeof localStorage !== 'undefined') {
+    const storage = this.getBrowserLocalStorage();
+    if (storage) {
       try {
-        localStorage.removeItem(key);
+        storage.removeItem(key);
       } catch (_) {}
     }
   }
@@ -66,48 +86,36 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     this.removeItem(key);
   }
 
-  async listDrawingKeys(prefix: string): Promise<DrawingKeyEntry[]> {
-    const cleanPrefix = prefix || '';
-    const KEY_PREFIX = 'trawangan_drawings_';
-    const seen = new Map<string, DrawingKeyEntry>();
-
-    const inspectKey = (fullKey: string) => {
-      if (!fullKey.startsWith(KEY_PREFIX)) return;
-      const body = fullKey.slice(KEY_PREFIX.length);
-      const lastUnderscore = body.lastIndexOf('_');
-      if (lastUnderscore <= 0) return;
-      const symbol = body.slice(0, lastUnderscore);
-      const timeframe = body.slice(lastUnderscore + 1);
-      if (symbol.startsWith(cleanPrefix)) {
-        seen.set(`${symbol}::${timeframe}`, { symbol, timeframe });
-      }
-    };
-
-    for (const fullKey of this.memoryStore.keys()) {
-      inspectKey(fullKey);
-    }
-
-    if (typeof localStorage !== 'undefined') {
-      try {
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k) inspectKey(k);
-        }
-      } catch (_) {}
-    }
-
-    return Array.from(seen.values());
-  }
-
   private parseJsonArray<T>(key: string): T[] {
     const raw = this.getItem(key);
-    if (!raw) return [];
+    if (raw === null) return [];
     try {
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
+  }
+
+  private collectAllKeys(prefix = ''): Set<string> {
+    const keys = new Set<string>();
+    for (const k of this.memoryStore.keys()) {
+      if (!prefix || k.startsWith(prefix)) {
+        keys.add(k);
+      }
+    }
+    const storage = this.getBrowserLocalStorage();
+    if (storage) {
+      try {
+        for (let i = 0; i < storage.length; i++) {
+          const k = storage.key(i);
+          if (k && (!prefix || k.startsWith(prefix))) {
+            keys.add(k);
+          }
+        }
+      } catch (_) {}
+    }
+    return keys;
   }
 
   async cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number> {
@@ -117,16 +125,27 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     if (!normFrom || !normTo || normFrom === normTo) return 0;
 
     const lowerPrefix = `${normFrom}:`;
-    const allEntries = await this.listDrawingKeys('');
-    let copied = 0;
+    const KEY_PREFIX = 'trawangan_drawings_';
+    const seen = new Map<string, { symbol: string; timeframe: string }>();
 
-    for (const entry of allEntries) {
-      if (!entry.symbol.toLowerCase().startsWith(lowerPrefix)) continue;
+    for (const fullKey of this.collectAllKeys(KEY_PREFIX)) {
+      const body = fullKey.slice(KEY_PREFIX.length);
+      const lastUnderscore = body.lastIndexOf('_');
+      if (lastUnderscore <= 0) continue;
+      const symbol = body.slice(0, lastUnderscore);
+      const timeframe = body.slice(lastUnderscore + 1);
+      if (symbol.toLowerCase().startsWith(lowerPrefix)) {
+        seen.set(`${symbol}::${timeframe}`, { symbol, timeframe });
+      }
+    }
+
+    let copied = 0;
+    for (const entry of seen.values()) {
       const suffix = entry.symbol.slice(lowerPrefix.length);
       if (!suffix) continue;
 
       const rawJson = await this.loadDrawings(entry.symbol, entry.timeframe);
-      if (!rawJson) continue;
+      if (rawJson === null) continue;
 
       await this.saveDrawings(`${normTo}:${suffix}`, entry.timeframe, rawJson);
       copied++;
@@ -157,18 +176,8 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
 
     if (cleanId && cleanId.toLowerCase() !== 'default_workspace') {
       const normPrefix = `${cleanId.toLowerCase()}:`;
-      const allKeys = new Set<string>(this.memoryStore.keys());
-      if (typeof localStorage !== 'undefined') {
-        try {
-          for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k) allKeys.add(k);
-          }
-        } catch (_) {}
-      }
       const KEY_PREFIX = 'trawangan_drawings_';
-      for (const fullKey of allKeys) {
-        if (!fullKey.startsWith(KEY_PREFIX)) continue;
+      for (const fullKey of this.collectAllKeys(KEY_PREFIX)) {
         const body = fullKey.slice(KEY_PREFIX.length);
         if (body.toLowerCase().startsWith(normPrefix)) {
           this.removeItem(fullKey);
@@ -250,12 +259,13 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
       });
     };
 
-    if (typeof localStorage !== 'undefined') {
+    const storage = this.getBrowserLocalStorage();
+    if (storage) {
       try {
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
+        for (let i = 0; i < storage.length; i++) {
+          const k = storage.key(i);
           if (k && k.startsWith(PREF_KEY_PREFIX)) {
-            collect(k, localStorage.getItem(k));
+            collect(k, storage.getItem(k));
           }
         }
       } catch (_) {}
@@ -270,7 +280,7 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
 
   async loadWatchlist(): Promise<string[] | null> {
     const raw = this.getItem('trawangan_user_watchlist');
-    if (!raw) return null;
+    if (raw === null) return null;
     try {
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : null;
@@ -285,7 +295,7 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
 
   async loadWatchlistRegistry(): Promise<MultiWatchlistRegistry | null> {
     const raw = this.getItem('trawangan_watchlist_registry');
-    if (!raw) return null;
+    if (raw === null) return null;
     try {
       const parsed = JSON.parse(raw) as MultiWatchlistRegistry;
       if (parsed && Array.isArray(parsed.watchlists)) {

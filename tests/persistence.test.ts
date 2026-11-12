@@ -924,5 +924,167 @@ describe('Deep Persistence Module Unit Tests', () => {
     await new Promise((r) => setTimeout(r, 0));
     assert.strictEqual(cancelledCalls, 0);
   });
+
+  test('Tiket #186: kontrak listDrawingKeys telah dihapus dari PersistenceAdapter dan seluruh implementasinya', () => {
+    const tauriAdapter = new TauriSqliteAdapter();
+    assert.strictEqual('listDrawingKeys' in adapter, false);
+    assert.strictEqual('listDrawingKeys' in tauriAdapter, false);
+    assert.strictEqual('listDrawingKeys' in service, false);
+    assert.strictEqual('listDrawingKeys' in persistenceModule, false);
+  });
+
+  test('Tiket #186: InMemoryLocalStorageAdapter({ memoryOnly: true }) terisolasi penuh dari globalThis.localStorage dan clearMemory() deterministik', async () => {
+    const prevLocalStorage = (globalThis as any).localStorage;
+    const lsMap = new Map<string, string>([
+      ['trawangan_drawings_ws_ghost:binance:BTCUSDT_GLOBAL', '{"shapes":[{"id":"ghost"}]}'],
+      ['trawangan_pref_app_settings', '{"theme":"light"}'],
+      ['trawangan_workspaces', JSON.stringify([{ id: 'ws_ghost', name: 'Ghost' }])],
+      ['trawangan_user_watchlist', JSON.stringify(['DOGEUSDT'])],
+      ['trawangan_providers', JSON.stringify([{ id: 'custom_ls', name: 'GhostLS', is_active: true }])],
+    ]);
+    const lsCalls: string[] = [];
+
+    (globalThis as any).localStorage = {
+      get length() {
+        lsCalls.push('length');
+        return lsMap.size;
+      },
+      key(index: number) {
+        lsCalls.push(`key:${index}`);
+        return Array.from(lsMap.keys())[index] ?? null;
+      },
+      getItem(k: string) {
+        lsCalls.push(`getItem:${k}`);
+        return lsMap.get(k) ?? null;
+      },
+      setItem(k: string, v: string) {
+        lsCalls.push(`setItem:${k}`);
+        lsMap.set(k, v);
+      },
+      removeItem(k: string) {
+        lsCalls.push(`removeItem:${k}`);
+        lsMap.delete(k);
+      },
+      clear() {
+        lsCalls.push('clear');
+        lsMap.clear();
+      },
+    };
+
+    try {
+      const isolated = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+
+      assert.strictEqual(await isolated.loadDrawings('ws_ghost:binance:BTCUSDT', 'GLOBAL'), null);
+      assert.strictEqual(await isolated.getPreference('app_settings'), null);
+      assert.deepStrictEqual(await isolated.loadAllPreferences(), []);
+      assert.deepStrictEqual(await isolated.listWorkspaces(), []);
+      assert.strictEqual(await isolated.loadWatchlist(), null);
+      assert.strictEqual(await isolated.loadWatchlistRegistry(), null);
+      assert.strictEqual((await isolated.loadProviders()).some((p) => p.id === 'custom_ls'), false);
+      assert.strictEqual(await isolated.cloneWorkspaceDrawings('ws_ghost', 'ws_target'), 0);
+
+      await isolated.saveDrawings('ws_mem:binance:ETHUSDT', 'GLOBAL', '{"shapes":[{"id":"m1"}]}');
+      await isolated.setPreference('app_settings', '{"theme":"dark"}');
+      await isolated.upsertWorkspace({
+        id: 'ws_mem',
+        name: 'MemWS',
+        schemaVersion: 2,
+        symbol: 'ETHUSDT',
+        timeframe: '15m',
+        layout: '1',
+        indicators: [],
+        providerId: 'binance',
+        timestamp: 1000,
+      });
+      await isolated.deleteWorkspace('ws_ghost');
+      await isolated.deletePreference('app_settings');
+      await isolated.setPreference('pine_panel_width', '420');
+      await isolated.clearDrawings('ws_mem:binance:ETHUSDT', 'GLOBAL');
+
+      assert.deepStrictEqual(lsCalls, [], 'Mode memoryOnly tidak boleh membaca atau menulis globalThis.localStorage');
+      assert.strictEqual(lsMap.has('trawangan_drawings_ws_ghost:binance:BTCUSDT_GLOBAL'), true);
+
+      // clearMemory() mereset total state internal tanpa rehidrasi dari localStorage
+      isolated.clearMemory();
+      assert.strictEqual(await isolated.getPreference('pine_panel_width'), null);
+      assert.deepStrictEqual(await isolated.loadAllPreferences(), []);
+      assert.deepStrictEqual(await isolated.listWorkspaces(), []);
+      assert.deepStrictEqual(lsCalls, [], 'Setelah clearMemory(), mode memoryOnly tetap tidak menyentuh localStorage');
+    } finally {
+      if (prevLocalStorage === undefined) {
+        delete (globalThis as any).localStorage;
+      } else {
+        (globalThis as any).localStorage = prevLocalStorage;
+      }
+    }
+  });
+
+  test('Tiket #186: InMemoryLocalStorageAdapter mempertahankan string kosong "" pada loadDrawings, getPreference, dan cloneWorkspaceDrawings serta tetap mendukung mode Web default', async () => {
+    const prevLocalStorage = (globalThis as any).localStorage;
+    const lsMap = new Map<string, string>([
+      ['trawangan_pref_app_settings', ''],
+      ['trawangan_drawings_ws_web:binance:SOLUSDT_GLOBAL', '{"shapes":[{"id":"web1"}]}'],
+    ]);
+
+    (globalThis as any).localStorage = {
+      get length() {
+        return lsMap.size;
+      },
+      key(index: number) {
+        return Array.from(lsMap.keys())[index] ?? null;
+      },
+      getItem(k: string) {
+        return lsMap.has(k) ? lsMap.get(k)! : null;
+      },
+      setItem(k: string, v: string) {
+        lsMap.set(k, v);
+      },
+      removeItem(k: string) {
+        lsMap.delete(k);
+      },
+      clear() {
+        lsMap.clear();
+      },
+    };
+
+    try {
+      // 1. Retensi string kosong "" pada mode memoryOnly
+      const memOnly = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+      await memOnly.saveDrawings('ws_src:binance:BTCUSDT', 'GLOBAL', '');
+      assert.strictEqual(await memOnly.loadDrawings('ws_src:binance:BTCUSDT', 'GLOBAL'), '');
+
+      const copiedCount = await memOnly.cloneWorkspaceDrawings('ws_src', 'ws_dst');
+      assert.strictEqual(copiedCount, 1);
+      assert.strictEqual(await memOnly.loadDrawings('ws_dst:binance:BTCUSDT', 'GLOBAL'), '');
+
+      // Ghost key dari localStorage tidak ikut terkloning di mode memoryOnly
+      assert.strictEqual(await memOnly.cloneWorkspaceDrawings('ws_web', 'ws_dst'), 0);
+      assert.strictEqual(await memOnly.loadDrawings('ws_dst:binance:SOLUSDT', 'GLOBAL'), null);
+
+      // 2. Mode Web default (tanpa opsi) tetap membaca & menulis browser localStorage dan mempertahankan ""
+      const webAdapter = new InMemoryLocalStorageAdapter();
+      assert.strictEqual(await webAdapter.getPreference('app_settings'), '');
+      // Pembacaan kedua dari memoryStore cache tetap harus mengembalikan "" (bukan null)
+      assert.strictEqual(await webAdapter.getPreference('app_settings'), '');
+
+      await webAdapter.saveDrawings('ws_web:binance:ADAUSDT', '1h', '');
+      assert.strictEqual(lsMap.get('trawangan_drawings_ws_web:binance:ADAUSDT_1h'), '');
+      assert.strictEqual(await webAdapter.loadDrawings('ws_web:binance:ADAUSDT', '1h'), '');
+
+      const webCopied = await webAdapter.cloneWorkspaceDrawings('ws_web', 'ws_web_copy');
+      assert.strictEqual(webCopied, 2);
+      assert.strictEqual(await webAdapter.loadDrawings('ws_web_copy:binance:ADAUSDT', '1h'), '');
+      assert.strictEqual(
+        lsMap.get('trawangan_drawings_ws_web_copy:binance:SOLUSDT_GLOBAL'),
+        '{"shapes":[{"id":"web1"}]}'
+      );
+    } finally {
+      if (prevLocalStorage === undefined) {
+        delete (globalThis as any).localStorage;
+      } else {
+        (globalThis as any).localStorage = prevLocalStorage;
+      }
+    }
+  });
 });
 
