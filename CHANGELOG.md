@@ -5,6 +5,22 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.45.0] - 2026-11-12
+
+### 🚀 Ditambahkan (Added)
+- **Dukungan Crypto Macro Index & Feeder Basket Sintetis Terkalibrasi (`macro` Provider, ADR-0024):**
+  - Menambahkan 7 indeks agregat pasar kripto non-tradable ke kategori **Makro Kripto**: indeks kapitalisasi pasar USD (`TOTAL`, `TOTAL2`, `TOTAL3`, `OTHERS`) dan indeks dominasi persen (`BTC.D`, `ETH.D`, `USDT.D`) lengkap dengan resolusi alias pencarian (`TOTAL1`, `TOTALCAP`, `CRYPTOCAP`, `BTCD`, `ETHD`, `USDTD`) tanpa membutuhkan prefiks bursa manual.
+  - Membangun pipeline komposit lokal bebas paywall (`macroIndexCatalog.ts`, `macroBasketCoordinator.ts`, `macroIndexProvider.ts`, `macroAdapter.ts`): menyusun Top-30 konstituen non-wrapped CoinGecko (mengecualikan token wrapped/liquid-staked seperti `WBTC`, `STETH`, `WSTETH` guna mencegah penghitungan ganda) plus kalibrasi `/global`, riwayat supply harian stablecoin dari **DefiLlama Stablecoins API**, serta OHLC multi-timeframe **Binance Spot** dengan failover otomatis ke **Coinbase Exchange** dan cadangan statis saat HTTP `429`.
+  - Menambahkan perintah Tauri IPC `load_cached_candles` dan `store_cached_candles` (`src-tauri/src/commands.rs`, `src-tauri/src/lib.rs`) untuk cache read-through SQLite lokal terisolasi di bawah kunci `macro:<SYMBOL>` demi pemuatan ulang instan.
+  - Menerapkan kebijakan ketat **Isolasi Beban Nol Latar (Strict Active-Chart Only)**: feeder `macro` hanya melakukan sinkronisasi komponen dan polling batch ringan ~10 detik selama grafik indeks terkait aktif terbuka; polling latar Watchlist, `Background Alert Engine`, `getWatchlistTickers`, `watchSymbolTicker`, serta preview `Ctrl+K` tidak memicu request feeder makro tanpa memengaruhi simbol reguler sedikit pun.
+  - Memperbarui adapter visual dan presisi harga khusus indeks makro tanpa mengganggu pair biasa: pembungkus runtime non-invasif per sel `@luxalgo/vela` (`macroVelaAxisAdapter.ts`) untuk notasi ringkas `T`/`B`/`%`, tick zoom-adaptif anti-duplikat, chip crosshair, DataWindow, tag harga live, dan penyembunyian otomatis `Native Volume Overlay` (dengan pemulihan preferensi volume saat kembali ke pair reguler); monogram SVG/offline tanpa lookup CDN; lencana transparan `SYNTHETIC (~1Y)` di `Header`, `StatusBar`, dan `SymbolSearchModal`; serta dukungan parsing & pemformatan `T`/`B`/`%` di `priceScaleLabelService.ts`, `priceSnapService.ts`, `chartSnapshotService.ts`, dan `alertFormHelper.ts`.
+  - Menambahkan 4 suite pengujian baru (`tests/macroIndexCatalogAndIdentity.test.ts`, `tests/macroBasketSynthesis.test.ts`, `tests/macroZeroBackgroundIsolation.test.ts`, `tests/macroPriceFormattingAndTicks.test.ts`) serta memperbarui `GLOSSARY.md` dan `docs/adr/0024-crypto-macro-index-and-synthetic-basket-feeder.md`.
+
+### 🔄 Diubah (Changed)
+- **Rework Landing Page Anti-Slop, `DESIGN.md`, & Pengerasan CI/CD Rilis:**
+  - Merombak laman etalase web `docs/` (`index.html`, `style.css`, `app.js`, `sitemap.xml`, aset tangkapan layar) selaras dengan pedoman arsitektur desain `DESIGN.md` (*Signature Cyber-Monochrome*, tabel paritas Zero-Paywall, galeri tab WAI-ARIA, akordion FAQ, deteksi OS tombol unduh, dan aksesibilitas keyboard penuh).
+  - Memperketat workflow `.github/workflows/release.yml` dengan fallback mirror `apt` Ubuntu (`mirrors.edge.kernel.org` / `mirror.rackspace.com`), batas timeout step setup Linux, serta dukungan filter `platform` pada pemicu `workflow_dispatch`.
+
 ## [0.44.0] - 2026-11-11
 
 ### 🚀 Ditambahkan (Added)
