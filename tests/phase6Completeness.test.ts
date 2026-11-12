@@ -8,7 +8,6 @@ import {
   buildWorkspaceSnapshotPayload,
   executeWorkspaceLoadPipeline,
   type WorkspaceChartPort,
-  type WorkspacePlanPort,
 } from '../src/lib/services/workspaceLifecycle';
 import {
   PersistenceService,
@@ -16,6 +15,7 @@ import {
   clearChartDefaultConfig,
   computeWorkspaceFingerprint,
 } from '../src/lib/services/persistence';
+import type { WorkspaceFingerprintInput } from '../src/lib/services/persistence/workspaceService';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import type { SavedWorkspace } from '../src/lib/types/market';
 import { createMockChartContainer } from './helpers/mockChartContainer';
@@ -401,7 +401,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       symbol: 'BTCUSDT',
       timeframe: '15m',
       layout: '1',
-      plan: chartDrawingController as unknown as WorkspacePlanPort,
+      plan: chartDrawingController,
     });
     assert.deepEqual(payload.thesisCardGeometry, { 'plan-1': geo1 });
 
@@ -446,7 +446,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     const res = await executeWorkspaceLoadPipeline({
       workspace: fullWorkspace,
       chart: mockChart,
-      plan: chartDrawingController as unknown as WorkspacePlanPort,
+      plan: chartDrawingController,
       activeProviderId: 'binance',
       onProviderChange: async () => {},
       onSymbolChange: async () => {},
@@ -459,7 +459,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.deepEqual((chartDrawingController as any).getThesisCardGeometries(), { 'plan-1': geo1 });
 
     // Pastikan fingerprint Step 9 sama persis dengan buildWorkspaceSnapshotPayload pasca-load (anti false auto-save!)
-    const postLoadPayload = buildWorkspaceSnapshotPayload({
+    const postLoadPayload: WorkspaceFingerprintInput = buildWorkspaceSnapshotPayload({
       id: 'ws-geo',
       name: 'Geo WS',
       symbol: 'BTCUSDT',
@@ -467,9 +467,9 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       layout: '1',
       providerId: 'binance',
       chart: mockChart,
-      plan: chartDrawingController as unknown as WorkspacePlanPort,
+      plan: chartDrawingController,
     });
-    assert.equal(computeWorkspaceFingerprint(postLoadPayload as any), res.fingerprint);
+    assert.equal(computeWorkspaceFingerprint(postLoadPayload), res.fingerprint);
 
     unsub();
 
@@ -493,15 +493,15 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       symbol: 'SOLUSDT',
       timeframe: '1h',
       layout: '1',
-      plan: chartDrawingController as unknown as WorkspacePlanPort,
+      plan: chartDrawingController,
     });
 
     assert.deepEqual(payload.drawingToolbar, { snapMode: 'strong', stayMode: true });
 
     // Fingerprint harus sensitif terhadap perubahan snapMode & stayMode
-    const fp1 = computeWorkspaceFingerprint(payload as any);
-    const fp2 = computeWorkspaceFingerprint({ ...payload, drawingToolbar: { snapMode: 'weak', stayMode: true } } as any);
-    const fp3 = computeWorkspaceFingerprint({ ...payload, drawingToolbar: { snapMode: 'strong', stayMode: false } } as any);
+    const fp1 = computeWorkspaceFingerprint(payload);
+    const fp2 = computeWorkspaceFingerprint({ ...payload, drawingToolbar: { snapMode: 'weak', stayMode: true } });
+    const fp3 = computeWorkspaceFingerprint({ ...payload, drawingToolbar: { snapMode: 'strong', stayMode: false } });
     assert.notEqual(fp1, fp2);
     assert.notEqual(fp1, fp3);
 
@@ -528,7 +528,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
         timestamp: Date.now(),
       },
       chart: mockChart,
-      plan: chartDrawingController as unknown as WorkspacePlanPort,
+      plan: chartDrawingController,
       activeProviderId: 'binance',
       onProviderChange: async () => {},
       onSymbolChange: async () => {},
@@ -751,7 +751,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     const resA = await executeWorkspaceLoadPipeline({
       workspace: wsSnapshotA,
       chart: mockChart,
-      plan: ctrlA as unknown as WorkspacePlanPort,
+      plan: ctrlA,
       activeProviderId: 'binance',
       onProviderChange: async () => {},
       onSymbolChange: async () => {},
@@ -764,7 +764,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.equal(ctrlA.getAllActivePlans().length, 0, 'Plan yang sudah dihapus di _trawangan_meta tidak boleh dibangkitkan oleh w.activePlans basi');
     assert.equal(ctrlA.isThesisCardsVisible(), false, 'showThesisCards workspace tetap diterapkan saat _trawangan_meta otoritatif');
 
-    const postLoadA = buildWorkspaceSnapshotPayload({
+    const postLoadA: WorkspaceFingerprintInput = buildWorkspaceSnapshotPayload({
       id: 'ws-auth-deleted',
       name: 'Auth Deleted Plan',
       symbol: 'BTCUSDT',
@@ -772,10 +772,10 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       layout: '1',
       providerId: 'binance',
       chart: mockChart,
-      plan: ctrlA as unknown as WorkspacePlanPort,
+      plan: ctrlA,
     });
     assert.deepEqual(postLoadA.activePlans, []);
-    assert.equal(computeWorkspaceFingerprint(postLoadA as any), resA.fingerprint, 'Fingerprint Step 9 & buildWorkspaceSnapshotPayload wajib identik');
+    assert.equal(computeWorkspaceFingerprint(postLoadA), resA.fingerprint, 'Fingerprint Step 9 & buildWorkspaceSnapshotPayload wajib identik');
 
     // Kasus B: Dokumen gambar warisan TANPA _trawangan_meta -> fallback ke SavedWorkspace.activePlans tetap bekerja
     await adapter.saveDrawings(
@@ -821,7 +821,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
         showThesisCards: true,
       },
       chart: mockChart,
-      plan: ctrlB as unknown as WorkspacePlanPort,
+      plan: ctrlB,
       activeProviderId: 'binance',
       onProviderChange: async () => {},
       onSymbolChange: async () => {},
@@ -834,7 +834,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.equal(ctrlB.getAllActivePlans().length, 1, 'Workspace warisan tanpa _trawangan_meta wajib fallback memulihkan w.activePlans');
     assert.equal(ctrlB.getAllActivePlans()[0].id, 'legacy-plan-eth');
 
-    const postLoadB = buildWorkspaceSnapshotPayload({
+    const postLoadB: WorkspaceFingerprintInput = buildWorkspaceSnapshotPayload({
       id: 'ws-legacy-no-meta',
       name: 'Legacy No Meta',
       symbol: 'ETHUSDT',
@@ -842,9 +842,9 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       layout: '1',
       providerId: 'binance',
       chart: mockChart,
-      plan: ctrlB as unknown as WorkspacePlanPort,
+      plan: ctrlB,
     });
     assert.equal(postLoadB.activePlans?.length, 1, 'buildWorkspaceSnapshotPayload tetap mengisi activePlans');
-    assert.equal(computeWorkspaceFingerprint(postLoadB as any), resB.fingerprint);
+    assert.equal(computeWorkspaceFingerprint(postLoadB), resB.fingerprint);
   });
 });

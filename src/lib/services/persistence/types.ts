@@ -62,6 +62,16 @@ export interface DrawingScope {
 }
 
 /**
+ * Representasi dokumen gambar kanvas yang dipersistensikan beserta metadata rencana opsional.
+ */
+export type PersistedDrawingDocument = Record<string, unknown> & {
+  version?: number;
+  drawings?: Array<Record<string, unknown>>;
+  items?: Array<Record<string, unknown>>;
+  _trawangan_meta?: unknown;
+};
+
+/**
  * Adapter tingkat rendah di balik Seam penyimpanan.
  * Mengabstraksi apakah operasi disimpan ke SQLite via Tauri IPC atau In-Memory / LocalStorage.
  */
@@ -132,8 +142,8 @@ export interface IPersistenceService {
   saveDrawingsDebounced(symbol: string, timeframe: string, doc: any, delayMs?: number): void;
   flushDrawings(symbol?: string, timeframe?: string): Promise<void>;
   clearDrawings(symbol: string, timeframe: string): Promise<void>;
-  loadScopedDrawings(scope: DrawingScope): Promise<any | null>;
-  saveScopedDrawingsDebounced(scope: DrawingScope, doc: any, delayMs?: number): void;
+  loadScopedDrawings(scope: DrawingScope): Promise<PersistedDrawingDocument | null>;
+  saveScopedDrawingsDebounced(scope: DrawingScope, doc: PersistedDrawingDocument, delayMs?: number): void;
   flushScopedDrawings(scope?: Partial<DrawingScope>): Promise<void>;
   clearScopedDrawings(scope: DrawingScope): Promise<void>;
 

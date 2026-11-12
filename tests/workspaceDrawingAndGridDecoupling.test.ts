@@ -7,7 +7,7 @@ import { resolveDrawingKey } from '../src/lib/services/instrumentIdentity';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
 import { resolveAppSettings, DEFAULT_APP_SETTINGS } from '../src/lib/constants/defaults';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
-import { storage } from '../src/lib/services/persistence';
+import { PersistenceService, storage } from '../src/lib/services/persistence';
 
 test('Workspace Scoped Drawing, Theme Isolation & Grid Mode Seam Suite', async (t) => {
   await t.test('1. resolveDrawingKey menghasilkan kunci komposit berdimensi [workspace:provider:symbol]', () => {
@@ -233,9 +233,9 @@ test('Workspace Scoped Drawing, Theme Isolation & Grid Mode Seam Suite', async (
 
   await t.test('7. Tiket #189: clearAll() pada workspace bernama & provider non-default menghapus dokumen scoped sehingga restoreDrawings() tetap kosong', async () => {
     const memoryAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
-    storage.setAdapter(memoryAdapter);
+    const isolatedPersistence = new PersistenceService(memoryAdapter);
 
-    const controller = new ChartDrawingController();
+    const controller = new ChartDrawingController(isolatedPersistence);
     let drawingsStore: any[] = [];
     const mockVelaChart = {
       drawings: {
@@ -258,7 +258,7 @@ test('Workspace Scoped Drawing, Theme Isolation & Grid Mode Seam Suite', async (
       cells: () => [{ chart: mockVelaChart }],
     };
 
-    controller.attachWorkspace(
+    const detach = controller.attachWorkspace(
       mockWorkspace,
       () => 'BTCUSDT.P',
       () => '1h',
@@ -266,31 +266,35 @@ test('Workspace Scoped Drawing, Theme Isolation & Grid Mode Seam Suite', async (
       () => 'ws_clear_test'
     );
 
-    // Simulasikan ada gambar tersimpan di GLOBAL maupun timeframe aktif pada scope workspace + provider non-default
-    drawingsStore.push({ id: 'bitunix_line_1', type: 'trendline' });
-    controller.handleDrawingMutated();
-    await storage.flushScopedDrawings({
-      workspaceId: 'ws_clear_test',
-      providerId: 'bitunix',
-      symbol: 'BTCUSDT.P',
-    });
-    await memoryAdapter.saveDrawings(
-      'ws_clear_test:bitunix:BTCUSDT.P',
-      '1h',
-      JSON.stringify({ version: 1, drawings: [{ id: 'bitunix_tf_1', type: 'hline' }] })
-    );
+    try {
+      // Simulasikan ada gambar tersimpan di GLOBAL maupun timeframe aktif pada scope workspace + provider non-default
+      drawingsStore.push({ id: 'bitunix_line_1', type: 'trendline' });
+      controller.handleDrawingMutated();
+      await isolatedPersistence.flushScopedDrawings({
+        workspaceId: 'ws_clear_test',
+        providerId: 'bitunix',
+        symbol: 'BTCUSDT.P',
+      });
+      await memoryAdapter.saveDrawings(
+        'ws_clear_test:bitunix:BTCUSDT.P',
+        '1h',
+        JSON.stringify({ version: 1, drawings: [{ id: 'bitunix_tf_1', type: 'hline' }] })
+      );
 
-    await controller.clearAll();
-    assert.equal(controller.getSnapshot().activeDrawings.length, 0);
+      await controller.clearAll();
+      assert.equal(controller.getSnapshot().activeDrawings.length, 0);
 
-    // Pastikan restoreDrawings() setelah clearAll() tidak memunculkan kembali gambar lama
-    await controller.restoreDrawings('BTCUSDT.P', '1h', 'bitunix', 'ws_clear_test');
-    assert.equal(
-      controller.getSnapshot().activeDrawings.length,
-      0,
-      'Gambar yang telah dihapus via clearAll() tidak boleh muncul kembali saat restoreDrawings()'
-    );
-    assert.equal(drawingsStore.length, 0);
+      // Pastikan restoreDrawings() setelah clearAll() tidak memunculkan kembali gambar lama
+      await controller.restoreDrawings('BTCUSDT.P', '1h', 'bitunix', 'ws_clear_test');
+      assert.equal(
+        controller.getSnapshot().activeDrawings.length,
+        0,
+        'Gambar yang telah dihapus via clearAll() tidak boleh muncul kembali saat restoreDrawings()'
+      );
+      assert.equal(drawingsStore.length, 0);
+    } finally {
+      detach();
+    }
   });
 
   await t.test('8. Tiket #189: ChartDrawingController mendukung injeksi PersistenceService terisolasi dan bebas re-ekspor resolveDrawingKey', async () => {
@@ -334,7 +338,7 @@ test('Workspace Scoped Drawing, Theme Isolation & Grid Mode Seam Suite', async (
       timeframe: '4h',
     });
     assert.ok(saved);
-    assert.equal(saved.drawings[0].id, 'inj_1');
+    assert.equal(saved.drawings?.[0]?.id, 'inj_1');
 
     await controller.clearAll();
     await controller.restoreDrawings('ETHUSDT', '4h', 'bybit', 'ws_injected');

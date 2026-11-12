@@ -1,6 +1,6 @@
 import type { DrawingToolType, SnapMode } from '../types/market';
 import { storage } from './persistence';
-import type { DrawingScope, IPersistenceService } from './persistence/types';
+import type { DrawingScope, IPersistenceService, PersistedDrawingDocument } from './persistence/types';
 import type { CommandDispatcher } from './commandDispatcher';
 import { roundToTickSize, getAdaptiveTickSize } from './priceSnapService';
 import { type ParsedTradingPlan } from './planParserService';
@@ -95,6 +95,24 @@ export {
   isSameInstrument,
   normalizeSymbolForMatching,
 };
+
+export interface WorkspaceCellLike {
+  id?: string;
+  symbol?: unknown;
+  timeframe?: unknown;
+  providerId?: unknown;
+  provider?: unknown;
+  chart?: any;
+  inner?: any;
+}
+
+export interface WorkspaceLike {
+  active?: WorkspaceCellLike | null;
+  cells?: (() => WorkspaceCellLike[]) | WorkspaceCellLike[];
+  cell?: (id: string) => WorkspaceCellLike | undefined;
+  on?: (event: any, cb: (...args: any[]) => void) => any;
+  off?: (event: any, cb: (...args: any[]) => void) => void;
+}
 
 export interface RestoreDrawingsResult {
   hasAuthoritativePlanMeta: boolean;
@@ -437,9 +455,9 @@ export class ChartDrawingController {
   private lastGestureCreation: GestureCreationState | null = null;
   private gestureHudTimeout: any = null;
 
-  private workspace: any = null;
+  private workspace: WorkspaceLike | null = null;
   private lastActiveCellIdentity: {
-    cell: any;
+    cell: WorkspaceCellLike;
     symbol: string;
     timeframe: string;
     providerId: string;
@@ -543,7 +561,7 @@ export class ChartDrawingController {
    * Mengaitkan instance workspace Vela dan getter simbol/timeframe/provider/workspace aktif
    */
   attachWorkspace(
-    workspace: any,
+    workspace: WorkspaceLike | null,
     getSymbolOrResolvers: (() => string) | DrawingContextResolvers,
     getTimeframe?: () => string,
     getProviderId?: () => string,
@@ -637,9 +655,19 @@ export class ChartDrawingController {
                     ...prevDoc,
                     _trawangan_meta: this.planLifecycle.toPersistedEnvelope(prevSym)
                   });
-                  void this.persistence.flushScopedDrawings(prevScope).catch(() => {});
+                  void this.persistence.flushScopedDrawings(prevScope).catch((err) => {
+                    console.warn(
+                      '[ChartDrawingController] Gagal mem-flush gambar sel sebelumnya saat cell:active:',
+                      err
+                    );
+                  });
                 }
-              } catch (_) {}
+              } catch (err) {
+                console.warn(
+                  '[ChartDrawingController] Gagal mem-flush gambar sel sebelumnya saat cell:active:',
+                  err
+                );
+              }
             }
           }
 
@@ -687,20 +715,21 @@ export class ChartDrawingController {
   /**
    * Helper internal untuk mengambil instance chart dari objek cell
    */
-  private getChartForCell(cell: any): any {
+  private getChartForCell(cell?: WorkspaceCellLike | null): any {
     return cell?.chart || cell?.inner || null;
   }
 
   /**
    * Merekam identitas pasar milik satu cell untuk menjaga isolasi kunci flush saat cell:active berganti
    */
-  private captureCellIdentity(cell: any) {
+  private captureCellIdentity(cell?: WorkspaceCellLike | null) {
     if (!cell) return null;
     const { providerId, symbol } = getCellMarketIdentity(cell);
+    const cellTf = typeof cell.timeframe === 'string' && cell.timeframe.trim() ? cell.timeframe.trim() : '';
     return {
       cell,
       symbol: symbol || (typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT'),
-      timeframe: cell?.timeframe || (typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m'),
+      timeframe: cellTf || (typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m'),
       providerId: providerId || (typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance'),
       workspaceId: this.getWorkspaceId()
     };
@@ -709,12 +738,14 @@ export class ChartDrawingController {
   /**
    * Helper internal untuk mengambil seluruh cells dari workspace
    */
-  private getAllCells(): any[] {
+  private getAllCells(): WorkspaceCellLike[] {
     if (!this.workspace) return [];
     if (typeof this.workspace.cells === 'function') {
       try {
         return this.workspace.cells() || [];
       } catch (_) {}
+    } else if (Array.isArray(this.workspace.cells)) {
+      return this.workspace.cells;
     }
     return this.workspace.active ? [this.workspace.active] : [];
   }
@@ -1577,7 +1608,7 @@ export class ChartDrawingController {
     providerId?: string | null;
     workspaceId?: string | null;
   }): DrawingScope {
-    const activeCell = this.workspace?.active as any;
+    const activeCell = this.workspace?.active;
     const rawCellSym = typeof activeCell?.symbol === 'string' ? activeCell.symbol.trim() : '';
     const rawCellProv =
       typeof activeCell?.providerId === 'string'
@@ -1612,26 +1643,34 @@ export class ChartDrawingController {
   }
 
   /**
+   * Mem-flush simpanan gambar tertunda pada scope sel aktif sebelum transisi/restorasi konteks.
+   */
+  private async flushActivePendingDrawings(workspaceIdOverride?: string): Promise<void> {
+    try {
+      const scope = this.resolveActiveDrawingScope({
+        timeframe: 'GLOBAL',
+        workspaceId: workspaceIdOverride,
+      });
+      await this.persistence.flushScopedDrawings(scope);
+    } catch (err) {
+      console.warn('[ChartDrawingController] Gagal mem-flush gambar tertunda pada scope aktif:', err);
+    }
+  }
+
+  /**
    * Helper privat untuk membungkus dokumen drawing + `_trawangan_meta` lalu menyimpannya secara persisten.
    */
-  private flushDrawingDocumentToStorage(doc: any, envelope?: SerializedPlanEnvelope): void {
+  private flushDrawingDocumentToStorage(
+    doc: PersistedDrawingDocument | null | undefined,
+    envelope?: SerializedPlanEnvelope
+  ): void {
     if (!doc) return;
-    const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
-    const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
-    const curWs = this.getWorkspaceId();
+    const scope = this.resolveActiveDrawingScope({ timeframe: 'GLOBAL' });
 
-    this.persistence.saveScopedDrawingsDebounced(
-      {
-        workspaceId: curWs,
-        providerId: curProv,
-        symbol: curSym,
-        timeframe: 'GLOBAL',
-      },
-      {
-        ...doc,
-        _trawangan_meta: envelope ?? this.planLifecycle.toPersistedEnvelope(curSym)
-      }
-    );
+    this.persistence.saveScopedDrawingsDebounced(scope, {
+      ...doc,
+      _trawangan_meta: envelope ?? this.planLifecycle.toPersistedEnvelope(scope.symbol)
+    });
   }
 
   /**
@@ -2480,6 +2519,35 @@ export class ChartDrawingController {
   }
 
   /**
+   * Mengosongkan seluruh visual gambar pada layer drawing milik satu instance chart.
+   */
+  private clearChartDrawingLayer(chart: any): void {
+    const drawings = chart?.drawings;
+    if (!drawings) return;
+    // Utamakan fromJSON({ version: 1, drawings: [] }) untuk clean slate internal store Vela tanpa memicu event removal
+    if (typeof drawings.fromJSON === 'function') {
+      drawings.fromJSON({ version: 1, drawings: [] });
+    } else if (typeof drawings.clear === 'function') {
+      drawings.clear();
+    } else if (typeof drawings.removeMany === 'function') {
+      const existing = drawings.all?.() || [];
+      if (existing.length > 0) {
+        drawings.removeMany(existing.map((d: any) => d.id));
+      }
+    }
+  }
+
+  /**
+   * Memvalidasi dan menerapkan payload `_trawangan_meta` ke siklus hidup plan bila otoritatif.
+   */
+  private applyPlanEnvelopeMeta(meta: unknown, symbol: string | undefined): boolean {
+    if (!isValidPlanEnvelope(meta)) return false;
+    this.planRevision++;
+    this.planLifecycle.hydrateFromEnvelope(meta, symbol);
+    return true;
+  }
+
+  /**
    * Mengosongkan seluruh visual gambar pada layer kanvas aktif (Clean Slate)
    */
   clearCanvasVisuals(): void {
@@ -2488,17 +2556,7 @@ export class ChartDrawingController {
       const prevRestoring = this.isRestoring;
       this.isRestoring = true;
       try {
-        // Utamakan fromJSON({ version: 1, drawings: [] }) untuk clean slate internal store Vela tanpa memicu event removal
-        if (typeof activeChart.drawings.fromJSON === 'function') {
-          activeChart.drawings.fromJSON({ version: 1, drawings: [] });
-        } else if (typeof activeChart.drawings.clear === 'function') {
-          activeChart.drawings.clear();
-        } else if (typeof activeChart.drawings.removeMany === 'function') {
-          const existing = activeChart.drawings.all?.() || [];
-          if (existing.length > 0) {
-            activeChart.drawings.removeMany(existing.map((d: any) => d.id));
-          }
-        }
+        this.clearChartDrawingLayer(activeChart);
       } catch (err) {
         console.warn('Gagal mengosongkan gambar visual kanvas:', err);
       } finally {
@@ -2540,17 +2598,7 @@ export class ChartDrawingController {
     if (!activeChart?.drawings) return { hasAuthoritativePlanMeta: false };
 
     // 1. Flush gambar in-flight yang sedang aktif sebelum beralih konteks
-    try {
-      const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
-      const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
-      const curWs = this.getWorkspaceId();
-      await this.persistence.flushScopedDrawings({
-        workspaceId: curWs,
-        providerId: curProv,
-        symbol: curSym,
-        timeframe: 'GLOBAL',
-      });
-    } catch (_) {}
+    await this.flushActivePendingDrawings();
 
     let hasAuthoritativePlanMeta = false;
     this.isRestoring = true;
@@ -2570,10 +2618,8 @@ export class ChartDrawingController {
 
       if (doc) {
         // Pulihkan metadata dan activePlans jika tersimpan di payload _trawangan_meta
-        if (isValidPlanEnvelope(doc._trawangan_meta)) {
+        if (this.applyPlanEnvelopeMeta(doc._trawangan_meta, scope.symbol)) {
           hasAuthoritativePlanMeta = true;
-          this.planRevision++;
-          this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta, scope.symbol);
         }
 
         if (activeChart.drawings) {
@@ -2600,17 +2646,7 @@ export class ChartDrawingController {
       return await this.restoreDrawings(undefined, undefined, undefined, targetWorkspace);
     }
 
-    try {
-      const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
-      const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
-      const curWs = targetWorkspace || this.getWorkspaceId();
-      await this.persistence.flushScopedDrawings({
-        workspaceId: curWs,
-        providerId: curProv,
-        symbol: curSym,
-        timeframe: 'GLOBAL',
-      });
-    } catch (_) {}
+    await this.flushActivePendingDrawings(targetWorkspace);
 
     let hasAuthoritativePlanMeta = false;
     this.isRestoring = true;
@@ -2623,21 +2659,12 @@ export class ChartDrawingController {
         const cellChart = this.getChartForCell(cell);
         if (!cellChart?.drawings) continue;
 
-        if (typeof cellChart.drawings.fromJSON === 'function') {
-          cellChart.drawings.fromJSON({ version: 1, drawings: [] });
-        } else if (typeof cellChart.drawings.clear === 'function') {
-          cellChart.drawings.clear();
-        } else if (typeof cellChart.drawings.removeMany === 'function') {
-          const existing = cellChart.drawings.all?.() || [];
-          if (existing.length > 0) {
-            cellChart.drawings.removeMany(existing.map((d: any) => d.id));
-          }
-        }
+        this.clearChartDrawingLayer(cellChart);
 
         const identity = getCellMarketIdentity(cell);
         const sym = identity.symbol || (typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT');
         const prov = identity.providerId || (typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance');
-        const tf = (typeof (cell as any)?.timeframe === 'string' && (cell as any).timeframe.trim())
+        const tf = (typeof cell.timeframe === 'string' && cell.timeframe.trim())
           || (typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m');
 
         const doc = await this.persistence.loadScopedDrawings({
@@ -2648,10 +2675,8 @@ export class ChartDrawingController {
         });
 
         if (doc) {
-          if (isValidPlanEnvelope(doc._trawangan_meta)) {
+          if (this.applyPlanEnvelopeMeta(doc._trawangan_meta, sym)) {
             hasAuthoritativePlanMeta = true;
-            this.planRevision++;
-            this.planLifecycle.hydrateFromEnvelope(doc._trawangan_meta, sym);
           }
           if (typeof cellChart.drawings.fromJSON === 'function') {
             cellChart.drawings.fromJSON(doc);

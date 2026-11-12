@@ -503,4 +503,45 @@ describe('TradingPlanLifecycle (Deep Module & Dual-Entry Drift Fix)', () => {
     assert.equal(ethEnv.drawingMetadata.d_eth_orphan, undefined);
     assert.equal(ethEnv.drawingMetadata.d_leg_pos, undefined);
   });
+
+  it('reconcileCanvasMutation menangani sentinel wildcard "*" dan "ALL" secara konsisten serta hydrateFromEnvelope terisolasi dari state memori sebelumnya', () => {
+    const parsedBtc = parseTradingPlan(DUAL_ENTRY_BEARISH_MD);
+    parsedBtc.symbol = 'BTCUSDT';
+    host.symbol = 'BTCUSDT';
+    lifecycle.projectPlan(parsedBtc, { planId: 'plan_btc_wc' });
+
+    const stage1 = host.drawings.find(
+      (d) => d.type === 'position' && d.metadata?.planId === 'plan_btc_wc' && d.metadata?.stageIndex === 1
+    );
+    assert.ok(stage1);
+    stage1.anchors[1].price = 2210;
+
+    // Sentinel '*' harus menormalkan curSym ke mode wildcard sehingga Bidirectional Sync tetap memperbarui plan BTCUSDT
+    const envWildcard = lifecycle.reconcileCanvasMutation(host.drawings, '*');
+    assert.equal(envWildcard.activePlans.length, 1);
+    assert.equal(envWildcard.activePlans[0].stopLoss, 2210);
+
+    stage1.anchors[1].price = 2215;
+    const envAll = lifecycle.reconcileCanvasMutation(host.drawings, 'ALL');
+    assert.equal(envAll.activePlans.length, 1);
+    assert.equal(envAll.activePlans[0].stopLoss, 2215);
+
+    // Hydrate envelope BTCUSDT yang berisi metadata terkait plan ETHUSDT yg kebetulan ada di memori tidak boleh meloloskan metadata asing
+    const parsedEth = parseTradingPlan(DUAL_ENTRY_BEARISH_MD);
+    parsedEth.symbol = 'ETHUSDT';
+    host.symbol = 'ETHUSDT';
+    lifecycle.projectPlan(parsedEth, { planId: 'plan_eth_existing' });
+
+    lifecycle.hydrateFromEnvelope(
+      {
+        activePlans: [],
+        planDrawingIds: [],
+        drawingMetadata: {
+          d_leaked_meta_for_eth: { planId: 'plan_eth_existing', role: 'box' }
+        }
+      },
+      'BTCUSDT'
+    );
+    assert.equal(lifecycle.toPersistedEnvelope('BTCUSDT').drawingMetadata.d_leaked_meta_for_eth, undefined);
+  });
 });
