@@ -22,6 +22,12 @@ export interface PersistenceAdapter {
   saveDrawings(symbol: string, timeframe: string, dataJson: string): Promise<void>;
   clearDrawings(symbol: string, timeframe: string): Promise<void>;
   listDrawingKeys?(prefix: string): Promise<DrawingKeyEntry[]>;
+  cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number>;
+
+  // Workspaces (Workspace State v2)
+  listWorkspaces(): Promise<SavedWorkspace[]>;
+  upsertWorkspace(workspace: SavedWorkspace): Promise<void>;
+  deleteWorkspace(id: string): Promise<void>;
 
   // Daftar pantau koin (Watchlist)
   loadWatchlist(): Promise<string[] | null>;

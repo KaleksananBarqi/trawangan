@@ -147,3 +147,41 @@ pub fn get_workspace_row_raw(conn: &Connection, id: &str) -> Result<Option<Strin
         Ok(None)
     }
 }
+
+/// Ambil seluruh `layout_json` workspace tersimpan terurut stabil
+pub fn list_workspaces(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT layout_json FROM workspaces ORDER BY updated_at ASC, rowid ASC",
+    )?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect()
+}
+
+/// Sisipkan atau perbarui satu baris workspace dari JSON `SavedWorkspace`
+pub fn upsert_workspace(conn: &Connection, workspace_json: &str) -> Result<()> {
+    let val: Value = serde_json::from_str(workspace_json)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let now = chrono::Utc::now().timestamp_millis();
+    upsert_workspace_value(conn, &val, now)?;
+    Ok(())
+}
+
+/// Hapus satu workspace beserta seluruh drawings miliknya dalam satu transaksi atomik.
+/// Tidak pernah menyentuh `default_workspace`, gambar warisan tanpa workspace (`''`), atau workspace lain.
+pub fn delete_workspace(conn: &Connection, id: &str) -> Result<()> {
+    let clean_id = id.trim();
+    if clean_id.is_empty() {
+        return Ok(());
+    }
+
+    super::with_transaction(conn, "BEGIN IMMEDIATE;", || {
+        conn.execute("DELETE FROM workspaces WHERE id = ?1", params![clean_id])?;
+        if !clean_id.eq_ignore_ascii_case("default_workspace") {
+            conn.execute(
+                "DELETE FROM drawings WHERE LOWER(workspace_id) = LOWER(?1)",
+                params![clean_id],
+            )?;
+        }
+        Ok(())
+    })
+}

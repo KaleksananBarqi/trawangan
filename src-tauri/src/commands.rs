@@ -1,10 +1,15 @@
 // Modul Tauri IPC Commands yang dipanggil oleh Frontend
 use crate::db::{
-    cache_candles, clear_drawings, delete_pine_script, delete_provider, get_cached_candles,
+    cache_candles, clear_drawings, delete_pine_script, delete_provider,
+    drawings::clone_workspace_drawings as db_clone_workspace_drawings, get_cached_candles,
     get_drawings, get_pine_scripts, get_providers, get_watchlist, get_workspace,
     list_drawing_keys as db_list_drawing_keys, save_drawings, save_pine_script, save_provider,
-    save_watchlist, save_workspace, set_active_provider, Candle, DbState, DrawingKeyEntry,
-    PineScriptRecord, ProviderConfig,
+    save_watchlist, save_workspace, set_active_provider,
+    workspaces::{
+        delete_workspace as db_delete_workspace, list_workspaces as db_list_workspaces,
+        upsert_workspace as db_upsert_workspace,
+    },
+    Candle, DbState, DrawingKeyEntry, PineScriptRecord, ProviderConfig,
 };
 use crate::market::MarketService;
 use tauri::State;
@@ -82,6 +87,40 @@ pub fn load_workspace_layout(
 ) -> Result<Option<String>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     get_workspace(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_workspaces(db: State<'_, DbState>) -> Result<Vec<String>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_list_workspaces(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn upsert_workspace(
+    db: State<'_, DbState>,
+    workspace_json: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_upsert_workspace(&conn, &workspace_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_workspace(
+    db: State<'_, DbState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_delete_workspace(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn clone_workspace_drawings(
+    db: State<'_, DbState>,
+    from_ws_id: String,
+    to_ws_id: String,
+) -> Result<usize, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_clone_workspace_drawings(&conn, &from_ws_id, &to_ws_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

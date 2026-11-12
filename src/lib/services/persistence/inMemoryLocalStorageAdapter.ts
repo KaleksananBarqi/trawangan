@@ -1,6 +1,6 @@
 // Adapter In-Memory & Web LocalStorage untuk Lingkungan Pengujian dan Web Fallback
 import type { DrawingKeyEntry, PersistenceAdapter } from './types';
-import type { PineScriptRecord } from '../../types/market';
+import type { PineScriptRecord, SavedWorkspace } from '../../types/market';
 
 export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   private memoryStore = new Map<string, string>();
@@ -85,6 +85,94 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     }
 
     return Array.from(seen.values());
+  }
+
+  async cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number> {
+    if (!fromWsId || !toWsId) return 0;
+    const normFrom = fromWsId.trim().toLowerCase();
+    const normTo = toWsId.trim().toLowerCase();
+    if (!normFrom || !normTo || normFrom === normTo) return 0;
+
+    const lowerPrefix = `${normFrom}:`;
+    const entries = await this.listDrawingKeys(lowerPrefix);
+    const prefixes = [lowerPrefix];
+
+    const rawTrimmedFrom = fromWsId.trim();
+    if (rawTrimmedFrom && rawTrimmedFrom !== normFrom) {
+      const rawPrefix = `${rawTrimmedFrom}:`;
+      prefixes.push(rawPrefix);
+      const rawEntries = await this.listDrawingKeys(rawPrefix);
+      for (const re of rawEntries) {
+        if (!entries.some((e) => e.symbol === re.symbol && e.timeframe === re.timeframe)) {
+          entries.push(re);
+        }
+      }
+    }
+
+    let copied = 0;
+    for (const entry of entries) {
+      const matchedPrefix = prefixes.find((p) => entry.symbol.startsWith(p));
+      if (!matchedPrefix) continue;
+      const suffix = entry.symbol.slice(matchedPrefix.length);
+      if (!suffix) continue;
+
+      const rawJson = await this.loadDrawings(entry.symbol, entry.timeframe);
+      if (!rawJson) continue;
+
+      await this.saveDrawings(`${normTo}:${suffix}`, entry.timeframe, rawJson);
+      copied++;
+    }
+    return copied;
+  }
+
+  async listWorkspaces(): Promise<SavedWorkspace[]> {
+    const raw = this.getItem('trawangan_workspaces');
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async upsertWorkspace(workspace: SavedWorkspace): Promise<void> {
+    const list = await this.listWorkspaces();
+    const idx = list.findIndex((w) => w.id === workspace.id);
+    if (idx >= 0) {
+      list[idx] = workspace;
+    } else {
+      list.push(workspace);
+    }
+    this.setItem('trawangan_workspaces', JSON.stringify(list));
+  }
+
+  async deleteWorkspace(id: string): Promise<void> {
+    const cleanId = id.trim();
+    const list = await this.listWorkspaces();
+    const filtered = list.filter((w) => w.id !== id);
+    this.setItem('trawangan_workspaces', JSON.stringify(filtered));
+
+    if (cleanId && cleanId.toLowerCase() !== 'default_workspace') {
+      const normPrefix = `${cleanId.toLowerCase()}:`;
+      const allKeys = new Set<string>(this.memoryStore.keys());
+      if (typeof localStorage !== 'undefined') {
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k) allKeys.add(k);
+          }
+        } catch (_) {}
+      }
+      const KEY_PREFIX = 'trawangan_drawings_';
+      for (const fullKey of allKeys) {
+        if (!fullKey.startsWith(KEY_PREFIX)) continue;
+        const body = fullKey.slice(KEY_PREFIX.length);
+        if (body.toLowerCase().startsWith(normPrefix)) {
+          this.removeItem(fullKey);
+        }
+      }
+    }
   }
 
   async loadWatchlist(): Promise<string[] | null> {

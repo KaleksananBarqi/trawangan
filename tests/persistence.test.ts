@@ -98,6 +98,35 @@ describe('Deep Persistence Module Unit Tests', () => {
     assert.strictEqual(listAfterDelete.length, 0);
   });
 
+  test('Workspaces: deleteWorkspace membersihkan drawings scoped tanpa menyentuh default_workspace atau workspace lain', async () => {
+    const ws1 = await service.saveWorkspace({
+      id: 'ws_target',
+      name: 'Target',
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      layout: '1',
+      indicators: [],
+    });
+    const ws2 = await service.saveWorkspace({
+      id: 'ws_keep',
+      name: 'Keep',
+      symbol: 'ETHUSDT',
+      timeframe: '1h',
+      layout: '1',
+      indicators: [],
+    });
+
+    await adapter.saveDrawings(`${ws1.id}:binance:BTCUSDT`, 'GLOBAL', JSON.stringify({ drawings: [{ id: 'a' }] }));
+    await adapter.saveDrawings('default_workspace:binance:BTCUSDT', 'GLOBAL', JSON.stringify({ drawings: [{ id: 'b' }] }));
+    await adapter.saveDrawings(`${ws2.id}:binance:ETHUSDT`, 'GLOBAL', JSON.stringify({ drawings: [{ id: 'c' }] }));
+
+    await service.deleteWorkspace(ws1.id);
+
+    assert.strictEqual(await service.loadDrawings(`${ws1.id}:binance:BTCUSDT`, 'GLOBAL'), null);
+    assert.ok(await service.loadDrawings('default_workspace:binance:BTCUSDT', 'GLOBAL'));
+    assert.ok(await service.loadDrawings(`${ws2.id}:binance:ETHUSDT`, 'GLOBAL'));
+  });
+
   test('Pine Scripts: CRUD skrip kustom indikator', async () => {
     const scriptsEmpty = await service.loadScripts();
     assert.deepStrictEqual(scriptsEmpty, []);

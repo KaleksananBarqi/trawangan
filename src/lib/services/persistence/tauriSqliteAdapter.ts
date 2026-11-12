@@ -1,6 +1,6 @@
 // Adapter Native SQLite via Tauri IPC Command
 import type { DrawingKeyEntry, PersistenceAdapter } from './types';
-import type { PineScriptRecord } from '../../types/market';
+import type { PineScriptRecord, SavedWorkspace } from '../../types/market';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 
 export class TauriSqliteAdapter implements PersistenceAdapter {
@@ -124,6 +124,38 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
       console.warn('[TauriSqliteAdapter] Gagal delete Pine script dari SQLite, beralih ke fallback:', err);
     }
     await this.fallbackAdapter.deleteScript(id);
+  }
+
+  async cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number> {
+    const invoke = await this.getInvoke();
+    return await invoke<number>('clone_workspace_drawings', { fromWsId, toWsId });
+  }
+
+  async listWorkspaces(): Promise<SavedWorkspace[]> {
+    const invoke = await this.getInvoke();
+    const rawList = await invoke<string[]>('list_workspaces');
+    const result: SavedWorkspace[] = [];
+    for (const raw of rawList) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          result.push(parsed as SavedWorkspace);
+        }
+      } catch (err) {
+        console.warn('[TauriSqliteAdapter] Gagal parsing workspace JSON:', err);
+      }
+    }
+    return result;
+  }
+
+  async upsertWorkspace(workspace: SavedWorkspace): Promise<void> {
+    const invoke = await this.getInvoke();
+    await invoke('upsert_workspace', { workspaceJson: JSON.stringify(workspace) });
+  }
+
+  async deleteWorkspace(id: string): Promise<void> {
+    const invoke = await this.getInvoke();
+    await invoke('delete_workspace', { id });
   }
 
   async loadLayoutSlot(id: string): Promise<string | null> {

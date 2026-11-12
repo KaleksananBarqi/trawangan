@@ -93,19 +93,17 @@ describe('Fase 1: Skema SavedWorkspace v2 & Migrasi Backward-Compatible', () => 
     const adapter = new InMemoryLocalStorageAdapter();
     const service = new PersistenceService(adapter);
 
-    const legacyList = [
-      {
-        id: 'legacy_ws',
-        name: 'Old Setup',
-        symbol: 'SOLUSDT',
-        timeframe: '5m',
-        layout: '1',
-        paneWeights: [3, 1],
-        indicators: [{ title: 'Stoch', source: 'plot(1)', visible: true }],
-        timestamp: 12345,
-      },
-    ];
-    await adapter.saveLayoutSlot('user_workspaces_list', 'User Saved Workspaces', JSON.stringify(legacyList));
+    const legacyWs: any = {
+      id: 'legacy_ws',
+      name: 'Old Setup',
+      symbol: 'SOLUSDT',
+      timeframe: '5m',
+      layout: '1',
+      paneWeights: [3, 1],
+      indicators: [{ title: 'Stoch', source: 'plot(1)', visible: true }],
+      timestamp: 12345,
+    };
+    await adapter.upsertWorkspace(legacyWs);
 
     const loaded = await service.loadWorkspaces();
     assert.equal(loaded.length, 1);

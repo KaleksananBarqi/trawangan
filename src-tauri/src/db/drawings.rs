@@ -116,3 +116,24 @@ pub fn clear_drawings(conn: &Connection, symbol: &str, timeframe: &str) -> Resul
     )?;
     Ok(())
 }
+
+/// Menyalin seluruh dokumen drawings beserta `_trawangan_meta` antar workspace dalam satu transaksi SQL
+pub fn clone_workspace_drawings(conn: &Connection, from_ws_id: &str, to_ws_id: &str) -> Result<usize> {
+    let norm_from = from_ws_id.trim().to_lowercase();
+    let norm_to = to_ws_id.trim().to_lowercase();
+    if norm_from.is_empty() || norm_to.is_empty() || norm_from == norm_to {
+        return Ok(0);
+    }
+
+    let now = chrono::Utc::now().timestamp_millis();
+    super::with_transaction(conn, "BEGIN IMMEDIATE;", || {
+        let count = conn.execute(
+            "INSERT OR REPLACE INTO drawings (workspace_id, provider_id, symbol, timeframe, data_json, updated_at)
+             SELECT ?1, provider_id, symbol, timeframe, data_json, ?2
+             FROM drawings
+             WHERE LOWER(workspace_id) = ?3",
+            params![norm_to, now, norm_from],
+        )?;
+        Ok(count)
+    })
+}

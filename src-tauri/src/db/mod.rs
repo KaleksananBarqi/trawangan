@@ -605,4 +605,55 @@ mod tests {
         assert_eq!(list_updated.len(), 2);
         assert_eq!(list_updated[0], "SOLUSDT");
     }
+
+    #[test]
+    fn test_workspace_crud_and_anti_orphan_delete_drawings() {
+        let conn = setup_v1_test_db();
+        let ws1 = r#"{"id":"ws-1","name":"Scalp","schemaVersion":2,"symbol":"BTCUSDT","timeframe":"15m","layout":"1","providerId":"binance","timestamp":1000}"#;
+        let ws_other = r#"{"id":"ws-other","name":"Swing","schemaVersion":2,"symbol":"ETHUSDT","timeframe":"4h","layout":"1","providerId":"binance","timestamp":2000}"#;
+
+        workspaces::upsert_workspace(&conn, ws1).unwrap();
+        workspaces::upsert_workspace(&conn, ws_other).unwrap();
+        assert_eq!(workspaces::list_workspaces(&conn).unwrap().len(), 2);
+
+        save_drawings(&conn, "ws-1:binance:BTCUSDT", "GLOBAL", r#"{"d":1}"#).unwrap();
+        save_drawings(&conn, "WS-1:indodax:BTCIDR", "GLOBAL", r#"{"d":2}"#).unwrap();
+        save_drawings(&conn, "default_workspace:binance:BTCUSDT", "GLOBAL", r#"{"d":3}"#).unwrap();
+        save_drawings(&conn, "BTCUSDT", "15m", r#"{"d":4}"#).unwrap();
+        save_drawings(&conn, "ws-other:binance:ETHUSDT", "GLOBAL", r#"{"d":5}"#).unwrap();
+
+        workspaces::delete_workspace(&conn, "ws-1").unwrap();
+
+        let remaining_ws = workspaces::list_workspaces(&conn).unwrap();
+        assert_eq!(remaining_ws.len(), 1);
+        assert!(remaining_ws[0].contains("\"ws-other\""));
+
+        assert_eq!(get_drawings(&conn, "ws-1:binance:BTCUSDT", "GLOBAL").unwrap(), None);
+        assert_eq!(get_drawings(&conn, "WS-1:indodax:BTCIDR", "GLOBAL").unwrap(), None);
+
+        assert_eq!(get_drawings(&conn, "default_workspace:binance:BTCUSDT", "GLOBAL").unwrap(), Some(r#"{"d":3}"#.to_string()));
+        assert_eq!(get_drawings(&conn, "BTCUSDT", "15m").unwrap(), Some(r#"{"d":4}"#.to_string()));
+        assert_eq!(get_drawings(&conn, "ws-other:binance:ETHUSDT", "GLOBAL").unwrap(), Some(r#"{"d":5}"#.to_string()));
+    }
+
+    #[test]
+    fn test_clone_workspace_drawings_atomic_sql() {
+        let conn = setup_v1_test_db();
+        save_drawings(&conn, "default_workspace:binance:BTCUSDT", "GLOBAL", r#"{"shapes":[1]}"#).unwrap();
+        save_drawings(&conn, "Default_Workspace:indodax:BTCIDR", "GLOBAL", r#"{"shapes":[2]}"#).unwrap();
+        save_drawings(&conn, "ws-other:binance:ETHUSDT", "GLOBAL", r#"{"shapes":[3]}"#).unwrap();
+
+        let copied = drawings::clone_workspace_drawings(&conn, "Default_Workspace", "WS_New").unwrap();
+        assert_eq!(copied, 2);
+
+        assert_eq!(
+            get_drawings(&conn, "ws_new:binance:BTCUSDT", "GLOBAL").unwrap(),
+            Some(r#"{"shapes":[1]}"#.to_string())
+        );
+        assert_eq!(
+            get_drawings(&conn, "ws_new:indodax:BTCIDR", "GLOBAL").unwrap(),
+            Some(r#"{"shapes":[2]}"#.to_string())
+        );
+        assert_eq!(get_drawings(&conn, "ws_new:binance:ETHUSDT", "GLOBAL").unwrap(), None);
+    }
 }
