@@ -46,6 +46,7 @@
   } from '../lib/services/chartSnapshotService';
   import { alertService } from '../lib/services/alertService';
   import { workspaceShellService, type WorkspaceShellState } from '../lib/services/workspaceShellService';
+  import { hydrateDrawingToolsFromPersistence } from '../lib/services/drawingToolsService';
   import { ensureNotificationPermission } from '../lib/services/systemNotificationService';
   import { marketFeed } from '../lib/services/market';
   import { telemetryService } from '../lib/services/telemetryService';
@@ -90,6 +91,7 @@
     computeWorkspaceFingerprint,
     flushDrawings
   } from '../lib/services/persistence';
+  import { readClampedPanelWidth } from '../lib/services/persistence/uiPreferencesHelper';
   import {
     THEME_PRESETS,
     UI_FONT_OPTIONS,
@@ -464,6 +466,8 @@
         shellState = s;
         scheduleResizeDispatch(40);
       });
+      workspaceShellService.reloadFromPersistence();
+      hydrateDrawingToolsFromPersistence();
 
       unsubAlertsList = alertService.subscribe((list) => {
         allAlerts = list;
@@ -483,12 +487,9 @@
           isAutoSaveWorkspace = appSettings.autoSaveWorkspace;
         }
 
-        const savedPineWidth = localStorage.getItem('trawangan_pine_panel_width');
-        if (savedPineWidth) {
-          const parsedWidth = parseInt(savedPineWidth, 10);
-          if (!isNaN(parsedWidth) && parsedWidth >= 340 && parsedWidth <= 900) {
-            pinePanelWidth = parsedWidth;
-          }
+        const savedPineWidth = readClampedPanelWidth('pine_panel_width', 340, 900, storage);
+        if (savedPineWidth !== null) {
+          pinePanelWidth = savedPineWidth;
         }
 
         isPageMounted = true;
@@ -991,7 +992,7 @@
       maxCap: 850,
       viewportMaxRatio: 0.65,
       edge: 'left-edge',
-      storageKey: 'trawangan_pine_panel_width',
+      preferenceKey: 'pine_panel_width',
       onResize: (nextWidth) => {
         pinePanelWidth = nextWidth;
       },
@@ -1014,9 +1015,7 @@
     if (nextWidth === null) return;
     e.preventDefault();
     pinePanelWidth = nextWidth;
-    try {
-      localStorage.setItem('trawangan_pine_panel_width', String(nextWidth));
-    } catch (_) {}
+    void storage.setUiPreference('pine_panel_width', nextWidth).catch(() => {});
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('resize'));
     }

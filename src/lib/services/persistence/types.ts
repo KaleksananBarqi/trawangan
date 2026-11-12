@@ -14,7 +14,23 @@ export interface DrawingKeyEntry {
   timeframe: string;
 }
 
-export type AppPreferenceKey = 'app_settings' | 'chart_default_config' | 'last_active_workspace_id';
+export type UiPreferenceKey =
+  | 'left_rail_collapsed'
+  | 'right_dock_state'
+  | 'pine_panel_width'
+  | 'right_panel_width'
+  | 'right_plan_width'
+  | 'drawings_last_used'
+  | 'drawings_favorites'
+  | 'drawings_fav_pos'
+  | 'fav_indicators'
+  | 'recent_searches';
+
+export type AppPreferenceKey =
+  | 'app_settings'
+  | 'chart_default_config'
+  | 'last_active_workspace_id'
+  | UiPreferenceKey;
 
 export interface AppPreferenceRecord {
   key: string;
@@ -82,6 +98,9 @@ export interface IPersistenceService {
   bootstrap(): Promise<void>;
   isBootstrapped(): boolean;
   getPreferenceSync(key: AppPreferenceKey): string | null;
+  getUiPreferenceSync<T>(key: UiPreferenceKey): T | null;
+  setUiPreference<T>(key: UiPreferenceKey, value: T): Promise<void>;
+  removeUiPreference(key: UiPreferenceKey): Promise<void>;
 
   // Drawings
   loadDrawings(symbol: string, timeframe: string): Promise<any | null>;

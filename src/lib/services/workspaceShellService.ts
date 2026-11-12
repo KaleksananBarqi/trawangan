@@ -1,7 +1,15 @@
 import type { WorkspaceMode } from '../types/market';
+import { storage } from './persistence';
+import type { IPersistenceService } from './persistence/types';
 
 export type RightDockTab = 'watchlist' | 'alerts' | 'objects' | 'plan';
 export type { WorkspaceMode };
+
+interface PersistedRightDockState {
+  isOpen: boolean;
+  activeTab: RightDockTab | null;
+  lastOpenedTab: RightDockTab;
+}
 
 const VALID_RIGHT_DOCK_TABS: ReadonlySet<RightDockTab> = new Set([
   'watchlist',
@@ -22,15 +30,12 @@ export interface WorkspaceShellState {
   workspaceMode: WorkspaceMode;
 }
 
-const STORAGE_KEY_LEFT = 'trawangan_left_rail_collapsed';
-const STORAGE_KEY_RIGHT = 'trawangan_right_dock_state';
-
 /**
  * Modul Tunggal (Deep Module) Pengelola Shell Tata Letak Workspace Trawangan
- * 
+ *
  * Mengenkapsulasi status rel bilah gambar kiri (drawing toolbar),
  * dock panel kanan (watchlist, alerts, object tree), serta mode tampilan terminal/pine.
- * Menghilangkan duplikasi listener dan menyatukan logika persistensi localStorage.
+ * Menghilangkan duplikasi listener dan menyatukan logika persistensi via PersistenceService.
  */
 export class WorkspaceShellService {
   private state: WorkspaceShellState = {
@@ -42,51 +47,55 @@ export class WorkspaceShellService {
   };
 
   private listeners: Set<(state: WorkspaceShellState) => void> = new Set();
+  private persistence: Pick<IPersistenceService, 'getUiPreferenceSync' | 'setUiPreference'>;
 
-  constructor() {
+  constructor(persistence: Pick<IPersistenceService, 'getUiPreferenceSync' | 'setUiPreference'> = storage) {
+    this.persistence = persistence;
     this.loadPersistence();
   }
 
   private loadPersistence() {
-    if (typeof localStorage === 'undefined') return;
     try {
-      const savedLeft = localStorage.getItem(STORAGE_KEY_LEFT);
+      const savedLeft = this.persistence.getUiPreferenceSync<boolean | string>('left_rail_collapsed');
       if (savedLeft !== null) {
-        this.state.isLeftRailCollapsed = savedLeft === 'true';
+        this.state.isLeftRailCollapsed = typeof savedLeft === 'boolean' ? savedLeft : savedLeft === 'true';
       }
     } catch (_) {}
 
     try {
-      const savedRight = localStorage.getItem(STORAGE_KEY_RIGHT);
-      if (savedRight) {
-        const parsed = JSON.parse(savedRight);
-        if (parsed && typeof parsed.isOpen === 'boolean') {
-          // Sanitasi nilai tab tersimpan agar data lama/rusak tetap jatuh aman ke 'watchlist'
-          const lastOpened = isValidRightDockTab(parsed.lastOpenedTab)
-            ? parsed.lastOpenedTab
-            : 'watchlist';
-          const active = isValidRightDockTab(parsed.activeTab) ? parsed.activeTab : lastOpened;
-          this.state.isRightDockOpen = parsed.isOpen;
-          this.state.lastOpenedRightDockTab = lastOpened;
-          this.state.activeRightDockTab = parsed.isOpen ? active : null;
-        }
+      const savedRight = this.persistence.getUiPreferenceSync<PersistedRightDockState>('right_dock_state');
+      if (savedRight && typeof savedRight.isOpen === 'boolean') {
+        // Sanitasi nilai tab tersimpan agar data lama/rusak tetap jatuh aman ke 'watchlist'
+        const lastOpened = isValidRightDockTab(savedRight.lastOpenedTab)
+          ? savedRight.lastOpenedTab
+          : 'watchlist';
+        const active = isValidRightDockTab(savedRight.activeTab) ? savedRight.activeTab : lastOpened;
+        this.state.isRightDockOpen = savedRight.isOpen;
+        this.state.lastOpenedRightDockTab = lastOpened;
+        this.state.activeRightDockTab = savedRight.isOpen ? active : null;
       }
     } catch (_) {}
   }
 
+  /**
+   * Memuat ulang state shell dari cache PersistenceService setelah startup bootstrap() selesai.
+   */
+  public reloadFromPersistence(): void {
+    this.loadPersistence();
+    this.notify();
+  }
+
   private savePersistence() {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      localStorage.setItem(STORAGE_KEY_LEFT, String(this.state.isLeftRailCollapsed));
-      localStorage.setItem(
-        STORAGE_KEY_RIGHT,
-        JSON.stringify({
-          isOpen: this.state.isRightDockOpen,
-          activeTab: this.state.activeRightDockTab,
-          lastOpenedTab: this.state.lastOpenedRightDockTab,
-        })
-      );
-    } catch (_) {}
+    void this.persistence
+      .setUiPreference('left_rail_collapsed', this.state.isLeftRailCollapsed)
+      .catch(() => {});
+    void this.persistence
+      .setUiPreference<PersistedRightDockState>('right_dock_state', {
+        isOpen: this.state.isRightDockOpen,
+        activeTab: this.state.activeRightDockTab,
+        lastOpenedTab: this.state.lastOpenedRightDockTab,
+      })
+      .catch(() => {});
   }
 
   public getSnapshot(): WorkspaceShellState {

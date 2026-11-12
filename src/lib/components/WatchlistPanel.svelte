@@ -7,11 +7,12 @@
   import LayersTab from './right-dock/LayersTab.svelte';
   import { watchlistRegistry } from '../services/watchlistRegistryService';
   import {
-    clampPanelWidth,
     adjustPanelWidthByKeyboard,
     startEdgeResizeSession,
     type EdgeResizeSession
   } from '../services/panelResizeHelper';
+  import { storage } from '../services/persistence';
+  import { readClampedPanelWidth } from '../services/persistence/uiPreferencesHelper';
   import type { RightDockTab } from '../services/workspaceShellService';
   import type { ParsedTradingPlan } from '../services/planParserService';
   import type {
@@ -105,8 +106,8 @@
     onLog,
   }: Props = $props();
 
-  const STORAGE_KEY_STANDARD_WIDTH = 'trawangan_right_panel_width';
-  const STORAGE_KEY_PLAN_WIDTH = 'trawangan_right_plan_width';
+  const PREF_KEY_STANDARD_WIDTH = 'right_panel_width' as const;
+  const PREF_KEY_PLAN_WIDTH = 'right_plan_width' as const;
   const STANDARD_BOUNDS = { min: 270, max: 620 };
   const PLAN_BOUNDS = { min: 310, max: 680 };
 
@@ -144,9 +145,20 @@
   });
 
   function persistPanelWidth(isPlan: boolean, width: number) {
-    try {
-      localStorage.setItem(isPlan ? STORAGE_KEY_PLAN_WIDTH : STORAGE_KEY_STANDARD_WIDTH, String(width));
-    } catch (_) {}
+    void storage
+      .setUiPreference(isPlan ? PREF_KEY_PLAN_WIDTH : PREF_KEY_STANDARD_WIDTH, width)
+      .catch(() => {});
+  }
+
+  function hydratePanelWidths() {
+    const savedStd = readClampedPanelWidth(PREF_KEY_STANDARD_WIDTH, STANDARD_BOUNDS.min, STANDARD_BOUNDS.max, storage);
+    if (savedStd !== null) {
+      standardPanelWidth = savedStd;
+    }
+    const savedPlan = readClampedPanelWidth(PREF_KEY_PLAN_WIDTH, PLAN_BOUNDS.min, PLAN_BOUNDS.max, storage);
+    if (savedPlan !== null) {
+      planPanelWidth = savedPlan;
+    }
   }
 
   $effect(() => {
@@ -179,7 +191,7 @@
     activeResizeSession?.cancel();
     const isPlan = activeTab === 'plan';
     const bounds = isPlan ? PLAN_BOUNDS : STANDARD_BOUNDS;
-    const storageKey = isPlan ? STORAGE_KEY_PLAN_WIDTH : STORAGE_KEY_STANDARD_WIDTH;
+    const preferenceKey = isPlan ? PREF_KEY_PLAN_WIDTH : PREF_KEY_STANDARD_WIDTH;
     isResizingPanel = true;
 
     activeResizeSession = startEdgeResizeSession({
@@ -189,7 +201,7 @@
       maxCap: bounds.max,
       viewportMaxRatio: 0.58,
       edge: 'left-edge',
-      storageKey,
+      preferenceKey,
       onResize: (nextWidth) => {
         if (isPlan) {
           planPanelWidth = nextWidth;
@@ -253,17 +265,22 @@
     await watchlistRegistry.updateActiveItems(newSymbols);
   }
 
+  let isPanelMounted = true;
+
   onMount(() => {
-    try {
-      const savedStd = parseInt(localStorage.getItem(STORAGE_KEY_STANDARD_WIDTH) || '', 10);
-      if (!isNaN(savedStd)) {
-        standardPanelWidth = clampPanelWidth(savedStd, STANDARD_BOUNDS.min, STANDARD_BOUNDS.max);
-      }
-      const savedPlan = parseInt(localStorage.getItem(STORAGE_KEY_PLAN_WIDTH) || '', 10);
-      if (!isNaN(savedPlan)) {
-        planPanelWidth = clampPanelWidth(savedPlan, PLAN_BOUNDS.min, PLAN_BOUNDS.max);
-      }
-    } catch (_) {}
+    isPanelMounted = true;
+    if (storage.isBootstrapped()) {
+      hydratePanelWidths();
+    } else {
+      void storage
+        .bootstrap()
+        .then(() => {
+          if (isPanelMounted && !isResizingPanel) {
+            hydratePanelWidths();
+          }
+        })
+        .catch(() => {});
+    }
 
     unsubRegistry = watchlistRegistry.subscribe(({ watchlists: list, activeId }) => {
       registryWatchlists = list;
@@ -284,6 +301,7 @@
   });
 
   onDestroy(() => {
+    isPanelMounted = false;
     activeResizeSession?.cancel();
     activeResizeSession = null;
     if (resizeDispatchTimer !== null) {

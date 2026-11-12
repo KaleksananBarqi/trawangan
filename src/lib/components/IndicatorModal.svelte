@@ -18,6 +18,10 @@
   } from '@lucide/svelte';
   import { INDICATOR_PRESETS, type IndicatorPreset } from '../data/indicatorPresets';
   import { loadScripts, deleteScript } from '../services/persistence';
+  import {
+    loadFavoriteIndicatorIds,
+    toggleFavoriteIndicatorId
+  } from '../services/persistence/uiPreferencesHelper';
   import type { PineScriptRecord } from '../types/market';
 
   interface Props {
@@ -57,25 +61,23 @@
     }
   }
 
-  function loadFavorites() {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        const raw = localStorage.getItem('trawangan_fav_indicators');
-        if (raw) favoriteIds = JSON.parse(raw);
-      } catch (_) {}
-    }
+  async function loadFavorites() {
+    try {
+      const loaded = await loadFavoriteIndicatorIds();
+      if (isOpen) {
+        favoriteIds = loaded;
+      }
+    } catch (_) {}
   }
 
   function toggleFavorite(e: MouseEvent, id: string) {
     e.stopPropagation();
-    if (favoriteIds.includes(id)) {
-      favoriteIds = favoriteIds.filter((item) => item !== id);
-    } else {
-      favoriteIds = [...favoriteIds, id];
-    }
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem('trawangan_fav_indicators', JSON.stringify(favoriteIds));
-    }
+    const optimistic = favoriteIds.includes(id)
+      ? favoriteIds.filter((item) => item !== id)
+      : [...favoriteIds, id];
+    const snapshot = favoriteIds;
+    favoriteIds = optimistic;
+    void toggleFavoriteIndicatorId(id, snapshot).catch(() => {});
   }
 
   async function handleDeleteScript(e: MouseEvent, script: PineScriptRecord) {

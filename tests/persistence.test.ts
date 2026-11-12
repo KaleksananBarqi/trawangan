@@ -814,5 +814,57 @@ describe('Deep Persistence Module Unit Tests', () => {
       }
     }
   });
+
+  test('Tiket #184: getUiPreferenceSync, setUiPreference, dan removeUiPreference menyinkronkan cache & adapter untuk UiPreferenceKey', async () => {
+    const uiKeys: import('../src/lib/services/persistence/types').UiPreferenceKey[] = [
+      'left_rail_collapsed',
+      'right_dock_state',
+      'pine_panel_width',
+      'right_panel_width',
+      'right_plan_width',
+      'drawings_last_used',
+      'drawings_favorites',
+      'drawings_fav_pos',
+      'fav_indicators',
+      'recent_searches',
+    ];
+    assert.strictEqual(uiKeys.length, 10);
+
+    // Pre-populate adapter sebelum bootstrap
+    await adapter.setPreference('pine_panel_width', JSON.stringify(520));
+    await adapter.setPreference(
+      'right_dock_state',
+      JSON.stringify({ isOpen: false, activeTab: null, lastOpenedTab: 'alerts' })
+    );
+
+    assert.strictEqual(service.getUiPreferenceSync<number>('pine_panel_width'), null);
+
+    await service.bootstrap();
+
+    assert.strictEqual(service.getUiPreferenceSync<number>('pine_panel_width'), 520);
+    assert.deepStrictEqual(
+      service.getUiPreferenceSync<{ isOpen: boolean; activeTab: string | null; lastOpenedTab: string }>('right_dock_state'),
+      { isOpen: false, activeTab: null, lastOpenedTab: 'alerts' }
+    );
+
+    // Mutasi via setUiPreference memperbarui cache sinkron & adapter
+    await service.setUiPreference('left_rail_collapsed', true);
+    assert.strictEqual(service.getUiPreferenceSync<boolean>('left_rail_collapsed'), true);
+    assert.strictEqual(await adapter.getPreference('left_rail_collapsed'), 'true');
+
+    await service.setUiPreference('recent_searches', ['BTCUSDT', 'ETHUSDT']);
+    assert.deepStrictEqual(service.getUiPreferenceSync<string[]>('recent_searches'), ['BTCUSDT', 'ETHUSDT']);
+
+    // Hapus via removeUiPreference membersihkan cache & adapter
+    await service.removeUiPreference('recent_searches');
+    assert.strictEqual(service.getUiPreferenceSync<string[]>('recent_searches'), null);
+    assert.strictEqual(await adapter.getPreference('recent_searches'), null);
+
+    // Nilai undefined harus ditolak fail-loud
+    await assert.rejects(
+      () => service.setUiPreference('fav_indicators', undefined as unknown as string[]),
+      /JSON/
+    );
+  });
 });
 

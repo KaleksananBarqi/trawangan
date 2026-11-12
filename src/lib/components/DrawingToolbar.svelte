@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import {
     MousePointer,
     Hand,
@@ -63,12 +64,15 @@
     getFavoritesBarPosition,
     saveFavoritesBarPosition,
     clampFavoritesBarPosition,
+    hydrateDrawingToolsFromPersistence,
+    subscribeDrawingToolsPreferences,
     STAMP_PRESETS,
     type StampPreset,
     type FavoritesBarPosition,
     type DrawingGroupId,
     type DrawingToolItem,
   } from '../services/drawingToolsService.js';
+  import { storage } from '../services/persistence';
 
   interface Props {
     activeTool: DrawingToolType | null;
@@ -148,6 +152,31 @@
   let isDraggingFavBar = $state(false);
   let dragStartPointer = { x: 0, y: 0 };
   let dragStartPos = { x: 0, y: 0 };
+
+  onMount(() => {
+    const unsub = subscribeDrawingToolsPreferences((prefs) => {
+      favoriteToolIds = [...prefs.favorites];
+      lastUsedPerGroup = { ...prefs.lastUsed };
+      if (!isDraggingFavBar) {
+        favBarPos = { ...prefs.favoritesBarPosition };
+      }
+    });
+
+    if (storage.isBootstrapped()) {
+      hydrateDrawingToolsFromPersistence();
+    } else {
+      void storage
+        .bootstrap()
+        .then(() => {
+          hydrateDrawingToolsFromPersistence();
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      unsub();
+    };
+  });
 
   function handleStartDragFavBar(e: PointerEvent) {
     // Hanya tangani tombol utama (klik kiri)
