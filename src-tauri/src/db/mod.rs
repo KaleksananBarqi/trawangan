@@ -824,4 +824,47 @@ mod tests {
             .unwrap();
         assert_eq!(orphan_count, 0);
     }
+
+    #[test]
+    fn test_app_preferences_crud_rejects_empty_sentinel_and_deletes_row() {
+        let conn = setup_v1_test_db();
+
+        // Sentinel string kosong "" maupun JSON rusak wajib ditolak
+        assert!(preferences::set_app_preference(&conn, "chart_default_config", "").is_err());
+        assert!(preferences::set_app_preference(&conn, "app_settings", "{broken").is_err());
+
+        preferences::set_app_preference(
+            &conn,
+            "app_settings",
+            r#"{"theme":"dark","autoSaveWorkspace":true}"#,
+        )
+        .unwrap();
+        preferences::set_app_preference(
+            &conn,
+            "chart_default_config",
+            r#"{"series":{"style":"candles"}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            preferences::get_app_preference(&conn, "app_settings").unwrap(),
+            Some(r#"{"theme":"dark","autoSaveWorkspace":true}"#.to_string())
+        );
+
+        // Hapus nyata via SQL DELETE
+        preferences::delete_app_preference(&conn, "chart_default_config").unwrap();
+        assert_eq!(
+            preferences::get_app_preference(&conn, "chart_default_config").unwrap(),
+            None
+        );
+
+        let row_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM app_preferences WHERE key = 'chart_default_config'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(row_count, 0);
+    }
 }

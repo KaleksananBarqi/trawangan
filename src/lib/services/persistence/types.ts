@@ -51,6 +51,11 @@ export interface PersistenceAdapter {
   saveScript(script: PineScriptRecord): Promise<void>;
   deleteScript(id: string): Promise<void>;
 
+  // Preferensi aplikasi & konfigurasi default chart (`app_preferences`)
+  getPreference(key: string): Promise<string | null>;
+  setPreference(key: string, valueJson: string): Promise<void>;
+  deletePreference(key: string): Promise<void>;
+
   // Slot tata letak & dokumen terstruktur (Workspaces, Alerts, Configs)
   loadLayoutSlot(id: string): Promise<string | null>;
   saveLayoutSlot(id: string, name: string, json: string): Promise<void>;

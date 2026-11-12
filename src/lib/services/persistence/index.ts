@@ -300,7 +300,7 @@ export class PersistenceService implements IPersistenceService {
   // ─── App Settings Persistence ───
 
   async loadSettings(): Promise<Partial<AppSettings> | null> {
-    const raw = await this.adapter.loadLayoutSlot('trawangan_app_settings');
+    const raw = await this.adapter.getPreference('app_settings');
     if (!raw) return null;
     try {
       return JSON.parse(raw);
@@ -311,14 +311,14 @@ export class PersistenceService implements IPersistenceService {
 
   async saveSettings(settings: Partial<AppSettings>): Promise<void> {
     const json = JSON.stringify(settings);
-    await this.adapter.saveLayoutSlot('trawangan_app_settings', 'User App Settings', json);
+    await this.adapter.setPreference('app_settings', json);
   }
 
   // ─── Chart Default Config Persistence ───
 
   async loadChartDefaultConfig(): Promise<any | null> {
     // 1. Coba baca dari adapter (SQLite / InMemory)
-    const raw = await this.adapter.loadLayoutSlot('trawangan_chart_default_config');
+    const raw = await this.adapter.getPreference('chart_default_config');
     if (raw) {
       try {
         return JSON.parse(raw);
@@ -326,7 +326,7 @@ export class PersistenceService implements IPersistenceService {
         console.warn('[PersistenceService] Gagal parsing JSON chart default config:', err);
       }
     }
-    // 2. Fallback instan ke localStorage browser jika ada
+    // 2. Fallback instan ke localStorage browser jika ada (dipertahankan hingga Tiket #172)
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         const local = window.localStorage.getItem('trawangan_chart_default_config');
@@ -339,8 +339,8 @@ export class PersistenceService implements IPersistenceService {
   async saveChartDefaultConfig(config: any): Promise<void> {
     const json = typeof config === 'string' ? config : JSON.stringify(config);
     // Simpan ke adapter (SQLite / InMemory)
-    await this.adapter.saveLayoutSlot('trawangan_chart_default_config', 'User Chart Default Config', json);
-    // Sinkronkan ke localStorage browser untuk fallback cepat
+    await this.adapter.setPreference('chart_default_config', json);
+    // Sinkronkan ke localStorage browser secara sementara hingga konsolidasi Tiket #172
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         window.localStorage.setItem('trawangan_chart_default_config', json);
@@ -349,7 +349,7 @@ export class PersistenceService implements IPersistenceService {
   }
 
   async clearChartDefaultConfig(): Promise<void> {
-    await this.adapter.saveLayoutSlot('trawangan_chart_default_config', 'User Chart Default Config', '');
+    await this.adapter.deletePreference('chart_default_config');
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         window.localStorage.removeItem('trawangan_chart_default_config');

@@ -4,7 +4,13 @@ use crate::db::{
     cache_candles, clear_drawings, delete_pine_script, delete_provider,
     drawings::clone_workspace_drawings as db_clone_workspace_drawings, get_cached_candles,
     get_drawings, get_pine_scripts, get_providers, get_watchlist, get_workspace,
-    list_drawing_keys as db_list_drawing_keys, save_drawings, save_pine_script, save_provider,
+    list_drawing_keys as db_list_drawing_keys,
+    preferences::{
+        delete_app_preference as db_delete_app_preference,
+        get_app_preference as db_get_app_preference,
+        set_app_preference as db_set_app_preference,
+    },
+    save_drawings, save_pine_script, save_provider,
     save_watchlist, save_workspace, set_active_provider,
     trading_plans::{
         clear_trading_plans as db_clear_trading_plans, delete_trading_plan as db_delete_trading_plan,
@@ -308,6 +314,34 @@ pub fn save_watchlist_registry(
 ) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     db_save_watchlist_registry(&conn, &registry_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_app_preference(
+    db: State<'_, DbState>,
+    key: String,
+) -> Result<Option<String>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_get_app_preference(&conn, &key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_app_preference(
+    db: State<'_, DbState>,
+    key: String,
+    value_json: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_set_app_preference(&conn, &key, &value_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_app_preference(
+    db: State<'_, DbState>,
+    key: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_delete_app_preference(&conn, &key).map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

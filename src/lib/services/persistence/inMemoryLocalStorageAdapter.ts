@@ -227,6 +227,23 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     this.removeItem('trawangan_trade_plan_vault');
   }
 
+  async getPreference(key: string): Promise<string | null> {
+    const val = this.getItem(`trawangan_pref_${key}`);
+    return val ?? null;
+  }
+
+  async setPreference(key: string, valueJson: string): Promise<void> {
+    if (!key.trim() || !valueJson.trim()) {
+      throw new Error('Kunci atau value JSON preferensi tidak boleh kosong');
+    }
+    JSON.parse(valueJson);
+    this.setItem(`trawangan_pref_${key.trim()}`, valueJson);
+  }
+
+  async deletePreference(key: string): Promise<void> {
+    this.removeItem(`trawangan_pref_${key.trim()}`);
+  }
+
   async loadWatchlist(): Promise<string[] | null> {
     const raw = this.getItem('trawangan_user_watchlist');
     if (!raw) return null;

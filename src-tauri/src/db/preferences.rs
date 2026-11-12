@@ -39,10 +39,19 @@ pub(crate) fn set_app_preference_with_timestamp(
     Ok(())
 }
 
-/// Simpan atau perbarui nilai JSON preferensi berdasarkan kunci
+/// Simpan atau perbarui nilai JSON preferensi berdasarkan kunci (fail-loud bila JSON atau key tidak valid)
 pub fn set_app_preference(conn: &Connection, key: &str, value_json: &str) -> Result<()> {
+    let clean_key = key.trim();
+    if clean_key.is_empty() {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "Kunci preferensi tidak boleh kosong".to_string(),
+        ));
+    }
+    serde_json::from_str::<serde_json::Value>(value_json).map_err(|e| {
+        rusqlite::Error::InvalidParameterName(format!("JSON preferensi tidak valid: {e}"))
+    })?;
     let now = chrono::Utc::now().timestamp_millis();
-    set_app_preference_with_timestamp(conn, key, value_json, now)
+    set_app_preference_with_timestamp(conn, clean_key, value_json, now)
 }
 
 /// Hapus baris preferensi secara nyata via SQL DELETE

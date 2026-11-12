@@ -390,5 +390,31 @@ describe('Deep Persistence Module Unit Tests', () => {
     await service.saveWatchlist(['binance:SOLUSDT']);
     assert.deepStrictEqual(await service.loadWatchlist(), ['binance:SOLUSDT']);
   });
+
+  test('Tiket #179: app_preferences menyimpan settings & chart default config dan menghapus lewat real DELETE (bukan sentinel "")', async () => {
+    let slotWrites = 0;
+    const origSaveSlot = adapter.saveLayoutSlot.bind(adapter);
+    adapter.saveLayoutSlot = async (id: string, name: string, json: string) => {
+      slotWrites += 1;
+      return origSaveSlot(id, name, json);
+    };
+
+    await service.saveSettings({ theme: 'light', autoSaveWorkspace: false });
+    assert.strictEqual((await service.loadSettings())?.theme, 'light');
+    assert.strictEqual(
+      await adapter.getPreference('app_settings'),
+      JSON.stringify({ theme: 'light', autoSaveWorkspace: false })
+    );
+
+    const cfg = { series: { style: 'candles' } };
+    await service.saveChartDefaultConfig(cfg);
+    assert.deepStrictEqual(await service.loadChartDefaultConfig(), cfg);
+    assert.ok(await adapter.getPreference('chart_default_config'));
+
+    await service.clearChartDefaultConfig();
+    assert.strictEqual(await adapter.getPreference('chart_default_config'), null);
+    assert.strictEqual(await service.loadChartDefaultConfig(), null);
+    assert.strictEqual(slotWrites, 0, 'Settings & chartDefaultConfig tidak boleh memakai workspaces layout slot');
+  });
 });
 
