@@ -2,10 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  ChartDrawingController,
-  resolveDrawingKey
-} from '../src/lib/services/chartDrawingController';
+import { ChartDrawingController } from '../src/lib/services/chartDrawingController';
+import { resolveDrawingKey } from '../src/lib/services/instrumentIdentity';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import { storage } from '../src/lib/services/persistence';

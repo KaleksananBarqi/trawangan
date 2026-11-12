@@ -2,10 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  resolveDrawingKey,
-  ChartDrawingController
-} from '../src/lib/services/chartDrawingController';
+import { ChartDrawingController } from '../src/lib/services/chartDrawingController';
+import { resolveDrawingKey } from '../src/lib/services/instrumentIdentity';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
 import { resolveAppSettings, DEFAULT_APP_SETTINGS } from '../src/lib/constants/defaults';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
@@ -231,5 +229,115 @@ test('Workspace Scoped Drawing, Theme Isolation & Grid Mode Seam Suite', async (
     // Periksa keberadaan file TypographyTab.svelte
     const typoPath = path.resolve(process.cwd(), 'src/lib/components/settings/TypographyTab.svelte');
     assert.ok(fs.existsSync(typoPath), 'TypographyTab.svelte harus ada di src/lib/components/settings/');
+  });
+
+  await t.test('7. Tiket #189: clearAll() pada workspace bernama & provider non-default menghapus dokumen scoped sehingga restoreDrawings() tetap kosong', async () => {
+    const memoryAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    storage.setAdapter(memoryAdapter);
+
+    const controller = new ChartDrawingController();
+    let drawingsStore: any[] = [];
+    const mockVelaChart = {
+      drawings: {
+        all: () => drawingsStore,
+        toJSON: () => ({ version: 1, drawings: [...drawingsStore] }),
+        fromJSON: (doc: any) => {
+          drawingsStore = doc?.drawings ? [...doc.drawings] : [];
+        },
+        removeMany: (ids: string[]) => {
+          drawingsStore = drawingsStore.filter((d) => !ids.includes(d.id));
+        },
+        clear: () => {
+          drawingsStore = [];
+        },
+      },
+    };
+
+    const mockWorkspace = {
+      active: { chart: mockVelaChart, symbol: 'BTCUSDT.P', timeframe: '1h' },
+      cells: () => [{ chart: mockVelaChart }],
+    };
+
+    controller.attachWorkspace(
+      mockWorkspace,
+      () => 'BTCUSDT.P',
+      () => '1h',
+      () => 'bitunix',
+      () => 'ws_clear_test'
+    );
+
+    // Simulasikan ada gambar tersimpan di GLOBAL maupun timeframe aktif pada scope workspace + provider non-default
+    drawingsStore.push({ id: 'bitunix_line_1', type: 'trendline' });
+    controller.handleDrawingMutated();
+    await storage.flushScopedDrawings({
+      workspaceId: 'ws_clear_test',
+      providerId: 'bitunix',
+      symbol: 'BTCUSDT.P',
+    });
+    await memoryAdapter.saveDrawings(
+      'ws_clear_test:bitunix:BTCUSDT.P',
+      '1h',
+      JSON.stringify({ version: 1, drawings: [{ id: 'bitunix_tf_1', type: 'hline' }] })
+    );
+
+    await controller.clearAll();
+    assert.equal(controller.getSnapshot().activeDrawings.length, 0);
+
+    // Pastikan restoreDrawings() setelah clearAll() tidak memunculkan kembali gambar lama
+    await controller.restoreDrawings('BTCUSDT.P', '1h', 'bitunix', 'ws_clear_test');
+    assert.equal(
+      controller.getSnapshot().activeDrawings.length,
+      0,
+      'Gambar yang telah dihapus via clearAll() tidak boleh muncul kembali saat restoreDrawings()'
+    );
+    assert.equal(drawingsStore.length, 0);
+  });
+
+  await t.test('8. Tiket #189: ChartDrawingController mendukung injeksi PersistenceService terisolasi dan bebas re-ekspor resolveDrawingKey', async () => {
+    const isolatedAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    const { PersistenceService } = await import('../src/lib/services/persistence');
+    const controllerModule = await import('../src/lib/services/chartDrawingController');
+
+    assert.equal('resolveDrawingKey' in controllerModule, false);
+    assert.equal('resolveDrawingStorageKey' in controllerModule, false);
+
+    const isolatedPersistence = new PersistenceService(isolatedAdapter);
+    const controller = new ChartDrawingController(isolatedPersistence);
+    let drawingsStore: any[] = [{ id: 'inj_1', type: 'hline' }];
+    const mockVelaChart = {
+      drawings: {
+        all: () => drawingsStore,
+        toJSON: () => ({ version: 1, drawings: [...drawingsStore] }),
+        fromJSON: (doc: any) => {
+          drawingsStore = doc?.drawings ? [...doc.drawings] : [];
+        },
+        removeMany: (ids: string[]) => {
+          drawingsStore = drawingsStore.filter((d) => !ids.includes(d.id));
+        },
+      },
+    };
+
+    controller.attachWorkspace(
+      { active: { chart: mockVelaChart, symbol: 'ETHUSDT', timeframe: '4h', providerId: 'bybit' } },
+      () => 'ETHUSDT',
+      () => '4h',
+      () => 'bybit',
+      () => 'ws_injected'
+    );
+
+    controller.handleDrawingMutated();
+    await isolatedPersistence.flushScopedDrawings();
+    const saved = await isolatedPersistence.loadScopedDrawings({
+      workspaceId: 'ws_injected',
+      providerId: 'bybit',
+      symbol: 'ETHUSDT',
+      timeframe: '4h',
+    });
+    assert.ok(saved);
+    assert.equal(saved.drawings[0].id, 'inj_1');
+
+    await controller.clearAll();
+    await controller.restoreDrawings('ETHUSDT', '4h', 'bybit', 'ws_injected');
+    assert.equal(drawingsStore.length, 0);
   });
 });

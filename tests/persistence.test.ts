@@ -1249,6 +1249,8 @@ describe('Deep Persistence Module Unit Tests', () => {
       () => failSvc.removeUiPreference('left_rail_collapsed'),
       () => failSvc.loadDrawings('BTCUSDT', 'GLOBAL'),
       () => failSvc.clearDrawings('BTCUSDT', 'GLOBAL'),
+      () => failSvc.loadScopedDrawings({ workspaceId: 'ws1', providerId: 'binance', symbol: 'BTCUSDT', timeframe: '15m' }),
+      () => failSvc.clearScopedDrawings({ workspaceId: 'ws1', providerId: 'binance', symbol: 'BTCUSDT', timeframe: '15m' }),
       () => failSvc.loadWatchlist(),
       () => failSvc.saveWatchlist(['BTCUSDT']),
       () => failSvc.loadWatchlistRegistry(),
@@ -1283,6 +1285,133 @@ describe('Deep Persistence Module Unit Tests', () => {
     for (const call of asyncCalls) {
       await assert.rejects(call, /Adapter IPC terputus/);
     }
+  });
+
+  test('Tiket #189: saveScopedDrawingsDebounced, flushScopedDrawings, loadScopedDrawings (6-tahap fallback tanpa duplikat), dan clearScopedDrawings', async () => {
+    const loadCalls: Array<{ symbol: string; timeframe: string }> = [];
+    const origLoad = adapter.loadDrawings.bind(adapter);
+    adapter.loadDrawings = async (symbol: string, timeframe: string) => {
+      loadCalls.push({ symbol, timeframe });
+      return origLoad(symbol, timeframe);
+    };
+
+    const scope = {
+      workspaceId: 'WS_Alpha',
+      providerId: 'Binance',
+      symbol: 'btcusdt',
+      timeframe: '15m',
+    };
+
+    // 1. Debounced save tanpa timeframe default ke GLOBAL + flushScopedDrawings menyimpan ke kunci kanonikal
+    const doc = { version: 1, drawings: [{ id: 'scoped_1', type: 'trendline' }] };
+    service.saveScopedDrawingsDebounced(
+      { workspaceId: 'WS_Alpha', providerId: 'Binance', symbol: 'btcusdt' },
+      doc,
+      5000
+    );
+    assert.strictEqual(await adapter.loadDrawings('ws_alpha:binance:BTCUSDT', 'GLOBAL'), null);
+
+    await service.flushScopedDrawings({ workspaceId: 'WS_Alpha', providerId: 'Binance', symbol: 'btcusdt' });
+    const persisted = await adapter.loadDrawings('ws_alpha:binance:BTCUSDT', 'GLOBAL');
+    assert.ok(persisted);
+    assert.deepStrictEqual(JSON.parse(persisted!), doc);
+
+    // Juga mendukung penyimpanan eksplisit pada timeframe spesifik bila diberikan
+    const tfDoc = { version: 1, drawings: [{ id: 'scoped_tf_1', type: 'hline' }] };
+    service.saveScopedDrawingsDebounced(
+      { workspaceId: 'WS_Alpha', providerId: 'Binance', symbol: 'ETHUSDT', timeframe: '4h' },
+      tfDoc,
+      5000
+    );
+    await service.flushScopedDrawings({
+      workspaceId: 'WS_Alpha',
+      providerId: 'Binance',
+      symbol: 'ETHUSDT',
+      timeframe: '4h',
+    });
+    assert.deepStrictEqual(
+      JSON.parse((await adapter.loadDrawings('ws_alpha:binance:ETHUSDT', '4h'))!),
+      tfDoc
+    );
+
+    // 2. loadScopedDrawings menemukan dokumen kanonikal pada tahap 1
+    loadCalls.length = 0;
+    const loadedCanonical = await service.loadScopedDrawings(scope);
+    assert.deepStrictEqual(loadedCanonical, doc);
+    assert.deepStrictEqual(loadCalls, [{ symbol: 'ws_alpha:binance:BTCUSDT', timeframe: 'GLOBAL' }]);
+
+    // 3. Waterfall 6 tahap untuk provider binance saat tahap sebelumnya kosong
+    await adapter.clearDrawings('ws_alpha:binance:BTCUSDT', 'GLOBAL');
+    loadCalls.length = 0;
+    const emptyRes = await service.loadScopedDrawings(scope);
+    assert.strictEqual(emptyRes, null);
+    assert.deepStrictEqual(loadCalls, [
+      { symbol: 'ws_alpha:binance:BTCUSDT', timeframe: 'GLOBAL' },
+      { symbol: 'ws_alpha:binance:BTCUSDT', timeframe: '15m' },
+      { symbol: 'binance:BTCUSDT', timeframe: 'GLOBAL' },
+      { symbol: 'binance:BTCUSDT', timeframe: '15m' },
+      { symbol: 'BTCUSDT', timeframe: 'GLOBAL' },
+      { symbol: 'BTCUSDT', timeframe: '15m' },
+    ]);
+
+    // 4. Tahap 6 (bare symbol + timeframe) berhasil dipulihkan untuk binance, namun TIDAK untuk bitunix
+    await adapter.saveDrawings('BTCUSDT', '15m', JSON.stringify({ drawings: [{ id: 'ancient_tf' }] }));
+    const loadedAncient = await service.loadScopedDrawings(scope);
+    assert.deepStrictEqual(loadedAncient, { drawings: [{ id: 'ancient_tf' }] });
+
+    loadCalls.length = 0;
+    const bitunixEmpty = await service.loadScopedDrawings({
+      workspaceId: 'WS_Alpha',
+      providerId: 'bitunix',
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+    });
+    assert.strictEqual(bitunixEmpty, null);
+    assert.deepStrictEqual(loadCalls, [
+      { symbol: 'ws_alpha:bitunix:BTCUSDT', timeframe: 'GLOBAL' },
+      { symbol: 'ws_alpha:bitunix:BTCUSDT', timeframe: '15m' },
+      { symbol: 'bitunix:BTCUSDT', timeframe: 'GLOBAL' },
+      { symbol: 'bitunix:BTCUSDT', timeframe: '15m' },
+    ]);
+
+    // 5. Deduplikasi kandidat saat timeframe GLOBAL atau workspaceId kosong
+    loadCalls.length = 0;
+    await service.loadScopedDrawings({ providerId: 'binance', symbol: 'ETHUSDT', timeframe: 'GLOBAL' });
+    assert.deepStrictEqual(loadCalls, [
+      { symbol: 'binance:ETHUSDT', timeframe: 'GLOBAL' },
+      { symbol: 'ETHUSDT', timeframe: 'GLOBAL' },
+    ]);
+
+    // 6. clearScopedDrawings membersihkan GLOBAL, timeframe aktif, dan membatalkan timer debounce tanpa menyentuh workspace lain
+    await adapter.saveDrawings('ws_alpha:bitunix:BTCUSDT.P', 'GLOBAL', JSON.stringify({ drawings: [{ id: 'g1' }] }));
+    await adapter.saveDrawings('ws_alpha:bitunix:BTCUSDT.P', '1h', JSON.stringify({ drawings: [{ id: 'tf1' }] }));
+    await adapter.saveDrawings('ws_beta:bitunix:BTCUSDT.P', 'GLOBAL', JSON.stringify({ drawings: [{ id: 'keep_other_ws' }] }));
+    service.saveScopedDrawingsDebounced(
+      { workspaceId: 'ws_alpha', providerId: 'bitunix', symbol: 'BTCUSDT.P' },
+      { drawings: [{ id: 'pending_should_cancel' }] },
+      100
+    );
+
+    await service.clearScopedDrawings({
+      workspaceId: 'WS_Alpha',
+      providerId: 'BITUNIX',
+      symbol: 'btcusdt.p',
+      timeframe: '1h',
+    });
+
+    assert.strictEqual(await adapter.loadDrawings('ws_alpha:bitunix:BTCUSDT.P', 'GLOBAL'), null);
+    assert.strictEqual(await adapter.loadDrawings('ws_alpha:bitunix:BTCUSDT.P', '1h'), null);
+    assert.ok(await adapter.loadDrawings('ws_beta:bitunix:BTCUSDT.P', 'GLOBAL'));
+
+    // Tunggu melampaui debounce timer 100ms untuk memastikan timer benar-benar dibatalkan
+    await new Promise((r) => setTimeout(r, 150));
+    assert.strictEqual(await adapter.loadDrawings('ws_alpha:bitunix:BTCUSDT.P', 'GLOBAL'), null);
+
+    // 7. Top-level singleton wrapper exports tersedia
+    assert.strictEqual(typeof persistenceModule.loadScopedDrawings, 'function');
+    assert.strictEqual(typeof persistenceModule.saveScopedDrawingsDebounced, 'function');
+    assert.strictEqual(typeof persistenceModule.flushScopedDrawings, 'function');
+    assert.strictEqual(typeof persistenceModule.clearScopedDrawings, 'function');
   });
 });
 

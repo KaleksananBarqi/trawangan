@@ -1,10 +1,7 @@
 // Unit & Seam Tests untuk Drawing Context Preservation, Event Suppression Guard, dan Atomic Persistence Flush
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  ChartDrawingController,
-  resolveDrawingKey,
-} from '../src/lib/services/chartDrawingController';
+import { ChartDrawingController } from '../src/lib/services/chartDrawingController';
 import { storage, flushDrawings } from '../src/lib/services/persistence';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 
