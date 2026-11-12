@@ -7,7 +7,7 @@ import type {
   SavedTradingPlanRecord,
   MultiWatchlistRegistry,
 } from '../../types/market';
-import type { IPersistenceService, PersistenceAdapter } from './types';
+import type { AppPreferenceKey, IPersistenceService, PersistenceAdapter } from './types';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 import { TauriSqliteAdapter } from './tauriSqliteAdapter';
 import { normalizeWorkspace, WORKSPACE_SCHEMA_VERSION } from './workspaceSchema';
@@ -29,6 +29,9 @@ export class PersistenceService implements IPersistenceService {
   private adapter: PersistenceAdapter;
   private debounceTimers = new Map<string, any>();
   private pendingDebounceData = new Map<string, { symbol: string; timeframe: string; doc: any }>();
+  private preferenceCache = new Map<string, string>();
+  private bootstrapped = false;
+  private bootstrapPromise: Promise<void> | null = null;
 
   constructor(customAdapter?: PersistenceAdapter) {
     if (customAdapter) {
@@ -45,6 +48,75 @@ export class PersistenceService implements IPersistenceService {
    */
   public setAdapter(adapter: PersistenceAdapter): void {
     this.adapter = adapter;
+    this.bootstrapped = false;
+    this.bootstrapPromise = null;
+    this.preferenceCache.clear();
+  }
+
+  // ─── Bootstrap & Cache Sinkron Preferensi ───
+
+  isBootstrapped(): boolean {
+    return this.bootstrapped;
+  }
+
+  /**
+   * Memuat seluruh entri preferensi secara paralel satu kali saat startup UI (idempoten).
+   */
+  async bootstrap(): Promise<void> {
+    if (this.bootstrapped) return;
+    if (this.bootstrapPromise) return this.bootstrapPromise;
+
+    const targetAdapter = this.adapter;
+    const run = (async () => {
+      const [preferences] = await Promise.all([targetAdapter.loadAllPreferences()]);
+      if (this.adapter !== targetAdapter) return;
+
+      this.preferenceCache.clear();
+      if (Array.isArray(preferences)) {
+        for (const entry of preferences) {
+          if (entry && typeof entry.key === 'string' && typeof entry.value_json === 'string') {
+            this.preferenceCache.set(entry.key, entry.value_json);
+          }
+        }
+      }
+      this.bootstrapped = true;
+    })();
+
+    this.bootstrapPromise = run;
+    try {
+      await run;
+    } finally {
+      if (this.bootstrapPromise === run) {
+        this.bootstrapPromise = null;
+      }
+    }
+  }
+
+  /**
+   * Membaca nilai JSON preferensi secara sinkron dari cache memori (mengembalikan null aman bila belum siap).
+   */
+  getPreferenceSync(key: AppPreferenceKey): string | null {
+    return this.preferenceCache.get(key) ?? null;
+  }
+
+  private async getAndSyncPreference(key: AppPreferenceKey): Promise<string | null> {
+    const raw = await this.adapter.getPreference(key);
+    if (raw !== null) {
+      this.preferenceCache.set(key, raw);
+    } else {
+      this.preferenceCache.delete(key);
+    }
+    return raw;
+  }
+
+  private async setAndSyncPreference(key: AppPreferenceKey, valueJson: string): Promise<void> {
+    await this.adapter.setPreference(key, valueJson);
+    this.preferenceCache.set(key, valueJson);
+  }
+
+  private async deleteAndSyncPreference(key: AppPreferenceKey): Promise<void> {
+    await this.adapter.deletePreference(key);
+    this.preferenceCache.delete(key);
   }
 
   // ─── Drawings Persistence (Debounced) ───
@@ -256,7 +328,7 @@ export class PersistenceService implements IPersistenceService {
   // ─── App Settings Persistence ───
 
   async loadSettings(): Promise<Partial<AppSettings> | null> {
-    const raw = await this.adapter.getPreference('app_settings');
+    const raw = await this.getAndSyncPreference('app_settings');
     if (!raw) return null;
     try {
       return JSON.parse(raw);
@@ -267,14 +339,14 @@ export class PersistenceService implements IPersistenceService {
 
   async saveSettings(settings: Partial<AppSettings>): Promise<void> {
     const json = JSON.stringify(settings);
-    await this.adapter.setPreference('app_settings', json);
+    await this.setAndSyncPreference('app_settings', json);
   }
 
   // ─── Chart Default Config Persistence ───
 
   async loadChartDefaultConfig(): Promise<any | null> {
     // 1. Coba baca dari adapter (SQLite / InMemory)
-    const raw = await this.adapter.getPreference('chart_default_config');
+    const raw = await this.getAndSyncPreference('chart_default_config');
     if (raw) {
       try {
         return JSON.parse(raw);
@@ -282,7 +354,7 @@ export class PersistenceService implements IPersistenceService {
         console.warn('[PersistenceService] Gagal parsing JSON chart default config:', err);
       }
     }
-    // 2. Fallback instan ke localStorage browser jika ada (dipertahankan hingga Tiket #172)
+    // 2. Fallback instan ke localStorage browser jika ada (dipertahankan hingga Tiket #182)
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         const local = window.localStorage.getItem('trawangan_chart_default_config');
@@ -294,9 +366,9 @@ export class PersistenceService implements IPersistenceService {
 
   async saveChartDefaultConfig(config: any): Promise<void> {
     const json = typeof config === 'string' ? config : JSON.stringify(config);
-    // Simpan ke adapter (SQLite / InMemory)
-    await this.adapter.setPreference('chart_default_config', json);
-    // Sinkronkan ke localStorage browser secara sementara hingga konsolidasi Tiket #172
+    // Simpan ke adapter (SQLite / InMemory) dan sinkronkan cache memori
+    await this.setAndSyncPreference('chart_default_config', json);
+    // Sinkronkan ke localStorage browser secara sementara hingga konsolidasi Tiket #182
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         window.localStorage.setItem('trawangan_chart_default_config', json);
@@ -305,7 +377,7 @@ export class PersistenceService implements IPersistenceService {
   }
 
   async clearChartDefaultConfig(): Promise<void> {
-    await this.adapter.deletePreference('chart_default_config');
+    await this.deleteAndSyncPreference('chart_default_config');
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         window.localStorage.removeItem('trawangan_chart_default_config');
@@ -426,6 +498,10 @@ export class PersistenceService implements IPersistenceService {
 export const storage = new PersistenceService();
 
 // Export fungsi pembantu langsung untuk kompatibilitas & leverage pemanggil
+export const bootstrapPersistence = () => storage.bootstrap();
+export const isPersistenceBootstrapped = () => storage.isBootstrapped();
+export const getPreferenceSync = (key: AppPreferenceKey) => storage.getPreferenceSync(key);
+
 export const loadDrawings = (sym: string, tf: string) => storage.loadDrawings(sym, tf);
 export const saveDrawingsDebounced = (sym: string, tf: string, doc: any) => storage.saveDrawingsDebounced(sym, tf, doc);
 export const flushDrawings = (sym?: string, tf?: string) => storage.flushDrawings(sym, tf);

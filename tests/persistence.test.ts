@@ -431,5 +431,100 @@ describe('Deep Persistence Module Unit Tests', () => {
     assert.strictEqual('loadLayoutSlot' in tauriAdapter, false);
     assert.strictEqual('saveLayoutSlot' in tauriAdapter, false);
   });
+
+  test('Tiket #181: loadAllPreferences pada adapter mengembalikan entri terurut key ASC (kosong, isi, hapus)', async () => {
+    const empty = await adapter.loadAllPreferences();
+    assert.deepStrictEqual(empty, []);
+
+    await adapter.setPreference('chart_default_config', JSON.stringify({ series: { style: 'candles' } }));
+    await adapter.setPreference('app_settings', JSON.stringify({ theme: 'dark' }));
+
+    const loaded = await adapter.loadAllPreferences();
+    assert.strictEqual(loaded.length, 2);
+    assert.strictEqual(loaded[0].key, 'app_settings');
+    assert.strictEqual(loaded[0].value_json, JSON.stringify({ theme: 'dark' }));
+    assert.strictEqual(typeof loaded[0].updated_at, 'number');
+    assert.ok(loaded[0].updated_at > 0);
+    assert.strictEqual(loaded[1].key, 'chart_default_config');
+    assert.strictEqual(loaded[1].value_json, JSON.stringify({ series: { style: 'candles' } }));
+
+    await adapter.deletePreference('chart_default_config');
+    const afterDelete = await adapter.loadAllPreferences();
+    assert.strictEqual(afterDelete.length, 1);
+    assert.strictEqual(afterDelete[0].key, 'app_settings');
+  });
+
+  test('Tiket #181: bootstrap() memuat preferensi ke cache in-memory, idempoten, dan aman sebelum bootstrap', async () => {
+    assert.strictEqual(service.isBootstrapped(), false);
+    assert.strictEqual(service.getPreferenceSync('app_settings'), null);
+    assert.strictEqual(service.getPreferenceSync('chart_default_config'), null);
+
+    const settingsJson = JSON.stringify({ timezone: 'Asia/Jakarta', autoSaveWorkspace: true });
+    const chartJson = JSON.stringify({ series: { style: 'candles' } });
+    await adapter.setPreference('app_settings', settingsJson);
+    await adapter.setPreference('chart_default_config', chartJson);
+
+    let loadAllCalls = 0;
+    const origLoadAll = adapter.loadAllPreferences.bind(adapter);
+    adapter.loadAllPreferences = async () => {
+      loadAllCalls += 1;
+      return origLoadAll();
+    };
+
+    // Panggilan paralel + berulang harus tetap memanggil loadAllPreferences sekali (idempoten)
+    await Promise.all([service.bootstrap(), service.bootstrap()]);
+    await service.bootstrap();
+
+    assert.strictEqual(loadAllCalls, 1);
+    assert.strictEqual(service.isBootstrapped(), true);
+    assert.strictEqual(service.getPreferenceSync('app_settings'), settingsJson);
+    assert.strictEqual(service.getPreferenceSync('chart_default_config'), chartJson);
+
+    // Penggantian adapter mereset status bootstrap & cache sinkron
+    const freshAdapter = new InMemoryLocalStorageAdapter();
+    service.setAdapter(freshAdapter);
+    assert.strictEqual(service.isBootstrapped(), false);
+    assert.strictEqual(service.getPreferenceSync('app_settings'), null);
+  });
+
+  test('Tiket #181: mutasi preferensi menyinkronkan cache sebelum/sesudah bootstrap dan retry aman saat gagal', async () => {
+    // Mutasi sebelum bootstrap tetap menyinkronkan cache tanpa crash
+    await service.saveSettings({ theme: 'light' });
+    assert.strictEqual(service.isBootstrapped(), false);
+    assert.strictEqual(service.getPreferenceSync('app_settings'), JSON.stringify({ theme: 'light' }));
+
+    await service.bootstrap();
+    assert.strictEqual(service.isBootstrapped(), true);
+
+    const chartCfg = { series: { style: 'bars' } };
+    await service.saveChartDefaultConfig(chartCfg);
+    assert.strictEqual(service.getPreferenceSync('chart_default_config'), JSON.stringify(chartCfg));
+
+    await service.clearChartDefaultConfig();
+    assert.strictEqual(service.getPreferenceSync('chart_default_config'), null);
+
+    // Kegagalan bootstrap pertama tidak menandai bootstrapped, sehingga retry berikutnya tetap berjalan
+    const flakyAdapter = new InMemoryLocalStorageAdapter();
+    await flakyAdapter.setPreference('app_settings', JSON.stringify({ soundEnabled: false }));
+    let attempts = 0;
+    const orig = flakyAdapter.loadAllPreferences.bind(flakyAdapter);
+    flakyAdapter.loadAllPreferences = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('IPC error sementara');
+      return orig();
+    };
+
+    const flakyService = new PersistenceService(flakyAdapter);
+    await assert.rejects(() => flakyService.bootstrap(), /IPC error sementara/);
+    assert.strictEqual(flakyService.isBootstrapped(), false);
+    assert.strictEqual(flakyService.getPreferenceSync('app_settings'), null);
+
+    await flakyService.bootstrap();
+    assert.strictEqual(flakyService.isBootstrapped(), true);
+    assert.strictEqual(
+      flakyService.getPreferenceSync('app_settings'),
+      JSON.stringify({ soundEnabled: false })
+    );
+  });
 });
 

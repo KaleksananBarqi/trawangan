@@ -15,6 +15,12 @@ export interface DrawingKeyEntry {
 
 export type AppPreferenceKey = 'app_settings' | 'chart_default_config';
 
+export interface AppPreferenceRecord {
+  key: string;
+  value_json: string;
+  updated_at: number;
+}
+
 /**
  * Adapter tingkat rendah di balik Seam penyimpanan.
  * Mengabstraksi apakah operasi disimpan ke SQLite via Tauri IPC atau In-Memory / LocalStorage.
@@ -57,6 +63,7 @@ export interface PersistenceAdapter {
   getPreference(key: AppPreferenceKey): Promise<string | null>;
   setPreference(key: AppPreferenceKey, valueJson: string): Promise<void>;
   deletePreference(key: AppPreferenceKey): Promise<void>;
+  loadAllPreferences(): Promise<AppPreferenceRecord[]>;
 }
 
 /**
@@ -64,6 +71,11 @@ export interface PersistenceAdapter {
  * Memberikan leverage tinggi bagi pemanggil (callers) tanpa kebocoran detail teknis.
  */
 export interface IPersistenceService {
+  // Bootstrap & Cache Sinkron Preferensi
+  bootstrap(): Promise<void>;
+  isBootstrapped(): boolean;
+  getPreferenceSync(key: AppPreferenceKey): string | null;
+
   // Drawings
   loadDrawings(symbol: string, timeframe: string): Promise<any | null>;
   saveDrawingsDebounced(symbol: string, timeframe: string, doc: any): void;
