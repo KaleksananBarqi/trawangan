@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 
 pub use candles::{cache_candles, get_cached_candles, Candle};
-pub use drawings::{clear_drawings, get_drawings, list_drawing_keys, save_drawings, DrawingKeyEntry};
+pub use drawings::{clear_drawings, get_drawings, save_drawings};
 pub use providers::{delete_provider, get_providers, save_provider, set_active_provider, ProviderConfig};
 pub use scripts::{delete_pine_script, get_pine_scripts, save_pine_script, PineScriptRecord};
 
@@ -522,19 +522,6 @@ mod tests {
         clear_drawings(&conn, "BTCUSDT", "15m").unwrap();
         let loaded_after = get_drawings(&conn, "BTCUSDT", "15m").unwrap();
         assert_eq!(loaded_after, None);
-    }
-
-    #[test]
-    fn test_list_drawing_keys() {
-        let conn = setup_v1_test_db();
-        save_drawings(&conn, "default_workspace:binance:BTCUSDT", "GLOBAL", "{}").unwrap();
-        save_drawings(&conn, "default_workspace:indodax:BTCIDR", "GLOBAL", "{}").unwrap();
-        save_drawings(&conn, "defaultXworkspace:binance:ETHUSDT", "GLOBAL", "{}").unwrap();
-
-        let keys = list_drawing_keys(&conn, "default_workspace:").unwrap();
-        assert_eq!(keys.len(), 2);
-        assert!(keys.iter().any(|k| k.symbol == "default_workspace:binance:BTCUSDT" && k.timeframe == "GLOBAL"));
-        assert!(keys.iter().any(|k| k.symbol == "default_workspace:indodax:BTCIDR" && k.timeframe == "GLOBAL"));
     }
 
     #[test]

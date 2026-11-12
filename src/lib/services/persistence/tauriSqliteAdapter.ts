@@ -1,5 +1,5 @@
 // Adapter Native SQLite via Tauri IPC Command
-import type { AppPreferenceKey, AppPreferenceRecord, DrawingKeyEntry, PersistenceAdapter } from './types';
+import type { AppPreferenceKey, AppPreferenceRecord, PersistenceAdapter } from './types';
 import type {
   MultiWatchlistRegistry,
   PineScriptRecord,
@@ -55,32 +55,6 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
       console.warn(`[TauriSqliteAdapter] Gagal clear drawings ${symbol}:${timeframe}:`, err);
     }
     await this.fallbackAdapter.clearDrawings(symbol, timeframe);
-  }
-
-  async listDrawingKeys(prefix: string): Promise<DrawingKeyEntry[]> {
-    const merged = new Map<string, DrawingKeyEntry>();
-    try {
-      const invoke = await this.getInvoke();
-      const sqliteKeys = await invoke<DrawingKeyEntry[]>('list_drawing_keys', { prefix });
-      if (Array.isArray(sqliteKeys)) {
-        for (const item of sqliteKeys) {
-          if (item?.symbol && item?.timeframe) {
-            merged.set(`${item.symbol}::${item.timeframe}`, item);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn(`[TauriSqliteAdapter] Gagal listDrawingKeys "${prefix}" dari SQLite:`, err);
-    }
-    try {
-      const fallbackKeys = await this.fallbackAdapter.listDrawingKeys(prefix);
-      for (const item of fallbackKeys) {
-        if (item?.symbol && item?.timeframe) {
-          merged.set(`${item.symbol}::${item.timeframe}`, item);
-        }
-      }
-    } catch (_) {}
-    return Array.from(merged.values());
   }
 
   async loadWatchlist(): Promise<string[] | null> {

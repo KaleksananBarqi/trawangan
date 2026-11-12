@@ -9,11 +9,6 @@ import type {
   ProviderConfig,
 } from '../../types/market';
 
-export interface DrawingKeyEntry {
-  symbol: string;
-  timeframe: string;
-}
-
 export type UiPreferenceKey =
   | 'left_rail_collapsed'
   | 'right_dock_state'
@@ -47,7 +42,6 @@ export interface PersistenceAdapter {
   loadDrawings(symbol: string, timeframe: string): Promise<string | null>;
   saveDrawings(symbol: string, timeframe: string, dataJson: string): Promise<void>;
   clearDrawings(symbol: string, timeframe: string): Promise<void>;
-  listDrawingKeys?(prefix: string): Promise<DrawingKeyEntry[]>;
   cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number>;
 
   // Workspaces (Workspace State v2)
