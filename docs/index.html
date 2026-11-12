@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>trawangan: Terminal Charting Desktop Multi-Aset Zero Paywall | v0.44.0</title>
+  <title>trawangan: Terminal Charting Desktop Multi-Aset Zero Paywall | v0.45.0</title>
 
-  <meta name="description" content="trawangan v0.44.0 adalah terminal charting desktop native (Tauri v2 & Rust Core) untuk analisis teknikal kripto, saham IDX, emas COMEX, dan indeks AS dengan WebGL2 120 FPS, Pine Script v6 lokal, Draw by Holding, dan Tab Plan persisten tanpa paywall.">
-  <meta name="keywords" content="trawangan, desktop charting terminal, tradingview alternative open source, zero paywall charting, pine script v6 lokal, webgl2 120 fps chart, tauri v2 rust, indodax idr chart, saham idx yahoo finance, emas comex gc=f, draw by holding, workspace state v2, warta abang">
+  <meta name="description" content="trawangan v0.45.0 adalah terminal charting desktop native (Tauri v2 & Rust Core) untuk analisis teknikal kripto, indeks makro (TOTAL, BTC.D), saham IDX, emas COMEX, dan indeks AS dengan WebGL2 120 FPS, Pine Script v6 lokal, Draw by Holding, dan Tab Plan persisten tanpa paywall.">
+  <meta name="keywords" content="trawangan, desktop charting terminal, tradingview alternative open source, zero paywall charting, pine script v6 lokal, webgl2 120 fps chart, tauri v2 rust, indodax idr chart, crypto macro index, total market cap, total2, total3, btc.d, saham idx yahoo finance, emas comex gc=f, draw by holding, workspace state v2, warta abang">
   <meta name="author" content="KaleksananBarqi">
   <meta name="robots" content="index, follow">
   <meta name="google-site-verification" content="AOGVrfLMEQHjo8VKuWqvE9YXR1gBgiHPTX-n1B7L-8k">
@@ -14,15 +14,15 @@
 
   <!-- OpenGraph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="trawangan v0.44.0: Terminal Charting Desktop Multi-Aset Zero Paywall">
-  <meta property="og:description" content="Charting native WebGL2 120 FPS untuk kripto, saham IDX, komoditas COMEX, dan indeks AS. Pine Script v6 lokal, Tab Plan Markdown 2-arah, dan 37 preset tema resmi di bawah lisensi MIT.">
+  <meta property="og:title" content="trawangan v0.45.0: Terminal Charting Desktop Multi-Aset Zero Paywall">
+  <meta property="og:description" content="Charting native WebGL2 120 FPS untuk kripto, indeks makro (TOTAL, TOTAL2, TOTAL3, BTC.D), saham IDX, komoditas COMEX, dan indeks AS. Pine Script v6 lokal, Tab Plan Markdown 2-arah, dan 37 preset tema resmi di bawah lisensi MIT.">
   <meta property="og:image" content="https://kaleksananbarqi.github.io/trawangan/assets/banner.png">
   <meta property="og:url" content="https://kaleksananbarqi.github.io/trawangan/">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="trawangan v0.44.0: Zero-Paywall Multi-Asset Charting Terminal">
-  <meta name="twitter:description" content="Terminal desktop native Tauri v2 (~45 MB RAM) untuk kripto, saham IDX, emas COMEX, Pine Script v6 Web Worker, dan penyimpanan SQLite 100% offline.">
+  <meta name="twitter:title" content="trawangan v0.45.0: Zero-Paywall Multi-Asset Charting Terminal">
+  <meta name="twitter:description" content="Terminal desktop native Tauri v2 (~45 MB RAM) untuk kripto, makro kripto (TOTAL/BTC.D), saham IDX, emas COMEX, Pine Script v6 Web Worker, dan SQLite offline.">
   <meta name="twitter:image" content="https://kaleksananbarqi.github.io/trawangan/assets/banner.png">
 
   <!-- Schema.org SoftwareApplication -->
@@ -33,14 +33,14 @@
     "name": "trawangan",
     "operatingSystem": "Windows 10, Windows 11, macOS 12+, Linux (Ubuntu, Debian, Fedora, Arch)",
     "applicationCategory": "FinanceApplication",
-    "softwareVersion": "0.44.0",
+    "softwareVersion": "0.45.0",
     "license": "https://opensource.org/licenses/MIT",
     "offers": {
       "@type": "Offer",
       "price": "0",
       "priceCurrency": "USD"
     },
-    "description": "Terminal charting desktop native Tauri v2 dan Rust Core berbasis Pure Charting Scope untuk kripto multi-bursa (Binance, Indodax IDR, Bitunix, Hyperliquid, Coinbase, Custom Node) serta data Yahoo Finance gratis (IDX, COMEX, US Indices), WebGL2 120 FPS, Pine Script v6 lokal, dan SQLite offline.",
+    "description": "Terminal charting desktop native Tauri v2 dan Rust Core berbasis Pure Charting Scope untuk kripto multi-bursa (Binance, Indodax IDR, Bitunix, Hyperliquid, Coinbase, Custom Node), Crypto Macro Index lokal (TOTAL, TOTAL2, TOTAL3, OTHERS, BTC.D, ETH.D, USDT.D), Yahoo Finance gratis (IDX, COMEX, US Indices), WebGL2 120 FPS, Pine Script v6 lokal, dan SQLite offline.",
     "url": "https://kaleksananbarqi.github.io/trawangan/",
     "image": "https://kaleksananbarqi.github.io/trawangan/assets/banner.png",
     "author": {
@@ -51,6 +51,7 @@
       "Zero Paywall Selamanya di bawah Lisensi MIT Terbuka",
       "Pure Charting Scope tanpa eksekusi order maupun koneksi dompet",
       "Akselerasi GPU LuxAlgo Vela WebGL2 120 FPS",
+      "Crypto Macro Index Lokal Tanpa API Key (TOTAL, TOTAL2, TOTAL3, OTHERS, BTC.D, ETH.D, USDT.D) dengan Isolasi Beban Latar Nol",
       "Multi-Aset Kripto dan Yahoo Finance Gratis (Saham IDX *.JK, COMEX GC=F, Indeks AS ^IXIC) dengan label DELAYED 15M",
       "Deep Stream Health Guard dengan watchdog 30 detik dan verifikasi tail candle REST",
       "Tombol Quick Watchlist Bintang 1-Klik di Header",
@@ -116,7 +117,15 @@
         "name": "Apakah gambar teknikal, daftar pantau, dan rencana trading disimpan privat?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Seluruh workspace v2, gambar teknikal per sel, daftar pantau, skrip Pine, preset tema, dan riwayat rencana perdagangan disimpan 100% secara lokal di basis data SQLite (rusqlite) pada perangkat pengguna, tanpa akun cloud, tanpa pelacak, dan tanpa ekstensi jembatan browser eksternal."
+          "text": "Seluruh workspace v2, gambar teknikal per sel, daftar pantau, skrip Pine, preset tema, arsip rencana perdagangan, dan cache candle lokal disimpan secara lokal di basis data SQLite (rusqlite) pada perangkat pengguna, tanpa akun cloud, tanpa pelacak, dan tanpa ekstensi jembatan browser eksternal."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Bagaimana trawangan menyediakan indeks TOTAL, TOTAL2, TOTAL3, OTHERS, dan BTC.D tanpa API berbayar?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Melalui feeder basket sintetis lokal (macro) tanpa API key maupun server middleware. trawangan menyusun indeks dari daftar Top-30 aset kripto non-wrapped dan kalibrasi global CoinGecko (cache min. 15 menit), riwayat suplai stablecoin harian DefiLlama, serta candle OHLC komponen dari Binance Spot dengan failover ke Coinbase Exchange. Seluruh indeks memakai penanda transparan SYNTHETIC (~1Y) dan mematuhi Beban Latar Nol: feeder hanya aktif saat grafik indeks dibuka."
         }
       }
     ]
@@ -169,7 +178,7 @@
           </svg>
           <span>GitHub</span>
         </a>
-        <a href="#download" class="btn-header-cta" id="header-download-btn">Unduh<span class="header-cta-ver">v0.44.0</span></a>
+        <a href="#download" class="btn-header-cta" id="header-download-btn">Unduh<span class="header-cta-ver">v0.45.0</span></a>
       </div>
     </div>
   </header>
@@ -184,13 +193,13 @@
             <span class="highlight-text">Manipulasi Pasar.</span>
           </h1>
           <p class="hero-subtitle">
-            Terminal charting desktop native berbasis <strong>Tauri v2 dan Rust Core</strong>. Amati kripto global, rupiah Indodax, saham IDX, emas COMEX, hingga indeks AS lewat kanvas <strong>WebGL2 120 FPS</strong>, <strong>Pine Script v6</strong> lokal, dan Tab Plan persisten dengan penyimpanan SQLite offline penuh tanpa paywall.
+            Terminal charting desktop native berbasis <strong>Tauri v2 dan Rust Core</strong>. Amati kripto global, indeks makro kripto (<code>TOTAL</code>, <code>BTC.D</code>), rupiah Indodax, saham IDX, emas COMEX, hingga indeks AS lewat kanvas <strong>WebGL2 120 FPS</strong>, <strong>Pine Script v6</strong> lokal, dan Tab Plan persisten di SQLite offline tanpa paywall.
           </p>
         </div>
 
         <div class="hero-action-column">
           <p class="hero-release-meta">
-            <strong>v0.44.0</strong>
+            <strong>v0.45.0</strong>
             <span>·</span>
             <span>Lisensi MIT</span>
             <span>·</span>
@@ -218,12 +227,12 @@
         </div>
       </div>
 
-      <!-- Tangkapan Layar Nyata Aplikasi v0.44.0 (1920x1036, tanpa fake traffic dots) -->
+      <!-- Tangkapan Layar Nyata Aplikasi v0.45.0 (1920x1036, tanpa fake traffic dots) -->
       <figure class="hero-visual-frame">
         <div class="visual-canvas">
           <img
             src="assets/screenshots/main.png"
-            alt="Antarmuka desktop terminal charting trawangan v0.44.0 menampilkan grafik ETHUSDT.P Bitunix dengan lilin Putih Bull dan Hot Pink Bear, bar header bintang watchlist, dock kiri, rail kanan, dan bilah status telemetri"
+            alt="Antarmuka desktop terminal charting trawangan v0.45.0 menampilkan grafik ETHUSDT.P Bitunix dengan lilin Putih Bull dan Hot Pink Bear, bar header bintang watchlist, dock kiri, rail kanan, dan bilah status telemetri"
             class="hero-image"
             width="1920"
             height="1036"
@@ -233,7 +242,7 @@
         </div>
         <figcaption class="capture-meta-bar">
           <span class="capture-instrument">ETHUSDT.P · BITUNIX · 1D</span>
-          <span>Tangkapan layar asli desktop trawangan v0.44.0 (1920x1036)</span>
+          <span>Tangkapan layar asli desktop trawangan v0.45.0 (1920x1036)</span>
           <span class="capture-telemetry">Signature · 62 FPS · RAM 45.0MB</span>
         </figcaption>
       </figure>
@@ -266,9 +275,9 @@
           <span class="spec-note">Form, Markdown 2-arah &amp; Dual-Entry lokal</span>
         </div>
         <div class="spec-cell">
-          <span class="spec-value mono-nums">6+ Feed</span>
-          <span class="spec-label">Kripto, IDX &amp; COMEX</span>
-          <span class="spec-note">Binance, Indodax IDR, Yahoo Finance &amp; Node</span>
+          <span class="spec-value mono-nums">7+ Feed</span>
+          <span class="spec-label">Kripto, Makro, IDX &amp; COMEX</span>
+          <span class="spec-note">Binance, Indodax IDR, Yahoo, Makro &amp; Node</span>
         </div>
       </div>
     </section>
@@ -308,7 +317,7 @@
           <div class="scope-group">
             <h4 class="scope-group-title">Cakupan Resmi Terminal</h4>
             <ul class="scope-list">
-              <li>Visualisasi harga WebGL2 120 FPS lintas kripto, saham IDX, emas COMEX, dan indeks AS.</li>
+              <li>Visualisasi harga WebGL2 120 FPS lintas kripto, indeks makro (TOTAL, BTC.D), saham IDX, emas COMEX, dan indeks AS.</li>
               <li>Anotasi geometris via gestur <em>Draw by Holding</em>, sub-pane drawing, dan duplikasi adaptif.</li>
               <li>Simulasi R-multiple dan manajemen tesis lewat Tab Persisten <code>Plan</code> &amp; ekspor PNG hingga 6x.</li>
               <li>Kompilasi dan pengujian indikator Pine Script v6 lokal di dalam Web Worker terisolasi.</li>
@@ -336,7 +345,7 @@
             <h2 class="section-title" id="komparasi-heading">Mengapa Membayar Sewa untuk Fitur Dasar?</h2>
           </div>
           <p class="split-header-aside">
-            Perbandingan langsung antara kapabilitas desktop native trawangan v0.44.0 dengan batasan gratis pada layanan charting berbasis cloud komersial.
+            Perbandingan langsung antara kapabilitas desktop native trawangan v0.45.0 dengan batasan gratis pada layanan charting berbasis cloud komersial.
           </p>
         </div>
 
@@ -349,7 +358,7 @@
                 <th scope="col" class="col-trawangan">
                   <div class="trawangan-header">
                     <img src="assets/logo-icon.svg" alt="" width="20" height="20" aria-hidden="true">
-                    <span>trawangan v0.44 (Desktop)</span>
+                    <span>trawangan v0.45 (Desktop)</span>
                   </div>
                 </th>
                 <th scope="col" class="col-competitor">Platform Komersial Gratis (Tier Dasar)</th>
@@ -361,7 +370,7 @@
                   <strong>Indikator Simultan per Kanvas</strong>
                   <span>Pemasangan Pine Script &amp; indikator bawaan</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
+                <td class="status-trawangan" data-label="trawangan v0.45">
                   <span class="val-accent">Tanpa batas kuota</span> di satu layar
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
@@ -373,7 +382,7 @@
                   <strong>Multi-Chart Grid &amp; Workspace State v2</strong>
                   <span>Grid 1, 2, 2H, 4 sel dengan simbol &amp; gambar terisolasi</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
+                <td class="status-trawangan" data-label="trawangan v0.45">
                   <span class="val-accent">Penuh 1-4 Sel Sync</span> + Kloning Save As
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
@@ -382,11 +391,11 @@
               </tr>
               <tr>
                 <th scope="row" class="feature-name">
-                  <strong>Cakupan Multi-Aset Gratis</strong>
-                  <span>Kripto Spot/Perp + Saham IDX, Emas COMEX &amp; Indeks AS</span>
+                  <strong>Cakupan Multi-Aset &amp; Makro Gratis</strong>
+                  <span>Kripto Spot/Perp, Makro Kripto (TOTAL 1-3, BTC.D), Saham IDX, Emas COMEX &amp; Indeks AS</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
-                  <span class="val-accent">Binance, Indodax IDR, Bitunix, Hyperliquid, Coinbase, Yahoo</span> + Node Kustom
+                <td class="status-trawangan" data-label="trawangan v0.45">
+                  <span class="val-accent">Binance, Indodax IDR, Bitunix, Hyperliquid, Coinbase, Yahoo, Makro Sintetis</span> + Node Kustom
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
                   Bursa tertentu atau data tambahan butuh langganan
@@ -397,7 +406,7 @@
                   <strong>Manajemen Trade Plan &amp; Dual-Entry</strong>
                   <span>Parsing rencana teks/Markdown menjadi proyeksi posisi</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
+                <td class="status-trawangan" data-label="trawangan v0.45">
                   <span class="val-accent">Tab Plan Persisten (Form / Markdown / Vault)</span> &lt; 5ms
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
@@ -409,7 +418,7 @@
                   <strong>Gesture Inking Engine</strong>
                   <span>Coretan cepat langsung menjadi objek teknikal</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
+                <td class="status-trawangan" data-label="trawangan v0.45">
                   <span class="val-accent">Draw by Holding (Shift+D / ~)</span> &amp; Scribble Erase
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
@@ -421,7 +430,7 @@
                   <strong>Side-by-Side Snapshot Ultra HD</strong>
                   <span>Ekspor setup dengan ringkasan analisis terpisah</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
+                <td class="status-trawangan" data-label="trawangan v0.45">
                   <span class="val-accent">Resolusi 2x hingga 6x</span> + Dedicated Thesis Side Panel
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
@@ -433,7 +442,7 @@
                   <strong>Eksekusi Skrip Pine Script v6</strong>
                   <span>Menulis &amp; menjalankan indikator kustom lokal</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
+                <td class="status-trawangan" data-label="trawangan v0.45">
                   <span class="val-accent">CodeMirror 6 Side-by-Side</span> (Web Worker PineTS lokal)
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
@@ -445,7 +454,7 @@
                   <strong>Sistem Tema &amp; Kontras Aksesibel</strong>
                   <span>Tema aplikasi terpisah dari tema kanvas grafik</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
+                <td class="status-trawangan" data-label="trawangan v0.45">
                   <span class="val-accent">37 Preset Resmi (31 Budaya Jawa + Warta Abang)</span> &amp; Save As 9D
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
@@ -457,8 +466,8 @@
                   <strong>Background Alert &amp; Ketahanan Stream</strong>
                   <span>Pemantauan lintas simbol di latar dan koneksi ulang otomatis</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
-                  <span class="val-accent">Deep Stream Guard (Watchdog 30d)</span> + Audio Chime
+                <td class="status-trawangan" data-label="trawangan v0.45">
+                  <span class="val-accent">Deep Stream Guard (Watchdog 30 detik)</span> + Audio Chime
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
                   Kuota alert server terbatas (sering dibatasi maks. 5)
@@ -469,7 +478,7 @@
                   <strong>Kedaulatan Data &amp; Konsumsi RAM</strong>
                   <span>Penyimpanan gambar, profil &amp; beban memori harian</span>
                 </th>
-                <td class="status-trawangan" data-label="trawangan v0.44">
+                <td class="status-trawangan" data-label="trawangan v0.45">
                   <span class="val-accent">100% SQLite Offline · ~30-50 MB RAM</span> (Tanpa iklan)
                 </td>
                 <td class="status-competitor" data-label="Platform Komersial Gratis">
@@ -481,7 +490,7 @@
                   <strong>Biaya Penggunaan</strong>
                   <span>Skema lisensi perangkat lunak jangka panjang</span>
                 </th>
-                <td class="status-trawangan price-free" data-label="trawangan v0.44">
+                <td class="status-trawangan price-free" data-label="trawangan v0.45">
                   <strong>Rp 0 / Selamanya</strong>
                   <small>Open Source MIT License</small>
                 </td>
@@ -500,7 +509,7 @@
     <section class="section" id="fitur" aria-labelledby="fitur-heading">
       <div class="container">
         <div class="section-heading">
-          <span class="section-kicker">Kapabilitas Terminal v0.44.0</span>
+          <span class="section-kicker">Kapabilitas Terminal v0.45.0</span>
           <h2 class="section-title" id="fitur-heading">Direkayasa untuk Kecepatan Riset Harian</h2>
           <p class="section-subtitle">
             Setiap subsistem dibangun di atas inti Rust dan kanvas WebGL2 agar perpindahan instrumen, anotasi multi-sel, hingga penyusunan Trade Plan berlangsung tanpa jeda.
@@ -513,7 +522,7 @@
             <div>
               <div class="module-meta">
                 <span class="module-index">01 · Alur Kerja Trade Plan</span>
-                <span class="module-release-tag">v0.42 - v0.44</span>
+                <span class="module-release-tag">v0.42 - v0.45</span>
               </div>
               <h3 class="module-title">Tab Persisten Plan Panel Kanan, Dual-Entry &amp; Snapshot 6x</h3>
               <p class="module-desc">
@@ -543,12 +552,12 @@
           <article class="flagship-module">
             <div>
               <div class="module-meta">
-                <span class="module-index">02 · Multi-Aset &amp; Telemetri</span>
-                <span class="module-release-tag">v0.40 - v0.44</span>
+                <span class="module-index">02 · Multi-Aset, Makro &amp; Telemetri</span>
+                <span class="module-release-tag">v0.40 - v0.45</span>
               </div>
-              <h3 class="module-title">Feed Kripto, Saham IDX, Emas COMEX &amp; Deep Stream Guard</h3>
+              <h3 class="module-title">Feed Kripto, Crypto Macro Index, Saham IDX &amp; Emas COMEX</h3>
               <p class="module-desc">
-                Hubungkan data real-time dari Binance, Indodax IDR (format Rupiah), Bitunix, Hyperliquid, Coinbase, dan Custom REST/WS Nodes bersamaan dengan data gratis Yahoo Finance untuk saham Indonesia (<code>BBCA.JK</code>), emas/perak COMEX (<code>GC=F</code>, <code>SI=F</code>), dan indeks AS (<code>^IXIC</code>). Dilengkapi tombol Bintang Watchlist 1-klik di Header serta watchdog stream 30 detik.
+                Hubungkan data real-time dari Binance, Indodax IDR, Bitunix, Hyperliquid, Coinbase, dan Custom REST/WS Nodes bersamaan dengan data gratis Yahoo Finance untuk saham IDX (<code>BBCA.JK</code>), emas/perak COMEX (<code>GC=F</code>, <code>SI=F</code>), dan indeks AS (<code>^IXIC</code>). Mulai v0.45.0, pantau indeks makro <code>TOTAL</code>, <code>TOTAL2</code>, <code>TOTAL3</code>, <code>OTHERS</code>, <code>BTC.D</code>, <code>ETH.D</code>, dan <code>USDT.D</code> via basket sintetis lokal dengan isolasi beban latar nol serta watchdog 30 detik.
               </p>
             </div>
             <div class="module-specs-list" aria-label="Spesifikasi modul data multi-aset">
@@ -557,16 +566,16 @@
                 <strong>5 Bursa + Custom REST/WS</strong>
               </div>
               <div class="module-spec-row">
+                <span>Makro kripto (<code>macro</code>)</span>
+                <strong>TOTAL 1-3, OTHERS, BTC/ETH/USDT.D</strong>
+              </div>
+              <div class="module-spec-row">
                 <span>Saham &amp; komoditas</span>
-                <strong>IDX .JK | COMEX =F | US Index</strong>
+                <strong>IDX .JK | COMEX =F | DELAYED 15M</strong>
               </div>
               <div class="module-spec-row">
-                <span>Transparansi delay</span>
-                <strong>DELAYED 15M + Client 2H/4H</strong>
-              </div>
-              <div class="module-spec-row">
-                <span>Pemulihan koneksi</span>
-                <strong>Watchdog 30d + REST Tail</strong>
+                <span>Pemulihan &amp; isolasi</span>
+                <strong>Watchdog 30 detik + Beban Latar Nol</strong>
               </div>
             </div>
           </article>
@@ -610,7 +619,7 @@
           <div class="arch-item">
             <h3 class="arch-item-title">Background Price Alerts &amp; Jam Bursa Dunia</h3>
             <p class="arch-item-desc">
-              Evaluasi alert harga multi-aset tetap berjalan di latar meskipun instrumen sedang tidak terbuka, dipadukan nada kristal Audio Chime sintetis serta pemantau sesi pasar Tokyo, London, New York, dan WIB pada bilah bawah.
+              Evaluasi alert harga instrumen bursa tetap berjalan di latar meskipun grafiknya sedang tidak terbuka, dipadukan nada kristal Audio Chime sintetis serta pemantau sesi pasar Tokyo, London, New York, dan WIB di bilah bawah. Khusus indeks makro sintetis, pembaruan hanya aktif saat grafiknya dibuka agar bebas beban latar.
             </p>
           </div>
           <div class="arch-item">
@@ -634,7 +643,7 @@
       <div class="container">
         <div class="section-heading">
           <span class="section-kicker">Tampilan Nyata Desktop (1920x1036)</span>
-          <h2 class="section-title" id="galeri-heading">Enam Permukaan Kerja trawangan v0.44.0</h2>
+          <h2 class="section-title" id="galeri-heading">Enam Permukaan Kerja trawangan v0.45.0</h2>
           <p class="section-subtitle">
             Pilih tab di bawah atau gunakan tombol panah keyboard untuk memeriksa tangkapan layar asli tanpa pemotongan elemen dock.
           </p>
@@ -690,9 +699,9 @@
           </div>
 
           <div class="gallery-panel" id="panel-indicator-lib" role="tabpanel" aria-labelledby="tab-indicator-lib" hidden>
-            <img src="assets/screenshots/indicator.png" alt="Modal Indikator dan Scripting Library menampilkan indikator bawaan resmi dan skrip kustom Pine v6" class="gallery-img" width="1920" height="1036" loading="lazy" decoding="async">
+            <img src="assets/screenshots/indicator.png" alt="Modal Indikator dan Scripting Library menampilkan 7 indikator bawaan resmi dan skrip kustom Pine v6" class="gallery-img" width="1920" height="1036" loading="lazy" decoding="async">
             <div class="panel-caption">
-              <strong>Indikator &amp; Scripting Library:</strong> Kelola indikator bawaan maupun koleksi skrip kustom tersimpan di SQLite lokal (<code>Skrip Saya</code>) dengan tombol <code>Edit di IDE</code>, <code>+ Buat Skrip Baru</code>, serta aksi cepat <code>+ Pasang</code> tanpa batas kuota kanvas.
+              <strong>Indikator &amp; Scripting Library:</strong> Kelola 7 indikator bawaan resmi maupun koleksi skrip kustom tersimpan di SQLite lokal (<code>Skrip Saya</code>) dengan tombol <code>Edit di IDE</code>, <code>+ Buat Skrip Baru</code>, serta aksi cepat <code>+ Pasang</code> tanpa batas kuota kanvas.
             </div>
           </div>
 
@@ -706,7 +715,7 @@
           <div class="gallery-panel" id="panel-theme-gallery" role="tabpanel" aria-labelledby="tab-theme-gallery" hidden>
             <img src="assets/screenshots/theme.png" alt="Galeri Tema dan Warna menampilkan kontrol Dual-Theme Decoupling dan kartu preset berswatch warna" class="gallery-img" width="1920" height="1036" loading="lazy" decoding="async">
             <div class="panel-caption">
-              <strong>Dual-Theme Decoupling &amp; 37+ Galeri Preset:</strong> Pisahkan tema shell UI dari tema kanvas grafik, jelajahi 37 preset resmi gelap maupun terang (termasuk 31 tema budaya Jawa dan <em>Warta Abang</em>) plus preset kustom tersimpan lengkap dengan 4 kotak swatch verifikasi warna.
+              <strong>Dual-Theme Decoupling &amp; 37 Preset Resmi:</strong> Pisahkan tema aplikasi dari tema kanvas grafik, jelajahi 37 preset resmi gelap maupun terang (termasuk 31 tema budaya Jawa dan <em>Warta Abang</em>) plus preset kustom tersimpan lengkap dengan 4 kotak swatch verifikasi (<code>LATAR</code>, <code>BULL</code>, <code>BEAR</code>, <code>AKSEN</code>).
             </div>
           </div>
         </div>
@@ -930,7 +939,19 @@
             </button>
             <div class="faq-answer" id="faq-ans-6" role="region" aria-labelledby="faq-q-6">
               <div class="faq-answer-inner">
-                Ya. Seluruh Workspace State v2, objek anotasi per sel, daftar pantau, preset tema kustom, dan arsip Trade Plan disimpan <strong>100% lokal offline</strong> pada berkas basis data SQLite (<code>rusqlite</code>) di komputer Anda. Aplikasi berjalan mandiri tanpa pelacak cloud maupun skrip ekstensi browser.
+                Ya. Seluruh Workspace State v2, objek anotasi per sel, daftar pantau, preset tema kustom, arsip Trade Plan, dan cache candle lokal disimpan <strong>secara lokal</strong> pada berkas basis data SQLite (<code>rusqlite</code>) di komputer Anda. Aplikasi berjalan mandiri tanpa pelacak cloud maupun skrip ekstensi browser.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button type="button" class="faq-question" aria-expanded="false" aria-controls="faq-ans-7" id="faq-q-7">
+              <span>Bagaimana trawangan menyediakan indeks TOTAL, TOTAL2, TOTAL3, OTHERS, dan BTC.D tanpa API berbayar?</span>
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer" id="faq-ans-7" role="region" aria-labelledby="faq-q-7">
+              <div class="faq-answer-inner">
+                Melalui feeder basket sintetis lokal (<code>macro</code>) tanpa API key maupun server perantara. trawangan mengambil bobot Top-30 koin non-wrapped dan kalibrasi global CoinGecko (cache min. 15 menit), riwayat suplai stablecoin harian DefiLlama, serta candle OHLC komponen dari Binance Spot dengan failover ke Coinbase Exchange. Seluruh indeks memakai label <strong>SYNTHETIC (~1Y)</strong> yang jujur atas batas historisnya dan mematuhi kebijakan <strong>Beban Latar Nol</strong>: sinkronisasi hanya aktif saat grafik indeks tersebut dibuka.
               </div>
             </div>
           </div>
@@ -938,12 +959,12 @@
       </div>
     </section>
 
-    <!-- Seksi 8: Download Matrix v0.44.0 (Tanpa Emoji OS, dengan Salin Perintah Build Fungsional) -->
+    <!-- Seksi 8: Download Matrix v0.45.0 (Tanpa Emoji OS, dengan Salin Perintah Build Fungsional) -->
     <section class="section" id="download" aria-labelledby="download-heading">
       <div class="container">
         <div class="download-box">
           <div class="download-header">
-            <span class="download-version-tag">Rilis Stabil v0.44.0 · MIT License · Native Rust</span>
+            <span class="download-version-tag">Rilis Stabil v0.45.0 · MIT License · Native Rust</span>
             <h2 class="section-title" id="download-heading">Pasang trawangan di Perangkat Anda</h2>
             <p class="section-subtitle">
               Unduh paket installer biner resmi dari GitHub Releases sesuai sistem operasi yang digunakan, atau kompilasi langsung dari kode sumber.
@@ -1030,7 +1051,7 @@
           <h3 class="footer-col-title">Navigasi Halaman</h3>
           <a href="#filosofi">Filosofi &amp; Batas Scope</a>
           <a href="#komparasi">Komparasi Fitur</a>
-          <a href="#fitur">Kapabilitas v0.44</a>
+          <a href="#fitur">Kapabilitas v0.45</a>
           <a href="#galeri">Galeri Tampilan</a>
           <a href="#pintasan">Pintasan Keyboard</a>
           <a href="#faq">Tanya Jawab</a>

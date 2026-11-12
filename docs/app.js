@@ -1,5 +1,5 @@
 /**
- * trawangan: Logika Interaktif Etalase Web (v0.44.0)
+ * trawangan: Logika Interaktif Etalase Web (v0.45.0)
  * Mengatur deteksi OS pengunjung, menu drawer mobile, tab galeri WAI-ARIA,
  * akordion FAQ, salin perintah build, serta smooth-scroll sadar prefers-reduced-motion.
  */

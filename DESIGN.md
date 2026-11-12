@@ -365,7 +365,7 @@ Pemeriksaan kode sumber mengidentifikasi beberapa sisa gaya lama yang **tidak bo
 - **DON'T** sisipkan fitur eksekusi order (`Buy`, `Sell`, `Place Order`), sambungan dompet Web3/API key trading, atau klaim sebagai platform brokerage (`ADR-0001`: **Pure Charting Scope**).
 - **DON'T** kembalikan warna default candlestick ke hijau neon & merah standar di tema *Signature*, atau gunakan skema gradasi biru-ungu / ungu-hitam generik AI (`R-01`).
 - **DON'T** tampilkan statistik pengguna palsu (`10K+ Users`, `99.9% Uptime`), testimoni rekaan, avatar AI, atau skor rating fiktif (`R-17`, `R-18`, `R-36`, `R-38`).
-- **DON'T** pakai kata buzzword AI (`Revolutionary`, `Seamless`, `Next Generation`, `AI Powered`, `Ultimate`) maupun tombol CTA hambar (`Get Started`, `Learn More`, `Try Now`) (`R-15`, `R-16`). Ganti dengan bahasa teknis konkret dan aksi spesifik (`Unduh trawangan v0.44`, `+ Tambah ke Chart`, `Simpan Plan [Ctrl+Enter]`).
+- **DON'T** pakai kata buzzword AI (`Revolutionary`, `Seamless`, `Next Generation`, `AI Powered`, `Ultimate`) maupun tombol CTA hambar (`Get Started`, `Learn More`, `Try Now`) (`R-15`, `R-16`). Ganti dengan bahasa teknis konkret dan aksi spesifik (`Unduh trawangan v0.45`, `+ Tambah ke Chart`, `Simpan Plan [Ctrl+Enter]`).
 - **DON'T** jadikan semua tombol, kartu, input, dan lencana berbentuk kapsul (`9999px`) secara seragam (`R-11`), atau menumpuk glow + glass blur + grid background bersamaan (`R-07`, `R-10`, `R-13`).
 
 ---
