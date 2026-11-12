@@ -39,9 +39,14 @@ Untuk memastikan pengembangan jangka panjang tidak mengalami pembengkakan (*code
 - Data pasar mengalir langsung dari endpoint publik bursa (Binance, Bybit, OKX, Bitunix) ke klien melalui WebSocket dan REST API.
 - Tidak ada server penengah (*no intermediary proxy/backend server*) milik Trawangan. Hal ini menjamin privasi pengguna, nol latensi perantara, dan nol biaya perawatan server bagi proyek.
 
-### E. Persistensi 100% Mandiri & Offline-First (Local Storage & SQLite)
-- **Pengaturan & Workspace UI:** Disimpan secara instan di `localStorage` klien untuk memastikan *startup time* nol latensi.
-- **Cache Candle Historis & Catatan Gambar:** Disimpan secara terkompresi di basis data embedded **SQLite** lokal via Rust Core (`rusqlite`).
+### E. Persistensi 100% Mandiri & Offline-First (SQLite Terkonsolidasi & Pengecualian Sinkron)
+> *Diamandemen oleh [ADR-0025](0025-normalized-sqlite-persistence-and-typed-seam.md) dan [ADR-0026](0026-persistence-service-consolidation-and-localstorage-retirement.md) (12 November 2026):* Seluruh konfigurasi pengguna, provider data pasar, serta preferensi antarmuka dipindahkan dari `localStorage` klien ke basis data **SQLite** lokal dengan **Bootstrap Hydration** sinkron.
+- **Sumber Kebenaran Tunggal di SQLite (`PersistenceService`):** Pengaturan aplikasi (`app_settings` termasuk avatar profil), `chart_default_config`, `last_active_workspace_id`, konfigurasi provider data pasar (`providers`), daftar pantau, alert, **Trade Plan Vault**, skrip Pine, gambar teknikal, tata letak workspace, serta seluruh preferensi UI bertipe (`UiPreferenceKey`) disimpan di basis data embedded **SQLite** lokal via Rust Core (`rusqlite`) dan dimuat paralel ke cache memori satu kali saat `PersistenceService.bootstrap()`.
+- **Pencabutan Akses `localStorage` & Pengecualian Permanen (Bucket C):** Layanan dan komponen UI desktop dilarang membaca atau menulis `localStorage` secara langsung (migrasi satu kali berbasis allowlist di `bootstrap()` membersihkan kunci legacy termasuk `trawangan_trade_plan_vault` setelah simpan SQLite berhasil). Pengecualian permanen `localStorage` klien hanya berlaku untuk dua jalur sinkron esensial:
+  1. **Exit Flush & Pending Override** (`trawangan_workspace_pending_*`, [ADR-0023](0023-workspace-state-v2-pane-layout-and-per-cell-persistence.md)) guna mengamankan perubahan mendadak pada event sinkron `beforeunload` / `onCloseRequested`.
+  2. **Crypto Macro Index** cache kesegaran & metadata basket efemeral (`trawangan_macro_cache_meta_v1` dan `trawangan_macro_metadata_v1`, [ADR-0024](0024-crypto-macro-index-and-synthetic-basket-feeder.md)).
+  *(Catatan: Pada mode Web/headless non-Tauri, `InMemoryLocalStorageAdapter` tetap beroperasi sebagai adapter cadangan terisolasi di balik kontrak `PersistenceAdapter`.)*
+- **Cache Candle Historis:** Disimpan secara terkompresi di basis data embedded **SQLite** lokal via Rust Core (`rusqlite`).
 - **Nol Dependensi Cloud:** Aplikasi dapat beroperasi penuh secara *offline* untuk data yang sudah di-cache tanpa perlu otentikasi akun atau server cloud.
 
 ---

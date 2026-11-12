@@ -304,5 +304,13 @@ _Avoid_: Crypto pair, Unique pair, TOTAL1, Tradable index
 Pengikatan kepemilikan layer coretan gambar teknikal kepada identitas workspace asal (`workspaceId`) selain bursa dan simbol instrumen, sehingga penghapusan atau duplikasi (*Save As*) workspace membersihkan atau menyalin gambar terkait secara utuh tanpa meninggalkan data yatim maupun menyentuh workspace bawaan.
 _Avoid_: Global orphan shapes, Flat symbol-only drawing key, Unscoped workspace blob
 
+**Bootstrap Hydration**:
+Hidrasi serentak seluruh konfigurasi aplikasi, daftar provider pasar, preferensi antarmuka, dan referensi workspace aktif terakhir dari basis data lokal ke memori aplikasi pada fase awal startup agar komponen `trawangan` dapat membaca state secara sinkron tanpa race condition.
+_Avoid_: Lazy localStorage peek, Top-level side-effect read
+
+**UiPreferenceKey**:
+Taksonomi kunci tertutup untuk preferensi ergonomi antarmuka pengguna `trawangan` (status lipat rel kiri, kondisi `Right Dock Rail`, lebar panel, memori alat gambar, indikator favorit, dan riwayat pencarian simbol) yang disatukan penyimpanannya di basis data lokal.
+_Avoid_: Scattered localStorage keys, Unbounded preference string
+
 
 

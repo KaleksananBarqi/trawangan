@@ -17,6 +17,7 @@ import {
   extractActiveWatchlistSymbols,
 } from './watchlistProjection';
 import { DEFAULT_PROVIDERS } from '../market/constants';
+import { migrateLegacyLocalStorage, type LegacyStorageLike } from './legacyMigration';
 
 export const DEFAULT_WATCHLIST_SYMBOLS: string[] = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
@@ -67,8 +68,13 @@ export class PersistenceService implements IPersistenceService {
   private adapterPersistedProviderIds: Set<string> | null = null;
   private bootstrapped = false;
   private bootstrapPromise: Promise<void> | null = null;
+  private legacyStorageOverride?: LegacyStorageLike | null;
 
-  constructor(customAdapter?: PersistenceAdapter) {
+  constructor(
+    customAdapter?: PersistenceAdapter,
+    options?: { legacyStorage?: LegacyStorageLike | null }
+  ) {
+    this.legacyStorageOverride = options?.legacyStorage;
     if (customAdapter) {
       this.adapter = customAdapter;
     } else if (isTauriEnvironment()) {
@@ -120,7 +126,21 @@ export class PersistenceService implements IPersistenceService {
           }
         }
       }
-      this.syncProvidersCacheFromAdapter(providers);
+
+      let resolvedProviders = providers;
+      // Migrasi satu kali dari legacy localStorage hanya dijalankan pada adapter persisten (non-Web InMemory)
+      if (!(targetAdapter instanceof InMemoryLocalStorageAdapter)) {
+        const migration = await migrateLegacyLocalStorage({
+          adapter: targetAdapter,
+          preferenceCache: this.preferenceCache,
+          currentProviders: providers,
+          legacyStorage: this.legacyStorageOverride,
+        });
+        if (this.adapter !== targetAdapter) return;
+        resolvedProviders = migration.providers;
+      }
+
+      this.syncProvidersCacheFromAdapter(resolvedProviders);
       this.bootstrapped = true;
     })();
 
