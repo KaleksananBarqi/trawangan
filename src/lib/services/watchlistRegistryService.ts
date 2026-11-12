@@ -1,6 +1,5 @@
 import type { WatchlistRecord, MultiWatchlistRegistry } from '../types/market';
 import { storage as defaultPersistence, PersistenceService } from './persistence';
-import { isSectionToken } from './watchlistUtils';
 
 export const DEFAULT_FACTORY_WATCHLISTS: WatchlistRecord[] = [
   {
@@ -53,8 +52,6 @@ export const DEFAULT_FACTORY_WATCHLISTS: WatchlistRecord[] = [
   }
 ];
 
-const LAYOUT_SLOT_ID = 'user_multi_watchlists';
-
 export class WatchlistRegistryService {
   private persistence: PersistenceService;
   private watchlists: WatchlistRecord[] = [];
@@ -75,22 +72,19 @@ export class WatchlistRegistryService {
       return;
     }
     try {
-      const raw = await this.persistence.loadLayoutSlot(LAYOUT_SLOT_ID);
-      if (raw) {
-        const parsed = JSON.parse(raw) as MultiWatchlistRegistry;
-        if (parsed && Array.isArray(parsed.watchlists) && parsed.watchlists.length > 0) {
-          this.watchlists = parsed.watchlists;
-          this.activeWatchlistId = parsed.activeWatchlistId || this.watchlists[0].id;
-          if (!this.watchlists.some((w) => w.id === this.activeWatchlistId)) {
-            this.activeWatchlistId = this.watchlists[0].id;
-          }
-          this.isLoaded = true;
-          this.notify();
-          return;
+      const parsed = await this.persistence.loadWatchlistRegistry();
+      if (parsed && Array.isArray(parsed.watchlists) && parsed.watchlists.length > 0) {
+        this.watchlists = parsed.watchlists;
+        this.activeWatchlistId = parsed.activeWatchlistId || this.watchlists[0].id;
+        if (!this.watchlists.some((w) => w.id === this.activeWatchlistId)) {
+          this.activeWatchlistId = this.watchlists[0].id;
         }
+        this.isLoaded = true;
+        this.notify();
+        return;
       }
     } catch (err) {
-      console.warn('[WatchlistRegistryService] Gagal parsing multi-watchlist tersimpan:', err);
+      console.warn('[WatchlistRegistryService] Gagal memuat multi-watchlist tersimpan:', err);
     }
 
     // Fallback: Periksa apakah ada watchlist warisan (single flat list)
@@ -140,19 +134,7 @@ export class WatchlistRegistryService {
       activeWatchlistId: this.activeWatchlistId,
       watchlists: this.watchlists,
     };
-    await this.persistence.saveLayoutSlot(
-      LAYOUT_SLOT_ID,
-      'User Multi Watchlists Registry',
-      JSON.stringify(payload)
-    );
-
-    // Selalu sinkronkan item watchlist aktif ke loadWatchlist/saveWatchlist lama
-    // untuk kompatibilitas komponen eksternal (dengan menyaring token #section:)
-    const active = this.getActiveWatchlist();
-    if (active) {
-      const cleanTickers = active.items.filter((item) => !isSectionToken(item));
-      await this.persistence.saveWatchlist(cleanTickers);
-    }
+    await this.persistence.saveWatchlistRegistry(payload);
   }
 
   private notify(): void {

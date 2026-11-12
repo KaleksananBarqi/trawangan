@@ -59,6 +59,8 @@ pub fn run() {
             commands::list_drawing_keys,
             commands::get_user_watchlist,
             commands::save_user_watchlist,
+            commands::load_watchlist_registry,
+            commands::save_watchlist_registry,
             commands::get_process_memory,
             commands::http_get,
             commands::get_default_snapshot_directory,

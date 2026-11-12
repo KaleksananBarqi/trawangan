@@ -5,6 +5,7 @@ import type {
   PriceAlert,
   AppSettings,
   SavedTradingPlanRecord,
+  MultiWatchlistRegistry,
 } from '../../types/market';
 
 export interface DrawingKeyEntry {
@@ -39,9 +40,11 @@ export interface PersistenceAdapter {
   deleteTradingPlan(id: string): Promise<void>;
   clearTradingPlans(): Promise<void>;
 
-  // Daftar pantau koin (Watchlist)
+  // Daftar pantau koin (Watchlist & Multi-Watchlist Registry relasional)
   loadWatchlist(): Promise<string[] | null>;
   saveWatchlist(symbols: string[]): Promise<void>;
+  loadWatchlistRegistry(): Promise<MultiWatchlistRegistry | null>;
+  saveWatchlistRegistry(registry: MultiWatchlistRegistry): Promise<void>;
 
   // Skrip indikator Pine Script
   loadScripts(): Promise<PineScriptRecord[]>;
@@ -67,6 +70,8 @@ export interface IPersistenceService {
   // Watchlist
   loadWatchlist(): Promise<string[]>;
   saveWatchlist(symbols: string[]): Promise<void>;
+  loadWatchlistRegistry(): Promise<MultiWatchlistRegistry | null>;
+  saveWatchlistRegistry(registry: MultiWatchlistRegistry): Promise<void>;
 
   // Price Alerts
   loadAlerts(): Promise<PriceAlert[]>;

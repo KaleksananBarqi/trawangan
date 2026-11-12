@@ -1,6 +1,7 @@
 // Adapter In-Memory & Web LocalStorage untuk Lingkungan Pengujian dan Web Fallback
 import type { DrawingKeyEntry, PersistenceAdapter } from './types';
 import type {
+  MultiWatchlistRegistry,
   PineScriptRecord,
   PriceAlert,
   SavedTradingPlanRecord,
@@ -239,6 +240,24 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
 
   async saveWatchlist(symbols: string[]): Promise<void> {
     this.setItem('trawangan_user_watchlist', JSON.stringify(symbols));
+  }
+
+  async loadWatchlistRegistry(): Promise<MultiWatchlistRegistry | null> {
+    const raw = this.getItem('trawangan_watchlist_registry');
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as MultiWatchlistRegistry;
+      if (parsed && Array.isArray(parsed.watchlists)) {
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async saveWatchlistRegistry(registry: MultiWatchlistRegistry): Promise<void> {
+    this.setItem('trawangan_watchlist_registry', JSON.stringify(registry));
   }
 
   async loadScripts(): Promise<PineScriptRecord[]> {

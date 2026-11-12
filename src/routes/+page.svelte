@@ -81,8 +81,6 @@
     SavedWorkspace
   } from '../lib/types/market';
   import {
-    loadWatchlist,
-    saveWatchlist,
     saveWorkspace,
     loadWorkspaces,
     cloneWorkspaceDrawings,

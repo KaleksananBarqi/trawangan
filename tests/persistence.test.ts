@@ -359,5 +359,36 @@ describe('Deep Persistence Module Unit Tests', () => {
     const afterClear = await service.loadTradingPlanHistory();
     assert.strictEqual(afterClear.length, 0);
   });
+
+  test('Watchlist: loadWatchlist/saveWatchlist memproyeksikan registry kanonik tanpa menghapus token #section saat simbol identik', async () => {
+    await service.saveWatchlistRegistry({
+      activeWatchlistId: 'default',
+      watchlists: [
+        {
+          id: 'default',
+          name: 'Daftar Utama',
+          items: ['#section:sec_1:TOP:0', 'binance:BTCUSDT', 'binance:ETHUSDT'],
+          isPreset: false,
+          createdAt: 1000,
+          updatedAt: 1000,
+        },
+      ],
+    });
+
+    assert.deepStrictEqual(await service.loadWatchlist(), ['binance:BTCUSDT', 'binance:ETHUSDT']);
+
+    // saveWatchlist dengan simbol non-section sama mempertahankan token #section
+    await service.saveWatchlist(['binance:BTCUSDT', 'binance:ETHUSDT']);
+    const afterSame = await service.loadWatchlistRegistry();
+    assert.deepStrictEqual(afterSame?.watchlists[0].items, [
+      '#section:sec_1:TOP:0',
+      'binance:BTCUSDT',
+      'binance:ETHUSDT',
+    ]);
+
+    // saveWatchlist dengan daftar berbeda memperbarui item watchlist aktif
+    await service.saveWatchlist(['binance:SOLUSDT']);
+    assert.deepStrictEqual(await service.loadWatchlist(), ['binance:SOLUSDT']);
+  });
 });
 

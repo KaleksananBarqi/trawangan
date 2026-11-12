@@ -10,6 +10,10 @@ use crate::db::{
         clear_trading_plans as db_clear_trading_plans, delete_trading_plan as db_delete_trading_plan,
         list_trading_plans as db_list_trading_plans, upsert_trading_plan as db_upsert_trading_plan,
     },
+    watchlists::{
+        load_watchlist_registry as db_load_watchlist_registry,
+        save_watchlist_registry as db_save_watchlist_registry,
+    },
     workspaces::{
         delete_workspace as db_delete_workspace, list_workspaces as db_list_workspaces,
         upsert_workspace as db_upsert_workspace,
@@ -289,6 +293,21 @@ pub fn save_user_watchlist(
 ) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     save_watchlist(&conn, &symbols).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn load_watchlist_registry(db: State<'_, DbState>) -> Result<Option<serde_json::Value>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_load_watchlist_registry(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_watchlist_registry(
+    db: State<'_, DbState>,
+    registry_json: String,
+) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_save_watchlist_registry(&conn, &registry_json).map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

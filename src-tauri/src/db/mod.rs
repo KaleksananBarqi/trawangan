@@ -775,4 +775,53 @@ mod tests {
         trading_plans::clear_trading_plans(&conn).unwrap();
         assert!(trading_plans::list_trading_plans(&conn).unwrap().is_empty());
     }
+
+    #[test]
+    fn test_watchlist_registry_crud_and_cascade() {
+        let conn = setup_v1_test_db();
+        assert_eq!(watchlists::load_watchlist_registry(&conn).unwrap(), None);
+
+        let registry = serde_json::json!({
+            "activeWatchlistId": "wl-2",
+            "watchlists": [
+                {
+                    "id": "default",
+                    "name": "Daftar Utama",
+                    "items": ["#section:sec_1:TOP:0", "binance:BTCUSDT"],
+                    "isPreset": false,
+                    "createdAt": 1000,
+                    "updatedAt": 1000
+                },
+                {
+                    "id": "wl-2",
+                    "name": "Altcoins",
+                    "items": ["#section:sec_2:L1:0", "binance:SOLUSDT", "indodax:BTCIDR"],
+                    "isPreset": false,
+                    "createdAt": 2000,
+                    "updatedAt": 2000
+                }
+            ]
+        });
+
+        watchlists::save_watchlist_registry(&conn, &registry.to_string()).unwrap();
+
+        let loaded = watchlists::load_watchlist_registry(&conn).unwrap().unwrap();
+        assert_eq!(loaded["activeWatchlistId"], "wl-2");
+        assert_eq!(loaded["watchlists"].as_array().unwrap().len(), 2);
+        assert_eq!(loaded["watchlists"][1]["items"][0], "#section:sec_2:L1:0");
+
+        // JSON invalid harus gagal secara eksplisit
+        assert!(watchlists::save_watchlist_registry(&conn, "{bad-json").is_err());
+
+        // Cascade deletion: hapus wl-2 harus ikut menghapus baris watchlist_items milik wl-2
+        conn.execute("DELETE FROM watchlists WHERE id = 'wl-2'", []).unwrap();
+        let orphan_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM watchlist_items WHERE watchlist_id = 'wl-2'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(orphan_count, 0);
+    }
 }

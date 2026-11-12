@@ -77,7 +77,22 @@ pub fn save_registry_from_value(conn: &Connection, registry: &Value) -> Result<(
     Ok(())
 }
 
-/// Simpan registry dari string JSON (dipakai shim sementara hingga Tiket #178)
+/// Simpan seluruh Multi-Watchlist Registry secara transaksional dari JSON string (fail-loud)
+pub fn save_watchlist_registry(conn: &Connection, registry_json: &str) -> Result<()> {
+    let val: Value = serde_json::from_str(registry_json).map_err(|e| {
+        rusqlite::Error::InvalidParameterName(format!("JSON watchlist registry tidak valid: {e}"))
+    })?;
+    if !val.is_object() {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "Watchlist registry harus berupa objek JSON".to_string(),
+        ));
+    }
+    super::with_transaction(conn, "BEGIN IMMEDIATE;", || {
+        save_registry_from_value(conn, &val)
+    })
+}
+
+/// Simpan registry dari string JSON (dipakai shim sementara hingga Tiket #180)
 pub fn replace_registry_from_json(conn: &Connection, json: &str) -> Result<()> {
     let Ok(val) = serde_json::from_str::<Value>(json) else {
         return Ok(());
@@ -90,8 +105,8 @@ pub fn replace_registry_from_json(conn: &Connection, json: &str) -> Result<()> {
     })
 }
 
-/// Ekspor seluruh registry menjadi JSON string (dipakai shim sementara hingga Tiket #178)
-pub fn export_registry_as_json(conn: &Connection) -> Result<Option<String>> {
+/// Muat seluruh Multi-Watchlist Registry dari tabel relasional `watchlists` & `watchlist_items`
+pub fn load_watchlist_registry(conn: &Connection) -> Result<Option<Value>> {
     let mut wl_stmt = conn.prepare_cached(
         "SELECT id, name, is_preset, is_active, created_at, updated_at
          FROM watchlists
@@ -142,11 +157,18 @@ pub fn export_registry_as_json(conn: &Connection) -> Result<Option<String>> {
             .to_string()
     });
 
-    let root = serde_json::json!({
+    Ok(Some(serde_json::json!({
         "activeWatchlistId": resolved_active,
         "watchlists": watchlists
-    });
-    Ok(Some(serde_json::to_string(&root).unwrap_or_else(|_| "{}".to_string())))
+    })))
+}
+
+/// Ekspor seluruh registry menjadi JSON string (dipakai shim sementara hingga Tiket #180)
+pub fn export_registry_as_json(conn: &Connection) -> Result<Option<String>> {
+    match load_watchlist_registry(conn)? {
+        Some(root) => Ok(Some(serde_json::to_string(&root).unwrap_or_else(|_| "{}".to_string()))),
+        None => Ok(None),
+    }
 }
 
 fn get_active_watchlist_id(conn: &Connection) -> Result<Option<String>> {

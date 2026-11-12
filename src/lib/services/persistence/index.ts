@@ -5,6 +5,7 @@ import type {
   PriceAlert,
   AppSettings,
   SavedTradingPlanRecord,
+  MultiWatchlistRegistry,
 } from '../../types/market';
 import type { IPersistenceService, PersistenceAdapter } from './types';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
@@ -135,16 +136,70 @@ export class PersistenceService implements IPersistenceService {
     await this.adapter.clearDrawings(symbol, timeframe);
   }
 
-  // ─── Watchlist Persistence ───
+  // ─── Multi-Watchlist Registry & Watchlist Projection ───
+
+  async loadWatchlistRegistry(): Promise<MultiWatchlistRegistry | null> {
+    return await this.adapter.loadWatchlistRegistry();
+  }
+
+  async saveWatchlistRegistry(registry: MultiWatchlistRegistry): Promise<void> {
+    await this.adapter.saveWatchlistRegistry(registry);
+  }
 
   async loadWatchlist(): Promise<string[]> {
-    const list = await this.adapter.loadWatchlist();
-    if (list && list.length > 0) return list;
+    const registry = await this.adapter.loadWatchlistRegistry();
+    if (registry && Array.isArray(registry.watchlists) && registry.watchlists.length > 0) {
+      const active =
+        registry.watchlists.find((w) => w.id === registry.activeWatchlistId) ||
+        registry.watchlists[0];
+      return active.items.filter((item) => !item.startsWith('#section:'));
+    }
+
+    // Fallback satu kali untuk data legacy sebelum registry terisi
+    const legacy = await this.adapter.loadWatchlist();
+    if (legacy && legacy.length > 0) return legacy;
     return [...DEFAULT_WATCHLIST_SYMBOLS];
   }
 
   async saveWatchlist(symbols: string[]): Promise<void> {
-    await this.adapter.saveWatchlist(symbols);
+    const now = Date.now();
+    const existing = await this.adapter.loadWatchlistRegistry();
+    if (!existing || !Array.isArray(existing.watchlists) || existing.watchlists.length === 0) {
+      await this.adapter.saveWatchlistRegistry({
+        activeWatchlistId: 'default',
+        watchlists: [
+          {
+            id: 'default',
+            name: 'Daftar Utama',
+            items: [...symbols],
+            isPreset: false,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      });
+      return;
+    }
+
+    let activeIdx = existing.watchlists.findIndex((w) => w.id === existing.activeWatchlistId);
+    if (activeIdx === -1) activeIdx = 0;
+
+    const currentActive = existing.watchlists[activeIdx];
+    const currentSymbols = currentActive.items.filter((item) => !item.startsWith('#section:'));
+    const sameSymbols =
+      currentSymbols.length === symbols.length &&
+      currentSymbols.every((sym, idx) => sym === symbols[idx]);
+
+    // Pertahankan token #section: jika daftar simbol aktif identik
+    if (sameSymbols) return;
+
+    const nextWatchlists = existing.watchlists.map((w, idx) =>
+      idx === activeIdx ? { ...w, items: [...symbols], updatedAt: now } : w
+    );
+    await this.adapter.saveWatchlistRegistry({
+      activeWatchlistId: currentActive.id,
+      watchlists: nextWatchlists,
+    });
   }
 
   // ─── Price Alerts Persistence ───
@@ -422,6 +477,8 @@ export const clearDrawings = (sym: string, tf: string) => storage.clearDrawings(
 
 export const loadWatchlist = () => storage.loadWatchlist();
 export const saveWatchlist = (symbols: string[]) => storage.saveWatchlist(symbols);
+export const loadWatchlistRegistry = () => storage.loadWatchlistRegistry();
+export const saveWatchlistRegistry = (registry: MultiWatchlistRegistry) => storage.saveWatchlistRegistry(registry);
 
 export const loadAlerts = () => storage.loadAlerts();
 export const saveAlerts = (alerts: PriceAlert[]) => storage.saveAlerts(alerts);

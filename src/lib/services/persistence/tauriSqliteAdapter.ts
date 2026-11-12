@@ -1,6 +1,7 @@
 // Adapter Native SQLite via Tauri IPC Command
 import type { DrawingKeyEntry, PersistenceAdapter } from './types';
 import type {
+  MultiWatchlistRegistry,
   PineScriptRecord,
   PriceAlert,
   SavedTradingPlanRecord,
@@ -96,6 +97,17 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
       console.warn('[TauriSqliteAdapter] Gagal save watchlist ke SQLite, beralih ke fallback:', err);
     }
     await this.fallbackAdapter.saveWatchlist(symbols);
+  }
+
+  async loadWatchlistRegistry(): Promise<MultiWatchlistRegistry | null> {
+    const invoke = await this.getInvoke();
+    const res = await invoke<MultiWatchlistRegistry | null>('load_watchlist_registry');
+    return res ?? null;
+  }
+
+  async saveWatchlistRegistry(registry: MultiWatchlistRegistry): Promise<void> {
+    const invoke = await this.getInvoke();
+    await invoke('save_watchlist_registry', { registryJson: JSON.stringify(registry) });
   }
 
   async loadScripts(): Promise<PineScriptRecord[]> {

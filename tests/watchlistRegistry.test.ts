@@ -137,4 +137,25 @@ describe('Tiket #71: WatchlistRegistryService', () => {
     await reloadedService.load();
     assert.deepEqual(reloadedService.getActiveWatchlist().items, newItems);
   });
+
+  it('8. Tiket #178: persist() menyimpan via saveWatchlistRegistry tanpa dual-write saveWatchlist, namun loadWatchlist() memproyeksikan simbol aktif', async () => {
+    let saveWatchlistCalls = 0;
+    const origSaveWatchlist = persistence.saveWatchlist.bind(persistence);
+    persistence.saveWatchlist = async (symbols: string[]) => {
+      saveWatchlistCalls += 1;
+      return origSaveWatchlist(symbols);
+    };
+
+    await service.load();
+    await service.updateActiveItems([
+      '#section:sec_1:UTAMA:0',
+      'binance:BTCUSDT',
+      'indodax:BTCIDR',
+    ]);
+
+    assert.equal(saveWatchlistCalls, 0, 'WatchlistRegistryService tidak boleh dual-write saveWatchlist()');
+    const registry = await persistence.loadWatchlistRegistry();
+    assert.ok(registry);
+    assert.deepEqual(await persistence.loadWatchlist(), ['binance:BTCUSDT', 'indodax:BTCIDR']);
+  });
 });
