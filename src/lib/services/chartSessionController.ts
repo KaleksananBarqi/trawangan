@@ -3882,6 +3882,7 @@ export class ChartSessionController {
           this.lastAppliedThemeColors ?? this.resolveActiveThemeCandleColors()
         ) ?? {};
 
+      this.chartDefaultHydrationEpoch++;
       this.userChartDefaultConfig = sanitizedConfig;
       this.activeChartDefaultConfig = sanitizedConfig;
       await this.persistence.saveChartDefaultConfig(sanitizedConfig);

@@ -62,6 +62,7 @@ export class PersistenceService implements IPersistenceService {
   private debounceTimers = new Map<string, any>();
   private pendingDebounceData = new Map<string, { symbol: string; timeframe: string; doc: any }>();
   private preferenceCache = new Map<string, string>();
+  private preferenceWriteEpoch = new Map<string, number>();
   private providersCache: ProviderConfig[] | null = null;
   private adapterPersistedProviderIds: Set<string> | null = null;
   private bootstrapped = false;
@@ -85,6 +86,7 @@ export class PersistenceService implements IPersistenceService {
     this.bootstrapped = false;
     this.bootstrapPromise = null;
     this.preferenceCache.clear();
+    this.preferenceWriteEpoch.clear();
     this.providersCache = null;
     this.adapterPersistedProviderIds = null;
   }
@@ -184,7 +186,12 @@ export class PersistenceService implements IPersistenceService {
     await this.deleteAndSyncPreference(key);
   }
   private async getAndSyncPreference(key: AppPreferenceKey): Promise<string | null> {
+    const startEpoch = this.preferenceWriteEpoch.get(key) ?? 0;
     const raw = await this.adapter.getPreference(key);
+    // Hindari pembacaan asinkron yang terlambat menimpa mutasi/penghapusan terbaru pada key yang sama
+    if ((this.preferenceWriteEpoch.get(key) ?? 0) !== startEpoch) {
+      return this.preferenceCache.get(key) ?? null;
+    }
     if (raw !== null) {
       this.preferenceCache.set(key, raw);
     } else {
@@ -195,28 +202,36 @@ export class PersistenceService implements IPersistenceService {
 
   private async setAndSyncPreference(key: AppPreferenceKey, valueJson: string): Promise<void> {
     // Perbarui cache secara optimistik agar pembaca sinkron langsung konsisten, lalu rollback bila adapter gagal
+    const nextEpoch = (this.preferenceWriteEpoch.get(key) ?? 0) + 1;
+    this.preferenceWriteEpoch.set(key, nextEpoch);
     const prev = this.preferenceCache.get(key);
     this.preferenceCache.set(key, valueJson);
     try {
       await this.adapter.setPreference(key, valueJson);
     } catch (err) {
-      if (prev !== undefined) {
-        this.preferenceCache.set(key, prev);
-      } else {
-        this.preferenceCache.delete(key);
+      if (this.preferenceWriteEpoch.get(key) === nextEpoch) {
+        if (prev !== undefined) {
+          this.preferenceCache.set(key, prev);
+        } else {
+          this.preferenceCache.delete(key);
+        }
       }
       throw err;
     }
   }
 
   private async deleteAndSyncPreference(key: AppPreferenceKey): Promise<void> {
+    const nextEpoch = (this.preferenceWriteEpoch.get(key) ?? 0) + 1;
+    this.preferenceWriteEpoch.set(key, nextEpoch);
     const prev = this.preferenceCache.get(key);
     this.preferenceCache.delete(key);
     try {
       await this.adapter.deletePreference(key);
     } catch (err) {
-      if (prev !== undefined) {
-        this.preferenceCache.set(key, prev);
+      if (this.preferenceWriteEpoch.get(key) === nextEpoch) {
+        if (prev !== undefined) {
+          this.preferenceCache.set(key, prev);
+        }
       }
       throw err;
     }
