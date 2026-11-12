@@ -14,7 +14,7 @@ export interface DrawingKeyEntry {
   timeframe: string;
 }
 
-export type AppPreferenceKey = 'app_settings' | 'chart_default_config';
+export type AppPreferenceKey = 'app_settings' | 'chart_default_config' | 'last_active_workspace_id';
 
 export interface AppPreferenceRecord {
   key: string;
@@ -105,6 +105,8 @@ export interface IPersistenceService {
   updateWorkspace(workspace: SavedWorkspace): Promise<void>;
   deleteWorkspace(id: string): Promise<void>;
   cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number>;
+  getLastActiveWorkspaceIdSync(): string | null;
+  setLastActiveWorkspaceId(id: string | null | undefined): Promise<void>;
 
   // Pine Scripts
   loadScripts(): Promise<PineScriptRecord[]>;
@@ -112,10 +114,12 @@ export interface IPersistenceService {
   deleteScript(id: string): Promise<void>;
 
   // App Settings
+  getSettingsSync(): Partial<AppSettings> | null;
   loadSettings(): Promise<Partial<AppSettings> | null>;
   saveSettings(settings: Partial<AppSettings>): Promise<void>;
 
   // Chart Default Configuration
+  getChartDefaultConfigSync(): any | null;
   loadChartDefaultConfig(): Promise<any | null>;
   saveChartDefaultConfig(config: any): Promise<void>;
   clearChartDefaultConfig(): Promise<void>;

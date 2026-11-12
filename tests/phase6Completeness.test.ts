@@ -319,6 +319,10 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     });
     controller.attach(createMockChartContainer(1200, 720));
 
+    // Diterapkan secara sinkron langsung dari cache PersistenceService tanpa menyentuh localStorage
+    const syncAttachConfig = rig.chart.renderer.getConfig();
+    assert.equal(syncAttachConfig.candles.upColor, '#00AAFF', 'attach() harus menerapkan chartDefaultConfig secara sinkron dari cache PersistenceService');
+
     // Tunggu hidrasi chartDefaultConfig saat attach()
     await (controller as any).hydrateChartDefaultConfig?.();
 

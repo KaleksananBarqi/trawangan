@@ -50,12 +50,7 @@ import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColor
 import { isVolumeIndicator } from '../data/indicatorPresets';
 import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 import { applyLayoutTimeframePolicy } from '../constants/defaults';
-import {
-  storage,
-  loadChartDefaultConfig,
-  saveChartDefaultConfig,
-  clearChartDefaultConfig
-} from './persistence';
+import { storage } from './persistence';
 import type { IPersistenceService } from './persistence/types';
 import {
   cloneRendererConfigValue,
@@ -837,26 +832,9 @@ export class ChartSessionController {
       this.attachCellListeners(cell);
     }
 
-    // Muat & terapkan konfigurasi chart default tersimpan milik pengguna (sinkron cache + hidrasi asinkron adapter)
+    // Muat & terapkan konfigurasi chart default tersimpan milik pengguna (sinkron dari cache PersistenceService + hidrasi asinkron adapter)
     const attachEpoch = ++this.chartDefaultHydrationEpoch;
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const rawDefault = localStorage.getItem('trawangan_chart_default_config');
-        if (rawDefault && rawDefault.trim()) {
-          const parsedDefault = sanitizeRendererConfigForApply(JSON.parse(rawDefault));
-          if (parsedDefault && Object.keys(parsedDefault).length > 0) {
-            this.userChartDefaultConfig = parsedDefault;
-            this.activeChartDefaultConfig = this.mergeRendererConfigs(this.activeChartDefaultConfig, parsedDefault);
-            for (const cell of this.getAllCells()) {
-              const wsOverride = this.workspaceRendererConfigByCell.get(cell);
-              const effective = wsOverride ? this.mergeRendererConfigs(parsedDefault, wsOverride) : parsedDefault;
-              this.applyEffectiveRendererConfig(cell, effective);
-              this.syncGlobalVisualChromeToCells(cell);
-            }
-          }
-        }
-      } catch (_) {}
-    }
+    this.applyUserChartDefaultConfig(this.persistence.getChartDefaultConfigSync());
     void this.hydrateChartDefaultConfig(attachEpoch);
 
     // Dengarkan pembuatan cell baru saat berganti layout grid
@@ -1129,6 +1107,22 @@ export class ChartSessionController {
     });
   }
 
+  private applyUserChartDefaultConfig(rawConfig: any): any | null {
+    const parsedDefault = sanitizeRendererConfigForApply(rawConfig);
+    if (!parsedDefault || Object.keys(parsedDefault).length === 0) {
+      return null;
+    }
+    this.userChartDefaultConfig = parsedDefault;
+    this.activeChartDefaultConfig = this.mergeRendererConfigs(this.activeChartDefaultConfig, parsedDefault);
+    for (const cell of this.getAllCells()) {
+      const wsOverride = this.workspaceRendererConfigByCell.get(cell);
+      const effective = wsOverride ? this.mergeRendererConfigs(parsedDefault, wsOverride) : parsedDefault;
+      this.applyEffectiveRendererConfig(cell, effective);
+      this.syncGlobalVisualChromeToCells(cell);
+    }
+    return parsedDefault;
+  }
+
   /**
    * Memuat konfigurasi chart default tersimpan dari PersistenceService dan menerapkannya ke sel
    * dengan tetap menghormati override spesifik per workspace/sel (K3: Workspace > Default User > Pabrik).
@@ -1136,23 +1130,11 @@ export class ChartSessionController {
   public async hydrateChartDefaultConfig(expectedEpoch?: number): Promise<any | null> {
     const epoch = expectedEpoch ?? this.chartDefaultHydrationEpoch;
     try {
-      const rawLoaded = await loadChartDefaultConfig();
+      const rawLoaded = await this.persistence.loadChartDefaultConfig();
       if (epoch !== this.chartDefaultHydrationEpoch || !this.workspace) {
         return null;
       }
-      const loaded = sanitizeRendererConfigForApply(rawLoaded);
-      if (!loaded || Object.keys(loaded).length === 0) {
-        return null;
-      }
-      this.userChartDefaultConfig = loaded;
-      this.activeChartDefaultConfig = this.mergeRendererConfigs(this.activeChartDefaultConfig, loaded);
-      for (const cell of this.getAllCells()) {
-        const wsOverride = this.workspaceRendererConfigByCell.get(cell);
-        const effective = wsOverride ? this.mergeRendererConfigs(loaded, wsOverride) : loaded;
-        this.applyEffectiveRendererConfig(cell, effective);
-        this.syncGlobalVisualChromeToCells(cell);
-      }
-      return loaded;
+      return this.applyUserChartDefaultConfig(rawLoaded);
     } catch (err) {
       console.warn('[ChartSessionController] Gagal memuat chart default config:', err);
       return null;
@@ -3902,7 +3884,7 @@ export class ChartSessionController {
 
       this.userChartDefaultConfig = sanitizedConfig;
       this.activeChartDefaultConfig = sanitizedConfig;
-      await saveChartDefaultConfig(sanitizedConfig);
+      await this.persistence.saveChartDefaultConfig(sanitizedConfig);
 
       for (const cell of this.getAllCells()) {
         const chart = cell?.chart || cell?.inner;
@@ -3942,7 +3924,7 @@ export class ChartSessionController {
       this.userChartDefaultConfig = null;
       this.activeChartDefaultConfig = null;
       this.workspaceRendererConfigByCell = new WeakMap();
-      await clearChartDefaultConfig();
+      await this.persistence.clearChartDefaultConfig();
       if (this.workspace) {
         for (const cell of this.getAllCells()) {
           const chart = cell?.chart || cell?.inner;
