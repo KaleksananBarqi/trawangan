@@ -5,6 +5,27 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.45.1] - 2026-11-12
+
+### 🐛 Diperbaiki (Fixed)
+- **Isolasi Identitas Instrumen Kustom & Perlindungan Feed Global (`instrumentIdentity.ts`, `macroIndexCatalog.ts`, `watchlistUtils.ts`, `FeedTab.svelte`):**
+  - Menambahkan `MACRO_PROVIDER_ALIASES`, `isMacroProviderAlias`, dan `hasExplicitNonMacroProvider` serta menjaga prefiks eksplisit non-makro (`custom:*`, termasuk `rawPrefix.startsWith('custom')`) agar instrumen kustom dengan simbol serupa (seperti `custom:TOTAL`) tetap terisolasi dari katalog dan feeder `macro`.
+  - Memisahkan `setActiveProviderContext` dan menjaga `setActiveProvider('macro')` di `chartSessionController.ts` agar tidak menimpa provider feed global secara keliru, menghapus opsi `'macro'` dari pengaturan global `FeedTab.svelte` sehingga feeder makro murni berjalan per sel, serta meneruskan `providerId` pada `onActiveCellChange`.
+- **Akurasi Basket Makro, TTL Cache SQLite, & Penghapusan Volume Sintetis (`macroBasketCoordinator.ts`, `market/index.ts`, `market.ts`):**
+  - Menambahkan pengambilan paralel riwayat supply harian `USDC` (**DefiLlama** `stablecoin/2` via `parseLlamaTokenSeries`) agar seri historis `TOTAL`, `TOTAL2`, dan `TOTAL3` selaras penuh.
+  - Menambahkan pelacakan TTL pada metadata cache `trawangan_macro_cache_meta_v1` (`5m` intraday / `15m` daily+) lengkap dengan pembaruan latar *stale-while-revalidate* (`onBackgroundRefresh`) serta perbaikan logika bayangan agar cache SQLite/memori lama tidak dilewatkan tanpa cek TTL.
+  - Menambahkan paginasi mundur OHLC **Coinbase Exchange** hingga `300` bar (`COINBASE_MAX_PAGES = 6`) dan menghapus batas `missing.length <= 8` pada `fetchLiveMacroTickers`.
+  - Mengubah `Candle.volume?: number` menjadi opsional di TypeScript, melepas `volume` sintetis pada pembacaan SQLite (`stripSyntheticVolume`) serta `getLatestLiveBar`, dan menempatkan normalisasi `volume: c.volume ?? 0` khusus pada boundary Tauri IPC (`store_cached_candles`) serta `strategyEngine.ts`.
+- **Kontras Sumbu Vela, Sentinel `'MACRO_USD'`, & Keterhubungan `FeedHealth` (`macroVelaAxisAdapter.ts`, `priceScaleOverlayController.ts`, `market/index.ts`):**
+  - Mengganti kalkulasi kontras duplikat termasuk warna teks keras pada crosshair `chip` ke `resolveContrastTextColor` (`colorUtils.ts`), serta memusatkan pemformatan tick zoom-adaptif ke `formatMacroCompactValue` (`macroIndexCatalog.ts`).
+  - Menghilangkan sentinel `'MACRO_USD'` pada `priceScaleOverlayController.ts`, `priceScaleLabelService.ts`, dan `SymbolLogo.svelte`, serta menghubungkan `MacroFeedHealthObserver` (`feedHealth`) dan `isProviderBlocked(providerId)` di `MarketFeedService`.
+
+### 🔄 Diubah (Changed)
+- **Modularisasi Basket Math, Kategori Pencarian `INDEX`, & Sinkronisasi Dokumentasi:**
+  - Mengekstrak kalkulasi matematis dan kalender resampling murni ke `src/lib/services/macroBasketMath.ts`, menyatukan helper `isTauriEnvironment()` di `src/lib/utils/tauriEnv.ts`, serta merapikan singleflight (`runCachedSingleflight`) dan concurrency pool (`runWithConcurrency`).
+  - Mengklasifikasikan katalog `macroAdapter.ts` dengan `type: 'index'` (`SearchFilterType = 'all' | 'spot' | 'perp' | 'index'`), merapikan badge `INDEX` dan UI di `SymbolSearchModal.svelte`, `Header.svelte`, `StatusBar.svelte`, serta `CreateAlertModal.svelte` (`color-mix` berbasis `--brand-cyan`, `--radius-xs: 2px`, dan tooltip akurasi `.feed-badge.macro`).
+  - Memperbarui `README.md`, galeri tangkapan layar, `DESIGN.md`, etalase `docs/` (`index.html`, `style.css`, `app.js`), menyempurnakan `docs/adr/0024-crypto-macro-index-and-synthetic-basket-feeder.md` (termasuk catatan *trade-off* `ADR-0003` §2.B Stack Division), serta memperluas uji regresi pada 5 suite test terkait.
+
 ## [0.45.0] - 2026-11-12
 
 ### 🚀 Ditambahkan (Added)
