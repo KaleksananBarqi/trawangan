@@ -5,6 +5,8 @@ import {
   resolveVelaSymbol,
   type ChartSessionSnapshot
 } from '../src/lib/services/chartSessionController';
+import { PersistenceService } from '../src/lib/services/persistence';
+import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 
 // Mock WebGL Container & Vela Workspace Factory untuk Headless Testing
 function createMockContainer(): any {
@@ -245,5 +247,101 @@ test.describe('ChartSessionController Seam Suite (#51)', () => {
     assert.equal((receivedCellInfo as any).timeframe, '1h');
 
     controller.destroy();
+  });
+
+  test('8. Tiket #182: attach() membaca chartDefaultConfig sinkron dari PersistenceService tanpa mengintip localStorage', async () => {
+    const adapter = new InMemoryLocalStorageAdapter();
+    await adapter.setPreference(
+      'chart_default_config',
+      JSON.stringify({ candles: { upColor: '#00FFAA', downColor: '#FF2266' }, margins: { top: 0.22 } })
+    );
+    const persistence = new PersistenceService(adapter);
+    await persistence.bootstrap();
+
+    const prevLocalStorage = (globalThis as any).localStorage;
+    const peekCalls: string[] = [];
+    (globalThis as any).localStorage = {
+      getItem: (key: string) => {
+        peekCalls.push(key);
+        if (key === 'trawangan_chart_default_config') {
+          return JSON.stringify({ candles: { upColor: '#999999' } });
+        }
+        return null;
+      },
+      setItem: () => {},
+      removeItem: () => {},
+    };
+
+    try {
+      let currentConfig: any = {
+        candles: { upColor: '#26a69a', downColor: '#ef5350' },
+        margins: { top: 0.1, bottom: 0.1 },
+      };
+      const nativeRenderer: any = {
+        getConfig: () => ({ ...currentConfig, candles: { ...currentConfig.candles }, margins: { ...currentConfig.margins } }),
+        applyConfig: (patch: any) => {
+          currentConfig = {
+            ...currentConfig,
+            ...patch,
+            candles: { ...currentConfig.candles, ...(patch?.candles || {}) },
+            margins: { ...currentConfig.margins, ...(patch?.margins || {}) },
+          };
+        },
+        set: () => {},
+        coords: { timezone: 'Asia/Jakarta' },
+      };
+      const fakeCell: any = {
+        id: 'cell_default',
+        symbol: 'binance:BTCUSDT',
+        timeframe: '15',
+        chart: {
+          renderer: {
+            getConfig: () => nativeRenderer.getConfig(),
+            applyConfig: (patch: any) => nativeRenderer.applyConfig(patch),
+            renderer: nativeRenderer,
+          },
+        },
+        on: () => () => {},
+      };
+      const fakeWs: any = {
+        cells: () => [fakeCell],
+        cell: (id: string) => (id === 'cell_default' ? fakeCell : null),
+        active: fakeCell,
+        on: () => () => {},
+        destroy: () => {},
+      };
+
+      const controller = new ChartSessionController({
+        symbol: 'BTCUSDT',
+        timeframe: '15m',
+        persistence,
+        workspaceFactory: () => fakeWs,
+      });
+
+      controller.attach(createMockContainer());
+
+      // Harus langsung diterapkan secara sinkron pada attach() tanpa await hydrateChartDefaultConfig()
+      assert.equal(currentConfig.candles.upColor, '#00FFAA');
+      assert.equal(currentConfig.candles.downColor, '#FF2266');
+      assert.equal(currentConfig.margins.top, 0.22);
+      assert.equal(peekCalls.includes('trawangan_chart_default_config'), false);
+
+      // saveCurrentSettingsAsDefault & resetSettingsToFactory memakai persistence yang diinjeksi
+      currentConfig.margins.top = 0.33;
+      const savedOk = await controller.saveCurrentSettingsAsDefault();
+      assert.equal(savedOk, true);
+      assert.equal(persistence.getChartDefaultConfigSync()?.margins?.top, 0.33);
+
+      await controller.resetSettingsToFactory();
+      assert.equal(persistence.getChartDefaultConfigSync(), null);
+
+      controller.destroy();
+    } finally {
+      if (prevLocalStorage === undefined) {
+        delete (globalThis as any).localStorage;
+      } else {
+        (globalThis as any).localStorage = prevLocalStorage;
+      }
+    }
   });
 });

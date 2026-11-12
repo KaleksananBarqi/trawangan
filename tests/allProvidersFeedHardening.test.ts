@@ -14,6 +14,9 @@ import { CoinbaseAdapter } from '../src/lib/services/market/adapters/coinbaseAda
 import { CustomFeedProvider } from '../src/lib/services/customProvider';
 import { CustomFeedAdapter } from '../src/lib/services/market/adapters/customAdapter';
 import { YahooFinanceProvider } from '../src/lib/services/yahooFinanceProvider';
+import { PersistenceService } from '../src/lib/services/persistence/index';
+import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
+import { TauriSqliteAdapter } from '../src/lib/services/persistence/tauriSqliteAdapter';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -419,7 +422,8 @@ test.describe('Phase 2 Hardening — Semua Datafeed, Pair Normalization, & Illiq
   });
 
   test('8. CustomFeedProvider & ChartSessionController: mendukung format object array, polling guard, dan custom-* di chart', async () => {
-    const feed = new MarketFeedService();
+    const persistence = new PersistenceService(new InMemoryLocalStorageAdapter());
+    const feed = new MarketFeedService(persistence);
     await feed.saveProviderConfig({
       id: 'custom-777',
       name: 'Object Node',
@@ -469,6 +473,7 @@ test.describe('Phase 2 Hardening — Semua Datafeed, Pair Normalization, & Illiq
         symbol: 'BTCUSDT',
         timeframe: '15m',
         providerId: 'custom-777',
+        persistence,
         feedHealthSink: feed,
         workspaceFactory: (_el, cfg) => {
           registeredProviders = cfg.providers;
@@ -727,7 +732,8 @@ test.describe('Phase 2 Hardening — Semua Datafeed, Pair Normalization, & Illiq
     };
 
     try {
-      const feed = new MarketFeedService();
+      const persistence = new PersistenceService(new TauriSqliteAdapter());
+      const feed = new MarketFeedService(persistence);
       const receivedPrices: number[] = [];
       const unsub = feed.subscribeActiveTicker('BTCUSDT', (t) => receivedPrices.push(t.price));
       await delay(20);
@@ -753,7 +759,8 @@ test.describe('Phase 2 Hardening — Semua Datafeed, Pair Normalization, & Illiq
   });
 
   test('12. Remediasi Spec: ChartSessionController memperbarui instance Vela custom_* saat config URL diedit ulang', async () => {
-    const feed = new MarketFeedService();
+    const persistence = new PersistenceService(new InMemoryLocalStorageAdapter());
+    const feed = new MarketFeedService(persistence);
     await feed.saveProviderConfig({
       id: 'custom-777',
       name: 'Node V1',
@@ -785,6 +792,7 @@ test.describe('Phase 2 Hardening — Semua Datafeed, Pair Normalization, & Illiq
       symbol: 'BTCUSDT',
       timeframe: '15m',
       providerId: 'custom-777',
+      persistence,
       feedHealthSink: feed,
       workspaceFactory: (_el, cfg) => {
         for (const [k, fac] of Object.entries(cfg.providers || {})) {
@@ -864,5 +872,147 @@ test.describe('Phase 2 Hardening — Semua Datafeed, Pair Normalization, & Illiq
 
       unsub();
     });
+  });
+
+  test('14. Tiket #183: ChartSessionController membaca custom-* dari PersistenceService terinjeksi saat attach dan setSymbol tanpa localStorage', async () => {
+    assert.strictEqual((globalThis as any).localStorage, undefined);
+
+    const adapter = new InMemoryLocalStorageAdapter();
+    adapter.clearMemory();
+    await adapter.saveProvider({
+      id: 'custom-seam-1',
+      name: 'Seam Node 1',
+      rest_url: 'https://seam-1.example.com',
+      ws_url: '',
+      is_active: true,
+    });
+
+    const persistence = new PersistenceService(adapter);
+    await persistence.bootstrap();
+
+    const velaRegistry = new Map<string, any>();
+    const fakeWs: any = {
+      feed: {
+        registerProvider(name: string, prov: any) {
+          velaRegistry.set(name, prov);
+        },
+        unregisterProvider(name: string) {
+          velaRegistry.delete(name);
+        },
+        providerInstance(name: string) {
+          return velaRegistry.get(name);
+        },
+      },
+      active: { id: 'c1', symbol: 'custom_seam_1:BTCUSDT', setSymbol(s: string) { this.symbol = s; }, chart: {} },
+      cells: () => [fakeWs.active],
+      on: () => {},
+      destroy: () => {},
+    };
+
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      providerId: 'custom-seam-1',
+      persistence,
+      workspaceFactory: (_el, cfg) => {
+        for (const [k, fac] of Object.entries(cfg.providers || {})) {
+          velaRegistry.set(k, (fac as any)());
+        }
+        return fakeWs;
+      },
+    });
+
+    const mockContainer: any = { nodeType: 1, style: {}, children: [], querySelectorAll: () => [] };
+    controller.attach(mockContainer);
+
+    assert.ok(
+      velaRegistry.has('custom_seam_1'),
+      'attach() wajib mendaftarkan custom_seam_1 secara sinkron dari persistence.getProvidersSync()'
+    );
+
+    // Tambah provider langsung di adapter (mensimulasikan data SQLite baru sebelum cache sinkron terisi)
+    await adapter.saveProvider({
+      id: 'custom-seam-2',
+      name: 'Seam Node 2',
+      rest_url: 'https://seam-2.example.com',
+      ws_url: '',
+      is_active: false,
+    });
+
+    await withMockFetch(async (url) => {
+      if (url.startsWith('https://seam-2.example.com/klines')) {
+        return new Response(JSON.stringify([[1700000000, 10, 12, 9, 11, 1]]), { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    }, async () => {
+      await controller.setSymbol('ETHUSDT', '15m', 'custom-seam-2');
+      assert.ok(
+        velaRegistry.has('custom_seam_2'),
+        'setSymbol() wajib menghidrasi custom_seam_2 dari persistence.loadProviders()'
+      );
+      const bars = await velaRegistry.get('custom_seam_2').getBars('ETHUSDT', '15', { countBack: 2 });
+      assert.equal(bars.length, 1);
+      assert.equal(bars[0].close, 11);
+    });
+
+    controller.destroy();
+  });
+
+  test('15. ChartSessionController.attach() mendaftarkan custom provider secara sinkron dari getProvidersSync() saat mount awal binance', async () => {
+    const adapter = new InMemoryLocalStorageAdapter();
+    adapter.clearMemory();
+    await adapter.saveProvider({
+      id: 'custom-initial-mount',
+      name: 'Initial Mount Node',
+      rest_url: 'https://initial-mount.example.com',
+      ws_url: '',
+      is_active: false,
+    });
+
+    const persistence = new PersistenceService(adapter);
+    await persistence.bootstrap();
+
+    const velaRegistry = new Map<string, any>();
+    const registerCalls: string[] = [];
+    const fakeWs: any = {
+      feed: {
+        registerProvider(name: string, prov: any) {
+          registerCalls.push(name);
+          velaRegistry.set(name, prov);
+        },
+        unregisterProvider(name: string) {
+          velaRegistry.delete(name);
+        },
+        providerInstance(name: string) {
+          return velaRegistry.get(name);
+        },
+      },
+      active: { id: 'c1', symbol: 'binance:BTCUSDT', setSymbol(s: string) { this.symbol = s; }, chart: {} },
+      cells: () => [fakeWs.active],
+      on: () => {},
+      destroy: () => {},
+    };
+
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      providerId: 'binance',
+      persistence,
+      workspaceFactory: () => fakeWs,
+    });
+
+    const mockContainer: any = { nodeType: 1, style: {}, children: [], querySelectorAll: () => [] };
+    controller.attach(mockContainer);
+
+    assert.ok(
+      velaRegistry.has('custom_initial_mount'),
+      'attach() dengan providerId binance wajib mendaftarkan custom_initial_mount secara sinkron ke workspace.feed'
+    );
+    assert.ok(
+      registerCalls.includes('custom_initial_mount'),
+      'registerProvider wajib dipanggil secara sinkron pada mount awal binance'
+    );
+
+    controller.destroy();
   });
 });

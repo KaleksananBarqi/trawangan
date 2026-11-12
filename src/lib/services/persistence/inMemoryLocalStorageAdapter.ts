@@ -1,15 +1,21 @@
 // Adapter In-Memory & Web LocalStorage untuk Lingkungan Pengujian dan Web Fallback
-import type { AppPreferenceKey, DrawingKeyEntry, PersistenceAdapter } from './types';
+import type { AppPreferenceKey, AppPreferenceRecord, DrawingKeyEntry, PersistenceAdapter } from './types';
 import type {
   MultiWatchlistRegistry,
   PineScriptRecord,
   PriceAlert,
+  ProviderConfig,
   SavedTradingPlanRecord,
   SavedWorkspace,
 } from '../../types/market';
+import { DEFAULT_PROVIDERS } from '../market/constants';
+
+const PREF_KEY_PREFIX = 'trawangan_pref_';
+const PROVIDERS_STORAGE_KEY = 'trawangan_providers';
 
 export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   private memoryStore = new Map<string, string>();
+  private preferenceTimestamps = new Map<string, number>();
 
   private getItem(key: string): string | null {
     if (this.memoryStore.has(key)) {
@@ -209,7 +215,7 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   async getPreference(key: AppPreferenceKey): Promise<string | null> {
     const cleanKey = key.trim();
     if (!cleanKey) return null;
-    const val = this.getItem(`trawangan_pref_${cleanKey}`);
+    const val = this.getItem(`${PREF_KEY_PREFIX}${cleanKey}`);
     return val ?? null;
   }
 
@@ -219,13 +225,47 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
       throw new Error('Kunci atau value JSON preferensi tidak boleh kosong');
     }
     JSON.parse(valueJson);
-    this.setItem(`trawangan_pref_${cleanKey}`, valueJson);
+    this.setItem(`${PREF_KEY_PREFIX}${cleanKey}`, valueJson);
+    this.preferenceTimestamps.set(cleanKey, Date.now());
   }
 
   async deletePreference(key: AppPreferenceKey): Promise<void> {
     const cleanKey = key.trim();
     if (!cleanKey) return;
-    this.removeItem(`trawangan_pref_${cleanKey}`);
+    this.removeItem(`${PREF_KEY_PREFIX}${cleanKey}`);
+    this.preferenceTimestamps.delete(cleanKey);
+  }
+
+  async loadAllPreferences(): Promise<AppPreferenceRecord[]> {
+    const entries = new Map<string, AppPreferenceRecord>();
+
+    const collect = (fullKey: string, valueJson: string | null) => {
+      if (!fullKey.startsWith(PREF_KEY_PREFIX) || valueJson === null) return;
+      const prefKey = fullKey.slice(PREF_KEY_PREFIX.length).trim();
+      if (!prefKey) return;
+      entries.set(prefKey, {
+        key: prefKey,
+        value_json: valueJson,
+        updated_at: this.preferenceTimestamps.get(prefKey) ?? 0,
+      });
+    };
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(PREF_KEY_PREFIX)) {
+            collect(k, localStorage.getItem(k));
+          }
+        }
+      } catch (_) {}
+    }
+
+    for (const [k, v] of this.memoryStore.entries()) {
+      collect(k, v);
+    }
+
+    return Array.from(entries.values()).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   }
 
   async loadWatchlist(): Promise<string[] | null> {
@@ -282,10 +322,52 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     this.setItem('trawangan_scripts', JSON.stringify(filtered));
   }
 
+  private readProvidersOrSeed(): ProviderConfig[] {
+    const raw = this.getItem(PROVIDERS_STORAGE_KEY);
+    if (raw !== null) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.map((p) => ({ ...p }));
+        }
+      } catch {
+        // Abaikan JSON rusak dan gunakan seed bawaan
+      }
+    }
+    return DEFAULT_PROVIDERS.map((p) => ({ ...p }));
+  }
+
+  async loadProviders(): Promise<ProviderConfig[]> {
+    return this.readProvidersOrSeed();
+  }
+
+  async saveProvider(provider: ProviderConfig): Promise<void> {
+    let list = this.readProvidersOrSeed().filter((p) => p.id !== provider.id);
+    if (provider.is_active) {
+      list = list.map((p) => ({ ...p, is_active: false }));
+    }
+    list.push({ ...provider });
+    this.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(list));
+  }
+
+  async setActiveProvider(id: string): Promise<void> {
+    const list = this.readProvidersOrSeed().map((p) => ({
+      ...p,
+      is_active: p.id === id,
+    }));
+    this.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(list));
+  }
+
+  async deleteProvider(id: string): Promise<void> {
+    const list = this.readProvidersOrSeed().filter((p) => p.id !== id);
+    this.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(list));
+  }
+
   /**
    * Helper pengujian untuk membersihkan memory store
    */
   public clearMemory(): void {
     this.memoryStore.clear();
+    this.preferenceTimestamps.clear();
   }
 }

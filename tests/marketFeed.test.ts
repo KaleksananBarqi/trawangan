@@ -3,17 +3,25 @@ import assert from 'node:assert';
 import { MarketFeedService } from '../src/lib/services/market/index';
 import { MockMarketAdapter } from '../src/lib/services/market/adapters/mockAdapter';
 import { alertService } from '../src/lib/services/alertService';
+import { PersistenceService } from '../src/lib/services/persistence/index';
+import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import type { PriceAlert } from '../src/lib/types/market';
 
 describe('Deep Market Feed Module Unit Tests', () => {
   let feed: MarketFeedService;
   let mockAdapter: MockMarketAdapter;
+  let persistenceAdapter: InMemoryLocalStorageAdapter;
+  let persistence: PersistenceService;
 
-  beforeEach(() => {
-    feed = new MarketFeedService();
+  beforeEach(async () => {
+    persistenceAdapter = new InMemoryLocalStorageAdapter();
+    persistenceAdapter.clearMemory();
+    persistence = new PersistenceService(persistenceAdapter);
+    await persistence.bootstrap();
+    feed = new MarketFeedService(persistence);
     mockAdapter = new MockMarketAdapter();
     feed.registerAdapter(mockAdapter);
-    feed.setActiveProvider('mock');
+    await feed.setActiveProvider('mock');
   });
 
   afterEach(() => {
@@ -225,16 +233,54 @@ describe('Deep Market Feed Module Unit Tests', () => {
     assert.ok(found);
     assert.strictEqual(found?.name, 'Custom Community Node');
     assert.strictEqual(found?.rest_url, 'https://custom-node.example.com');
+    assert.strictEqual(
+      persistence.getProvidersSync().some((p) => p.id === 'custom-dex-feed'),
+      true,
+      'Custom provider wajib tersinkron ke PersistenceService terinjeksi'
+    );
 
     // Aktifkan custom provider
     await feed.setActiveProvider('custom-dex-feed');
     const activeId = await feed.getActiveProviderId();
     assert.strictEqual(activeId, 'custom-dex-feed');
+    assert.strictEqual(
+      (await persistence.loadProviders()).find((p) => p.id === 'custom-dex-feed')?.is_active,
+      true
+    );
 
     // Hapus custom provider
     await feed.deleteProvider('custom-dex-feed');
     const afterDelete = await feed.getSavedProviders();
     assert.ok(!afterDelete.some((p) => p.id === 'custom-dex-feed'));
+    assert.strictEqual(
+      persistence.getProvidersSync().some((p) => p.id === 'custom-dex-feed'),
+      false
+    );
+  });
+
+  test('Bootstrapped PersistenceService menghidrasi custom-* adapter pada MarketFeedService tanpa localStorage', async () => {
+    assert.strictEqual((globalThis as any).localStorage, undefined);
+    const freshAdapter = new InMemoryLocalStorageAdapter();
+    await freshAdapter.saveProvider({
+      id: 'custom-boot-1',
+      name: 'Boot Node',
+      rest_url: 'https://boot-node.example.com',
+      ws_url: '',
+      is_active: false,
+    });
+    const freshPersistence = new PersistenceService(freshAdapter);
+    await freshPersistence.bootstrap();
+
+    const bootFeed = new MarketFeedService(freshPersistence);
+    try {
+      assert.strictEqual(bootFeed.getAdapter('custom-boot-1').id, 'custom-boot-1');
+      assert.strictEqual(
+        bootFeed.getKnownProviderConfigsSync().some((p) => p.id === 'custom-boot-1'),
+        true
+      );
+    } finally {
+      bootFeed.destroy();
+    }
   });
 });
 

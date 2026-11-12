@@ -798,4 +798,87 @@ mod tests {
             .unwrap();
         assert_eq!(row_count, 0);
     }
+
+    #[test]
+    fn test_load_all_app_preferences_empty_and_populated() {
+        let conn = setup_v1_test_db();
+
+        // Tabel kosong harus mengembalikan Vec kosong secara bersih
+        let empty = preferences::load_all_app_preferences(&conn).unwrap();
+        assert!(empty.is_empty());
+
+        // Sisipkan entri dengan urutan kunci acak + timestamp eksplisit
+        preferences::set_app_preference_with_timestamp(
+            &conn,
+            "ui_left_rail_collapsed",
+            "true",
+            1002,
+        )
+        .unwrap();
+        preferences::set_app_preference_with_timestamp(
+            &conn,
+            "app_settings",
+            r#"{"theme":"dark"}"#,
+            1001,
+        )
+        .unwrap();
+        preferences::set_app_preference_with_timestamp(
+            &conn,
+            "chart_default_config",
+            r#"{"series":{"style":"candles"}}"#,
+            1003,
+        )
+        .unwrap();
+
+        let loaded = preferences::load_all_app_preferences(&conn).unwrap();
+        assert_eq!(
+            loaded,
+            vec![
+                preferences::AppPreferenceEntry {
+                    key: "app_settings".to_string(),
+                    value_json: r#"{"theme":"dark"}"#.to_string(),
+                    updated_at: 1001,
+                },
+                preferences::AppPreferenceEntry {
+                    key: "chart_default_config".to_string(),
+                    value_json: r#"{"series":{"style":"candles"}}"#.to_string(),
+                    updated_at: 1003,
+                },
+                preferences::AppPreferenceEntry {
+                    key: "ui_left_rail_collapsed".to_string(),
+                    value_json: "true".to_string(),
+                    updated_at: 1002,
+                },
+            ]
+        );
+
+        // Hapus satu entri dan pastikan batch load merefleksikan perubahan
+        preferences::delete_app_preference(&conn, "chart_default_config").unwrap();
+        let after_delete = preferences::load_all_app_preferences(&conn).unwrap();
+        assert_eq!(after_delete.len(), 2);
+        assert_eq!(after_delete[0].key, "app_settings");
+        assert_eq!(after_delete[1].key, "ui_left_rail_collapsed");
+    }
+
+    #[test]
+    fn test_seed_defaults_includes_indodax_yahoo_and_does_not_resurrect_deleted_provider() {
+        let conn = setup_v1_test_db();
+        let initial = get_providers(&conn).unwrap();
+        assert_eq!(initial.len(), 6);
+        assert!(initial.iter().any(|p| p.id == "binance" && p.is_active));
+        assert!(initial.iter().any(|p| p.id == "indodax" && !p.is_active));
+        assert!(initial.iter().any(|p| p.id == "bitunix" && !p.is_active));
+        assert!(initial.iter().any(|p| p.id == "hyperliquid" && !p.is_active));
+        assert!(initial.iter().any(|p| p.id == "coinbase" && !p.is_active));
+        assert!(initial.iter().any(|p| p.id == "yahoo" && !p.is_active));
+
+        // Hapus coinbase lalu panggil init_connection & seed_defaults lagi
+        delete_provider(&conn, "coinbase").unwrap();
+        init_connection(&conn).unwrap();
+        providers::seed_defaults(&conn).unwrap();
+
+        let after_reinit = get_providers(&conn).unwrap();
+        assert_eq!(after_reinit.len(), 5);
+        assert!(!after_reinit.iter().any(|p| p.id == "coinbase"));
+    }
 }

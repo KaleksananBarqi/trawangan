@@ -8,7 +8,9 @@ use crate::db::{
     preferences::{
         delete_app_preference as db_delete_app_preference,
         get_app_preference as db_get_app_preference,
+        load_all_app_preferences as db_load_all_app_preferences,
         set_app_preference as db_set_app_preference,
+        AppPreferenceEntry,
     },
     save_drawings, save_pine_script, save_provider, set_active_provider,
     trading_plans::{
@@ -304,6 +306,14 @@ pub fn delete_app_preference(
 ) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     db_delete_app_preference(&conn, &key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn load_all_app_preferences(
+    db: State<'_, DbState>,
+) -> Result<Vec<AppPreferenceEntry>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    db_load_all_app_preferences(&conn).map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

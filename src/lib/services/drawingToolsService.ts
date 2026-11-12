@@ -1,4 +1,6 @@
 import type { DrawingToolType } from '../types/market.js';
+import { storage } from './persistence';
+import type { IPersistenceService } from './persistence/types';
 
 export type DrawingToolId = DrawingToolType;
 
@@ -167,92 +169,182 @@ for (const group of DRAWING_TOOL_GROUPS) {
   }
 }
 
-// ─── Last Used Tool State Memory ───
-const LAST_USED_KEY = 'trawangan_drawings_last_used';
-let memoryLastUsed: Record<string, DrawingToolId> = {};
+// ─── Preferensi Alat Gambar In-Memory & Sinkronisasi PersistenceService ───
+const DEFAULT_FAVORITES: DrawingToolId[] = ['trendline', 'hline', 'fibretracement', 'box', 'position', 'freehand'];
 
-// Fallback in-memory
-for (const group of DRAWING_TOOL_GROUPS) {
-  memoryLastUsed[group.id] = group.defaultTool;
+export interface FavoritesBarPosition {
+  x: number;
+  y: number;
 }
 
-// Muat dari localStorage bila ada
-if (typeof window !== 'undefined' && window.localStorage) {
-  try {
-    const raw = window.localStorage.getItem(LAST_USED_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      memoryLastUsed = { ...memoryLastUsed, ...parsed };
-    }
-  } catch (e) {
-    console.warn('Gagal memuat last used drawing tools:', e);
+export interface DrawingToolsPreferenceState {
+  lastUsed: Record<DrawingGroupId, DrawingToolId>;
+  favorites: DrawingToolId[];
+  favoritesBarPosition: FavoritesBarPosition;
+}
+
+function buildDefaultLastUsed(): Record<DrawingGroupId, DrawingToolId> {
+  const defaults = {} as Record<DrawingGroupId, DrawingToolId>;
+  for (const group of DRAWING_TOOL_GROUPS) {
+    defaults[group.id] = group.defaultTool;
   }
+  return defaults;
+}
+
+function getDefaultFavoritesBarPosition(): FavoritesBarPosition {
+  // Default: di samping toolbar kiri, kira-kira vertikal tengah
+  const defaultY = typeof window !== 'undefined' ? Math.round(window.innerHeight / 2 - 18) : 300;
+  return { x: 52, y: defaultY };
+}
+
+/**
+ * Pengelola state preferensi alat gambar (last used, favorit, dan posisi floating bar).
+ * Tidak melakukan pembacaan `localStorage` saat evaluasi awal modul; seluruh persistensi
+ * dihidrasi dan disimpan melalui `PersistenceService` (`UiPreferenceKey`).
+ */
+export class DrawingToolsPreferenceStore {
+  private memoryLastUsed: Record<DrawingGroupId, DrawingToolId> = buildDefaultLastUsed();
+  private memoryFavorites: Set<DrawingToolId> = new Set(DEFAULT_FAVORITES);
+  private memoryFavBarPos: FavoritesBarPosition | null = null;
+  private listeners: Set<(state: DrawingToolsPreferenceState) => void> = new Set();
+  private persistence: Pick<IPersistenceService, 'getUiPreferenceSync' | 'setUiPreference'>;
+
+  constructor(persistence: Pick<IPersistenceService, 'getUiPreferenceSync' | 'setUiPreference'> = storage) {
+    this.persistence = persistence;
+  }
+
+  /**
+   * Menghidrasi state in-memory dari cache PersistenceService setelah `bootstrap()` selesai
+   * dan memberitahu seluruh komponen UI yang berlangganan.
+   */
+  public hydrateFromPersistence(): void {
+    const savedLastUsed = this.persistence.getUiPreferenceSync<Record<string, DrawingToolId>>('drawings_last_used');
+    if (savedLastUsed && typeof savedLastUsed === 'object' && !Array.isArray(savedLastUsed)) {
+      const next = buildDefaultLastUsed();
+      for (const group of DRAWING_TOOL_GROUPS) {
+        const candidate = savedLastUsed[group.id];
+        if (typeof candidate === 'string' && TOOL_INDEX.has(candidate)) {
+          next[group.id] = candidate;
+        }
+      }
+      this.memoryLastUsed = next;
+    }
+
+    const savedFavorites = this.persistence.getUiPreferenceSync<unknown>('drawings_favorites');
+    if (Array.isArray(savedFavorites)) {
+      this.memoryFavorites = new Set(
+        savedFavorites.filter((id): id is DrawingToolId => typeof id === 'string' && TOOL_INDEX.has(id as DrawingToolId))
+      );
+    }
+
+    const savedPos = this.persistence.getUiPreferenceSync<FavoritesBarPosition>('drawings_fav_pos');
+    if (savedPos && typeof savedPos.x === 'number' && typeof savedPos.y === 'number') {
+      this.memoryFavBarPos = { x: savedPos.x, y: savedPos.y };
+    }
+
+    this.notify();
+  }
+
+  public getSnapshot(): DrawingToolsPreferenceState {
+    return {
+      lastUsed: { ...this.memoryLastUsed },
+      favorites: Array.from(this.memoryFavorites),
+      favoritesBarPosition: this.getFavoritesBarPosition(),
+    };
+  }
+
+  public subscribe(listener: (state: DrawingToolsPreferenceState) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notify(): void {
+    const snap = this.getSnapshot();
+    for (const listener of this.listeners) {
+      listener(snap);
+    }
+  }
+
+  public getLastUsedTool(groupId: DrawingGroupId): DrawingToolId {
+    return this.memoryLastUsed[groupId] || 'trendline';
+  }
+
+  public setLastUsedTool(groupId: DrawingGroupId, toolId: DrawingToolId): void {
+    this.memoryLastUsed[groupId] = toolId;
+    void this.persistence.setUiPreference('drawings_last_used', { ...this.memoryLastUsed }).catch(() => {});
+    this.notify();
+  }
+
+  public getFavoriteTools(): DrawingToolId[] {
+    return Array.from(this.memoryFavorites);
+  }
+
+  public isToolFavorite(toolId: DrawingToolId): boolean {
+    return this.memoryFavorites.has(toolId);
+  }
+
+  public toggleFavoriteTool(toolId: DrawingToolId): boolean {
+    let isNowFavorite = false;
+    if (this.memoryFavorites.has(toolId)) {
+      this.memoryFavorites.delete(toolId);
+      isNowFavorite = false;
+    } else {
+      this.memoryFavorites.add(toolId);
+      isNowFavorite = true;
+    }
+    void this.persistence
+      .setUiPreference('drawings_favorites', Array.from(this.memoryFavorites))
+      .catch(() => {});
+    this.notify();
+    return isNowFavorite;
+  }
+
+  public getFavoritesBarPosition(): FavoritesBarPosition {
+    if (this.memoryFavBarPos) {
+      return { ...this.memoryFavBarPos };
+    }
+    return getDefaultFavoritesBarPosition();
+  }
+
+  public saveFavoritesBarPosition(pos: FavoritesBarPosition): void {
+    this.memoryFavBarPos = { x: pos.x, y: pos.y };
+    void this.persistence.setUiPreference('drawings_fav_pos', { ...this.memoryFavBarPos }).catch(() => {});
+    this.notify();
+  }
+}
+
+export const drawingToolsPreferences = new DrawingToolsPreferenceStore(storage);
+
+export function hydrateDrawingToolsFromPersistence(): void {
+  drawingToolsPreferences.hydrateFromPersistence();
+}
+
+export function subscribeDrawingToolsPreferences(
+  listener: (state: DrawingToolsPreferenceState) => void
+): () => void {
+  return drawingToolsPreferences.subscribe(listener);
 }
 
 export function getLastUsedTool(groupId: DrawingGroupId): DrawingToolId {
-  return memoryLastUsed[groupId] || 'trendline';
+  return drawingToolsPreferences.getLastUsedTool(groupId);
 }
 
 export function setLastUsedTool(groupId: DrawingGroupId, toolId: DrawingToolId): void {
-  memoryLastUsed[groupId] = toolId;
-  if (typeof window !== 'undefined' && window.localStorage) {
-    try {
-      window.localStorage.setItem(LAST_USED_KEY, JSON.stringify(memoryLastUsed));
-    } catch (e) {
-      console.warn('Gagal menyimpan last used drawing tools:', e);
-    }
-  }
-}
-
-// ─── Favorites Tools State Memory ───
-const FAVORITES_KEY = 'trawangan_drawings_favorites';
-const DEFAULT_FAVORITES: DrawingToolId[] = ['trendline', 'hline', 'fibretracement', 'box', 'position', 'freehand'];
-let memoryFavorites: Set<DrawingToolId> = new Set(DEFAULT_FAVORITES);
-
-if (typeof window !== 'undefined' && window.localStorage) {
-  try {
-    const raw = window.localStorage.getItem(FAVORITES_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        memoryFavorites = new Set(parsed);
-      }
-    }
-  } catch (e) {
-    console.warn('Gagal memuat favorites drawing tools:', e);
-  }
+  drawingToolsPreferences.setLastUsedTool(groupId, toolId);
 }
 
 export function getFavoriteTools(): DrawingToolId[] {
-  return Array.from(memoryFavorites);
+  return drawingToolsPreferences.getFavoriteTools();
 }
 
 export function isToolFavorite(toolId: DrawingToolId): boolean {
-  return memoryFavorites.has(toolId);
+  return drawingToolsPreferences.isToolFavorite(toolId);
 }
 
 export function toggleFavoriteTool(toolId: DrawingToolId): boolean {
-  let isNowFavorite = false;
-  if (memoryFavorites.has(toolId)) {
-    memoryFavorites.delete(toolId);
-    isNowFavorite = false;
-  } else {
-    memoryFavorites.add(toolId);
-    isNowFavorite = true;
-  }
-
-  if (typeof window !== 'undefined' && window.localStorage) {
-    try {
-      window.localStorage.setItem(
-        FAVORITES_KEY,
-        JSON.stringify(Array.from(memoryFavorites))
-      );
-    } catch (e) {
-      console.warn('Gagal menyimpan favorites drawing tools:', e);
-    }
-  }
-
-  return isNowFavorite;
+  return drawingToolsPreferences.toggleFavoriteTool(toolId);
 }
 
 // ─── Readers & Search ───
@@ -279,12 +371,6 @@ export function searchDrawingTools(query: string): DrawingToolItem[] {
 
 // ─── Floating Favorites Bar Position ───
 
-const FAV_BAR_POS_KEY = 'trawangan_drawings_fav_pos';
-export interface FavoritesBarPosition {
-  x: number;
-  y: number;
-}
-
 export function clampFavoritesBarPosition(
   pos: FavoritesBarPosition,
   barWidth: number = 220,
@@ -302,32 +388,11 @@ export function clampFavoritesBarPosition(
 }
 
 export function getFavoritesBarPosition(): FavoritesBarPosition {
-  if (typeof window !== 'undefined' && window.localStorage) {
-    try {
-      const raw = window.localStorage.getItem(FAV_BAR_POS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.warn('Gagal memuat posisi favorites bar:', e);
-    }
-  }
-  // Default: di samping toolbar kiri, kira-kira vertikal tengah
-  const defaultY = typeof window !== 'undefined' ? Math.round(window.innerHeight / 2 - 18) : 300;
-  return { x: 52, y: defaultY };
+  return drawingToolsPreferences.getFavoritesBarPosition();
 }
 
 export function saveFavoritesBarPosition(pos: FavoritesBarPosition): void {
-  if (typeof window !== 'undefined' && window.localStorage) {
-    try {
-      window.localStorage.setItem(FAV_BAR_POS_KEY, JSON.stringify(pos));
-    } catch (e) {
-      console.warn('Gagal menyimpan posisi favorites bar:', e);
-    }
-  }
+  drawingToolsPreferences.saveFavoritesBarPosition(pos);
 }
 
 // ─── Quick Stamp Preset Palette (Target, Warning, Breakout, Pin, Flag) ───

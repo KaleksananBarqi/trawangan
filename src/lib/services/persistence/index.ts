@@ -6,8 +6,9 @@ import type {
   AppSettings,
   SavedTradingPlanRecord,
   MultiWatchlistRegistry,
+  ProviderConfig,
 } from '../../types/market';
-import type { IPersistenceService, PersistenceAdapter } from './types';
+import type { AppPreferenceKey, IPersistenceService, PersistenceAdapter, UiPreferenceKey } from './types';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 import { TauriSqliteAdapter } from './tauriSqliteAdapter';
 import { normalizeWorkspace, WORKSPACE_SCHEMA_VERSION } from './workspaceSchema';
@@ -15,6 +16,8 @@ import {
   buildUpdatedWatchlistRegistry,
   extractActiveWatchlistSymbols,
 } from './watchlistProjection';
+import { DEFAULT_PROVIDERS } from '../market/constants';
+import { migrateLegacyLocalStorage, type LegacyStorageLike } from './legacyMigration';
 
 export const DEFAULT_WATCHLIST_SYMBOLS: string[] = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
@@ -25,12 +28,67 @@ function isTauriEnvironment(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+const LEGACY_UNSEEDED_DEFAULT_IDS = ['indodax', 'yahoo'] as const;
+const DEFAULT_PROVIDER_BY_ID = new Map<string, ProviderConfig>(
+  DEFAULT_PROVIDERS.map((p) => [p.id, p])
+);
+
+function cloneProviders(list: ProviderConfig[]): ProviderConfig[] {
+  return list.map((p) => ({ ...p }));
+}
+
+function mergeProvidersWithDefaults(
+  persisted: ProviderConfig[],
+  deletedIds: ReadonlySet<string> = new Set()
+): ProviderConfig[] {
+  const validPersisted = Array.isArray(persisted)
+    ? persisted.filter(
+        (p) => p && typeof p.id === 'string' && p.id.trim().length > 0 && !deletedIds.has(p.id)
+      )
+    : [];
+  if (validPersisted.length === 0) {
+    return deletedIds.size === 0 ? cloneProviders(DEFAULT_PROVIDERS) : [];
+  }
+
+  const byId = new Map<string, ProviderConfig>();
+
+  for (const item of validPersisted) {
+    const existingDefault = DEFAULT_PROVIDER_BY_ID.get(item.id);
+    byId.set(item.id, existingDefault ? { ...existingDefault, ...item } : { ...item });
+  }
+
+  // Untuk DB legacy (mis. 4 baris seed Rust lama sebelum indodax & yahoo), gabungkan preset yang belum ada kecuali dihapus
+  if (!byId.has('indodax') && !byId.has('yahoo')) {
+    for (const id of LEGACY_UNSEEDED_DEFAULT_IDS) {
+      if (deletedIds.has(id)) continue;
+      const def = DEFAULT_PROVIDER_BY_ID.get(id);
+      if (def) {
+        byId.set(id, { ...def, is_active: false });
+      }
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
 export class PersistenceService implements IPersistenceService {
   private adapter: PersistenceAdapter;
   private debounceTimers = new Map<string, any>();
   private pendingDebounceData = new Map<string, { symbol: string; timeframe: string; doc: any }>();
+  private preferenceCache = new Map<string, string>();
+  private preferenceWriteEpoch = new Map<string, number>();
+  private providersCache: ProviderConfig[] | null = null;
+  private adapterPersistedProviderIds: Set<string> | null = null;
+  private deletedProviderIds = new Set<string>();
+  private bootstrapped = false;
+  private bootstrapPromise: Promise<void> | null = null;
+  private legacyStorageOverride?: LegacyStorageLike | null;
 
-  constructor(customAdapter?: PersistenceAdapter) {
+  constructor(
+    customAdapter?: PersistenceAdapter,
+    options?: { legacyStorage?: LegacyStorageLike | null }
+  ) {
+    this.legacyStorageOverride = options?.legacyStorage;
     if (customAdapter) {
       this.adapter = customAdapter;
     } else if (isTauriEnvironment()) {
@@ -45,6 +103,172 @@ export class PersistenceService implements IPersistenceService {
    */
   public setAdapter(adapter: PersistenceAdapter): void {
     this.adapter = adapter;
+    this.bootstrapped = false;
+    this.bootstrapPromise = null;
+    this.preferenceCache.clear();
+    this.preferenceWriteEpoch.clear();
+    this.providersCache = null;
+    this.adapterPersistedProviderIds = null;
+    this.deletedProviderIds.clear();
+  }
+
+  // ─── Bootstrap & Cache Sinkron Preferensi ───
+
+  isBootstrapped(): boolean {
+    return this.bootstrapped;
+  }
+
+  /**
+   * Memuat seluruh entri preferensi dan konfigurasi provider secara paralel satu kali saat startup UI (idempoten).
+   */
+  async bootstrap(): Promise<void> {
+    if (this.bootstrapped) return;
+    if (this.bootstrapPromise) return this.bootstrapPromise;
+
+    const targetAdapter = this.adapter;
+    const run = (async () => {
+      const [preferences, providers] = await Promise.all([
+        targetAdapter.loadAllPreferences(),
+        targetAdapter.loadProviders(),
+      ]);
+      if (this.adapter !== targetAdapter) return;
+
+      this.preferenceCache.clear();
+      if (Array.isArray(preferences)) {
+        for (const entry of preferences) {
+          if (entry && typeof entry.key === 'string' && typeof entry.value_json === 'string') {
+            this.preferenceCache.set(entry.key, entry.value_json);
+          }
+        }
+      }
+
+      let resolvedProviders = providers;
+      // Migrasi satu kali dari legacy localStorage hanya dijalankan pada adapter persisten (non-Web InMemory)
+      if (!(targetAdapter instanceof InMemoryLocalStorageAdapter)) {
+        const migration = await migrateLegacyLocalStorage({
+          adapter: targetAdapter,
+          preferenceCache: this.preferenceCache,
+          currentProviders: providers,
+          legacyStorage: this.legacyStorageOverride,
+        });
+        if (this.adapter !== targetAdapter) return;
+        resolvedProviders = migration.providers;
+      }
+
+      this.syncProvidersCacheFromAdapter(resolvedProviders);
+      this.bootstrapped = true;
+    })();
+
+    this.bootstrapPromise = run;
+    try {
+      await run;
+    } finally {
+      if (this.bootstrapPromise === run) {
+        this.bootstrapPromise = null;
+      }
+    }
+  }
+
+  /**
+   * Membaca nilai JSON preferensi secara sinkron dari cache memori (mengembalikan null aman bila belum siap).
+   */
+  getPreferenceSync(key: AppPreferenceKey): string | null {
+    return this.preferenceCache.get(key) ?? null;
+  }
+
+  private parseCachedJsonPreference<T>(key: AppPreferenceKey, warnContext?: string): T | null {
+    const raw = this.getPreferenceSync(key);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch (err) {
+      if (warnContext) {
+        console.warn(`[PersistenceService] Gagal parsing JSON ${warnContext} "${key}":`, err);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Membaca dan mem-parsing preferensi UI bertipe dari cache bootstrap secara sinkron.
+   */
+  getUiPreferenceSync<T>(key: UiPreferenceKey): T | null {
+    return this.parseCachedJsonPreference<T>(key, 'preferensi UI');
+  }
+
+  /**
+   * Menyimpan preferensi UI bertipe ke adapter `app_preferences` dan menyinkronkan cache secara langsung.
+   */
+  async setUiPreference<T>(key: UiPreferenceKey, value: T): Promise<void> {
+    if (value === undefined) {
+      throw new Error(`Nilai preferensi UI "${key}" tidak boleh undefined (JSON tidak valid)`);
+    }
+    const json = JSON.stringify(value);
+    if (typeof json !== 'string') {
+      throw new Error(`Nilai preferensi UI "${key}" gagal diserialisasi ke JSON`);
+    }
+    await this.setAndSyncPreference(key, json);
+  }
+
+  /**
+   * Menghapus preferensi UI dari adapter `app_preferences` dan cache memori.
+   */
+  async removeUiPreference(key: UiPreferenceKey): Promise<void> {
+    await this.deleteAndSyncPreference(key);
+  }
+  private async getAndSyncPreference(key: AppPreferenceKey): Promise<string | null> {
+    const startEpoch = this.preferenceWriteEpoch.get(key) ?? 0;
+    const raw = await this.adapter.getPreference(key);
+    // Hindari pembacaan asinkron yang terlambat menimpa mutasi/penghapusan terbaru pada key yang sama
+    if ((this.preferenceWriteEpoch.get(key) ?? 0) !== startEpoch) {
+      return this.preferenceCache.get(key) ?? null;
+    }
+    if (raw !== null) {
+      this.preferenceCache.set(key, raw);
+    } else {
+      this.preferenceCache.delete(key);
+    }
+    return raw;
+  }
+
+  private async mutatePreferenceWithCacheRollback(
+    key: AppPreferenceKey,
+    nextValue: string | null,
+    persistFn: () => Promise<void>
+  ): Promise<void> {
+    // Perbarui cache secara optimistik agar pembaca sinkron langsung konsisten, lalu rollback bila adapter gagal
+    const nextEpoch = (this.preferenceWriteEpoch.get(key) ?? 0) + 1;
+    this.preferenceWriteEpoch.set(key, nextEpoch);
+    const prev = this.preferenceCache.get(key);
+    if (nextValue !== null) {
+      this.preferenceCache.set(key, nextValue);
+    } else {
+      this.preferenceCache.delete(key);
+    }
+    try {
+      await persistFn();
+    } catch (err) {
+      if (this.preferenceWriteEpoch.get(key) === nextEpoch) {
+        if (prev !== undefined) {
+          this.preferenceCache.set(key, prev);
+        } else {
+          this.preferenceCache.delete(key);
+        }
+      }
+      throw err;
+    }
+  }
+
+  private async setAndSyncPreference(key: AppPreferenceKey, valueJson: string): Promise<void> {
+    await this.mutatePreferenceWithCacheRollback(key, valueJson, () =>
+      this.adapter.setPreference(key, valueJson)
+    );
+  }
+
+  private async deleteAndSyncPreference(key: AppPreferenceKey): Promise<void> {
+    await this.mutatePreferenceWithCacheRollback(key, null, () =>
+      this.adapter.deletePreference(key)
+    );
   }
 
   // ─── Drawings Persistence (Debounced) ───
@@ -239,6 +463,19 @@ export class PersistenceService implements IPersistenceService {
     return this.adapter.cloneWorkspaceDrawings(fromWsId, toWsId);
   }
 
+  getLastActiveWorkspaceIdSync(): string | null {
+    const parsed = this.parseCachedJsonPreference<unknown>('last_active_workspace_id');
+    return typeof parsed === 'string' && parsed.trim().length > 0 ? parsed.trim() : null;
+  }
+
+  async setLastActiveWorkspaceId(id: string | null | undefined): Promise<void> {
+    if (!id || typeof id !== 'string' || id.trim().length === 0) {
+      await this.deleteAndSyncPreference('last_active_workspace_id');
+      return;
+    }
+    await this.setAndSyncPreference('last_active_workspace_id', JSON.stringify(id.trim()));
+  }
+
   // ─── Pine Scripts Persistence ───
 
   async loadScripts(): Promise<PineScriptRecord[]> {
@@ -255,8 +492,13 @@ export class PersistenceService implements IPersistenceService {
 
   // ─── App Settings Persistence ───
 
+  getSettingsSync(): Partial<AppSettings> | null {
+    const parsed = this.parseCachedJsonPreference<Partial<AppSettings>>('app_settings');
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  }
+
   async loadSettings(): Promise<Partial<AppSettings> | null> {
-    const raw = await this.adapter.getPreference('app_settings');
+    const raw = await this.getAndSyncPreference('app_settings');
     if (!raw) return null;
     try {
       return JSON.parse(raw);
@@ -267,14 +509,17 @@ export class PersistenceService implements IPersistenceService {
 
   async saveSettings(settings: Partial<AppSettings>): Promise<void> {
     const json = JSON.stringify(settings);
-    await this.adapter.setPreference('app_settings', json);
+    await this.setAndSyncPreference('app_settings', json);
   }
 
   // ─── Chart Default Config Persistence ───
 
+  getChartDefaultConfigSync(): any | null {
+    return this.parseCachedJsonPreference<any>('chart_default_config');
+  }
+
   async loadChartDefaultConfig(): Promise<any | null> {
-    // 1. Coba baca dari adapter (SQLite / InMemory)
-    const raw = await this.adapter.getPreference('chart_default_config');
+    const raw = await this.getAndSyncPreference('chart_default_config');
     if (raw) {
       try {
         return JSON.parse(raw);
@@ -282,66 +527,22 @@ export class PersistenceService implements IPersistenceService {
         console.warn('[PersistenceService] Gagal parsing JSON chart default config:', err);
       }
     }
-    // 2. Fallback instan ke localStorage browser jika ada (dipertahankan hingga Tiket #172)
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        const local = window.localStorage.getItem('trawangan_chart_default_config');
-        if (local) return JSON.parse(local);
-      } catch (_) {}
-    }
     return null;
   }
 
   async saveChartDefaultConfig(config: any): Promise<void> {
     const json = typeof config === 'string' ? config : JSON.stringify(config);
-    // Simpan ke adapter (SQLite / InMemory)
-    await this.adapter.setPreference('chart_default_config', json);
-    // Sinkronkan ke localStorage browser secara sementara hingga konsolidasi Tiket #172
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        window.localStorage.setItem('trawangan_chart_default_config', json);
-      } catch (_) {}
-    }
+    await this.setAndSyncPreference('chart_default_config', json);
   }
 
   async clearChartDefaultConfig(): Promise<void> {
-    await this.adapter.deletePreference('chart_default_config');
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        window.localStorage.removeItem('trawangan_chart_default_config');
-      } catch (_) {}
-    }
+    await this.deleteAndSyncPreference('chart_default_config');
   }
 
   // ─── Trade Plan Vault (Riwayat Rencana Perdagangan Otomatis - ADR-0019) ───
 
   async loadTradingPlanHistory(): Promise<SavedTradingPlanRecord[]> {
-    const list = await this.adapter.listTradingPlans();
-    if (list.length > 0) return list;
-
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        const local = window.localStorage.getItem('trawangan_trade_plan_vault');
-        if (local) {
-          const parsed = JSON.parse(local);
-          if (Array.isArray(parsed)) return parsed;
-        }
-      } catch (_) {}
-    }
-    return [];
-  }
-
-  private syncVaultLocalStorageCache(list: SavedTradingPlanRecord[]): void {
-    // Sinkronkan cache localStorage browser secara sementara hingga konsolidasi Tiket #172
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        if (list.length === 0) {
-          window.localStorage.removeItem('trawangan_trade_plan_vault');
-        } else {
-          window.localStorage.setItem('trawangan_trade_plan_vault', JSON.stringify(list));
-        }
-      } catch (_) {}
-    }
+    return await this.adapter.listTradingPlans();
   }
 
   async saveTradingPlanToHistory(
@@ -392,32 +593,89 @@ export class PersistenceService implements IPersistenceService {
           plan: JSON.parse(JSON.stringify(record.plan)),
         };
 
-    // Jika adapter masih kosong namun cache localStorage fallback berisi riwayat lama, migrasikan lebih dulu sebelum upsert
-    const existingAdapterList = await this.adapter.listTradingPlans();
-    if (existingAdapterList.length === 0 && list.length > 0) {
-      for (const legacyItem of [...list].reverse()) {
-        if (legacyItem.id !== savedRecord.id) {
-          await this.adapter.upsertTradingPlan(legacyItem);
-        }
-      }
-    }
-
     await this.adapter.upsertTradingPlan(savedRecord);
-    const updatedList = await this.adapter.listTradingPlans();
-    this.syncVaultLocalStorageCache(updatedList);
     return savedRecord;
   }
 
   async deleteTradingPlanFromHistory(id: string): Promise<SavedTradingPlanRecord[]> {
     await this.adapter.deleteTradingPlan(id);
-    const filtered = await this.adapter.listTradingPlans();
-    this.syncVaultLocalStorageCache(filtered);
-    return filtered;
+    return await this.adapter.listTradingPlans();
   }
 
   async clearTradingPlanHistory(): Promise<void> {
     await this.adapter.clearTradingPlans();
-    this.syncVaultLocalStorageCache([]);
+  }
+
+  // ─── Market Data Providers Persistence ───
+
+  private syncProvidersCacheFromAdapter(rawProviders: ProviderConfig[]): ProviderConfig[] {
+    const persistedIds = new Set<string>();
+    if (Array.isArray(rawProviders)) {
+      for (const p of rawProviders) {
+        if (p && typeof p.id === 'string' && p.id.trim().length > 0) {
+          persistedIds.add(p.id);
+        }
+      }
+    }
+    this.adapterPersistedProviderIds = persistedIds;
+    const merged = mergeProvidersWithDefaults(rawProviders, this.deletedProviderIds);
+    this.providersCache = merged;
+    return merged;
+  }
+
+  getProvidersSync(): ProviderConfig[] {
+    return cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS);
+  }
+
+  async loadProviders(): Promise<ProviderConfig[]> {
+    const raw = await this.adapter.loadProviders();
+    const resolved = this.syncProvidersCacheFromAdapter(raw);
+    return cloneProviders(resolved);
+  }
+
+  async saveProvider(provider: ProviderConfig): Promise<void> {
+    await this.adapter.saveProvider(provider);
+    this.deletedProviderIds.delete(provider.id);
+    this.adapterPersistedProviderIds?.add(provider.id);
+
+    const base = cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS).filter(
+      (p) => p.id !== provider.id
+    );
+    const next = provider.is_active
+      ? base.map((p) => ({ ...p, is_active: false }))
+      : base;
+    next.push({ ...provider });
+    this.providersCache = next;
+  }
+
+  async setActiveProvider(id: string): Promise<void> {
+    const defaultCandidate = DEFAULT_PROVIDERS.find((p) => p.id === id);
+    if (
+      this.adapterPersistedProviderIds !== null &&
+      !this.adapterPersistedProviderIds.has(id) &&
+      defaultCandidate
+    ) {
+      // Pastikan preset bawaan TS yang belum di-seed oleh Rust (seperti indodax/yahoo) tetap tersimpan aktif di SQLite
+      await this.adapter.saveProvider({ ...defaultCandidate, is_active: true });
+      this.adapterPersistedProviderIds.add(id);
+    } else {
+      await this.adapter.setActiveProvider(id);
+    }
+    this.deletedProviderIds.delete(id);
+
+    const base = cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS);
+    this.providersCache = base.map((p) => ({
+      ...p,
+      is_active: p.id === id,
+    }));
+  }
+
+  async deleteProvider(id: string): Promise<void> {
+    await this.adapter.deleteProvider(id);
+    this.deletedProviderIds.add(id);
+    this.adapterPersistedProviderIds?.delete(id);
+    const base = cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS);
+    this.providersCache = base.filter((p) => p.id !== id);
   }
 }
 
@@ -426,6 +684,39 @@ export class PersistenceService implements IPersistenceService {
 export const storage = new PersistenceService();
 
 // Export fungsi pembantu langsung untuk kompatibilitas & leverage pemanggil
+export type { AppPreferenceKey, IPersistenceService, UiPreferenceKey } from './types';
+export const bootstrapPersistence = () => storage.bootstrap();
+export const isPersistenceBootstrapped = () => storage.isBootstrapped();
+
+/**
+ * Menjalankan callback secara langsung bila persistence sudah di-bootstrap,
+ * atau setelah `bootstrap()` selesai apabila dipanggil lebih awal.
+ * Mengembalikan fungsi pembatalan agar aman saat komponen di-unmount sebelum selesai.
+ */
+export function onPersistenceReady(
+  callback: () => void,
+  persistence: Pick<IPersistenceService, 'isBootstrapped' | 'bootstrap'> = storage
+): () => void {
+  if (persistence.isBootstrapped()) {
+    callback();
+    return () => {};
+  }
+  let cancelled = false;
+  void persistence
+    .bootstrap()
+    .then(() => {
+      if (!cancelled) callback();
+    })
+    .catch(() => {});
+  return () => {
+    cancelled = true;
+  };
+}
+export const getPreferenceSync = (key: AppPreferenceKey) => storage.getPreferenceSync(key);
+export const getUiPreferenceSync = <T>(key: UiPreferenceKey) => storage.getUiPreferenceSync<T>(key);
+export const setUiPreference = <T>(key: UiPreferenceKey, value: T) => storage.setUiPreference<T>(key, value);
+export const removeUiPreference = (key: UiPreferenceKey) => storage.removeUiPreference(key);
+
 export const loadDrawings = (sym: string, tf: string) => storage.loadDrawings(sym, tf);
 export const saveDrawingsDebounced = (sym: string, tf: string, doc: any) => storage.saveDrawingsDebounced(sym, tf, doc);
 export const flushDrawings = (sym?: string, tf?: string) => storage.flushDrawings(sym, tf);
@@ -444,16 +735,20 @@ export const saveWorkspace = (w: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id
 export const updateWorkspace = (w: SavedWorkspace) => storage.updateWorkspace(w);
 export const deleteWorkspace = (id: string) => storage.deleteWorkspace(id);
 export const cloneWorkspaceDrawings = (fromWsId: string, toWsId: string) => storage.cloneWorkspaceDrawings(fromWsId, toWsId);
-export { getLastActiveWorkspaceId, setLastActiveWorkspaceId, computeWorkspaceFingerprint } from './workspaceService';
+export const getLastActiveWorkspaceId = () => storage.getLastActiveWorkspaceIdSync();
+export const setLastActiveWorkspaceId = (id: string | null | undefined) => storage.setLastActiveWorkspaceId(id);
+export { computeWorkspaceFingerprint } from './workspaceService';
 
 export const loadScripts = () => storage.loadScripts();
 export const saveScript = (s: PineScriptRecord) => storage.saveScript(s);
 export const deleteScript = (id: string) => storage.deleteScript(id);
 
+export const getSettingsSync = () => storage.getSettingsSync();
 export const loadSettings = () => storage.loadSettings();
 export const saveSettings = (cfg: Partial<AppSettings>) => storage.saveSettings(cfg);
 export { resolveAppSettings } from '../../constants/defaults';
 
+export const getChartDefaultConfigSync = () => storage.getChartDefaultConfigSync();
 export const loadChartDefaultConfig = () => storage.loadChartDefaultConfig();
 export const saveChartDefaultConfig = (cfg: any) => storage.saveChartDefaultConfig(cfg);
 export const clearChartDefaultConfig = () => storage.clearChartDefaultConfig();
@@ -464,4 +759,10 @@ export const saveTradingPlanToHistory = (
 ) => storage.saveTradingPlanToHistory(record);
 export const deleteTradingPlanFromHistory = (id: string) => storage.deleteTradingPlanFromHistory(id);
 export const clearTradingPlanHistory = () => storage.clearTradingPlanHistory();
+
+export const getProvidersSync = () => storage.getProvidersSync();
+export const loadProviders = () => storage.loadProviders();
+export const saveProvider = (provider: ProviderConfig) => storage.saveProvider(provider);
+export const setActiveProvider = (id: string) => storage.setActiveProvider(id);
+export const deleteProvider = (id: string) => storage.deleteProvider(id);
 

@@ -46,6 +46,7 @@
   } from '../lib/services/chartSnapshotService';
   import { alertService } from '../lib/services/alertService';
   import { workspaceShellService, type WorkspaceShellState } from '../lib/services/workspaceShellService';
+  import { hydrateDrawingToolsFromPersistence } from '../lib/services/drawingToolsService';
   import { ensureNotificationPermission } from '../lib/services/systemNotificationService';
   import { marketFeed } from '../lib/services/market';
   import { telemetryService } from '../lib/services/telemetryService';
@@ -81,6 +82,7 @@
     SavedWorkspace
   } from '../lib/types/market';
   import {
+    storage,
     saveWorkspace,
     loadWorkspaces,
     cloneWorkspaceDrawings,
@@ -89,6 +91,7 @@
     computeWorkspaceFingerprint,
     flushDrawings
   } from '../lib/services/persistence';
+  import { readClampedPanelWidth } from '../lib/services/persistence/uiPreferencesHelper';
   import {
     THEME_PRESETS,
     UI_FONT_OPTIONS,
@@ -135,7 +138,8 @@
   let workspaceMode = $state<WorkspaceMode>('terminal');
   let activeWorkspace = $state<SavedWorkspace | null>(null);
   let isAutoSaveWorkspace = $state<boolean>(true);
-  let isPageMounted = false;
+  let isPageMounted = $state(false);
+  let isPersistenceBootstrapped = $state(false);
   let isLoadingWorkspace = false;
   let isClosingApp = false;
   let chartDirtyTick = $state(0);
@@ -426,6 +430,7 @@
   let unsubReplay: (() => void) | null = null;
 
   $effect(() => {
+    if (!isPersistenceBootstrapped) return;
     const sym = activeSymbol;
     if (sym) {
       if (unsubTicker) unsubTicker();
@@ -446,52 +451,60 @@
   onMount(() => {
     let isPageActive = true;
 
-    unsubReplay = replaySession.subscribe((snap) => {
-      replaySnapshot = snap;
-    });
-
-    unsubShell = workspaceShellService.subscribe((s) => {
-      shellState = s;
-      scheduleResizeDispatch(40);
-    });
-
-    unsubAlertsList = alertService.subscribe((list) => {
-      allAlerts = list;
-    });
-
-    // Muat preferensi aplikasi tersimpan dari localStorage
-    try {
-      const savedSettings = localStorage.getItem('trawangan_app_settings');
-      let parsed = null;
-      if (savedSettings) {
-        try {
-          parsed = JSON.parse(savedSettings);
-        } catch (_) {}
+    // Jalankan bootstrap persistence paling awal sebelum inisialisasi shell, feed pasar, atau workspace
+    const runStartupHydration = async () => {
+      try {
+        await storage.bootstrap();
+      } catch (err) {
+        console.warn('[Startup] Gagal menjalankan bootstrap persistence:', err);
       }
-      appSettings = resolveAppSettings(parsed);
-      if (appSettings.defaultTimeframe) {
-        activeTimeframe = appSettings.defaultTimeframe;
-      }
-      if (appSettings.syncConfig) {
-        syncConfig = { ...appSettings.syncConfig };
-      }
-      if (appSettings.autoSaveWorkspace !== undefined) {
-        isAutoSaveWorkspace = appSettings.autoSaveWorkspace;
-      } else {
-        const savedAutoSave = localStorage.getItem('trawangan_autosave_workspace');
-        if (savedAutoSave !== null) {
-          isAutoSaveWorkspace = savedAutoSave === 'true';
+      if (!isPageActive) return;
+
+      unsubReplay = replaySession.subscribe((snap) => {
+        replaySnapshot = snap;
+      });
+
+      unsubShell = workspaceShellService.subscribe((s) => {
+        shellState = s;
+        scheduleResizeDispatch(40);
+      });
+      workspaceShellService.reloadFromPersistence();
+      hydrateDrawingToolsFromPersistence();
+
+      unsubAlertsList = alertService.subscribe((list) => {
+        allAlerts = list;
+      });
+
+      // Muat preferensi aplikasi tersimpan dari cache sinkron PersistenceService pasca-bootstrap
+      try {
+        const savedSettings = storage.getSettingsSync();
+        appSettings = resolveAppSettings(savedSettings);
+        if (appSettings.defaultTimeframe) {
+          activeTimeframe = appSettings.defaultTimeframe;
         }
-      }
-
-      const savedPineWidth = localStorage.getItem('trawangan_pine_panel_width');
-      if (savedPineWidth) {
-        const parsedWidth = parseInt(savedPineWidth, 10);
-        if (!isNaN(parsedWidth) && parsedWidth >= 340 && parsedWidth <= 900) {
-          pinePanelWidth = parsedWidth;
+        if (appSettings.syncConfig) {
+          syncConfig = { ...appSettings.syncConfig };
         }
+        if (appSettings.autoSaveWorkspace !== undefined) {
+          isAutoSaveWorkspace = appSettings.autoSaveWorkspace;
+        }
+
+        const savedPineWidth = readClampedPanelWidth('pine_panel_width', 340, 900, storage);
+        if (savedPineWidth !== null) {
+          pinePanelWidth = savedPineWidth;
+        }
+
+        const activeBootProvider = storage.getProvidersSync().find((p) => p.is_active);
+        if (activeBootProvider?.id && activeBootProvider.id.toLowerCase() !== 'macro') {
+          activeProviderId = activeBootProvider.id;
+          marketFeed.setActiveProviderContext(activeBootProvider.id);
+          telemetryService.setActiveProvider(activeBootProvider.id);
+        }
+      } catch (e) {
+        console.warn('Gagal memuat pengaturan tersimpan:', e);
       }
 
+      isPersistenceBootstrapped = true;
       isPageMounted = true;
 
       // Auto-load workspace terakhir saat startup jika preferensi aktif (disertai recovery pending backup bila ada)
@@ -499,6 +512,7 @@
         const lastWorkspaceId = getLastActiveWorkspaceId();
         if (lastWorkspaceId) {
           loadWorkspaces().then(async (list) => {
+            if (!isPageActive) return;
             const target = list.find((w) => w.id === lastWorkspaceId);
             if (target) {
               const { workspace: recoveredWs, usedPending } = resolvePendingWorkspaceOverride(target, lastWorkspaceId);
@@ -520,26 +534,58 @@
           });
         }
       }
-    } catch (e) {
-      console.warn('Gagal memuat pengaturan tersimpan:', e);
-    }
 
-    // Sinkronisasi preferensi audio notifikasi & notifikasi sistem Windows
-    alertService.setSoundEnabled(appSettings.soundEnabled);
-    alertService.setSystemNotificationEnabled(appSettings.systemNotificationEnabled !== false);
+      // Sinkronisasi preferensi audio notifikasi & notifikasi sistem Windows
+      alertService.setSoundEnabled(appSettings.soundEnabled);
+      alertService.setSystemNotificationEnabled(appSettings.systemNotificationEnabled !== false);
 
-    // Verifikasi izin notifikasi native Windows desktop
-    ensureNotificationPermission().then((granted) => {
-      if (granted) {
-        addSystemLog('Notifikasi native Windows Action Center aktif.', 'info');
-      }
-    });
+      // Verifikasi izin notifikasi native Windows desktop
+      ensureNotificationPermission().then((granted) => {
+        if (granted && isPageActive) {
+          addSystemLog('Notifikasi native Windows Action Center aktif.', 'info');
+        }
+      });
 
-    // Pengecekan pembaruan otomatis di latar belakang (silent check)
-    schedulePageTimeout(() => {
-      if (!isPageActive) return;
-      updateService.checkForUpdates(true);
-    }, 3000);
+      // Pengecekan pembaruan otomatis di latar belakang (silent check)
+      schedulePageTimeout(() => {
+        if (!isPageActive) return;
+        updateService.checkForUpdates(true);
+      }, 3000);
+
+      // Dengarkan event saat Price Alert terpicu secara real-time
+      unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
+        triggeredAlertsToasts = [alert, ...triggeredAlertsToasts.slice(0, 3)];
+        const triggerPriceStr = formatPriceWithQuoteSymbol(
+          actualPrice,
+          parseAdaptiveSymbol(alert.symbol).quoteAsset,
+          alert.symbol
+        );
+        addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di ${triggerPriceStr}`, 'warn');
+        schedulePageTimeout(() => {
+          if (!isPageActive) return;
+          handleDismissAlertToast(alert.id);
+        }, 12000);
+      });
+
+      marketFeed.getActiveProviderId().then((pId) => {
+        if (pId && isPageActive) {
+          activeProviderId = pId;
+          telemetryService.setActiveProvider(pId);
+        }
+      });
+
+      unsubWatchlistRegistry = watchlistRegistry.subscribe(({ watchlists, activeId }) => {
+        const current = watchlists.find((w) => w.id === activeId);
+        if (current) {
+          watchlistSymbols = [...current.items];
+        }
+      });
+      watchlistRegistry.load().catch((err) => {
+        console.warn('[Page] Gagal memuat multi-watchlist:', err);
+      });
+    };
+
+    void runStartupHydration();
 
     // Auto-Flush gambar dan simpan pending backup + workspace sebelum aplikasi ditutup (beforeunload & Tauri onCloseRequested)
     const runExitFlush = () =>
@@ -587,38 +633,6 @@
           .catch(() => {});
       })
       .catch(() => {});
-
-    // Dengarkan event saat Price Alert terpicu secara real-time
-    unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
-      triggeredAlertsToasts = [alert, ...triggeredAlertsToasts.slice(0, 3)];
-      const triggerPriceStr = formatPriceWithQuoteSymbol(
-        actualPrice,
-        parseAdaptiveSymbol(alert.symbol).quoteAsset,
-        alert.symbol
-      );
-      addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di ${triggerPriceStr}`, 'warn');
-      schedulePageTimeout(() => {
-        if (!isPageActive) return;
-        handleDismissAlertToast(alert.id);
-      }, 12000);
-    });
-
-    marketFeed.getActiveProviderId().then((pId) => {
-      if (pId) {
-        activeProviderId = pId;
-        telemetryService.setActiveProvider(pId);
-      }
-    });
-
-    unsubWatchlistRegistry = watchlistRegistry.subscribe(({ watchlists, activeId }) => {
-      const current = watchlists.find((w) => w.id === activeId);
-      if (current) {
-        watchlistSymbols = [...current.items];
-      }
-    });
-    watchlistRegistry.load().catch((err) => {
-      console.warn('[Page] Gagal memuat multi-watchlist:', err);
-    });
 
     // ─── Daftarkan Binding Perintah Terminal ke Deep CommandDispatcher ───
     const commandUnbinds: (() => void)[] = [
@@ -927,11 +941,9 @@
   }
 
   function persistAppSettings() {
-    try {
-      localStorage.setItem('trawangan_app_settings', JSON.stringify(appSettings));
-    } catch (e) {
-      console.warn('Gagal menyimpan preferensi aplikasi ke localStorage:', e);
-    }
+    void storage.saveSettings(appSettings).catch((e) => {
+      console.warn('Gagal menyimpan preferensi aplikasi ke PersistenceService:', e);
+    });
   }
 
   function handleToggleSyncCrosshair() {
@@ -990,7 +1002,7 @@
       maxCap: 850,
       viewportMaxRatio: 0.65,
       edge: 'left-edge',
-      storageKey: 'trawangan_pine_panel_width',
+      preferenceKey: 'pine_panel_width',
       onResize: (nextWidth) => {
         pinePanelWidth = nextWidth;
       },
@@ -1013,9 +1025,7 @@
     if (nextWidth === null) return;
     e.preventDefault();
     pinePanelWidth = nextWidth;
-    try {
-      localStorage.setItem('trawangan_pine_panel_width', String(nextWidth));
-    } catch (_) {}
+    void storage.setUiPreference('pine_panel_width', nextWidth).catch(() => {});
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('resize'));
     }
@@ -1032,9 +1042,6 @@
     }
     if (newSettings.autoSaveWorkspace !== undefined) {
       isAutoSaveWorkspace = newSettings.autoSaveWorkspace;
-      try {
-        localStorage.setItem('trawangan_autosave_workspace', String(isAutoSaveWorkspace));
-      } catch (_) {}
     }
     if (newSettings.defaultTimeframe !== undefined) {
       activeTimeframe = newSettings.defaultTimeframe;
@@ -1121,7 +1128,7 @@
       const saved = await saveWorkspace(input as any);
       activeWorkspace = saved;
       if (saved?.id) {
-        setLastActiveWorkspaceId(saved.id);
+        await setLastActiveWorkspaceId(saved.id);
         if (!isClosingApp) {
           clearPendingWorkspaceBackup(saved.id);
         }
@@ -1158,7 +1165,7 @@
 
     activeWorkspace = saved;
     if (saved?.id) {
-      setLastActiveWorkspaceId(saved.id);
+      await setLastActiveWorkspaceId(saved.id);
       clearPendingWorkspaceBackup(saved.id);
     }
     workspaceCoordinator.setSavedFingerprint(
@@ -1172,7 +1179,7 @@
     workspaceCoordinator.setSavedFingerprint('');
     try { await flushDrawings(); } catch (_) {}
     activeWorkspace = null;
-    setLastActiveWorkspaceId(null);
+    await setLastActiveWorkspaceId(null);
     chartDrawingController.setWorkspaceId('default_workspace');
     chartDrawingController.clearCanvasVisuals();
     chartDrawingController.clearAllPlans();
@@ -1186,7 +1193,7 @@
     try {
       activeWorkspace = w;
       if (w && w.id) {
-        setLastActiveWorkspaceId(w.id);
+        await setLastActiveWorkspaceId(w.id);
         clearPendingWorkspaceBackup(w.id);
       }
 
@@ -1223,11 +1230,6 @@
   function handleToggleAutoSaveWorkspace() {
     isAutoSaveWorkspace = !isAutoSaveWorkspace;
     appSettings.autoSaveWorkspace = isAutoSaveWorkspace;
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem('trawangan_autosave_workspace', isAutoSaveWorkspace.toString());
-      } catch (_) {}
-    }
     persistAppSettings();
     addSystemLog(`Auto-save workspace: ${isAutoSaveWorkspace ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
@@ -1656,7 +1658,8 @@
 
     <!-- WORKSPACE UNIFIED VIEWPORT (Docked Structural Shell: Left Rail | Chart Canvas | Drawer Panel | Right Dock Rail) -->
     <div class="workspace-viewport mode-{workspaceMode}">
-      <!-- 1. DOCKED LEFT RAIL: Drawing Toolbar (Lebar 44px struktural, zero overlap lilin) -->
+      {#if isPersistenceBootstrapped}
+        <!-- 1. DOCKED LEFT RAIL: Drawing Toolbar (Lebar 44px struktural, zero overlap lilin) -->
       {#if workspaceMode === 'terminal'}
         <DrawingToolbar
           isCollapsed={shellState.isLeftRailCollapsed}
@@ -1862,6 +1865,7 @@
           handleWorkspaceModeChange(workspaceMode === 'pine' ? 'terminal' : 'pine');
         }}
       />
+      {/if}
     </div>
   </main>
 

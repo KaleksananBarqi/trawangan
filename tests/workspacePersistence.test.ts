@@ -1,25 +1,22 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { resolveAppSettings } from '../src/lib/constants/defaults';
+import { storage } from '../src/lib/services/persistence';
+import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import {
   getLastActiveWorkspaceId,
   setLastActiveWorkspaceId,
 } from '../src/lib/services/persistence/workspaceService';
 
-// Mock sederhana localStorage di lingkungan testing headless
-const mockStore: Record<string, string> = {};
-(globalThis as any).localStorage = {
-  getItem: (k: string) => mockStore[k] || null,
-  setItem: (k: string, v: string) => { mockStore[k] = String(v); },
-  removeItem: (k: string) => { delete mockStore[k]; },
-  clear: () => {
-    for (const k in mockStore) delete mockStore[k];
-  },
-};
-
 describe('Workspace Startup Auto-Load & Persistence Seam', () => {
-  beforeEach(() => {
-    (globalThis as any).localStorage.clear();
+  let adapter: InMemoryLocalStorageAdapter;
+
+  beforeEach(async () => {
+    adapter = new InMemoryLocalStorageAdapter();
+    storage.setAdapter(adapter);
+    await storage.bootstrap();
   });
 
   it('1. resolveAppSettings: menyertakan autoLoadLastWorkspace dengan default true', () => {
@@ -30,21 +27,30 @@ describe('Workspace Startup Auto-Load & Persistence Seam', () => {
     assert.equal(customSettings.autoLoadLastWorkspace, false);
   });
 
-  it('2. getLastActiveWorkspaceId & setLastActiveWorkspaceId: menyimpan dan membaca ID workspace terakhir secara persisten', () => {
+  it('2. getLastActiveWorkspaceId & setLastActiveWorkspaceId: menyimpan dan membaca ID workspace terakhir secara persisten tanpa localStorage', async () => {
     assert.equal(getLastActiveWorkspaceId(), null);
 
-    setLastActiveWorkspaceId('ws_crypto_scalping_123');
+    await setLastActiveWorkspaceId('ws_crypto_scalping_123');
     assert.equal(getLastActiveWorkspaceId(), 'ws_crypto_scalping_123');
 
-    setLastActiveWorkspaceId(null);
+    // Simulasi muat ulang bootstrap dengan adapter yang sama
+    storage.setAdapter(adapter);
+    await storage.bootstrap();
+    assert.equal(getLastActiveWorkspaceId(), 'ws_crypto_scalping_123');
+
+    await setLastActiveWorkspaceId(null);
     assert.equal(getLastActiveWorkspaceId(), null);
   });
 
-  it('3. setLastActiveWorkspaceId: membersihkan ID jika string kosong atau undefined diberikan', () => {
-    setLastActiveWorkspaceId('ws_test');
+  it('3. setLastActiveWorkspaceId: membersihkan ID jika string kosong atau undefined diberikan', async () => {
+    await setLastActiveWorkspaceId('ws_test');
     assert.equal(getLastActiveWorkspaceId(), 'ws_test');
 
-    setLastActiveWorkspaceId('');
+    await setLastActiveWorkspaceId('');
+    assert.equal(getLastActiveWorkspaceId(), null);
+
+    await setLastActiveWorkspaceId('ws_test_2');
+    await setLastActiveWorkspaceId(undefined);
     assert.equal(getLastActiveWorkspaceId(), null);
   });
 
@@ -107,6 +113,15 @@ describe('Workspace Startup Auto-Load & Persistence Seam', () => {
 
     // Bersihkan
     await deleteWorkspace(saved.id);
+  });
+
+  it('5. Tiket #182: +page.svelte membaca/menyimpan appSettings & autoSaveWorkspace via PersistenceService tanpa localStorage', () => {
+    const pageSrc = fs.readFileSync(path.resolve('src/routes/+page.svelte'), 'utf8');
+    assert.ok(pageSrc.includes('storage.bootstrap()'), '+page.svelte harus memanggil storage.bootstrap()');
+    assert.ok(pageSrc.includes('storage.getSettingsSync()'), '+page.svelte harus membaca appSettings via storage.getSettingsSync()');
+    assert.ok(pageSrc.includes('storage.saveSettings('), '+page.svelte harus menyimpan appSettings via storage.saveSettings(...)');
+    assert.equal(pageSrc.includes('trawangan_app_settings'), false, '+page.svelte tidak boleh membaca/menulis trawangan_app_settings di localStorage');
+    assert.equal(pageSrc.includes('trawangan_autosave_workspace'), false, '+page.svelte tidak boleh membaca/menulis trawangan_autosave_workspace di localStorage');
   });
 });
 

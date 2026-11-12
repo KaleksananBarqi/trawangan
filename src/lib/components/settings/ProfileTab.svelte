@@ -116,7 +116,7 @@
     const file = target.files?.[0];
     if (!file) return;
 
-    // Batasan ukuran berkas avatar maksimal 2.5 MB untuk menjaga efisiensi localStorage
+    // Batasan ukuran berkas avatar maksimal 2.5 MB untuk menjaga efisiensi penyimpanan lokal SQLite
     if (file.size > 2.5 * 1024 * 1024) {
       fileErrorMessage = 'Ukuran citra terlalu besar (maksimal 2.5 MB). Silakan gunakan gambar yang lebih ringkas.';
       target.value = '';

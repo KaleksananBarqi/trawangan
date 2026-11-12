@@ -1,29 +1,18 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { WorkspaceShellService } from '../src/lib/services/workspaceShellService';
+import { PersistenceService } from '../src/lib/services/persistence';
+import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 
-const memoryStorage: Record<string, string> = {};
-if (typeof globalThis.localStorage === 'undefined') {
-  (globalThis as any).localStorage = {
-    getItem: (key: string) => memoryStorage[key] ?? null,
-    setItem: (key: string, val: string) => {
-      memoryStorage[key] = String(val);
-    },
-    removeItem: (key: string) => {
-      delete memoryStorage[key];
-    },
-    clear: () => {
-      for (const k of Object.keys(memoryStorage)) delete memoryStorage[k];
-    },
-  };
-}
-
-describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock & Mode)', () => {
+describe('WorkspaceShell Deep Module Suite (#154 & #184: Unified Left Rail, Right Dock & Mode)', () => {
+  let adapter: InMemoryLocalStorageAdapter;
+  let persistence: PersistenceService;
   let shell: WorkspaceShellService;
 
   beforeEach(() => {
-    localStorage.clear();
-    shell = new WorkspaceShellService();
+    adapter = new InMemoryLocalStorageAdapter();
+    persistence = new PersistenceService(adapter);
+    shell = new WorkspaceShellService(persistence);
     shell.resetState();
   });
 
@@ -39,14 +28,14 @@ describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock 
   });
 
   describe('2. Left Toolbar Rail State & Persistence', () => {
-    it('toggleLeftRail: membalik status collapse rel kiri dan memperbarui localStorage', () => {
+    it('toggleLeftRail: membalik status collapse rel kiri dan memperbarui PersistenceService (left_rail_collapsed)', () => {
       shell.toggleLeftRail();
       assert.strictEqual(shell.getSnapshot().isLeftRailCollapsed, true);
-      assert.strictEqual(localStorage.getItem('trawangan_left_rail_collapsed'), 'true');
+      assert.strictEqual(persistence.getUiPreferenceSync<boolean>('left_rail_collapsed'), true);
 
       shell.toggleLeftRail();
       assert.strictEqual(shell.getSnapshot().isLeftRailCollapsed, false);
-      assert.strictEqual(localStorage.getItem('trawangan_left_rail_collapsed'), 'false');
+      assert.strictEqual(persistence.getUiPreferenceSync<boolean>('left_rail_collapsed'), false);
     });
 
     it('setLeftRailCollapsed: menetapkan status collapse rel kiri secara eksplisit', () => {
@@ -125,14 +114,24 @@ describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock 
       assert.strictEqual(snap.activeRightDockTab, 'objects');
     });
 
-    it('menyimpan status dock kanan ke localStorage dalam format terstruktur', () => {
+    it('menyimpan status dock kanan ke PersistenceService (right_dock_state) dalam format terstruktur', async () => {
       shell.openRightDockTab('alerts');
-      const raw = localStorage.getItem('trawangan_right_dock_state');
-      assert.ok(raw);
-      const parsed = JSON.parse(raw!);
-      assert.strictEqual(parsed.isOpen, true);
-      assert.strictEqual(parsed.activeTab, 'alerts');
-      assert.strictEqual(parsed.lastOpenedTab, 'alerts');
+      const cached = persistence.getUiPreferenceSync<{
+        isOpen: boolean;
+        activeTab: string | null;
+        lastOpenedTab: string;
+      }>('right_dock_state');
+      assert.ok(cached);
+      assert.strictEqual(cached!.isOpen, true);
+      assert.strictEqual(cached!.activeTab, 'alerts');
+      assert.strictEqual(cached!.lastOpenedTab, 'alerts');
+
+      // Pastikan juga tersimpan ke adapter persisten di balik PersistenceService
+      await new Promise((r) => setTimeout(r, 0));
+      const persistedRaw = await adapter.getPreference('right_dock_state');
+      assert.ok(persistedRaw);
+      const persisted = JSON.parse(persistedRaw!);
+      assert.strictEqual(persisted.activeTab, 'alerts');
     });
   });
 
@@ -182,11 +181,11 @@ describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock 
     });
   });
 
-  describe('6. Persistence Restoration on Fresh Instance', () => {
-    it('memulihkan status dari localStorage saat instansiasi baru', () => {
-      localStorage.setItem('trawangan_left_rail_collapsed', 'true');
-      localStorage.setItem(
-        'trawangan_right_dock_state',
+  describe('6. Persistence Restoration on Fresh Instance & Post-Bootstrap Hydration', () => {
+    it('memulihkan status dari PersistenceService saat instansiasi baru pasca-bootstrap', async () => {
+      await adapter.setPreference('left_rail_collapsed', JSON.stringify(true));
+      await adapter.setPreference(
+        'right_dock_state',
         JSON.stringify({
           isOpen: true,
           activeTab: 'objects',
@@ -194,7 +193,10 @@ describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock 
         })
       );
 
-      const restoredShell = new WorkspaceShellService();
+      const freshPersistence = new PersistenceService(adapter);
+      await freshPersistence.bootstrap();
+
+      const restoredShell = new WorkspaceShellService(freshPersistence);
       const snap = restoredShell.getSnapshot();
       assert.strictEqual(snap.isLeftRailCollapsed, true);
       assert.strictEqual(snap.isRightDockOpen, true);
@@ -202,9 +204,10 @@ describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock 
       assert.strictEqual(snap.lastOpenedRightDockTab, 'objects');
     });
 
-    it('memulihkan tab plan dari localStorage secara valid saat instansiasi baru', () => {
-      localStorage.setItem(
-        'trawangan_right_dock_state',
+    it('memulihkan tab plan dan memberitahu subscriber via reloadFromPersistence() setelah bootstrap', async () => {
+      await adapter.setPreference('left_rail_collapsed', JSON.stringify(true));
+      await adapter.setPreference(
+        'right_dock_state',
         JSON.stringify({
           isOpen: true,
           activeTab: 'plan',
@@ -212,11 +215,27 @@ describe('WorkspaceShell Deep Module Suite (#154: Unified Left Rail, Right Dock 
         })
       );
 
-      const restoredPlanShell = new WorkspaceShellService();
-      const snap = restoredPlanShell.getSnapshot();
-      assert.strictEqual(snap.isRightDockOpen, true);
-      assert.strictEqual(snap.activeRightDockTab, 'plan');
-      assert.strictEqual(snap.lastOpenedRightDockTab, 'plan');
+      const delayedPersistence = new PersistenceService(adapter);
+      const preBootstrapShell = new WorkspaceShellService(delayedPersistence);
+      // Sebelum bootstrap: jatuh ke default aman tanpa menyentuh global localStorage
+      assert.strictEqual(preBootstrapShell.getSnapshot().activeRightDockTab, 'watchlist');
+      assert.strictEqual(preBootstrapShell.getSnapshot().isLeftRailCollapsed, false);
+
+      let notifiedSnap = preBootstrapShell.getSnapshot();
+      let notifyCount = 0;
+      preBootstrapShell.subscribe((s) => {
+        notifyCount += 1;
+        notifiedSnap = s;
+      });
+
+      await delayedPersistence.bootstrap();
+      preBootstrapShell.reloadFromPersistence();
+
+      assert.strictEqual(notifyCount, 1);
+      assert.strictEqual(notifiedSnap.isLeftRailCollapsed, true);
+      assert.strictEqual(notifiedSnap.isRightDockOpen, true);
+      assert.strictEqual(notifiedSnap.activeRightDockTab, 'plan');
+      assert.strictEqual(notifiedSnap.lastOpenedRightDockTab, 'plan');
     });
   });
 });

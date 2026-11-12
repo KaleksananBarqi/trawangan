@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { MarketFeedService } from '../src/lib/services/market';
 import type { MarketProviderAdapter } from '../src/lib/services/market/types';
 import { alertService } from '../src/lib/services/alertService';
+import { PersistenceService } from '../src/lib/services/persistence/index';
+import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import type { Candle, MarketSearchResult, TickerInfo } from '../src/lib/types/market';
 
 function makeSpyAdapter(id: string, defaultPrice: number) {
@@ -145,45 +147,48 @@ describe('ADR-0024: Kebijakan Isolasi Zero-Background untuk Indeks Makro', () =>
     }
   });
 
-  test('setActiveProvider(macro) & setActiveProviderContext tidak menimpa provider global SQLite/localStorage', async () => {
-    const prevLS = (globalThis as any).localStorage;
-    const store = new Map<string, string>();
-    (globalThis as any).localStorage = {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => {
-        store.set(k, v);
-      },
-      removeItem: (k: string) => {
-        store.delete(k);
-      },
-      clear: () => {
-        store.clear();
-      },
-    };
+  test('setActiveProvider(macro) & setActiveProviderContext tidak menimpa provider global di PersistenceService', async () => {
+    assert.strictEqual((globalThis as any).localStorage, undefined);
+    const adapter = new InMemoryLocalStorageAdapter();
+    adapter.clearMemory();
+    const persistence = new PersistenceService(adapter);
+    await persistence.bootstrap();
 
-    const feed = new MarketFeedService();
+    const feed = new MarketFeedService(persistence);
     try {
       await feed.setActiveProvider('binance');
-      const beforeRaw = JSON.parse(store.get('trawangan_providers') || '[]') as Array<{
-        id: string;
-        is_active: boolean;
-      }>;
-      assert.equal(beforeRaw.find((p) => p.id === 'binance')?.is_active, true);
+      const beforeProviders = await persistence.loadProviders();
+      assert.equal(beforeProviders.find((p) => p.id === 'binance')?.is_active, true);
 
-      // Baik setActiveProvider('macro') maupun setActiveProviderContext('macro') dilarang memutasi is_active binance.
+      let persistentWriteCalls = 0;
+      const origSetActive = adapter.setActiveProvider.bind(adapter);
+      const origSaveProvider = adapter.saveProvider.bind(adapter);
+      adapter.setActiveProvider = async (id: string) => {
+        persistentWriteCalls += 1;
+        return origSetActive(id);
+      };
+      adapter.saveProvider = async (provider) => {
+        persistentWriteCalls += 1;
+        return origSaveProvider(provider);
+      };
+
+      // Baik setActiveProvider('macro') maupun setActiveProviderContext('macro') dilarang memutasi is_active binance di persistence.
       await feed.setActiveProvider('macro');
       feed.setActiveProviderContext('macro');
 
-      const afterRaw = JSON.parse(store.get('trawangan_providers') || '[]') as Array<{
-        id: string;
-        is_active: boolean;
-      }>;
       assert.equal(
-        afterRaw.find((p) => p.id === 'binance')?.is_active,
+        persistentWriteCalls,
+        0,
+        'Dynamic Feeder Context (macro) tidak boleh memicu penulisan provider aktif ke persistence adapter'
+      );
+
+      const afterProviders = await persistence.loadProviders();
+      assert.equal(
+        afterProviders.find((p) => p.id === 'binance')?.is_active,
         true,
         'Binance wajib tetap is_active: true pada persistence layer saat sel makro dibuka'
       );
-      assert.equal(afterRaw.some((p) => p.id === 'macro' && p.is_active), false);
+      assert.equal(afterProviders.some((p) => p.id === 'macro' && p.is_active), false);
       assert.equal(
         await feed.getActiveProviderId(),
         'binance',
@@ -191,7 +196,6 @@ describe('ADR-0024: Kebijakan Isolasi Zero-Background untuk Indeks Makro', () =>
       );
     } finally {
       feed.destroy();
-      (globalThis as any).localStorage = prevLS;
     }
   });
 });

@@ -8,6 +8,11 @@
   import SymbolLogo from './common/SymbolLogo.svelte';
   import { formatWatchlistEntry, isSymbolInWatchlist } from '../services/watchlistUtils';
   import { applySearchInputFocus, type SearchTriggerSource } from '../services/symbolSearchFocusGuard';
+  import {
+    loadRecentSymbolSearches,
+    recordRecentSymbolSearch,
+    clearRecentSymbolSearches
+  } from '../services/persistence/uiPreferencesHelper';
   import type { MarketSearchResult } from '../types/market';
   import type { SearchFilterType } from '../services/market/types';
 
@@ -55,39 +60,25 @@
     }
   });
 
-  function loadRecentSearches() {
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const stored = localStorage.getItem('trawangan_recent_searches');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            recentSearches = parsed.slice(0, 5);
-          }
-        }
-      } catch (_) {}
-    }
+  async function loadRecentSearches() {
+    try {
+      const loaded = await loadRecentSymbolSearches();
+      if (isOpen) {
+        recentSearches = loaded;
+      }
+    } catch (_) {}
   }
 
-  function addRecentSearch(sym: string) {
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const clean = sym.toUpperCase();
-        const filtered = recentSearches.filter((s) => s.toUpperCase() !== clean);
-        const next = [clean, ...filtered].slice(0, 5);
-        recentSearches = next;
-        localStorage.setItem('trawangan_recent_searches', JSON.stringify(next));
-      } catch (_) {}
-    }
+  async function addRecentSearch(sym: string) {
+    try {
+      recentSearches = await recordRecentSymbolSearch(sym, recentSearches);
+    } catch (_) {}
   }
 
-  function clearRecentSearches() {
-    recentSearches = [];
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.removeItem('trawangan_recent_searches');
-      } catch (_) {}
-    }
+  async function clearRecentSearches() {
+    try {
+      recentSearches = await clearRecentSymbolSearches();
+    } catch (_) {}
   }
 
   function formatPricePreview(price: number, quoteAsset = 'USDT', symbol?: string): string {

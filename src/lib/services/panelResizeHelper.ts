@@ -3,6 +3,8 @@
  * Mengelola event listener `window` secara deterministik dan menyediakan fungsi `cancel()`
  * untuk pembersihan aman pada `onDestroy` agar tidak terjadi memory leak.
  */
+import { storage } from './persistence';
+import type { IPersistenceService, UiPreferenceKey } from './persistence/types';
 
 export interface ResizeWindowTarget {
   innerWidth: number;
@@ -20,15 +22,15 @@ export interface EdgeResizeOptions {
   viewportMaxRatio?: number;
   /** Tepi panel yang ditarik: `'left-edge'` untuk panel dock kanan, `'right-edge'` untuk panel kiri */
   edge?: 'left-edge' | 'right-edge';
-  /** Kunci `localStorage` opsional untuk menyimpan lebar final saat pointer dilepas */
-  storageKey?: string;
+  /** Kunci preferensi UI PersistenceService untuk menyimpan lebar final saat pointer dilepas */
+  preferenceKey?: UiPreferenceKey;
   /** Pancarkan `window.dispatchEvent(new Event('resize'))` setelah selesai drag (default `true`) */
   dispatchResizeEvent?: boolean;
   onResize: (nextWidth: number) => void;
   onEnd?: (finalWidth: number, committed: boolean) => void;
   /** Dependency injection opsional untuk pengujian unit tanpa DOM global */
   windowTarget?: ResizeWindowTarget | null;
-  storage?: Pick<Storage, 'setItem'> | null;
+  persistence?: Pick<IPersistenceService, 'setUiPreference'> | null;
 }
 
 export interface EdgeResizeSession {
@@ -131,16 +133,12 @@ export function startEdgeResizeSession(options: EdgeResizeOptions): EdgeResizeSe
     cleanup();
 
     if (committed) {
-      if (options.storageKey) {
-        const storageObj =
-          options.storage !== undefined
-            ? options.storage
-            : typeof localStorage !== 'undefined'
-              ? localStorage
-              : null;
-        try {
-          storageObj?.setItem(options.storageKey, String(latestWidth));
-        } catch (_) {}
+      if (options.preferenceKey) {
+        const persistenceService =
+          options.persistence !== undefined ? options.persistence : storage;
+        if (persistenceService) {
+          void persistenceService.setUiPreference(options.preferenceKey, latestWidth).catch(() => {});
+        }
       }
 
       if (shouldDispatch && typeof target.dispatchEvent === 'function' && typeof Event !== 'undefined') {

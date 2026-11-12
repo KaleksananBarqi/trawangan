@@ -6,6 +6,7 @@ import type {
   AppSettings,
   SavedTradingPlanRecord,
   MultiWatchlistRegistry,
+  ProviderConfig,
 } from '../../types/market';
 
 export interface DrawingKeyEntry {
@@ -13,7 +14,29 @@ export interface DrawingKeyEntry {
   timeframe: string;
 }
 
-export type AppPreferenceKey = 'app_settings' | 'chart_default_config';
+export type UiPreferenceKey =
+  | 'left_rail_collapsed'
+  | 'right_dock_state'
+  | 'pine_panel_width'
+  | 'right_panel_width'
+  | 'right_plan_width'
+  | 'drawings_last_used'
+  | 'drawings_favorites'
+  | 'drawings_fav_pos'
+  | 'fav_indicators'
+  | 'recent_searches';
+
+export type AppPreferenceKey =
+  | 'app_settings'
+  | 'chart_default_config'
+  | 'last_active_workspace_id'
+  | UiPreferenceKey;
+
+export interface AppPreferenceRecord {
+  key: string;
+  value_json: string;
+  updated_at: number;
+}
 
 /**
  * Adapter tingkat rendah di balik Seam penyimpanan.
@@ -57,6 +80,13 @@ export interface PersistenceAdapter {
   getPreference(key: AppPreferenceKey): Promise<string | null>;
   setPreference(key: AppPreferenceKey, valueJson: string): Promise<void>;
   deletePreference(key: AppPreferenceKey): Promise<void>;
+  loadAllPreferences(): Promise<AppPreferenceRecord[]>;
+
+  // Konfigurasi provider data pasar (`providers`)
+  loadProviders(): Promise<ProviderConfig[]>;
+  saveProvider(provider: ProviderConfig): Promise<void>;
+  setActiveProvider(id: string): Promise<void>;
+  deleteProvider(id: string): Promise<void>;
 }
 
 /**
@@ -64,6 +94,14 @@ export interface PersistenceAdapter {
  * Memberikan leverage tinggi bagi pemanggil (callers) tanpa kebocoran detail teknis.
  */
 export interface IPersistenceService {
+  // Bootstrap & Cache Sinkron Preferensi
+  bootstrap(): Promise<void>;
+  isBootstrapped(): boolean;
+  getPreferenceSync(key: AppPreferenceKey): string | null;
+  getUiPreferenceSync<T>(key: UiPreferenceKey): T | null;
+  setUiPreference<T>(key: UiPreferenceKey, value: T): Promise<void>;
+  removeUiPreference(key: UiPreferenceKey): Promise<void>;
+
   // Drawings
   loadDrawings(symbol: string, timeframe: string): Promise<any | null>;
   saveDrawingsDebounced(symbol: string, timeframe: string, doc: any): void;
@@ -86,6 +124,8 @@ export interface IPersistenceService {
   updateWorkspace(workspace: SavedWorkspace): Promise<void>;
   deleteWorkspace(id: string): Promise<void>;
   cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number>;
+  getLastActiveWorkspaceIdSync(): string | null;
+  setLastActiveWorkspaceId(id: string | null | undefined): Promise<void>;
 
   // Pine Scripts
   loadScripts(): Promise<PineScriptRecord[]>;
@@ -93,10 +133,12 @@ export interface IPersistenceService {
   deleteScript(id: string): Promise<void>;
 
   // App Settings
+  getSettingsSync(): Partial<AppSettings> | null;
   loadSettings(): Promise<Partial<AppSettings> | null>;
   saveSettings(settings: Partial<AppSettings>): Promise<void>;
 
   // Chart Default Configuration
+  getChartDefaultConfigSync(): any | null;
   loadChartDefaultConfig(): Promise<any | null>;
   saveChartDefaultConfig(config: any): Promise<void>;
   clearChartDefaultConfig(): Promise<void>;
@@ -108,6 +150,13 @@ export interface IPersistenceService {
   ): Promise<SavedTradingPlanRecord>;
   deleteTradingPlanFromHistory(id: string): Promise<SavedTradingPlanRecord[]>;
   clearTradingPlanHistory(): Promise<void>;
+
+  // Provider Data Pasar
+  getProvidersSync(): ProviderConfig[];
+  loadProviders(): Promise<ProviderConfig[]>;
+  saveProvider(provider: ProviderConfig): Promise<void>;
+  setActiveProvider(id: string): Promise<void>;
+  deleteProvider(id: string): Promise<void>;
 }
 
 

@@ -431,5 +431,498 @@ describe('Deep Persistence Module Unit Tests', () => {
     assert.strictEqual('loadLayoutSlot' in tauriAdapter, false);
     assert.strictEqual('saveLayoutSlot' in tauriAdapter, false);
   });
+
+  test('Tiket #181: loadAllPreferences pada adapter mengembalikan entri terurut key ASC (kosong, isi, hapus)', async () => {
+    const empty = await adapter.loadAllPreferences();
+    assert.deepStrictEqual(empty, []);
+
+    await adapter.setPreference('chart_default_config', JSON.stringify({ series: { style: 'candles' } }));
+    await adapter.setPreference('app_settings', JSON.stringify({ theme: 'dark' }));
+
+    const loaded = await adapter.loadAllPreferences();
+    assert.strictEqual(loaded.length, 2);
+    assert.strictEqual(loaded[0].key, 'app_settings');
+    assert.strictEqual(loaded[0].value_json, JSON.stringify({ theme: 'dark' }));
+    assert.strictEqual(typeof loaded[0].updated_at, 'number');
+    assert.ok(loaded[0].updated_at > 0);
+    assert.strictEqual(loaded[1].key, 'chart_default_config');
+    assert.strictEqual(loaded[1].value_json, JSON.stringify({ series: { style: 'candles' } }));
+
+    await adapter.deletePreference('chart_default_config');
+    const afterDelete = await adapter.loadAllPreferences();
+    assert.strictEqual(afterDelete.length, 1);
+    assert.strictEqual(afterDelete[0].key, 'app_settings');
+  });
+
+  test('Tiket #181: bootstrap() memuat preferensi ke cache in-memory, idempoten, dan aman sebelum bootstrap', async () => {
+    assert.strictEqual(service.isBootstrapped(), false);
+    assert.strictEqual(service.getPreferenceSync('app_settings'), null);
+    assert.strictEqual(service.getPreferenceSync('chart_default_config'), null);
+
+    const settingsJson = JSON.stringify({ timezone: 'Asia/Jakarta', autoSaveWorkspace: true });
+    const chartJson = JSON.stringify({ series: { style: 'candles' } });
+    await adapter.setPreference('app_settings', settingsJson);
+    await adapter.setPreference('chart_default_config', chartJson);
+
+    let loadAllCalls = 0;
+    const origLoadAll = adapter.loadAllPreferences.bind(adapter);
+    adapter.loadAllPreferences = async () => {
+      loadAllCalls += 1;
+      return origLoadAll();
+    };
+
+    // Panggilan paralel + berulang harus tetap memanggil loadAllPreferences sekali (idempoten)
+    await Promise.all([service.bootstrap(), service.bootstrap()]);
+    await service.bootstrap();
+
+    assert.strictEqual(loadAllCalls, 1);
+    assert.strictEqual(service.isBootstrapped(), true);
+    assert.strictEqual(service.getPreferenceSync('app_settings'), settingsJson);
+    assert.strictEqual(service.getPreferenceSync('chart_default_config'), chartJson);
+
+    // Penggantian adapter mereset status bootstrap & cache sinkron
+    const freshAdapter = new InMemoryLocalStorageAdapter();
+    service.setAdapter(freshAdapter);
+    assert.strictEqual(service.isBootstrapped(), false);
+    assert.strictEqual(service.getPreferenceSync('app_settings'), null);
+  });
+
+  test('Tiket #181: mutasi preferensi menyinkronkan cache sebelum/sesudah bootstrap dan retry aman saat gagal', async () => {
+    // Mutasi sebelum bootstrap tetap menyinkronkan cache tanpa crash
+    await service.saveSettings({ theme: 'light' });
+    assert.strictEqual(service.isBootstrapped(), false);
+    assert.strictEqual(service.getPreferenceSync('app_settings'), JSON.stringify({ theme: 'light' }));
+
+    await service.bootstrap();
+    assert.strictEqual(service.isBootstrapped(), true);
+
+    const chartCfg = { series: { style: 'bars' } };
+    await service.saveChartDefaultConfig(chartCfg);
+    assert.strictEqual(service.getPreferenceSync('chart_default_config'), JSON.stringify(chartCfg));
+
+    await service.clearChartDefaultConfig();
+    assert.strictEqual(service.getPreferenceSync('chart_default_config'), null);
+
+    // Kegagalan bootstrap pertama tidak menandai bootstrapped, sehingga retry berikutnya tetap berjalan
+    const flakyAdapter = new InMemoryLocalStorageAdapter();
+    await flakyAdapter.setPreference('app_settings', JSON.stringify({ soundEnabled: false }));
+    let attempts = 0;
+    const orig = flakyAdapter.loadAllPreferences.bind(flakyAdapter);
+    flakyAdapter.loadAllPreferences = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('IPC error sementara');
+      return orig();
+    };
+
+    const flakyService = new PersistenceService(flakyAdapter);
+    await assert.rejects(() => flakyService.bootstrap(), /IPC error sementara/);
+    assert.strictEqual(flakyService.isBootstrapped(), false);
+    assert.strictEqual(flakyService.getPreferenceSync('app_settings'), null);
+
+    await flakyService.bootstrap();
+    assert.strictEqual(flakyService.isBootstrapped(), true);
+    assert.strictEqual(
+      flakyService.getPreferenceSync('app_settings'),
+      JSON.stringify({ soundEnabled: false })
+    );
+  });
+
+  test('Tiket #183: bootstrap() memuat providers paralel, getProvidersSync() aman sebelum bootstrap, dan CRUD provider menyinkronkan cache', async () => {
+    assert.strictEqual((globalThis as any).localStorage, undefined, 'Uji seam tidak boleh bergantung pada globalThis.localStorage');
+    assert.strictEqual(service.isBootstrapped(), false);
+
+    // Fallback aman sebelum bootstrap mengembalikan preset default dengan binance aktif
+    const preBootstrap = service.getProvidersSync();
+    assert.ok(preBootstrap.length >= 6);
+    assert.strictEqual(preBootstrap.find((p) => p.id === 'binance')?.is_active, true);
+
+    // Mutasi objek hasil getProvidersSync() tidak boleh merusak cache internal
+    preBootstrap[0].name = 'MUTATED';
+    assert.notStrictEqual(service.getProvidersSync()[0].name, 'MUTATED');
+
+    await adapter.saveProvider({
+      id: 'custom-node-1',
+      name: 'Node Satu',
+      rest_url: 'https://node1.example.com',
+      ws_url: 'wss://node1.example.com/ws',
+      is_active: true,
+    });
+
+    let loadProvidersCalls = 0;
+    const origLoadProviders = adapter.loadProviders.bind(adapter);
+    adapter.loadProviders = async () => {
+      loadProvidersCalls += 1;
+      return origLoadProviders();
+    };
+
+    await service.bootstrap();
+    assert.strictEqual(loadProvidersCalls, 1);
+    assert.strictEqual(service.isBootstrapped(), true);
+
+    const syncedAfterBoot = service.getProvidersSync();
+    assert.strictEqual(syncedAfterBoot.find((p) => p.id === 'custom-node-1')?.is_active, true);
+    assert.strictEqual(syncedAfterBoot.find((p) => p.id === 'binance')?.is_active, false);
+
+    // saveProvider memperbarui cache sinkron & mengganti status aktif
+    await service.saveProvider({
+      id: 'custom-node-2',
+      name: 'Node Dua',
+      rest_url: 'https://node2.example.com',
+      ws_url: '',
+      is_active: true,
+    });
+    assert.strictEqual(service.getProvidersSync().find((p) => p.id === 'custom-node-2')?.is_active, true);
+    assert.strictEqual(service.getProvidersSync().find((p) => p.id === 'custom-node-1')?.is_active, false);
+
+    // setActiveProvider memperbarui cache sinkron & adapter
+    await service.setActiveProvider('hyperliquid');
+    assert.strictEqual(service.getProvidersSync().find((p) => p.id === 'hyperliquid')?.is_active, true);
+    assert.strictEqual(service.getProvidersSync().find((p) => p.id === 'custom-node-2')?.is_active, false);
+    assert.strictEqual((await service.loadProviders()).find((p) => p.id === 'hyperliquid')?.is_active, true);
+
+    // deleteProvider menghapus dari cache sinkron & adapter
+    await service.deleteProvider('custom-node-1');
+    assert.strictEqual(service.getProvidersSync().some((p) => p.id === 'custom-node-1'), false);
+    assert.strictEqual((await adapter.loadProviders()).some((p) => p.id === 'custom-node-1'), false);
+
+    // setAdapter mereset cache provider kembali ke fallback default
+    service.setAdapter(new InMemoryLocalStorageAdapter());
+    assert.strictEqual(service.isBootstrapped(), false);
+    assert.strictEqual(service.getProvidersSync().some((p) => p.id === 'custom-node-2'), false);
+  });
+
+  test('Tiket #183: TauriSqliteAdapter memanggil IPC provider yang tepat & merge default Rust seed_defaults menjaga is_active', async () => {
+    const prevWindow = (globalThis as any).window;
+    const calls: Array<{ cmd: string; args: any }> = [];
+    const sqliteRows = [
+      {
+        id: 'binance',
+        name: 'Binance Official Public',
+        rest_url: 'https://api.binance.com',
+        ws_url: 'wss://stream.binance.com:9443',
+        is_active: false,
+      },
+      {
+        id: 'hyperliquid',
+        name: 'Hyperliquid DEX Perpetuals',
+        rest_url: 'https://api.hyperliquid.xyz',
+        ws_url: 'wss://api.hyperliquid.xyz/ws',
+        is_active: true,
+      },
+      {
+        id: 'coinbase',
+        name: 'Coinbase Exchange Spot',
+        rest_url: 'https://api.exchange.coinbase.com',
+        ws_url: 'wss://ws-feed.exchange.coinbase.com',
+        is_active: false,
+      },
+      {
+        id: 'bitunix',
+        name: 'Bitunix Futures',
+        rest_url: 'https://fapi.bitunix.com',
+        ws_url: 'wss://fapi.bitunix.com/public/',
+        is_active: false,
+      },
+    ];
+
+    (globalThis as any).window = {
+      __TAURI_INTERNALS__: {
+        invoke: async (cmd: string, args?: any) => {
+          calls.push({ cmd, args });
+          if (cmd === 'load_all_app_preferences') return [];
+          if (cmd === 'get_data_providers') return sqliteRows.map((r) => ({ ...r }));
+          return null;
+        },
+      },
+    };
+
+    try {
+      const tauriAdapter = new TauriSqliteAdapter();
+      const tauriService = new PersistenceService(tauriAdapter);
+      await tauriService.bootstrap();
+
+      const synced = tauriService.getProvidersSync();
+      // Pastikan indodax & yahoo tergabung dari DEFAULT_PROVIDERS tanpa merebut status aktif dari hyperliquid
+      assert.strictEqual(synced.some((p) => p.id === 'indodax'), true);
+      assert.strictEqual(synced.some((p) => p.id === 'yahoo'), true);
+      assert.strictEqual(synced.find((p) => p.id === 'hyperliquid')?.is_active, true);
+      assert.strictEqual(synced.find((p) => p.id === 'binance')?.is_active, false);
+
+      const customCfg = {
+        id: 'custom-sqlite-1',
+        name: 'Custom SQLite',
+        rest_url: 'https://sqlite-node.example.com',
+        ws_url: '',
+        is_active: false,
+      };
+      await tauriService.saveProvider(customCfg);
+      await tauriService.setActiveProvider('coinbase');
+      await tauriService.setActiveProvider('indodax');
+      await tauriService.deleteProvider('custom-sqlite-1');
+
+      assert.ok(calls.some((c) => c.cmd === 'get_data_providers'));
+      assert.ok(
+        calls.some((c) => c.cmd === 'add_or_update_provider' && c.args?.provider?.id === 'custom-sqlite-1')
+      );
+      assert.ok(
+        calls.some((c) => c.cmd === 'set_active_data_provider' && c.args?.id === 'coinbase')
+      );
+      // indodax belum di-seed oleh Rust, sehingga aktivasi indodax memastikannya tersimpan dengan is_active: true
+      assert.ok(
+        calls.some(
+          (c) =>
+            c.cmd === 'add_or_update_provider' &&
+            c.args?.provider?.id === 'indodax' &&
+            c.args?.provider?.is_active === true
+        )
+      );
+      assert.ok(
+        calls.some((c) => c.cmd === 'delete_data_provider' && c.args?.id === 'custom-sqlite-1')
+      );
+    } finally {
+      (globalThis as any).window = prevWindow;
+    }
+  });
+
+  test('Tiket #182: sync getters appSettings (termasuk avatar ~2.5 MB & autoSaveWorkspace), chartDefaultConfig, dan lastActiveWorkspaceId lintas bootstrap -> mutasi -> muat ulang', async () => {
+    assert.strictEqual(service.getSettingsSync(), null);
+    assert.strictEqual(service.getChartDefaultConfigSync(), null);
+    assert.strictEqual(service.getLastActiveWorkspaceIdSync(), null);
+
+    await service.bootstrap();
+
+    // Simpan appSettings dengan payload avatar ~2.5 MB & autoSaveWorkspace: false
+    const largeAvatar = `data:image/png;base64,${'A'.repeat(2_500_000)}`;
+    const nextSettings = {
+      theme: 'light' as const,
+      autoSaveWorkspace: false,
+      autoLoadLastWorkspace: false,
+      userProfile: {
+        username: 'Trader Nusantara',
+        handle: '@nusantara',
+        avatarDataUrl: largeAvatar,
+      },
+    };
+    await service.saveSettings(nextSettings);
+    assert.deepStrictEqual(service.getSettingsSync(), nextSettings);
+
+    const chartCfg = { candles: { upColor: '#00AAFF' }, margins: { top: 0.25 } };
+    await service.saveChartDefaultConfig(chartCfg);
+    assert.deepStrictEqual(service.getChartDefaultConfigSync(), chartCfg);
+
+    await service.setLastActiveWorkspaceId('  ws_utama_182  ');
+    assert.strictEqual(service.getLastActiveWorkspaceIdSync(), 'ws_utama_182');
+    assert.strictEqual(await adapter.getPreference('last_active_workspace_id'), JSON.stringify('ws_utama_182'));
+
+    // Muat ulang melalui instance PersistenceService baru memakai adapter yang sama
+    const reloaded = new PersistenceService(adapter);
+    assert.strictEqual(reloaded.getSettingsSync(), null);
+    await reloaded.bootstrap();
+
+    const reloadedSettings = reloaded.getSettingsSync();
+    assert.strictEqual(reloadedSettings?.autoSaveWorkspace, false);
+    assert.strictEqual(reloadedSettings?.autoLoadLastWorkspace, false);
+    assert.strictEqual(reloadedSettings?.userProfile?.username, 'Trader Nusantara');
+    assert.strictEqual(reloadedSettings?.userProfile?.avatarDataUrl?.length, largeAvatar.length);
+    assert.deepStrictEqual(reloaded.getChartDefaultConfigSync(), chartCfg);
+    assert.strictEqual(reloaded.getLastActiveWorkspaceIdSync(), 'ws_utama_182');
+
+    // Hapus lastActiveWorkspaceId & chartDefaultConfig memakai real DELETE
+    await reloaded.setLastActiveWorkspaceId(null);
+    assert.strictEqual(reloaded.getLastActiveWorkspaceIdSync(), null);
+    assert.strictEqual(await adapter.getPreference('last_active_workspace_id'), null);
+
+    await reloaded.setLastActiveWorkspaceId('ws_temp');
+    await reloaded.setLastActiveWorkspaceId('   ');
+    assert.strictEqual(reloaded.getLastActiveWorkspaceIdSync(), null);
+
+    await reloaded.clearChartDefaultConfig();
+    assert.strictEqual(reloaded.getChartDefaultConfigSync(), null);
+  });
+
+  test('Tiket #182: PersistenceService tidak membaca fallback atau menulis mirror localStorage untuk chartDefaultConfig dan Trade Plan Vault', async () => {
+    const prevWindow = (globalThis as any).window;
+    const mirrorCalls: Array<{ op: string; key: string }> = [];
+    const legacyStore = new Map<string, string>([
+      ['trawangan_chart_default_config', JSON.stringify({ candles: { upColor: '#999999' } })],
+      [
+        'trawangan_trade_plan_vault',
+        JSON.stringify([
+          {
+            id: 'legacy_vault_1',
+            symbol: 'BTCUSDT',
+            providerId: 'binance',
+            timeframe: '15m',
+            createdAt: 1000,
+            updatedAt: 1000,
+            rawText: 'LONG BTC',
+            plan: { symbol: 'BTCUSDT', bias: 'long', entry: 50000, stopLoss: 49000, targets: [] },
+          },
+        ]),
+      ],
+    ]);
+
+    (globalThis as any).window = {
+      localStorage: {
+        getItem: (key: string) => {
+          mirrorCalls.push({ op: 'getItem', key });
+          return legacyStore.get(key) ?? null;
+        },
+        setItem: (key: string, val: string) => {
+          mirrorCalls.push({ op: 'setItem', key });
+          legacyStore.set(key, val);
+        },
+        removeItem: (key: string) => {
+          mirrorCalls.push({ op: 'removeItem', key });
+          legacyStore.delete(key);
+        },
+      },
+    };
+
+    try {
+      await service.bootstrap();
+
+      // Tidak boleh membaca fallback legacy localStorage saat adapter kosong
+      assert.strictEqual(await service.loadChartDefaultConfig(), null);
+      assert.deepStrictEqual(await service.loadTradingPlanHistory(), []);
+
+      // Simpan & hapus chartDefaultConfig tidak boleh menyentuh window.localStorage
+      await service.saveChartDefaultConfig({ margins: { top: 0.2 } });
+      await service.clearChartDefaultConfig();
+
+      // Simpan, hapus satu, & bersihkan Trade Plan Vault tidak boleh menyentuh window.localStorage
+      const savedPlan = await service.saveTradingPlanToHistory({
+        symbol: 'ETHUSDT',
+        providerId: 'binance',
+        timeframe: '1h',
+        rawText: 'ETH LONG',
+        plan: { symbol: 'ETHUSDT', bias: 'long', entry: 3000, stopLoss: 2900, targets: [{ price: 3200 }] } as any,
+      });
+      const historyAfterSave = await service.loadTradingPlanHistory();
+      assert.strictEqual(historyAfterSave.length, 1);
+      assert.strictEqual(historyAfterSave[0].id, savedPlan.id);
+
+      await service.deleteTradingPlanFromHistory(savedPlan.id);
+      await service.clearTradingPlanHistory();
+
+      assert.deepStrictEqual(mirrorCalls, []);
+    } finally {
+      if (prevWindow === undefined) {
+        delete (globalThis as any).window;
+      } else {
+        (globalThis as any).window = prevWindow;
+      }
+    }
+  });
+
+  test('Tiket #184: getUiPreferenceSync, setUiPreference, dan removeUiPreference menyinkronkan cache & adapter untuk UiPreferenceKey', async () => {
+    const uiKeys: import('../src/lib/services/persistence/types').UiPreferenceKey[] = [
+      'left_rail_collapsed',
+      'right_dock_state',
+      'pine_panel_width',
+      'right_panel_width',
+      'right_plan_width',
+      'drawings_last_used',
+      'drawings_favorites',
+      'drawings_fav_pos',
+      'fav_indicators',
+      'recent_searches',
+    ];
+    assert.strictEqual(uiKeys.length, 10);
+
+    // Pre-populate adapter sebelum bootstrap
+    await adapter.setPreference('pine_panel_width', JSON.stringify(520));
+    await adapter.setPreference(
+      'right_dock_state',
+      JSON.stringify({ isOpen: false, activeTab: null, lastOpenedTab: 'alerts' })
+    );
+
+    assert.strictEqual(service.getUiPreferenceSync<number>('pine_panel_width'), null);
+
+    await service.bootstrap();
+
+    assert.strictEqual(service.getUiPreferenceSync<number>('pine_panel_width'), 520);
+    assert.deepStrictEqual(
+      service.getUiPreferenceSync<{ isOpen: boolean; activeTab: string | null; lastOpenedTab: string }>('right_dock_state'),
+      { isOpen: false, activeTab: null, lastOpenedTab: 'alerts' }
+    );
+
+    // Mutasi via setUiPreference memperbarui cache sinkron & adapter
+    await service.setUiPreference('left_rail_collapsed', true);
+    assert.strictEqual(service.getUiPreferenceSync<boolean>('left_rail_collapsed'), true);
+    assert.strictEqual(await adapter.getPreference('left_rail_collapsed'), 'true');
+
+    await service.setUiPreference('recent_searches', ['BTCUSDT', 'ETHUSDT']);
+    assert.deepStrictEqual(service.getUiPreferenceSync<string[]>('recent_searches'), ['BTCUSDT', 'ETHUSDT']);
+
+    // Hapus via removeUiPreference membersihkan cache & adapter
+    await service.removeUiPreference('recent_searches');
+    assert.strictEqual(service.getUiPreferenceSync<string[]>('recent_searches'), null);
+    assert.strictEqual(await adapter.getPreference('recent_searches'), null);
+
+    // Nilai undefined harus ditolak fail-loud
+    await assert.rejects(
+      () => service.setUiPreference('fav_indicators', undefined as unknown as string[]),
+      /JSON/
+    );
+  });
+
+  test('deleteProvider("coinbase") tetap terhapus lintas loadProviders() dan bootstrap() tanpa menghidupkan ulang default atau mengaktifkan paksa binance', async () => {
+    await service.bootstrap();
+
+    await service.deleteProvider('coinbase');
+    assert.strictEqual(service.getProvidersSync().some((p) => p.id === 'coinbase'), false);
+
+    // loadProviders() tidak boleh menghidupkan kembali coinbase
+    const afterLoad = await service.loadProviders();
+    assert.strictEqual(afterLoad.some((p) => p.id === 'coinbase'), false);
+    assert.strictEqual(service.getProvidersSync().some((p) => p.id === 'coinbase'), false);
+
+    // Sesi/bootstrap baru dengan adapter yang sama juga tidak boleh memunculkan coinbase kembali
+    const secondService = new PersistenceService(adapter);
+    await secondService.bootstrap();
+    assert.strictEqual(secondService.getProvidersSync().some((p) => p.id === 'coinbase'), false);
+    assert.strictEqual((await secondService.loadProviders()).some((p) => p.id === 'coinbase'), false);
+
+    // Menghapus provider yang sedang aktif (binance) tidak boleh mengaktifkan paksa binance kembali saat loadProviders()
+    await secondService.deleteProvider('binance');
+    const withoutBinance = await secondService.loadProviders();
+    assert.strictEqual(withoutBinance.some((p) => p.id === 'binance'), false);
+    assert.strictEqual(secondService.getProvidersSync().some((p) => p.id === 'binance'), false);
+  });
+
+  test('onPersistenceReady memanggil callback langsung bila sudah bootstrapped, menunggu bootstrap bila belum, dan menghormati pembatalan', async () => {
+    const { onPersistenceReady } = await import('../src/lib/services/persistence');
+
+    // 1. Bila belum bootstrapped, menunggu bootstrap selesai
+    let earlyCalls = 0;
+    const cancelEarly = onPersistenceReady(() => {
+      earlyCalls += 1;
+    }, service);
+    assert.strictEqual(earlyCalls, 0);
+    await service.bootstrap();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.strictEqual(earlyCalls, 1);
+    cancelEarly();
+
+    // 2. Bila sudah bootstrapped, dipanggil secara sinkron
+    let syncCalls = 0;
+    const cancelSync = onPersistenceReady(() => {
+      syncCalls += 1;
+    }, service);
+    assert.strictEqual(syncCalls, 1);
+    cancelSync();
+
+    // 3. Pembatalan sebelum bootstrap selesai mencegah callback dijalankan
+    const freshService = new PersistenceService(new InMemoryLocalStorageAdapter());
+    let cancelledCalls = 0;
+    const cancelPending = onPersistenceReady(() => {
+      cancelledCalls += 1;
+    }, freshService);
+    cancelPending();
+    await freshService.bootstrap();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.strictEqual(cancelledCalls, 0);
+  });
 });
 

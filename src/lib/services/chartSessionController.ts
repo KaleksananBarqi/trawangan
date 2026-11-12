@@ -50,11 +50,8 @@ import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColor
 import { isVolumeIndicator } from '../data/indicatorPresets';
 import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 import { applyLayoutTimeframePolicy } from '../constants/defaults';
-import {
-  loadChartDefaultConfig,
-  saveChartDefaultConfig,
-  clearChartDefaultConfig
-} from './persistence';
+import { storage } from './persistence';
+import type { IPersistenceService } from './persistence/types';
 import {
   cloneRendererConfigValue,
   sanitizeRendererConfigForApply,
@@ -88,6 +85,7 @@ export interface ChartSessionOptions {
   // Factory & Stream Guard opsional untuk dependency injection / headless unit testing
   workspaceFactory?: (container: HTMLElement, config: any) => any;
   feedHealthSink?: StreamHealthSink;
+  persistence?: IPersistenceService;
   providerFactories?: Partial<Record<string, () => any>>;
   streamWatchdogMs?: number;
   streamStaleMs?: number;
@@ -414,6 +412,8 @@ export class ChartSessionController {
   private isDestroyed = false;
   private gridMode: GridMode = 'normal';
   private feedHealthSink: StreamHealthSink;
+  private persistence: IPersistenceService;
+  private hasCustomPersistence = false;
   private streamCoordinator: StreamGuardCoordinator;
   private providerFactories?: Partial<Record<string, () => any>>;
   private streamWatchdogMs?: number;
@@ -455,6 +455,8 @@ export class ChartSessionController {
     this.onActiveCellChange = options.onActiveCellChange;
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
     this.workspaceFactory = options.workspaceFactory;
+    this.hasCustomPersistence = Boolean(options.persistence);
+    this.persistence = options.persistence ?? storage;
     this.feedHealthSink = options.feedHealthSink ?? marketFeed;
     this.streamCoordinator = new StreamGuardCoordinator(this.feedHealthSink);
     this.providerFactories = options.providerFactories;
@@ -536,7 +538,7 @@ export class ChartSessionController {
   }
 
   /**
-   * Mengumpulkan konfigurasi custom-* provider secara sinkron dari sink aktif, singleton marketFeed, dan localStorage
+   * Mengumpulkan konfigurasi custom-* provider secara sinkron dari PersistenceService dan sink aktif
    */
   private getKnownCustomConfigs(): ProviderConfig[] {
     const byId = new Map<string, ProviderConfig>();
@@ -550,17 +552,14 @@ export class ChartSessionController {
       }
     };
 
-    const sinkAny = this.feedHealthSink as any;
-    if (typeof sinkAny?.getKnownProviderConfigsSync === 'function') {
-      collect(sinkAny.getKnownProviderConfigsSync());
-    }
-    collect(marketFeed.getKnownProviderConfigsSync());
+    collect(this.persistence.getProvidersSync());
 
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const raw = localStorage.getItem('trawangan_providers');
-        if (raw) collect(JSON.parse(raw));
-      } catch (_) {}
+    const sinkAny = this.feedHealthSink as any;
+    if (
+      typeof sinkAny?.getKnownProviderConfigsSync === 'function' &&
+      !(this.hasCustomPersistence && sinkAny === marketFeed)
+    ) {
+      collect(sinkAny.getKnownProviderConfigsSync());
     }
 
     return Array.from(byId.values());
@@ -663,13 +662,16 @@ export class ChartSessionController {
     };
 
     try {
-      const res = await marketFeed.getSavedProviders();
+      const res = await this.persistence.loadProviders();
       if (epoch !== this.customHydrationEpoch) return;
       mergeList(res);
     } catch (_) {}
 
     const sinkAny = this.feedHealthSink as any;
-    if (typeof sinkAny?.getSavedProviders === 'function' && sinkAny !== marketFeed) {
+    if (
+      typeof sinkAny?.getSavedProviders === 'function' &&
+      !(this.hasCustomPersistence && sinkAny === marketFeed)
+    ) {
       try {
         const res = await sinkAny.getSavedProviders();
         if (epoch !== this.customHydrationEpoch) return;
@@ -814,9 +816,10 @@ export class ChartSessionController {
       }
       this.attachDrawingSyncBoundaryGuard(this.workspace);
       this.isAttached = true;
-      if (this.providerId.toLowerCase().startsWith('custom')) {
-        void this.hydrateAndRegisterCustomProviders();
+      for (const cfg of knownCustomConfigs) {
+        this.registerCustomConfigIntoVela(cfg);
       }
+      void this.hydrateAndRegisterCustomProviders();
     } catch (err) {
       console.warn('[ChartSessionController] Gagal inisialisasi VelaWorkspace:', err);
       this.workspace = null;
@@ -830,26 +833,9 @@ export class ChartSessionController {
       this.attachCellListeners(cell);
     }
 
-    // Muat & terapkan konfigurasi chart default tersimpan milik pengguna (sinkron cache + hidrasi asinkron adapter)
+    // Muat & terapkan konfigurasi chart default tersimpan milik pengguna (sinkron dari cache PersistenceService + hidrasi asinkron adapter)
     const attachEpoch = ++this.chartDefaultHydrationEpoch;
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const rawDefault = localStorage.getItem('trawangan_chart_default_config');
-        if (rawDefault && rawDefault.trim()) {
-          const parsedDefault = sanitizeRendererConfigForApply(JSON.parse(rawDefault));
-          if (parsedDefault && Object.keys(parsedDefault).length > 0) {
-            this.userChartDefaultConfig = parsedDefault;
-            this.activeChartDefaultConfig = this.mergeRendererConfigs(this.activeChartDefaultConfig, parsedDefault);
-            for (const cell of this.getAllCells()) {
-              const wsOverride = this.workspaceRendererConfigByCell.get(cell);
-              const effective = wsOverride ? this.mergeRendererConfigs(parsedDefault, wsOverride) : parsedDefault;
-              this.applyEffectiveRendererConfig(cell, effective);
-              this.syncGlobalVisualChromeToCells(cell);
-            }
-          }
-        }
-      } catch (_) {}
-    }
+    this.applyUserChartDefaultConfig(this.persistence.getChartDefaultConfigSync());
     void this.hydrateChartDefaultConfig(attachEpoch);
 
     // Dengarkan pembuatan cell baru saat berganti layout grid
@@ -1122,6 +1108,22 @@ export class ChartSessionController {
     });
   }
 
+  private applyUserChartDefaultConfig(rawConfig: any): any | null {
+    const parsedDefault = sanitizeRendererConfigForApply(rawConfig);
+    if (!parsedDefault || Object.keys(parsedDefault).length === 0) {
+      return null;
+    }
+    this.userChartDefaultConfig = parsedDefault;
+    this.activeChartDefaultConfig = this.mergeRendererConfigs(this.activeChartDefaultConfig, parsedDefault);
+    for (const cell of this.getAllCells()) {
+      const wsOverride = this.workspaceRendererConfigByCell.get(cell);
+      const effective = wsOverride ? this.mergeRendererConfigs(parsedDefault, wsOverride) : parsedDefault;
+      this.applyEffectiveRendererConfig(cell, effective);
+      this.syncGlobalVisualChromeToCells(cell);
+    }
+    return parsedDefault;
+  }
+
   /**
    * Memuat konfigurasi chart default tersimpan dari PersistenceService dan menerapkannya ke sel
    * dengan tetap menghormati override spesifik per workspace/sel (K3: Workspace > Default User > Pabrik).
@@ -1129,23 +1131,11 @@ export class ChartSessionController {
   public async hydrateChartDefaultConfig(expectedEpoch?: number): Promise<any | null> {
     const epoch = expectedEpoch ?? this.chartDefaultHydrationEpoch;
     try {
-      const rawLoaded = await loadChartDefaultConfig();
+      const rawLoaded = await this.persistence.loadChartDefaultConfig();
       if (epoch !== this.chartDefaultHydrationEpoch || !this.workspace) {
         return null;
       }
-      const loaded = sanitizeRendererConfigForApply(rawLoaded);
-      if (!loaded || Object.keys(loaded).length === 0) {
-        return null;
-      }
-      this.userChartDefaultConfig = loaded;
-      this.activeChartDefaultConfig = this.mergeRendererConfigs(this.activeChartDefaultConfig, loaded);
-      for (const cell of this.getAllCells()) {
-        const wsOverride = this.workspaceRendererConfigByCell.get(cell);
-        const effective = wsOverride ? this.mergeRendererConfigs(loaded, wsOverride) : loaded;
-        this.applyEffectiveRendererConfig(cell, effective);
-        this.syncGlobalVisualChromeToCells(cell);
-      }
-      return loaded;
+      return this.applyUserChartDefaultConfig(rawLoaded);
     } catch (err) {
       console.warn('[ChartSessionController] Gagal memuat chart default config:', err);
       return null;
@@ -3893,9 +3883,10 @@ export class ChartSessionController {
           this.lastAppliedThemeColors ?? this.resolveActiveThemeCandleColors()
         ) ?? {};
 
+      this.chartDefaultHydrationEpoch++;
       this.userChartDefaultConfig = sanitizedConfig;
       this.activeChartDefaultConfig = sanitizedConfig;
-      await saveChartDefaultConfig(sanitizedConfig);
+      await this.persistence.saveChartDefaultConfig(sanitizedConfig);
 
       for (const cell of this.getAllCells()) {
         const chart = cell?.chart || cell?.inner;
@@ -3935,7 +3926,7 @@ export class ChartSessionController {
       this.userChartDefaultConfig = null;
       this.activeChartDefaultConfig = null;
       this.workspaceRendererConfigByCell = new WeakMap();
-      await clearChartDefaultConfig();
+      await this.persistence.clearChartDefaultConfig();
       if (this.workspace) {
         for (const cell of this.getAllCells()) {
           const chart = cell?.chart || cell?.inner;

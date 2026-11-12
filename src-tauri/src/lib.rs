@@ -60,6 +60,7 @@ pub fn run() {
             commands::get_app_preference,
             commands::set_app_preference,
             commands::delete_app_preference,
+            commands::load_all_app_preferences,
             commands::get_process_memory,
             commands::http_get,
             commands::get_default_snapshot_directory,
