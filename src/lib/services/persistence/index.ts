@@ -99,6 +99,16 @@ export class PersistenceService implements IPersistenceService {
     return this.preferenceCache.get(key) ?? null;
   }
 
+  private parseCachedJsonPreference<T>(key: AppPreferenceKey): T | null {
+    const raw = this.getPreferenceSync(key);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+
   private async getAndSyncPreference(key: AppPreferenceKey): Promise<string | null> {
     const raw = await this.adapter.getPreference(key);
     if (raw !== null) {
@@ -311,6 +321,19 @@ export class PersistenceService implements IPersistenceService {
     return this.adapter.cloneWorkspaceDrawings(fromWsId, toWsId);
   }
 
+  getLastActiveWorkspaceIdSync(): string | null {
+    const parsed = this.parseCachedJsonPreference<unknown>('last_active_workspace_id');
+    return typeof parsed === 'string' && parsed.trim().length > 0 ? parsed.trim() : null;
+  }
+
+  async setLastActiveWorkspaceId(id: string | null | undefined): Promise<void> {
+    if (!id || typeof id !== 'string' || id.trim().length === 0) {
+      await this.deleteAndSyncPreference('last_active_workspace_id');
+      return;
+    }
+    await this.setAndSyncPreference('last_active_workspace_id', JSON.stringify(id.trim()));
+  }
+
   // ─── Pine Scripts Persistence ───
 
   async loadScripts(): Promise<PineScriptRecord[]> {
@@ -326,6 +349,11 @@ export class PersistenceService implements IPersistenceService {
   }
 
   // ─── App Settings Persistence ───
+
+  getSettingsSync(): Partial<AppSettings> | null {
+    const parsed = this.parseCachedJsonPreference<Partial<AppSettings>>('app_settings');
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  }
 
   async loadSettings(): Promise<Partial<AppSettings> | null> {
     const raw = await this.getAndSyncPreference('app_settings');
@@ -344,8 +372,11 @@ export class PersistenceService implements IPersistenceService {
 
   // ─── Chart Default Config Persistence ───
 
+  getChartDefaultConfigSync(): any | null {
+    return this.parseCachedJsonPreference<any>('chart_default_config');
+  }
+
   async loadChartDefaultConfig(): Promise<any | null> {
-    // 1. Coba baca dari adapter (SQLite / InMemory)
     const raw = await this.getAndSyncPreference('chart_default_config');
     if (raw) {
       try {
@@ -354,66 +385,22 @@ export class PersistenceService implements IPersistenceService {
         console.warn('[PersistenceService] Gagal parsing JSON chart default config:', err);
       }
     }
-    // 2. Fallback instan ke localStorage browser jika ada (dipertahankan hingga Tiket #182)
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        const local = window.localStorage.getItem('trawangan_chart_default_config');
-        if (local) return JSON.parse(local);
-      } catch (_) {}
-    }
     return null;
   }
 
   async saveChartDefaultConfig(config: any): Promise<void> {
     const json = typeof config === 'string' ? config : JSON.stringify(config);
-    // Simpan ke adapter (SQLite / InMemory) dan sinkronkan cache memori
     await this.setAndSyncPreference('chart_default_config', json);
-    // Sinkronkan ke localStorage browser secara sementara hingga konsolidasi Tiket #182
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        window.localStorage.setItem('trawangan_chart_default_config', json);
-      } catch (_) {}
-    }
   }
 
   async clearChartDefaultConfig(): Promise<void> {
     await this.deleteAndSyncPreference('chart_default_config');
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        window.localStorage.removeItem('trawangan_chart_default_config');
-      } catch (_) {}
-    }
   }
 
   // ─── Trade Plan Vault (Riwayat Rencana Perdagangan Otomatis - ADR-0019) ───
 
   async loadTradingPlanHistory(): Promise<SavedTradingPlanRecord[]> {
-    const list = await this.adapter.listTradingPlans();
-    if (list.length > 0) return list;
-
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        const local = window.localStorage.getItem('trawangan_trade_plan_vault');
-        if (local) {
-          const parsed = JSON.parse(local);
-          if (Array.isArray(parsed)) return parsed;
-        }
-      } catch (_) {}
-    }
-    return [];
-  }
-
-  private syncVaultLocalStorageCache(list: SavedTradingPlanRecord[]): void {
-    // Sinkronkan cache localStorage browser secara sementara hingga konsolidasi Tiket #172
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        if (list.length === 0) {
-          window.localStorage.removeItem('trawangan_trade_plan_vault');
-        } else {
-          window.localStorage.setItem('trawangan_trade_plan_vault', JSON.stringify(list));
-        }
-      } catch (_) {}
-    }
+    return await this.adapter.listTradingPlans();
   }
 
   async saveTradingPlanToHistory(
@@ -464,32 +451,17 @@ export class PersistenceService implements IPersistenceService {
           plan: JSON.parse(JSON.stringify(record.plan)),
         };
 
-    // Jika adapter masih kosong namun cache localStorage fallback berisi riwayat lama, migrasikan lebih dulu sebelum upsert
-    const existingAdapterList = await this.adapter.listTradingPlans();
-    if (existingAdapterList.length === 0 && list.length > 0) {
-      for (const legacyItem of [...list].reverse()) {
-        if (legacyItem.id !== savedRecord.id) {
-          await this.adapter.upsertTradingPlan(legacyItem);
-        }
-      }
-    }
-
     await this.adapter.upsertTradingPlan(savedRecord);
-    const updatedList = await this.adapter.listTradingPlans();
-    this.syncVaultLocalStorageCache(updatedList);
     return savedRecord;
   }
 
   async deleteTradingPlanFromHistory(id: string): Promise<SavedTradingPlanRecord[]> {
     await this.adapter.deleteTradingPlan(id);
-    const filtered = await this.adapter.listTradingPlans();
-    this.syncVaultLocalStorageCache(filtered);
-    return filtered;
+    return await this.adapter.listTradingPlans();
   }
 
   async clearTradingPlanHistory(): Promise<void> {
     await this.adapter.clearTradingPlans();
-    this.syncVaultLocalStorageCache([]);
   }
 }
 
@@ -520,16 +492,20 @@ export const saveWorkspace = (w: Omit<SavedWorkspace, 'id' | 'timestamp'> & { id
 export const updateWorkspace = (w: SavedWorkspace) => storage.updateWorkspace(w);
 export const deleteWorkspace = (id: string) => storage.deleteWorkspace(id);
 export const cloneWorkspaceDrawings = (fromWsId: string, toWsId: string) => storage.cloneWorkspaceDrawings(fromWsId, toWsId);
-export { getLastActiveWorkspaceId, setLastActiveWorkspaceId, computeWorkspaceFingerprint } from './workspaceService';
+export const getLastActiveWorkspaceId = () => storage.getLastActiveWorkspaceIdSync();
+export const setLastActiveWorkspaceId = (id: string | null | undefined) => storage.setLastActiveWorkspaceId(id);
+export { computeWorkspaceFingerprint } from './workspaceService';
 
 export const loadScripts = () => storage.loadScripts();
 export const saveScript = (s: PineScriptRecord) => storage.saveScript(s);
 export const deleteScript = (id: string) => storage.deleteScript(id);
 
+export const getSettingsSync = () => storage.getSettingsSync();
 export const loadSettings = () => storage.loadSettings();
 export const saveSettings = (cfg: Partial<AppSettings>) => storage.saveSettings(cfg);
 export { resolveAppSettings } from '../../constants/defaults';
 
+export const getChartDefaultConfigSync = () => storage.getChartDefaultConfigSync();
 export const loadChartDefaultConfig = () => storage.loadChartDefaultConfig();
 export const saveChartDefaultConfig = (cfg: any) => storage.saveChartDefaultConfig(cfg);
 export const clearChartDefaultConfig = () => storage.clearChartDefaultConfig();

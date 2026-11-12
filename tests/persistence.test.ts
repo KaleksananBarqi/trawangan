@@ -526,5 +526,136 @@ describe('Deep Persistence Module Unit Tests', () => {
       JSON.stringify({ soundEnabled: false })
     );
   });
+
+  test('Tiket #182: sync getters appSettings (termasuk avatar ~2.5 MB & autoSaveWorkspace), chartDefaultConfig, dan lastActiveWorkspaceId lintas bootstrap -> mutasi -> muat ulang', async () => {
+    assert.strictEqual(service.getSettingsSync(), null);
+    assert.strictEqual(service.getChartDefaultConfigSync(), null);
+    assert.strictEqual(service.getLastActiveWorkspaceIdSync(), null);
+
+    await service.bootstrap();
+
+    // Simpan appSettings dengan payload avatar ~2.5 MB & autoSaveWorkspace: false
+    const largeAvatar = `data:image/png;base64,${'A'.repeat(2_500_000)}`;
+    const nextSettings = {
+      theme: 'light' as const,
+      autoSaveWorkspace: false,
+      autoLoadLastWorkspace: false,
+      userProfile: {
+        username: 'Trader Nusantara',
+        handle: '@nusantara',
+        avatarDataUrl: largeAvatar,
+      },
+    };
+    await service.saveSettings(nextSettings);
+    assert.deepStrictEqual(service.getSettingsSync(), nextSettings);
+
+    const chartCfg = { candles: { upColor: '#00AAFF' }, margins: { top: 0.25 } };
+    await service.saveChartDefaultConfig(chartCfg);
+    assert.deepStrictEqual(service.getChartDefaultConfigSync(), chartCfg);
+
+    await service.setLastActiveWorkspaceId('  ws_utama_182  ');
+    assert.strictEqual(service.getLastActiveWorkspaceIdSync(), 'ws_utama_182');
+    assert.strictEqual(await adapter.getPreference('last_active_workspace_id'), JSON.stringify('ws_utama_182'));
+
+    // Muat ulang melalui instance PersistenceService baru memakai adapter yang sama
+    const reloaded = new PersistenceService(adapter);
+    assert.strictEqual(reloaded.getSettingsSync(), null);
+    await reloaded.bootstrap();
+
+    const reloadedSettings = reloaded.getSettingsSync();
+    assert.strictEqual(reloadedSettings?.autoSaveWorkspace, false);
+    assert.strictEqual(reloadedSettings?.autoLoadLastWorkspace, false);
+    assert.strictEqual(reloadedSettings?.userProfile?.username, 'Trader Nusantara');
+    assert.strictEqual(reloadedSettings?.userProfile?.avatarDataUrl?.length, largeAvatar.length);
+    assert.deepStrictEqual(reloaded.getChartDefaultConfigSync(), chartCfg);
+    assert.strictEqual(reloaded.getLastActiveWorkspaceIdSync(), 'ws_utama_182');
+
+    // Hapus lastActiveWorkspaceId & chartDefaultConfig memakai real DELETE
+    await reloaded.setLastActiveWorkspaceId(null);
+    assert.strictEqual(reloaded.getLastActiveWorkspaceIdSync(), null);
+    assert.strictEqual(await adapter.getPreference('last_active_workspace_id'), null);
+
+    await reloaded.setLastActiveWorkspaceId('ws_temp');
+    await reloaded.setLastActiveWorkspaceId('   ');
+    assert.strictEqual(reloaded.getLastActiveWorkspaceIdSync(), null);
+
+    await reloaded.clearChartDefaultConfig();
+    assert.strictEqual(reloaded.getChartDefaultConfigSync(), null);
+  });
+
+  test('Tiket #182: PersistenceService tidak membaca fallback atau menulis mirror localStorage untuk chartDefaultConfig dan Trade Plan Vault', async () => {
+    const prevWindow = (globalThis as any).window;
+    const mirrorCalls: Array<{ op: string; key: string }> = [];
+    const legacyStore = new Map<string, string>([
+      ['trawangan_chart_default_config', JSON.stringify({ candles: { upColor: '#999999' } })],
+      [
+        'trawangan_trade_plan_vault',
+        JSON.stringify([
+          {
+            id: 'legacy_vault_1',
+            symbol: 'BTCUSDT',
+            providerId: 'binance',
+            timeframe: '15m',
+            createdAt: 1000,
+            updatedAt: 1000,
+            rawText: 'LONG BTC',
+            plan: { symbol: 'BTCUSDT', bias: 'long', entry: 50000, stopLoss: 49000, targets: [] },
+          },
+        ]),
+      ],
+    ]);
+
+    (globalThis as any).window = {
+      localStorage: {
+        getItem: (key: string) => {
+          mirrorCalls.push({ op: 'getItem', key });
+          return legacyStore.get(key) ?? null;
+        },
+        setItem: (key: string, val: string) => {
+          mirrorCalls.push({ op: 'setItem', key });
+          legacyStore.set(key, val);
+        },
+        removeItem: (key: string) => {
+          mirrorCalls.push({ op: 'removeItem', key });
+          legacyStore.delete(key);
+        },
+      },
+    };
+
+    try {
+      await service.bootstrap();
+
+      // Tidak boleh membaca fallback legacy localStorage saat adapter kosong
+      assert.strictEqual(await service.loadChartDefaultConfig(), null);
+      assert.deepStrictEqual(await service.loadTradingPlanHistory(), []);
+
+      // Simpan & hapus chartDefaultConfig tidak boleh menyentuh window.localStorage
+      await service.saveChartDefaultConfig({ margins: { top: 0.2 } });
+      await service.clearChartDefaultConfig();
+
+      // Simpan, hapus satu, & bersihkan Trade Plan Vault tidak boleh menyentuh window.localStorage
+      const savedPlan = await service.saveTradingPlanToHistory({
+        symbol: 'ETHUSDT',
+        providerId: 'binance',
+        timeframe: '1h',
+        rawText: 'ETH LONG',
+        plan: { symbol: 'ETHUSDT', bias: 'long', entry: 3000, stopLoss: 2900, targets: [{ price: 3200 }] } as any,
+      });
+      const historyAfterSave = await service.loadTradingPlanHistory();
+      assert.strictEqual(historyAfterSave.length, 1);
+      assert.strictEqual(historyAfterSave[0].id, savedPlan.id);
+
+      await service.deleteTradingPlanFromHistory(savedPlan.id);
+      await service.clearTradingPlanHistory();
+
+      assert.deepStrictEqual(mirrorCalls, []);
+    } finally {
+      if (prevWindow === undefined) {
+        delete (globalThis as any).window;
+      } else {
+        (globalThis as any).window = prevWindow;
+      }
+    }
+  });
 });
 

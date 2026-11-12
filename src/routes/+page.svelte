@@ -469,16 +469,10 @@
         allAlerts = list;
       });
 
-      // Muat preferensi aplikasi tersimpan dari localStorage
+      // Muat preferensi aplikasi tersimpan dari cache sinkron PersistenceService pasca-bootstrap
       try {
-        const savedSettings = localStorage.getItem('trawangan_app_settings');
-        let parsed = null;
-        if (savedSettings) {
-          try {
-            parsed = JSON.parse(savedSettings);
-          } catch (_) {}
-        }
-        appSettings = resolveAppSettings(parsed);
+        const savedSettings = storage.getSettingsSync();
+        appSettings = resolveAppSettings(savedSettings);
         if (appSettings.defaultTimeframe) {
           activeTimeframe = appSettings.defaultTimeframe;
         }
@@ -487,11 +481,6 @@
         }
         if (appSettings.autoSaveWorkspace !== undefined) {
           isAutoSaveWorkspace = appSettings.autoSaveWorkspace;
-        } else {
-          const savedAutoSave = localStorage.getItem('trawangan_autosave_workspace');
-          if (savedAutoSave !== null) {
-            isAutoSaveWorkspace = savedAutoSave === 'true';
-          }
         }
 
         const savedPineWidth = localStorage.getItem('trawangan_pine_panel_width');
@@ -941,11 +930,9 @@
   }
 
   function persistAppSettings() {
-    try {
-      localStorage.setItem('trawangan_app_settings', JSON.stringify(appSettings));
-    } catch (e) {
-      console.warn('Gagal menyimpan preferensi aplikasi ke localStorage:', e);
-    }
+    void storage.saveSettings(appSettings).catch((e) => {
+      console.warn('Gagal menyimpan preferensi aplikasi ke PersistenceService:', e);
+    });
   }
 
   function handleToggleSyncCrosshair() {
@@ -1046,9 +1033,6 @@
     }
     if (newSettings.autoSaveWorkspace !== undefined) {
       isAutoSaveWorkspace = newSettings.autoSaveWorkspace;
-      try {
-        localStorage.setItem('trawangan_autosave_workspace', String(isAutoSaveWorkspace));
-      } catch (_) {}
     }
     if (newSettings.defaultTimeframe !== undefined) {
       activeTimeframe = newSettings.defaultTimeframe;
@@ -1135,7 +1119,7 @@
       const saved = await saveWorkspace(input as any);
       activeWorkspace = saved;
       if (saved?.id) {
-        setLastActiveWorkspaceId(saved.id);
+        await setLastActiveWorkspaceId(saved.id);
         if (!isClosingApp) {
           clearPendingWorkspaceBackup(saved.id);
         }
@@ -1172,7 +1156,7 @@
 
     activeWorkspace = saved;
     if (saved?.id) {
-      setLastActiveWorkspaceId(saved.id);
+      await setLastActiveWorkspaceId(saved.id);
       clearPendingWorkspaceBackup(saved.id);
     }
     workspaceCoordinator.setSavedFingerprint(
@@ -1186,7 +1170,7 @@
     workspaceCoordinator.setSavedFingerprint('');
     try { await flushDrawings(); } catch (_) {}
     activeWorkspace = null;
-    setLastActiveWorkspaceId(null);
+    await setLastActiveWorkspaceId(null);
     chartDrawingController.setWorkspaceId('default_workspace');
     chartDrawingController.clearCanvasVisuals();
     chartDrawingController.clearAllPlans();
@@ -1200,7 +1184,7 @@
     try {
       activeWorkspace = w;
       if (w && w.id) {
-        setLastActiveWorkspaceId(w.id);
+        await setLastActiveWorkspaceId(w.id);
         clearPendingWorkspaceBackup(w.id);
       }
 
@@ -1237,11 +1221,6 @@
   function handleToggleAutoSaveWorkspace() {
     isAutoSaveWorkspace = !isAutoSaveWorkspace;
     appSettings.autoSaveWorkspace = isAutoSaveWorkspace;
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem('trawangan_autosave_workspace', isAutoSaveWorkspace.toString());
-      } catch (_) {}
-    }
     persistAppSettings();
     addSystemLog(`Auto-save workspace: ${isAutoSaveWorkspace ? 'AKTIF' : 'NONAKTIF'}`, 'info');
   }
