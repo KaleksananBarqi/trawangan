@@ -57,10 +57,6 @@ export interface PersistenceAdapter {
   getPreference(key: AppPreferenceKey): Promise<string | null>;
   setPreference(key: AppPreferenceKey, valueJson: string): Promise<void>;
   deletePreference(key: AppPreferenceKey): Promise<void>;
-
-  // Slot tata letak & dokumen terstruktur (Workspaces, Alerts, Configs)
-  loadLayoutSlot(id: string): Promise<string | null>;
-  saveLayoutSlot(id: string, name: string, json: string): Promise<void>;
 }
 
 /**
@@ -112,10 +108,6 @@ export interface IPersistenceService {
   ): Promise<SavedTradingPlanRecord>;
   deleteTradingPlanFromHistory(id: string): Promise<SavedTradingPlanRecord[]>;
   clearTradingPlanHistory(): Promise<void>;
-
-  // Layout Slots
-  loadLayoutSlot(id: string): Promise<string | null>;
-  saveLayoutSlot(id: string, name: string, json: string): Promise<void>;
 }
 
 

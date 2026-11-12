@@ -11,6 +11,10 @@ import type { IPersistenceService, PersistenceAdapter } from './types';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 import { TauriSqliteAdapter } from './tauriSqliteAdapter';
 import { normalizeWorkspace, WORKSPACE_SCHEMA_VERSION } from './workspaceSchema';
+import {
+  buildUpdatedWatchlistRegistry,
+  extractActiveWatchlistSymbols,
+} from './watchlistProjection';
 
 export const DEFAULT_WATCHLIST_SYMBOLS: string[] = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
@@ -148,12 +152,8 @@ export class PersistenceService implements IPersistenceService {
 
   async loadWatchlist(): Promise<string[]> {
     const registry = await this.adapter.loadWatchlistRegistry();
-    if (registry && Array.isArray(registry.watchlists) && registry.watchlists.length > 0) {
-      const active =
-        registry.watchlists.find((w) => w.id === registry.activeWatchlistId) ||
-        registry.watchlists[0];
-      return active.items.filter((item) => !item.startsWith('#section:'));
-    }
+    const projected = extractActiveWatchlistSymbols(registry);
+    if (projected) return projected;
 
     // Fallback satu kali untuk data legacy sebelum registry terisi
     const legacy = await this.adapter.loadWatchlist();
@@ -162,44 +162,10 @@ export class PersistenceService implements IPersistenceService {
   }
 
   async saveWatchlist(symbols: string[]): Promise<void> {
-    const now = Date.now();
     const existing = await this.adapter.loadWatchlistRegistry();
-    if (!existing || !Array.isArray(existing.watchlists) || existing.watchlists.length === 0) {
-      await this.adapter.saveWatchlistRegistry({
-        activeWatchlistId: 'default',
-        watchlists: [
-          {
-            id: 'default',
-            name: 'Daftar Utama',
-            items: [...symbols],
-            isPreset: false,
-            createdAt: now,
-            updatedAt: now,
-          },
-        ],
-      });
-      return;
-    }
-
-    let activeIdx = existing.watchlists.findIndex((w) => w.id === existing.activeWatchlistId);
-    if (activeIdx === -1) activeIdx = 0;
-
-    const currentActive = existing.watchlists[activeIdx];
-    const currentSymbols = currentActive.items.filter((item) => !item.startsWith('#section:'));
-    const sameSymbols =
-      currentSymbols.length === symbols.length &&
-      currentSymbols.every((sym, idx) => sym === symbols[idx]);
-
-    // Pertahankan token #section: jika daftar simbol aktif identik
-    if (sameSymbols) return;
-
-    const nextWatchlists = existing.watchlists.map((w, idx) =>
-      idx === activeIdx ? { ...w, items: [...symbols], updatedAt: now } : w
-    );
-    await this.adapter.saveWatchlistRegistry({
-      activeWatchlistId: currentActive.id,
-      watchlists: nextWatchlists,
-    });
+    const nextRegistry = buildUpdatedWatchlistRegistry(existing, symbols);
+    if (!nextRegistry) return;
+    await this.adapter.saveWatchlistRegistry(nextRegistry);
   }
 
   // ─── Price Alerts Persistence ───
@@ -453,16 +419,6 @@ export class PersistenceService implements IPersistenceService {
     await this.adapter.clearTradingPlans();
     this.syncVaultLocalStorageCache([]);
   }
-
-  // ─── Layout Slot Direct Access ───
-
-  async loadLayoutSlot(id: string): Promise<string | null> {
-    return this.adapter.loadLayoutSlot(id);
-  }
-
-  async saveLayoutSlot(id: string, name: string, json: string): Promise<void> {
-    await this.adapter.saveLayoutSlot(id, name, json);
-  }
 }
 
 
@@ -508,7 +464,4 @@ export const saveTradingPlanToHistory = (
 ) => storage.saveTradingPlanToHistory(record);
 export const deleteTradingPlanFromHistory = (id: string) => storage.deleteTradingPlanFromHistory(id);
 export const clearTradingPlanHistory = () => storage.clearTradingPlanHistory();
-
-export const loadLayoutSlot = (id: string) => storage.loadLayoutSlot(id);
-export const saveLayoutSlot = (id: string, name: string, json: string) => storage.saveLayoutSlot(id, name, json);
 

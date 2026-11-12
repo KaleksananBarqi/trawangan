@@ -78,43 +78,8 @@ pub fn upsert_workspace_value(conn: &Connection, item: &Value, fallback_updated_
     Ok(true)
 }
 
-/// Ganti seluruh daftar workspace dari array JSON (dipakai shim slot sementara hingga Tiket #176)
-pub fn replace_workspaces_from_json(conn: &Connection, json: &str) -> Result<()> {
-    let Ok(parsed) = serde_json::from_str::<Vec<Value>>(json) else {
-        return Ok(());
-    };
-    let now = chrono::Utc::now().timestamp_millis();
-    super::with_transaction(conn, "BEGIN IMMEDIATE;", || {
-        conn.execute("DELETE FROM workspaces", [])?;
-        for item in &parsed {
-            let _ = upsert_workspace_value(conn, item, now)?;
-        }
-        Ok(())
-    })
-}
-
-/// Serialisasikan seluruh baris tabel workspaces menjadi JSON array (dipakai shim sementara hingga Tiket #176)
-pub fn export_workspaces_as_json(conn: &Connection) -> Result<Option<String>> {
-    let mut stmt = conn.prepare_cached(
-        "SELECT layout_json FROM workspaces ORDER BY updated_at ASC, rowid ASC",
-    )?;
-    let mut rows = stmt.query([])?;
-    let mut items: Vec<Value> = Vec::new();
-    while let Some(row) = rows.next()? {
-        let raw: String = row.get(0)?;
-        if let Ok(val) = serde_json::from_str::<Value>(&raw) {
-            items.push(val);
-        }
-    }
-    if items.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string())))
-    }
-}
-
-/// Simpan satu baris workspace langsung (shim sementara untuk API `save_workspace` lama)
-pub fn save_workspace_row_raw(conn: &Connection, id: &str, name: &str, layout_json: &str) -> Result<()> {
+/// Simpan satu baris workspace mentah untuk menjaga entri legacy non-slot saat migrasi v0 -> v1
+pub(crate) fn save_workspace_row_raw(conn: &Connection, id: &str, name: &str, layout_json: &str) -> Result<()> {
     let now = chrono::Utc::now().timestamp_millis();
     if let Ok(mut val) = serde_json::from_str::<Value>(layout_json) {
         if let Some(obj) = val.as_object_mut() {
@@ -135,17 +100,6 @@ pub fn save_workspace_row_raw(conn: &Connection, id: &str, name: &str, layout_js
         params![id, name, layout_json, now],
     )?;
     Ok(())
-}
-
-/// Ambil `layout_json` satu workspace berdasarkan ID (shim sementara untuk API `get_workspace` lama)
-pub fn get_workspace_row_raw(conn: &Connection, id: &str) -> Result<Option<String>> {
-    let mut stmt = conn.prepare_cached("SELECT layout_json FROM workspaces WHERE id = ?1")?;
-    let mut rows = stmt.query(params![id])?;
-    if let Some(row) = rows.next()? {
-        Ok(Some(row.get(0)?))
-    } else {
-        Ok(None)
-    }
 }
 
 /// Ambil seluruh `layout_json` workspace tersimpan terurut stabil

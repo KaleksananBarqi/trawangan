@@ -95,20 +95,6 @@ pub fn clear_trading_plans(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Ganti seluruh baris `trading_plans` dari string JSON array (shim sementara hingga Tiket #180)
-pub fn replace_plans_from_json(conn: &Connection, json: &str) -> Result<()> {
-    let Ok(items) = serde_json::from_str::<Vec<Value>>(json) else {
-        return Ok(());
-    };
-    super::with_transaction(conn, "BEGIN IMMEDIATE;", || {
-        conn.execute("DELETE FROM trading_plans", [])?;
-        for item in &items {
-            let _ = upsert_plan_value(conn, item)?;
-        }
-        prune_to_limit(conn, MAX_TRADING_PLANS)
-    })
-}
-
 /// Baca seluruh baris `trading_plans` terurut terbaru-lebih-dulu
 pub fn list_trading_plans(conn: &Connection) -> Result<Vec<Value>> {
     let mut stmt = conn.prepare_cached(
@@ -139,14 +125,4 @@ pub fn list_trading_plans(conn: &Connection) -> Result<Vec<Value>> {
         list.push(Value::Object(obj));
     }
     Ok(list)
-}
-
-/// Ekspor seluruh baris `trading_plans` menjadi JSON array (shim sementara hingga Tiket #180)
-pub fn export_plans_as_json(conn: &Connection) -> Result<Option<String>> {
-    let list = list_trading_plans(conn)?;
-    if list.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string())))
-    }
 }

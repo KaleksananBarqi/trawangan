@@ -92,19 +92,6 @@ pub fn save_watchlist_registry(conn: &Connection, registry_json: &str) -> Result
     })
 }
 
-/// Simpan registry dari string JSON (dipakai shim sementara hingga Tiket #180)
-pub fn replace_registry_from_json(conn: &Connection, json: &str) -> Result<()> {
-    let Ok(val) = serde_json::from_str::<Value>(json) else {
-        return Ok(());
-    };
-    if !val.is_object() {
-        return Ok(());
-    }
-    super::with_transaction(conn, "BEGIN IMMEDIATE;", || {
-        save_registry_from_value(conn, &val)
-    })
-}
-
 /// Muat seluruh Multi-Watchlist Registry dari tabel relasional `watchlists` & `watchlist_items`
 pub fn load_watchlist_registry(conn: &Connection) -> Result<Option<Value>> {
     let mut wl_stmt = conn.prepare_cached(
@@ -161,89 +148,4 @@ pub fn load_watchlist_registry(conn: &Connection) -> Result<Option<Value>> {
         "activeWatchlistId": resolved_active,
         "watchlists": watchlists
     })))
-}
-
-/// Ekspor seluruh registry menjadi JSON string (dipakai shim sementara hingga Tiket #180)
-pub fn export_registry_as_json(conn: &Connection) -> Result<Option<String>> {
-    match load_watchlist_registry(conn)? {
-        Some(root) => Ok(Some(serde_json::to_string(&root).unwrap_or_else(|_| "{}".to_string()))),
-        None => Ok(None),
-    }
-}
-
-fn get_active_watchlist_id(conn: &Connection) -> Result<Option<String>> {
-    let mut stmt = conn.prepare_cached(
-        "SELECT id FROM watchlists ORDER BY is_active DESC, sort_order ASC LIMIT 1",
-    )?;
-    let mut rows = stmt.query([])?;
-    if let Some(row) = rows.next()? {
-        Ok(Some(row.get(0)?))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Proyeksi kompatibilitas: ambil daftar simbol non-`#section:` dari watchlist aktif
-pub fn get_watchlist(conn: &Connection) -> Result<Vec<String>> {
-    let Some(wl_id) = get_active_watchlist_id(conn)? else {
-        return Ok(Vec::new());
-    };
-
-    let mut stmt = conn.prepare_cached(
-        "SELECT entry FROM watchlist_items WHERE watchlist_id = ?1 ORDER BY sort_order ASC",
-    )?;
-    let rows = stmt.query_map(params![wl_id], |row| row.get::<_, String>(0))?;
-    let mut result = Vec::new();
-    for entry_res in rows {
-        let entry = entry_res?;
-        if !entry.starts_with("#section:") {
-            result.push(entry);
-        }
-    }
-    Ok(result)
-}
-
-/// Proyeksi kompatibilitas: perbarui item watchlist aktif dari daftar simbol
-pub fn save_watchlist(conn: &Connection, symbols: &[String]) -> Result<()> {
-    // Jika item non-section pada watchlist aktif sudah identik, pertahankan token #section: tanpa menimpa
-    if get_watchlist(conn)? == symbols {
-        if get_active_watchlist_id(conn)?.is_some() {
-            return Ok(());
-        }
-    }
-
-    let now = chrono::Utc::now().timestamp_millis();
-    super::with_transaction(conn, "BEGIN IMMEDIATE;", || {
-        let target_id = match get_active_watchlist_id(conn)? {
-            Some(id) => {
-                conn.execute(
-                    "UPDATE watchlists SET updated_at = ?1 WHERE id = ?2",
-                    params![now, id],
-                )?;
-                id
-            }
-            None => {
-                let default_id = "default".to_string();
-                conn.execute(
-                    "INSERT INTO watchlists (id, name, is_preset, is_active, sort_order, created_at, updated_at)
-                     VALUES (?1, 'Daftar Utama', 0, 1, 0, ?2, ?2)",
-                    params![default_id, now],
-                )?;
-                default_id
-            }
-        };
-
-        conn.execute(
-            "DELETE FROM watchlist_items WHERE watchlist_id = ?1",
-            params![target_id],
-        )?;
-
-        let mut stmt = conn.prepare_cached(
-            "INSERT INTO watchlist_items (watchlist_id, sort_order, entry) VALUES (?1, ?2, ?3)",
-        )?;
-        for (idx, sym) in symbols.iter().enumerate() {
-            stmt.execute(params![target_id, idx as i64, sym])?;
-        }
-        Ok(())
-    })
 }

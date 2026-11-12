@@ -20,7 +20,6 @@ pub use candles::{cache_candles, get_cached_candles, Candle};
 pub use drawings::{clear_drawings, get_drawings, list_drawing_keys, save_drawings, DrawingKeyEntry};
 pub use providers::{delete_provider, get_providers, save_provider, set_active_provider, ProviderConfig};
 pub use scripts::{delete_pine_script, get_pine_scripts, save_pine_script, PineScriptRecord};
-pub use watchlists::{get_watchlist, save_watchlist};
 
 pub struct DbState {
     pub conn: Mutex<Connection>,
@@ -72,44 +71,6 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, Box<dyn std:
     init_connection(&conn)?;
 
     Ok(conn)
-}
-
-/// Shim kompatibilitas sementara untuk `save_workspace_layout` hingga slice domain menggantinya
-pub fn save_workspace(conn: &Connection, id: &str, name: &str, layout_json: &str) -> Result<()> {
-    match id {
-        "user_workspaces_list" => workspaces::replace_workspaces_from_json(conn, layout_json),
-        "user_price_alerts" => alerts::replace_alerts_from_json(conn, layout_json),
-        "user_trade_plan_vault" => trading_plans::replace_plans_from_json(conn, layout_json),
-        "user_multi_watchlists" => watchlists::replace_registry_from_json(conn, layout_json),
-        "trawangan_chart_default_config" => {
-            if layout_json.trim().is_empty() {
-                preferences::delete_app_preference(conn, "chart_default_config")
-            } else {
-                preferences::set_app_preference(conn, "chart_default_config", layout_json)
-            }
-        }
-        "trawangan_app_settings" => {
-            if layout_json.trim().is_empty() {
-                preferences::delete_app_preference(conn, "app_settings")
-            } else {
-                preferences::set_app_preference(conn, "app_settings", layout_json)
-            }
-        }
-        _ => workspaces::save_workspace_row_raw(conn, id, name, layout_json),
-    }
-}
-
-/// Shim kompatibilitas sementara untuk `load_workspace_layout` hingga slice domain menggantinya
-pub fn get_workspace(conn: &Connection, id: &str) -> Result<Option<String>> {
-    match id {
-        "user_workspaces_list" => workspaces::export_workspaces_as_json(conn),
-        "user_price_alerts" => alerts::export_alerts_as_json(conn),
-        "user_trade_plan_vault" => trading_plans::export_plans_as_json(conn),
-        "user_multi_watchlists" => watchlists::export_registry_as_json(conn),
-        "trawangan_chart_default_config" => preferences::get_app_preference(conn, "chart_default_config"),
-        "trawangan_app_settings" => preferences::get_app_preference(conn, "app_settings"),
-        _ => workspaces::get_workspace_row_raw(conn, id),
-    }
 }
 
 #[cfg(test)]
@@ -420,8 +381,12 @@ mod tests {
 
         init_connection(&conn).unwrap();
 
-        let wl = get_watchlist(&conn).unwrap();
-        assert_eq!(wl, vec!["SOLUSDT".to_string(), "ETHUSDT".to_string()]);
+        let registry = watchlists::load_watchlist_registry(&conn).unwrap().unwrap();
+        assert_eq!(registry["activeWatchlistId"], "default");
+        assert_eq!(
+            registry["watchlists"][0]["items"],
+            serde_json::json!(["SOLUSDT", "ETHUSDT"])
+        );
     }
 
     #[test]
@@ -457,23 +422,6 @@ mod tests {
             preferences::get_app_preference(&conn, "app_settings").unwrap(),
             None
         );
-    }
-
-    #[test]
-    fn test_save_watchlist_shim_preserves_section_tokens_when_symbols_match() {
-        let conn = setup_v1_test_db();
-        let registry_json = r##"{"activeWatchlistId":"default","watchlists":[{"id":"default","name":"Daftar Utama","items":["#section:Utama","binance:BTCUSDT","binance:ETHUSDT"],"isPreset":false}]}"##;
-        save_workspace(&conn, "user_multi_watchlists", "Multi", registry_json).unwrap();
-
-        // Caller lama memanggil save_watchlist hanya dengan simbol non-section yang sama
-        save_watchlist(
-            &conn,
-            &["binance:BTCUSDT".to_string(), "binance:ETHUSDT".to_string()],
-        )
-        .unwrap();
-
-        let exported = get_workspace(&conn, "user_multi_watchlists").unwrap().unwrap();
-        assert!(exported.contains("#section:Utama"));
     }
 
     #[test]
@@ -520,9 +468,10 @@ mod tests {
     #[test]
     fn test_workspace_and_provider_persistence() {
         let conn = setup_v1_test_db();
-        save_workspace(&conn, "default", "Main 4-Grid", "{\"layout\":\"4\"}").unwrap();
-        let layout = get_workspace(&conn, "default").unwrap();
-        assert!(layout.unwrap().contains("\"layout\":\"4\""));
+        let ws_json = r#"{"id":"default","name":"Main 4-Grid","schemaVersion":2,"symbol":"BTCUSDT","timeframe":"15m","layout":"4","timestamp":1000}"#;
+        workspaces::upsert_workspace(&conn, ws_json).unwrap();
+        let list = workspaces::list_workspaces(&conn).unwrap();
+        assert!(list.iter().any(|w| w.contains("\"layout\":\"4\"")));
 
         let provider = ProviderConfig {
             id: "custom-node".to_string(),
@@ -586,24 +535,6 @@ mod tests {
         assert_eq!(keys.len(), 2);
         assert!(keys.iter().any(|k| k.symbol == "default_workspace:binance:BTCUSDT" && k.timeframe == "GLOBAL"));
         assert!(keys.iter().any(|k| k.symbol == "default_workspace:indodax:BTCIDR" && k.timeframe == "GLOBAL"));
-    }
-
-    #[test]
-    fn test_watchlist_persistence() {
-        let conn = setup_v1_test_db();
-        let default_list = vec!["BTCUSDT".to_string(), "ETHUSDT".to_string(), "SOLUSDT".to_string()];
-        save_watchlist(&conn, &default_list).unwrap();
-
-        let list = get_watchlist(&conn).unwrap();
-        assert_eq!(list.len(), 3);
-        assert_eq!(list[0], "BTCUSDT");
-        assert_eq!(list[2], "SOLUSDT");
-
-        let updated_list = vec!["SOLUSDT".to_string(), "DOGEUSDT".to_string()];
-        save_watchlist(&conn, &updated_list).unwrap();
-        let list_updated = get_watchlist(&conn).unwrap();
-        assert_eq!(list_updated.len(), 2);
-        assert_eq!(list_updated[0], "SOLUSDT");
     }
 
     #[test]

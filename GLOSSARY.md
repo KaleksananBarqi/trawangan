@@ -300,4 +300,9 @@ _Avoid_: Unflushed closing debounce, Silent close data loss
 Instrumen indeks agregat non-tradable yang merepresentasikan total kapitalisasi pasar atau persentase dominasi kolektif pasar kripto (`TOTAL`, `TOTAL2`, `TOTAL3`, `OTHERS`, `BTC.D`, `ETH.D`, dan `USDT.D`), dengan `TOTAL` sebagai simbol kanonikal untuk total kapitalisasi pasar keseluruhan.
 _Avoid_: Crypto pair, Unique pair, TOTAL1, Tradable index
 
+**Workspace-Scoped Drawings**:
+Pengikatan kepemilikan layer coretan gambar teknikal kepada identitas workspace asal (`workspaceId`) selain bursa dan simbol instrumen, sehingga penghapusan atau duplikasi (*Save As*) workspace membersihkan atau menyalin gambar terkait secara utuh tanpa meninggalkan data yatim maupun menyentuh workspace bawaan.
+_Avoid_: Global orphan shapes, Flat symbol-only drawing key, Unscoped workspace blob
+
+
 

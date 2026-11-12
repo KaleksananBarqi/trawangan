@@ -8,6 +8,10 @@ import type {
   SavedWorkspace,
 } from '../../types/market';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
+import {
+  buildUpdatedWatchlistRegistry,
+  extractActiveWatchlistSymbols,
+} from './watchlistProjection';
 
 export class TauriSqliteAdapter implements PersistenceAdapter {
   private fallbackAdapter = new InMemoryLocalStorageAdapter();
@@ -80,9 +84,9 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
 
   async loadWatchlist(): Promise<string[] | null> {
     try {
-      const invoke = await this.getInvoke();
-      const list = await invoke<string[]>('get_user_watchlist');
-      if (list && list.length > 0) return list;
+      const registry = await this.loadWatchlistRegistry();
+      const projected = extractActiveWatchlistSymbols(registry);
+      if (projected) return projected;
     } catch (err) {
       console.warn('[TauriSqliteAdapter] Gagal load watchlist dari SQLite, beralih ke fallback:', err);
     }
@@ -91,8 +95,12 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
 
   async saveWatchlist(symbols: string[]): Promise<void> {
     try {
-      const invoke = await this.getInvoke();
-      await invoke('save_user_watchlist', { symbols });
+      const existing = await this.loadWatchlistRegistry();
+      const nextRegistry = buildUpdatedWatchlistRegistry(existing, symbols);
+      if (nextRegistry) {
+        await this.saveWatchlistRegistry(nextRegistry);
+      }
+      return;
     } catch (err) {
       console.warn('[TauriSqliteAdapter] Gagal save watchlist ke SQLite, beralih ke fallback:', err);
     }
@@ -220,30 +228,5 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
   async deletePreference(key: AppPreferenceKey): Promise<void> {
     const invoke = await this.getInvoke();
     await invoke('delete_app_preference', { key });
-  }
-
-  async loadLayoutSlot(id: string): Promise<string | null> {
-    try {
-      const invoke = await this.getInvoke();
-      const raw = await invoke<string | null>('load_workspace_layout', { id });
-      if (raw) return raw;
-    } catch (err) {
-      console.warn(`[TauriSqliteAdapter] Gagal load slot "${id}" dari SQLite:`, err);
-    }
-    return this.fallbackAdapter.loadLayoutSlot(id);
-  }
-
-  async saveLayoutSlot(id: string, name: string, json: string): Promise<void> {
-    try {
-      const invoke = await this.getInvoke();
-      await invoke('save_workspace_layout', {
-        id,
-        name,
-        layoutJson: json,
-      });
-    } catch (err) {
-      console.warn(`[TauriSqliteAdapter] Gagal save slot "${id}" ke SQLite:`, err);
-    }
-    await this.fallbackAdapter.saveLayoutSlot(id, name, json);
   }
 }

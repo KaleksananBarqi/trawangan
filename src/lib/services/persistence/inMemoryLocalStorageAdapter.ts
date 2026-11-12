@@ -282,14 +282,6 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     this.setItem('trawangan_scripts', JSON.stringify(filtered));
   }
 
-  async loadLayoutSlot(id: string): Promise<string | null> {
-    return this.getItem(`trawangan_slot_${id}`);
-  }
-
-  async saveLayoutSlot(id: string, _name: string, json: string): Promise<void> {
-    this.setItem(`trawangan_slot_${id}`, json);
-  }
-
   /**
    * Helper pengujian untuk membersihkan memory store
    */

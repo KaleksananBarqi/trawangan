@@ -1,6 +1,8 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
+import { TauriSqliteAdapter } from '../src/lib/services/persistence/tauriSqliteAdapter';
+import * as persistenceModule from '../src/lib/services/persistence/index';
 import { PersistenceService } from '../src/lib/services/persistence/index';
 import type { PriceAlert, PineScriptRecord, AppSettings } from '../src/lib/types/market';
 import { resolveAppSettings } from '../src/lib/constants/defaults';
@@ -392,13 +394,6 @@ describe('Deep Persistence Module Unit Tests', () => {
   });
 
   test('Tiket #179: app_preferences menyimpan settings & chart default config dan menghapus lewat real DELETE (bukan sentinel "")', async () => {
-    let slotWrites = 0;
-    const origSaveSlot = adapter.saveLayoutSlot.bind(adapter);
-    adapter.saveLayoutSlot = async (id: string, name: string, json: string) => {
-      slotWrites += 1;
-      return origSaveSlot(id, name, json);
-    };
-
     await service.saveSettings({ theme: 'light', autoSaveWorkspace: false });
     assert.strictEqual((await service.loadSettings())?.theme, 'light');
     assert.strictEqual(
@@ -414,7 +409,6 @@ describe('Deep Persistence Module Unit Tests', () => {
     await service.clearChartDefaultConfig();
     assert.strictEqual(await adapter.getPreference('chart_default_config'), null);
     assert.strictEqual(await service.loadChartDefaultConfig(), null);
-    assert.strictEqual(slotWrites, 0, 'Settings & chartDefaultConfig tidak boleh memakai workspaces layout slot');
   });
 
   test('Workspaces: cloneWorkspaceDrawings di InMemoryAdapter memiliki parity case-insensitive seperti SQLite', async () => {
@@ -423,6 +417,19 @@ describe('Deep Persistence Module Unit Tests', () => {
     assert.strictEqual(copied, 1);
     const loaded = await service.loadDrawings('ws_mixedcopy:binance:BTCUSDT', 'GLOBAL');
     assert.deepStrictEqual(loaded, { shapes: [42] });
+  });
+
+  test('Tiket #180: kontrak warisan loadLayoutSlot dan saveLayoutSlot telah dihapus sepenuhnya dari service & adapter', () => {
+    assert.strictEqual('loadLayoutSlot' in persistenceModule, false);
+    assert.strictEqual('saveLayoutSlot' in persistenceModule, false);
+    assert.strictEqual('loadLayoutSlot' in service, false);
+    assert.strictEqual('saveLayoutSlot' in service, false);
+    assert.strictEqual('loadLayoutSlot' in adapter, false);
+    assert.strictEqual('saveLayoutSlot' in adapter, false);
+
+    const tauriAdapter = new TauriSqliteAdapter();
+    assert.strictEqual('loadLayoutSlot' in tauriAdapter, false);
+    assert.strictEqual('saveLayoutSlot' in tauriAdapter, false);
   });
 });
 

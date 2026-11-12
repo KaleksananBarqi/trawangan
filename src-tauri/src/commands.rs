@@ -3,15 +3,14 @@ use crate::db::{
     alerts::{list_price_alerts as db_list_price_alerts, replace_price_alerts as db_replace_price_alerts},
     cache_candles, clear_drawings, delete_pine_script, delete_provider,
     drawings::clone_workspace_drawings as db_clone_workspace_drawings, get_cached_candles,
-    get_drawings, get_pine_scripts, get_providers, get_watchlist, get_workspace,
+    get_drawings, get_pine_scripts, get_providers,
     list_drawing_keys as db_list_drawing_keys,
     preferences::{
         delete_app_preference as db_delete_app_preference,
         get_app_preference as db_get_app_preference,
         set_app_preference as db_set_app_preference,
     },
-    save_drawings, save_pine_script, save_provider,
-    save_watchlist, save_workspace, set_active_provider,
+    save_drawings, save_pine_script, save_provider, set_active_provider,
     trading_plans::{
         clear_trading_plans as db_clear_trading_plans, delete_trading_plan as db_delete_trading_plan,
         list_trading_plans as db_list_trading_plans, upsert_trading_plan as db_upsert_trading_plan,
@@ -82,26 +81,6 @@ pub async fn fetch_candles(
             Err(err)
         }
     }
-}
-
-#[tauri::command]
-pub fn save_workspace_layout(
-    db: State<'_, DbState>,
-    id: String,
-    name: String,
-    layout_json: String,
-) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    save_workspace(&conn, &id, &name, &layout_json).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn load_workspace_layout(
-    db: State<'_, DbState>,
-    id: String,
-) -> Result<Option<String>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    get_workspace(&conn, &id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -282,23 +261,6 @@ pub fn list_drawing_keys(
 ) -> Result<Vec<DrawingKeyEntry>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     db_list_drawing_keys(&conn, &prefix).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_user_watchlist(
-    db: State<'_, DbState>,
-) -> Result<Vec<String>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    get_watchlist(&conn).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn save_user_watchlist(
-    db: State<'_, DbState>,
-    symbols: Vec<String>,
-) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    save_watchlist(&conn, &symbols).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

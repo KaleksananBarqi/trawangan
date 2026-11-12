@@ -82,16 +82,6 @@ pub fn replace_price_alerts(conn: &Connection, alerts_json: &str) -> Result<()> 
     })
 }
 
-/// Ganti seluruh baris `price_alerts` dari string JSON array (shim sementara hingga Tiket #180)
-pub fn replace_alerts_from_json(conn: &Connection, json: &str) -> Result<()> {
-    let Ok(items) = serde_json::from_str::<Vec<Value>>(json) else {
-        return Ok(());
-    };
-    super::with_transaction(conn, "BEGIN IMMEDIATE;", || {
-        insert_alerts_from_values(conn, &items)
-    })
-}
-
 /// Baca seluruh baris `price_alerts` berurutan sesuai `sort_order ASC`
 pub fn list_price_alerts(conn: &Connection) -> Result<Vec<Value>> {
     let mut stmt = conn.prepare_cached(
@@ -129,14 +119,4 @@ pub fn list_price_alerts(conn: &Connection) -> Result<Vec<Value>> {
         list.push(Value::Object(obj));
     }
     Ok(list)
-}
-
-/// Ekspor seluruh baris `price_alerts` menjadi JSON array (shim sementara hingga Tiket #180)
-pub fn export_alerts_as_json(conn: &Connection) -> Result<Option<String>> {
-    let list = list_price_alerts(conn)?;
-    if list.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string())))
-    }
 }
