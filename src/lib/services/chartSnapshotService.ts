@@ -754,11 +754,15 @@ export function formatSnapshotTimestamp(
  * Memformat harga pasar terkini dengan pemisah ribuan dan penyesuaian desimal
  * Mendelegasikan logika format harga ke priceScaleLabelService
  */
-export function formatSnapshotPrice(price: number | null | undefined, quote?: string): string {
+export function formatSnapshotPrice(
+  price: number | null | undefined,
+  quote?: string,
+  symbol?: string
+): string {
   if (price == null || typeof price !== 'number' || isNaN(price)) {
     return '-';
   }
-  return formatPriceLabel(price, quote);
+  return formatPriceLabel(price, quote, symbol);
 }
 
 /**
@@ -1354,7 +1358,7 @@ export function compositeSnapshot(
   // Jangan tampilkan harga pada multi-chart scope karena harga single chart ambigu untuk layout multi-grid
   const isMultiScope = meta.scope === 'all' || meta.symbol.toUpperCase() === 'MULTI-CHART GRID';
   if (options.includePrice !== false && meta.lastPrice != null && !isMultiScope) {
-    const formattedPrice = formatSnapshotPrice(meta.lastPrice);
+    const formattedPrice = formatSnapshotPrice(meta.lastPrice, undefined, meta.symbol);
     ctx.font = `bold ${Math.round(14 * scale)}px "JetBrains Mono", monospace, sans-serif`;
     ctx.fillStyle = attrColors.textPrimary;
     ctx.fillText(formattedPrice, rightX, centerY);

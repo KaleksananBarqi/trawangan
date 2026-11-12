@@ -1,5 +1,16 @@
 // Layanan Resolusi Visual Identitas Aset Koin (Hybrid Asset Logo Engine)
 import { parseAdaptiveSymbol } from './market/symbolSearchService';
+import { canonicalizeMacroIndexSymbol, isMacroIndexSymbol } from './macroIndexCatalog';
+
+const MACRO_MONOGRAM_LABELS: Record<string, string> = {
+  TOTAL: 'TOT',
+  TOTAL2: 'TOT2',
+  TOTAL3: 'TOT3',
+  OTHERS: 'OTHR',
+  'BTC.D': 'BTC%',
+  'ETH.D': 'ETH%',
+  'USDT.D': 'USD%',
+};
 
 /**
  * Daftar koin yang dibundle secara lokal di `static/icons/coins/` untuk kapabilitas offline-first sub-1ms.
@@ -34,7 +45,17 @@ export function extractCleanBaseAsset(raw: string): string {
  * 2. CDN publik cryptocurrency-icons / coincap
  */
 export function resolveCoinLogoUrl(symbolOrBase: string): LogoResolution {
+  const cleanRaw = (symbolOrBase || '').trim().toUpperCase();
   const base = extractCleanBaseAsset(symbolOrBase);
+  const macroCanonical = canonicalizeMacroIndexSymbol(cleanRaw) || canonicalizeMacroIndexSymbol(base);
+  if (macroCanonical || isMacroIndexSymbol(cleanRaw) || isMacroIndexSymbol(base)) {
+    return {
+      primary: '',
+      isLocal: true,
+      cdnFallback: '',
+      baseAsset: macroCanonical || cleanRaw || base,
+    };
+  }
   const lower = base.toLowerCase();
   const cdnFallback = `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/${lower}.svg`;
 
@@ -61,8 +82,13 @@ export function resolveCoinLogoUrl(symbolOrBase: string): LogoResolution {
  */
 export function getMonogramInitials(base: string): string {
   if (!base) return '?';
-  const clean = base.replace(/^\d+/, '').trim().toUpperCase();
-  if (!clean) return base.slice(0, 3).toUpperCase();
+  const upper = base.trim().toUpperCase();
+  const macroCanonical = canonicalizeMacroIndexSymbol(upper);
+  if (macroCanonical && MACRO_MONOGRAM_LABELS[macroCanonical]) {
+    return MACRO_MONOGRAM_LABELS[macroCanonical];
+  }
+  const clean = upper.replace(/^\d+/, '').trim();
+  if (!clean) return upper.slice(0, 3);
   return clean.slice(0, 4);
 }
 

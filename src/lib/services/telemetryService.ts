@@ -260,6 +260,8 @@ export class TelemetryService {
         return 'Coinbase';
       case 'yahoo':
         return 'Yahoo Finance';
+      case 'macro':
+        return 'Macro Index';
       default:
         return 'Custom Feed';
     }

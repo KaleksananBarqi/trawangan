@@ -39,8 +39,8 @@ export interface MarketProviderAdapter {
 
 export interface SearchSymbolsOptions {
   filterType?: 'all' | 'spot' | 'perp';
-  exchange?: 'all' | 'binance' | 'indodax' | 'bitunix' | 'hyperliquid' | 'coinbase' | 'yahoo' | (string & {});
-  quoteAsset?: 'all' | 'IDR' | 'USDT' | 'BTC' | 'USD' | 'USDC';
+  exchange?: 'all' | 'binance' | 'indodax' | 'bitunix' | 'hyperliquid' | 'coinbase' | 'yahoo' | 'macro' | (string & {});
+  quoteAsset?: 'all' | 'IDR' | 'USDT' | 'BTC' | 'USD' | 'USDC' | '%';
 }
 
 /**

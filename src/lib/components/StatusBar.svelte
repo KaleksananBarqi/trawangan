@@ -136,6 +136,8 @@
       {/if}
       {#if feedStatus.providerId === 'yahoo'}
         <span class="pill-badge badge-amber font-mono" title="Feed Yahoo Finance (Saham Indo IDX & US) memiliki jeda 15 menit sesuai regulasi bursa">DELAYED 15M</span>
+      {:else if feedStatus.providerId === 'macro'}
+        <span class="pill-badge badge-cyan font-mono" title="Indeks makro sintetis terkalibrasi (~1 tahun): hanya aktif mengambil data saat grafik makro terbuka">SYNTHETIC (~1Y)</span>
       {/if}
     </div>
 
@@ -345,6 +347,12 @@
     color: #f59e0b;
     background-color: rgba(245, 158, 11, 0.1);
     border: 1px solid rgba(245, 158, 11, 0.25);
+  }
+
+  .badge-cyan {
+    color: var(--brand-cyan, #38bdf8);
+    background-color: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.32);
   }
 
   .badge-bear {

@@ -3,10 +3,12 @@ import {
   extractDrawingPriceBadges,
   extractIndicatorPriceBadges,
   formatPriceLabel,
+  formatPriceWithQuoteSymbol,
   type PriceScaleBadge
 } from './priceScaleLabelService';
 import { parseAdaptiveSymbol } from './market/symbolSearchService';
 import { isSameInstrument } from './instrumentIdentity';
+import { resolveMacroIndexDescriptor } from './macroIndexCatalog';
 
 export interface OverlayPositionsSnapshot {
   tick: number;
@@ -192,6 +194,10 @@ export class PriceScaleOverlayController {
    */
   private getQuoteCurrency(): string {
     const s = (this.activeSymbol || '').toUpperCase();
+    const macroDesc = resolveMacroIndexDescriptor(s);
+    if (macroDesc) {
+      return macroDesc.quoteUnit === '%' ? '%' : 'MACRO_USD';
+    }
     const parsed = parseAdaptiveSymbol(s);
     return parsed.quoteAsset || 'USDT';
   }
@@ -202,7 +208,13 @@ export class PriceScaleOverlayController {
   formatPrice(p: number | null, quoteCurrency?: string): string {
     if (p === null || p === undefined || isNaN(p)) return '--';
     const quote = quoteCurrency || this.getQuoteCurrency();
-    return formatPriceLabel(p, quote);
+    return formatPriceLabel(p, quote, this.activeSymbol);
+  }
+
+  formatPriceWithQuote(p: number | null, quoteCurrency?: string): string {
+    if (p === null || p === undefined || isNaN(p)) return '--';
+    const quote = quoteCurrency || this.getQuoteCurrency();
+    return formatPriceWithQuoteSymbol(p, quote, this.activeSymbol);
   }
 
   /**
@@ -483,7 +495,7 @@ export class PriceScaleOverlayController {
     let nextDrawingMap: Record<string, number | null>;
     if (this.showDrawingLabels && this.activeDrawings.length > 0) {
       if (this.drawingsDirty || this.lastExtractedDrawingQuote !== quote) {
-        nextDrawingBadges = extractDrawingPriceBadges(this.activeDrawings, undefined, quote);
+        nextDrawingBadges = extractDrawingPriceBadges(this.activeDrawings, undefined, quote, this.activeSymbol);
         this.drawingsDirty = false;
         this.lastExtractedDrawingQuote = quote;
       } else {
@@ -504,7 +516,12 @@ export class PriceScaleOverlayController {
     let nextIndicatorMap: Record<string, number | null>;
     if (this.showIndicatorLabels && this.activeIndicators.length > 0) {
       if (this.indicatorsDirty || this.lastExtractedIndicatorQuote !== quote) {
-        nextIndicatorBadges = extractIndicatorPriceBadges(this.activeIndicators, undefined, quote);
+        nextIndicatorBadges = extractIndicatorPriceBadges(
+          this.activeIndicators,
+          undefined,
+          quote,
+          this.activeSymbol
+        );
         this.indicatorsDirty = false;
         this.lastExtractedIndicatorQuote = quote;
       } else {

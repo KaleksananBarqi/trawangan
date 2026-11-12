@@ -1,5 +1,6 @@
 // Layanan Ekstraksi & Formatter Label Harga pada Skala Kanan (Indikator & Drawing Tools)
 import { roundToTickSize } from './priceSnapService';
+import { formatMacroCompactValue, resolveMacroIndexDescriptor } from './macroIndexCatalog';
 
 export interface PriceScaleBadge {
   id: string;
@@ -16,10 +17,21 @@ export interface PriceScaleBadge {
  * Format angka harga dengan pemisah ribuan dan desimal presisi
  * Mendukung pemformatan standar internasional (USDT/USD) dan standar lokal Rupiah Indonesia (IDR).
  */
-export function formatPriceLabel(price: number, quoteCurrency?: string): string {
+export function formatPriceLabel(price: number, quoteCurrency?: string, symbol?: string): string {
   if (typeof price !== 'number' || isNaN(price)) return '0.00';
 
+  const macroDesc = symbol ? resolveMacroIndexDescriptor(symbol) : null;
+  if (macroDesc) {
+    return formatMacroCompactValue(price, macroDesc.quoteUnit);
+  }
+
   const upperQuote = quoteCurrency?.toUpperCase();
+  if (upperQuote === '%') {
+    return `${price.toFixed(2)}%`;
+  }
+  if (upperQuote === 'MACRO_USD') {
+    return formatMacroCompactValue(price, 'USD');
+  }
   if (upperQuote === 'BTC') {
     return `${price.toFixed(8)} ₿`;
   }
@@ -65,11 +77,28 @@ export function formatPriceLabel(price: number, quoteCurrency?: string): string 
  * Memformat angka harga lengkap dengan simbol/unit mata uang kuotasi yang tepat
  * sesuai aturan Crypto-Denominated Precision (tanpa memaksakan prefix '$' pada pair BTC atau kripto non-USD).
  */
-export function formatPriceWithQuoteSymbol(price: number, quoteCurrency?: string): string {
+export function formatPriceWithQuoteSymbol(
+  price: number,
+  quoteCurrency?: string,
+  symbol?: string
+): string {
   if (typeof price !== 'number' || !Number.isFinite(price)) return '--';
-  const upperQuote = (quoteCurrency || 'USDT').trim().toUpperCase();
-  const formatted = formatPriceLabel(price, upperQuote);
 
+  const macroDesc = symbol ? resolveMacroIndexDescriptor(symbol) : null;
+  if (macroDesc) {
+    const compact = formatMacroCompactValue(price, macroDesc.quoteUnit);
+    return macroDesc.quoteUnit === '%' ? compact : `$${compact}`;
+  }
+
+  const upperQuote = (quoteCurrency || 'USDT').trim().toUpperCase();
+  const formatted = formatPriceLabel(price, upperQuote, symbol);
+
+  if (upperQuote === '%') {
+    return formatted;
+  }
+  if (upperQuote === 'MACRO_USD') {
+    return `$${formatted}`;
+  }
   if (upperQuote === 'IDR') {
     return `Rp ${formatted}`;
   }
@@ -103,7 +132,8 @@ export function formatPriceWithQuoteSymbol(price: number, quoteCurrency?: string
 export function extractDrawingPriceBadges(
   drawings: any[],
   priceToY?: (price: number) => number | null,
-  quoteCurrency?: string
+  quoteCurrency?: string,
+  symbol?: string
 ): PriceScaleBadge[] {
   if (!Array.isArray(drawings) || drawings.length === 0) return [];
 
@@ -122,7 +152,8 @@ export function extractDrawingPriceBadges(
       // anchors[1] = Stop Loss (stopPx)
       // anchors[2] = Target Profit (targetPx)
       const prices = typeof d.prices === 'function' ? d.prices() : null;
-      const sanitize = (val: any) => (typeof val === 'number' && !isNaN(val) ? roundToTickSize(val) : undefined);
+      const sanitize = (val: any) =>
+        typeof val === 'number' && !isNaN(val) ? roundToTickSize(val, undefined, symbol) : undefined;
 
       const entryPrice = sanitize(prices?.entry ?? anchors[0]?.price);
       const stopPrice = sanitize(prices?.stop ?? anchors[1]?.price);
@@ -145,7 +176,7 @@ export function extractDrawingPriceBadges(
           badges.push({
             id: `draw_${d.id}_entry`,
             price: entryPrice,
-            label: formatPriceLabel(entryPrice, quoteCurrency),
+            label: formatPriceLabel(entryPrice, quoteCurrency, symbol),
             color: col,
             bgColor: '#1e293b',
             kind: 'entry',
@@ -183,7 +214,7 @@ export function extractDrawingPriceBadges(
         badges.push({
           id: `draw_${d.id}_tp`,
           price: targetPrice,
-          label: formatPriceLabel(targetPrice, quoteCurrency),
+          label: formatPriceLabel(targetPrice, quoteCurrency, symbol),
           color: '#10b981', // Hijau Bullish Take Profit
           bgColor: '#064e3b',
           kind: 'take_profit',
@@ -202,7 +233,7 @@ export function extractDrawingPriceBadges(
           badges.push({
             id: `draw_${d.id}_sl`,
             price: stopPrice,
-            label: formatPriceLabel(stopPrice, quoteCurrency),
+            label: formatPriceLabel(stopPrice, quoteCurrency, symbol),
             color: '#ef4444', // Merah Bearish Stop Loss
             bgColor: '#7f1d1d',
             kind: 'stop_loss',
@@ -223,7 +254,7 @@ export function extractDrawingPriceBadges(
         badges.push({
           id: `draw_${d.id}`,
           price: p,
-          label: formatPriceLabel(p, quoteCurrency),
+          label: formatPriceLabel(p, quoteCurrency, symbol),
           color: col,
           bgColor: col,
           kind: 'drawing',
@@ -243,7 +274,8 @@ export function extractDrawingPriceBadges(
 export function extractIndicatorPriceBadges(
   indicators: any[],
   priceToY?: (price: number) => number | null,
-  quoteCurrency?: string
+  quoteCurrency?: string,
+  symbol?: string
 ): PriceScaleBadge[] {
   if (!Array.isArray(indicators) || indicators.length === 0) return [];
 
@@ -256,7 +288,7 @@ export function extractIndicatorPriceBadges(
       badges.push({
         id: `ind_${ind.id}`,
         price: val,
-        label: formatPriceLabel(val, quoteCurrency),
+        label: formatPriceLabel(val, quoteCurrency, symbol),
         color: ind.color || '#f97316',
         bgColor: 'rgba(15, 23, 42, 0.94)',
         kind: 'indicator',

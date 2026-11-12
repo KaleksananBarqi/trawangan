@@ -424,6 +424,7 @@
         tolerancePx: 15,
         isMagnetActive: isMagnet,
         shiftKey: false, // Inversi shift sudah ditangani oleh controller state (menghindari double-inversion)
+        symbol,
       });
 
       draggingAlertPrice = snapRes.price;
@@ -943,7 +944,7 @@
           title="Tahan & geser untuk mengubah harga (Double-click untuk sunting)"
         >
           <Bell size={10} class="badge-bell" />
-          <span class="badge-price">${formatPrice(displayPrice)}</span>
+          <span class="badge-price">{priceScaleOverlayController.formatPriceWithQuote(displayPrice)}</span>
           {#if isDragging && snapInfo?.snapped}
             <span class="badge-snap-tag mono-nums">MAGNET: {snapInfo.type?.toUpperCase()}</span>
           {/if}

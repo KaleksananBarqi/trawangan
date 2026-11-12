@@ -4,6 +4,7 @@ import {
   isSameInstrument,
   resolveCanonicalInstrumentSymbol,
 } from './instrumentIdentity';
+import { formatMacroCompactValue, resolveMacroIndexDescriptor } from './macroIndexCatalog';
 import { getAdaptiveTickSize, roundToTickSize } from './priceSnapService';
 
 export interface AlertModalDraft {
@@ -40,9 +41,17 @@ export function parseAlertPriceInput(raw: string | number | null | undefined): n
   let cleaned = raw
     .trim()
     .replace(/^(?:(?:rp|idr|usdt?|usd)(?=[\s\d])|[\$€£₺])\s*/i, '')
-    .replace(/\s*(?:(?<=[\s\d])(?:rp|idr|usdt?|usd)|[\$€£₺₿])$/i, '')
+    .replace(/\s*(?:(?<=[\s\d])(?:rp|idr|usdt?|usd)|[\$€£₺₿%])$/i, '')
     .replace(/\s+/g, '');
   if (!cleaned) return null;
+
+  let multiplier = 1;
+  const suffixMatch = cleaned.match(/^(.+?)([TBM])$/i);
+  if (suffixMatch) {
+    const unit = suffixMatch[2].toUpperCase();
+    multiplier = unit === 'T' ? 1e12 : unit === 'B' ? 1e9 : 1e6;
+    cleaned = suffixMatch[1];
+  }
 
   const dotCount = (cleaned.match(/\./g) || []).length;
   const commaCount = (cleaned.match(/,/g) || []).length;
@@ -74,7 +83,7 @@ export function parseAlertPriceInput(raw: string | number | null | undefined): n
     return null;
   }
 
-  const parsed = Number(cleaned);
+  const parsed = Number(cleaned) * multiplier;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
@@ -164,11 +173,32 @@ export function inferAlertConditionFromPrice(
   return 'crossing';
 }
 
+function formatEditableAlertPrice(price: number, symbol: string): string {
+  const macroDesc = resolveMacroIndexDescriptor(symbol);
+  if (!macroDesc) return price.toString();
+  if (macroDesc.quoteUnit === '%') {
+    return price.toFixed(2).replace(/\.?0+$/, '') || price.toFixed(2);
+  }
+  const abs = Math.abs(price);
+  if (abs >= 1e12) return `${(price / 1e12).toFixed(3).replace(/\.?0+$/, '')}T`;
+  if (abs >= 1e9) return `${(price / 1e9).toFixed(3).replace(/\.?0+$/, '')}B`;
+  if (abs >= 1e6) return `${(price / 1e6).toFixed(2).replace(/\.?0+$/, '')}M`;
+  return String(Math.round(price));
+}
+
 /**
  * Membentuk label default yang konsisten untuk sebuah Price Alert.
  */
 export function buildAutoAlertLabel(symbol: string, rawPriceText: string | number): string {
   const cleanSym = (symbol || 'BTCUSDT').trim().toUpperCase();
+  const macroDesc = resolveMacroIndexDescriptor(cleanSym);
+  if (macroDesc) {
+    const parsed = parseAlertPriceInput(rawPriceText);
+    if (parsed !== null) {
+      const compact = formatMacroCompactValue(parsed, macroDesc.quoteUnit);
+      return `Target ${macroDesc.symbol} @ ${macroDesc.quoteUnit === 'USD' ? `$${compact}` : compact}`;
+    }
+  }
   const cleanPrice = typeof rawPriceText === 'number' ? String(rawPriceText) : rawPriceText.trim();
   return cleanPrice ? `Target ${cleanSym} @ ${cleanPrice}` : `Target ${cleanSym}`;
 }
@@ -186,7 +216,7 @@ export function buildAlertModalInitialDraft(params: {
 
   if (editingAlert) {
     const cleanSym = editingAlert.symbol.trim().toUpperCase();
-    const targetPrice = editingAlert.targetPrice.toString();
+    const targetPrice = formatEditableAlertPrice(editingAlert.targetPrice, cleanSym);
     return {
       symbol: cleanSym,
       targetPrice,
@@ -203,10 +233,10 @@ export function buildAlertModalInitialDraft(params: {
   let condition: AlertCondition = 'crossing';
 
   if (initialPrice !== undefined && initialPrice > 0) {
-    targetPrice = initialPrice.toString();
+    targetPrice = formatEditableAlertPrice(initialPrice, symbol);
     condition = inferAlertConditionFromPrice(initialPrice, curP);
   } else if (curP > 0) {
-    targetPrice = curP.toString();
+    targetPrice = formatEditableAlertPrice(curP, symbol);
     condition = 'crossing_up';
   }
 
@@ -279,7 +309,8 @@ function getTickStepDecimals(step: number): number {
 export function computeTickAlignedAlertPrice(
   rawPrice: number,
   isSameAsChart: boolean,
-  chartTickSize?: number
+  chartTickSize?: number,
+  symbol?: string
 ): { price: number; formattedText: string } {
   if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
     return { price: 0, formattedText: '' };
@@ -287,8 +318,12 @@ export function computeTickAlignedAlertPrice(
   const effectiveTick =
     isSameAsChart && typeof chartTickSize === 'number' && chartTickSize > 0
       ? chartTickSize
-      : getAdaptiveTickSize(rawPrice);
-  const snapped = roundToTickSize(rawPrice, effectiveTick);
+      : getAdaptiveTickSize(rawPrice, undefined, symbol);
+  const snapped = roundToTickSize(rawPrice, effectiveTick, symbol);
+  const macroDesc = symbol ? resolveMacroIndexDescriptor(symbol) : null;
+  if (macroDesc) {
+    return { price: snapped, formattedText: formatEditableAlertPrice(snapped, symbol!) };
+  }
   const decimals = getTickStepDecimals(effectiveTick);
   const fixed = decimals > 0 ? snapped.toFixed(decimals) : String(snapped);
   const trimmed = decimals > 0 ? fixed.replace(/\.?0+$/, '') || fixed : fixed;

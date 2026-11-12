@@ -127,7 +127,7 @@
   function formatAlertPrice(p?: number, sym?: string): string {
     if (!p) return '--';
     const quote = sym ? parseAdaptiveSymbol(sym).quoteAsset : undefined;
-    return formatPriceWithQuoteSymbol(p, quote);
+    return formatPriceWithQuoteSymbol(p, quote, sym);
   }
 
   function handleTriggerOpenCreateAlert() {
@@ -214,7 +214,7 @@
     const isBull = diff > 0;
     const quote = parseAdaptiveSymbol(sym).quoteAsset;
     return {
-      diffText: `${isBull ? '+' : '-'}${formatPriceWithQuoteSymbol(Math.abs(diff), quote)}`,
+      diffText: `${isBull ? '+' : '-'}${formatPriceWithQuoteSymbol(Math.abs(diff), quote, sym)}`,
       pctText: `${isBull ? '+' : ''}${pct.toFixed(2)}%`,
       isBull,
     };

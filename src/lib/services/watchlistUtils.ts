@@ -2,6 +2,8 @@
  * Utilitas untuk Serialisasi dan Deserialisasi Item Watchlist Sadar Bursa (Exchange-Aware)
  */
 
+import { canonicalizeMacroIndexSymbol } from './macroIndexCatalog';
+
 export interface ParsedWatchlistEntry {
   providerId: string;
   symbol: string;
@@ -19,6 +21,7 @@ export function normalizeProviderId(rawProvider?: string): string {
   if (clean.includes('hyperliquid') || clean === 'hyperliquid') return 'hyperliquid';
   if (clean.includes('coinbase') || clean === 'coinbase') return 'coinbase';
   if (clean.includes('yahoo') || clean === 'yahoo') return 'yahoo';
+  if (clean.includes('macro') || clean === 'macro') return 'macro';
   return clean.replace(/[^a-z0-9_-]/g, '') || 'binance';
 }
 
@@ -34,11 +37,19 @@ export function parseWatchlistEntry(rawEntry: string): ParsedWatchlistEntry {
   if (trimmed.includes(':')) {
     const parts = trimmed.split(':');
     const p = normalizeProviderId(parts[0]);
-    const s = parts[1].trim().toUpperCase();
-    return { providerId: p, symbol: s };
+    const rawSym = parts.slice(1).join(':').trim().toUpperCase();
+    const macroSym = canonicalizeMacroIndexSymbol(rawSym);
+    if (p === 'macro' || macroSym) {
+      return { providerId: 'macro', symbol: macroSym || rawSym };
+    }
+    return { providerId: p, symbol: rawSym };
   }
 
   const upper = trimmed.toUpperCase();
+  const macroSym = canonicalizeMacroIndexSymbol(upper);
+  if (macroSym) {
+    return { providerId: 'macro', symbol: macroSym };
+  }
   // Legacy Fallback
   if (upper.endsWith('IDR')) {
     return { providerId: 'indodax', symbol: upper };
@@ -52,6 +63,10 @@ export function parseWatchlistEntry(rawEntry: string): ParsedWatchlistEntry {
 export function formatWatchlistEntry(symbol: string, rawProvider?: string): string {
   if (!symbol || symbol.startsWith('#section:')) return '';
   const cleanSym = symbol.trim().replace(/^[A-Za-z0-9_-]+:/, '').toUpperCase();
+  const macroSym = canonicalizeMacroIndexSymbol(cleanSym);
+  if (macroSym) {
+    return `macro:${macroSym}`;
+  }
   const providerId = normalizeProviderId(
     rawProvider || (symbol.includes(':') ? symbol.split(':')[0] : 'binance')
   );

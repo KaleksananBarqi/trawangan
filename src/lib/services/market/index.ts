@@ -18,11 +18,13 @@ import { CoinbaseAdapter } from './adapters/coinbaseAdapter';
 import { CustomFeedAdapter } from './adapters/customAdapter';
 import { MockMarketAdapter } from './adapters/mockAdapter';
 import { YahooFinanceAdapter } from './adapters/yahooAdapter';
+import { MacroIndexAdapter } from './adapters/macroAdapter';
 import { DEFAULT_PROVIDERS, normalizeTicker } from './constants';
 import { alertService } from '../alertService';
 import { SymbolSearchEngine } from './symbolSearchService';
 import { isSectionToken } from '../watchlistUtils';
 import { isYahooSymbol } from '../instrumentIdentity';
+import { canonicalizeMacroIndexSymbol } from '../macroIndexCatalog';
 
 /**
  * Memecah simbol pair (baik ber-prefix 'provider:symbol' atau raw) dan menginfer bursa target
@@ -38,13 +40,27 @@ export function resolveSymbolProvider(
     const colonIdx = trimmed.indexOf(':');
     const p = trimmed.slice(0, colonIdx).trim();
     const s = trimmed.slice(colonIdx + 1).trim();
+    const pLower = (p || defaultProvider).toLowerCase();
+    const sUpper = s.toUpperCase();
+    const macroCanon = canonicalizeMacroIndexSymbol(sUpper);
+    if (pLower === 'macro' || (macroCanon && (pLower === 'cryptocap' || pLower === 'index'))) {
+      return {
+        providerId: 'macro',
+        cleanSymbol: macroCanon || sUpper,
+      };
+    }
     return {
-      providerId: (p || defaultProvider).toLowerCase(),
-      cleanSymbol: s.toUpperCase(),
+      providerId: pLower,
+      cleanSymbol: sUpper,
     };
   }
 
   const upper = trimmed.toUpperCase();
+  const macroCanon = canonicalizeMacroIndexSymbol(upper);
+  if (macroCanon) {
+    return { providerId: 'macro', cleanSymbol: macroCanon };
+  }
+
   // Deteksi bursa Yahoo Finance untuk Saham Indo (.JK), Indeks (^), dan Komoditas Futures (=F)
   if (isYahooSymbol(upper)) {
     return { providerId: 'yahoo', cleanSymbol: upper };
@@ -97,6 +113,7 @@ export class MarketFeedService implements IMarketFeedService {
     this.registerAdapter(new CoinbaseAdapter());
     this.registerAdapter(new MockMarketAdapter());
     this.registerAdapter(new YahooFinanceAdapter());
+    this.registerAdapter(new MacroIndexAdapter());
 
     // Sinkronkan custom-* endpoint tersimpan di localStorage saat inisialisasi awal
     for (const cfg of this.getKnownProviderConfigsSync()) {
@@ -364,9 +381,12 @@ export class MarketFeedService implements IMarketFeedService {
   public subscribeActiveTicker(symbol: string, listener: TickerListener): () => void {
     const hasPrefix = symbol.includes(':');
     const { providerId, cleanSymbol } = resolveSymbolProvider(symbol, this.activeProviderId);
-    const clean = hasPrefix
-      ? `${providerId}:${cleanSymbol}`
-      : cleanSymbol || normalizeTicker(symbol);
+    const clean =
+      providerId === 'macro'
+        ? `macro:${cleanSymbol}`
+        : hasPrefix
+          ? `${providerId}:${cleanSymbol}`
+          : cleanSymbol || normalizeTicker(symbol);
 
     if (!this.activeSymbolSubscribers.has(clean)) {
       this.activeSymbolSubscribers.set(clean, new Set());
@@ -448,7 +468,9 @@ export class MarketFeedService implements IMarketFeedService {
   }
 
   private syncAlertPollingState(): void {
-    const activeAlertSymbols = alertService.getActiveAlertSymbols();
+    const activeAlertSymbols = alertService
+      .getActiveAlertSymbols()
+      .filter((sym) => resolveSymbolProvider(sym, this.activeProviderId).providerId !== 'macro');
     if (activeAlertSymbols.length > 0) {
       const wasIdle = !this.pollTimer;
       this.ensurePollingRunning();
@@ -465,7 +487,9 @@ export class MarketFeedService implements IMarketFeedService {
       (sum, set) => sum + set.size,
       0
     );
-    const activeAlertSymbols = alertService.getActiveAlertSymbols();
+    const activeAlertSymbols = alertService
+      .getActiveAlertSymbols()
+      .filter((sym) => resolveSymbolProvider(sym, this.activeProviderId).providerId !== 'macro');
     if (
       totalActiveSubscribers === 0 &&
       this.watchlistSubscribers.size === 0 &&
@@ -480,24 +504,36 @@ export class MarketFeedService implements IMarketFeedService {
 
   public async pollTick(): Promise<void> {
     const allSymbolsSet = new Set<string>();
+    const activeOpenMacroSymbols = new Set<string>();
 
     for (const sym of this.activeSymbolSubscribers.keys()) {
       if (sym && !isSectionToken(sym)) {
         allSymbolsSet.add(sym);
+        const resolved = resolveSymbolProvider(sym, this.activeProviderId);
+        if (resolved.providerId === 'macro' && resolved.cleanSymbol) {
+          activeOpenMacroSymbols.add(resolved.cleanSymbol);
+        }
       }
     }
     for (const sub of this.watchlistSubscribers) {
       for (const s of sub.symbols) {
-        if (s && !isSectionToken(s)) {
-          allSymbolsSet.add(s);
+        if (!s || isSectionToken(s)) continue;
+        const resolved = resolveSymbolProvider(s, this.activeProviderId);
+        // Patuhi kebijakan zero-background: indeks makro di watchlist hanya boleh fetch jika grafiknya aktif terbuka.
+        if (resolved.providerId === 'macro' && !activeOpenMacroSymbols.has(resolved.cleanSymbol)) {
+          continue;
         }
+        allSymbolsSet.add(s);
       }
     }
     const activeAlertSymbols = alertService.getActiveAlertSymbols();
     for (const sym of activeAlertSymbols) {
-      if (sym && !isSectionToken(sym)) {
-        allSymbolsSet.add(sym);
+      if (!sym || isSectionToken(sym)) continue;
+      const resolved = resolveSymbolProvider(sym, this.activeProviderId);
+      if (resolved.providerId === 'macro' && !activeOpenMacroSymbols.has(resolved.cleanSymbol)) {
+        continue;
       }
+      allSymbolsSet.add(sym);
     }
 
     if (allSymbolsSet.size === 0) return;
@@ -687,6 +723,12 @@ export class MarketFeedService implements IMarketFeedService {
     }
 
     const snap = this.getTickerSnapshot(cleanSym);
+    const resolvedPreview = resolveSymbolProvider(cleanSym, this.activeProviderId);
+    if (resolvedPreview.providerId === 'macro') {
+      onTicker(snap && snap.price > 0 ? snap : null);
+      options?.onLoadingChange?.(false);
+      return () => {};
+    }
     if (snap && snap.price > 0) {
       onTicker(snap);
       options?.onLoadingChange?.(false);
@@ -749,16 +791,23 @@ export class MarketFeedService implements IMarketFeedService {
     if (!symbols || symbols.length === 0) return {};
 
     // Partisi per provider agar pembacaan langsung menghormati prefix bursa
+    const resultMap: Record<string, TickerInfo> = {};
     const grouped = new Map<string, Array<{ raw: string; clean: string }>>();
     for (const s of symbols) {
       if (!s || isSectionToken(s)) continue;
       const { providerId, cleanSymbol } = resolveSymbolProvider(s, this.activeProviderId);
       if (!providerId || !cleanSymbol) continue;
+      if (providerId === 'macro') {
+        const cached = this.getCachedTicker(s, providerId, cleanSymbol);
+        if (cached) {
+          resultMap[s] = cached;
+        }
+        continue;
+      }
       if (!grouped.has(providerId)) grouped.set(providerId, []);
       grouped.get(providerId)!.push({ raw: s, clean: cleanSymbol });
     }
 
-    const resultMap: Record<string, TickerInfo> = {};
     await Promise.allSettled(
       Array.from(grouped.entries()).map(async ([pId, items]) => {
         const cleanList = Array.from(new Set(items.map((i) => i.clean)));

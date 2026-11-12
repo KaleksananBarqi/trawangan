@@ -54,7 +54,7 @@
   });
 
   let customProviders = $derived(
-    providersList.filter((p) => !['binance', 'indodax', 'bitunix', 'hyperliquid', 'coinbase'].includes(p.id))
+    providersList.filter((p) => !['binance', 'indodax', 'bitunix', 'hyperliquid', 'coinbase', 'macro'].includes(p.id))
   );
 
   let selectedProviderName = $derived.by(() => {
@@ -63,6 +63,7 @@
     if (selectedProviderId === 'bitunix') return 'Bitunix Futures (USDT-M)';
     if (selectedProviderId === 'hyperliquid') return 'Hyperliquid DEX Perpetuals';
     if (selectedProviderId === 'coinbase') return 'Coinbase Exchange Spot';
+    if (selectedProviderId === 'macro') return 'Macro Index (Synthetic Basket)';
     const custom = providersList.find((p) => p.id === selectedProviderId);
     return custom ? custom.name : 'Binance Official';
   });

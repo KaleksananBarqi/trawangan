@@ -432,6 +432,33 @@ pub fn open_snapshot_folder(directory: Option<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// Membaca candle sintetis/historis dari SQLite tanpa memicu permintaan jaringan.
+#[tauri::command]
+pub fn load_cached_candles(
+    db: State<'_, DbState>,
+    symbol: String,
+    timeframe: String,
+    limit: Option<u32>,
+) -> Result<Vec<Candle>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    get_cached_candles(&conn, &symbol, &timeframe, limit.unwrap_or(500)).map_err(|e| e.to_string())
+}
+
+/// Menyimpan batch candle sintetis hasil agregasi frontend ke SQLite cache lokal.
+#[tauri::command]
+pub fn store_cached_candles(
+    db: State<'_, DbState>,
+    symbol: String,
+    timeframe: String,
+    candles: Vec<Candle>,
+) -> Result<(), String> {
+    if candles.is_empty() {
+        return Ok(());
+    }
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    cache_candles(&conn, &symbol, &timeframe, &candles).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

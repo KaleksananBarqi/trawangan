@@ -5,6 +5,7 @@ import { playAlertChime, playSuccessPip } from './soundService';
 import { sendWindowsAlertNotification } from './systemNotificationService';
 import { roundToTickSize } from './priceSnapService';
 import { normalizeSymbolForMatching, isSameInstrument } from './instrumentIdentity';
+import { buildAutoAlertLabel } from './alertFormHelper';
 
 type TriggerListener = (alert: PriceAlert, actualPrice: number) => void;
 type AlertChangeListener = (alerts: PriceAlert[]) => void;
@@ -111,15 +112,15 @@ class AlertService {
     planId?: string;
     planRole?: 'entry' | 'sl' | string;
   }): Promise<PriceAlert> {
-    const cleanTargetPrice = roundToTickSize(params.targetPrice);
     const cleanSymbol = params.symbol.trim().toUpperCase();
+    const cleanTargetPrice = roundToTickSize(params.targetPrice, undefined, cleanSymbol);
     const newAlert: PriceAlert = {
       id: 'alt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       symbol: cleanSymbol,
       targetPrice: cleanTargetPrice,
       condition: params.condition || 'crossing',
       frequency: params.frequency || 'once',
-      label: params.label?.trim() || `Target ${cleanSymbol} @ ${cleanTargetPrice}`,
+      label: params.label?.trim() || buildAutoAlertLabel(cleanSymbol, cleanTargetPrice),
       active: true,
       triggered: false,
       createdAt: Date.now(),
@@ -162,7 +163,7 @@ class AlertService {
     }> = [];
 
     // 1. Titik Entry (Blended / Utama)
-    const cleanEntry = roundToTickSize(plan.entry);
+    const cleanEntry = roundToTickSize(plan.entry, undefined, symbol);
     const entryLabel = hasEntries
       ? `⚡ [${biasTag}] Blended Entry @ ${cleanEntry}`
       : `⚡ [${biasTag}] Entry @ ${cleanEntry}`;
@@ -179,7 +180,7 @@ class AlertService {
     if (hasEntries) {
       plan.entries!.forEach((e, idx) => {
         if (typeof e.price !== 'number' || isNaN(e.price) || e.price <= 0) return;
-        const cleanPrice = roundToTickSize(e.price);
+        const cleanPrice = roundToTickSize(e.price, undefined, symbol);
         const weightBadge = typeof e.weight === 'number' ? ` (${Math.round(e.weight * 100)}%)` : '';
         const levelLabel = e.label || `Entry ${idx + 1}`;
         specs.push({
@@ -194,7 +195,7 @@ class AlertService {
     }
 
     // 2. Titik Stop Loss (SL)
-    const cleanSL = roundToTickSize(plan.stopLoss);
+    const cleanSL = roundToTickSize(plan.stopLoss, undefined, symbol);
     specs.push({
       planRole: 'sl',
       symbol,
@@ -209,7 +210,7 @@ class AlertService {
       for (let i = 0; i < plan.targets.length; i++) {
         const tgt = plan.targets[i];
         if (!tgt || typeof tgt.price !== 'number' || isNaN(tgt.price) || tgt.price <= 0) continue;
-        const cleanTp = roundToTickSize(tgt.price);
+        const cleanTp = roundToTickSize(tgt.price, undefined, symbol);
         const tpName = tgt.label || `TP${i + 1}`;
         const rBadge =
           typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)
@@ -394,7 +395,7 @@ class AlertService {
     this.alerts = this.alerts.map((a) => {
       if (a.planId !== plan.id || a.triggered) return a;
       if (a.planRole === 'entry' && typeof plan.entry === 'number') {
-        const cleanEntry = roundToTickSize(plan.entry);
+        const cleanEntry = roundToTickSize(plan.entry, undefined, a.symbol);
         const hasEntries = Array.isArray(plan.entries) && plan.entries.length > 0;
         const entryLabel = hasEntries ? `⚡ [${biasTag}] Blended Entry @ ${cleanEntry}` : `⚡ [${biasTag}] Entry @ ${cleanEntry}`;
         if (a.targetPrice !== cleanEntry || a.label !== entryLabel) {
@@ -408,7 +409,7 @@ class AlertService {
       } else if (Array.isArray(plan.entries) && (a.planRole === 'e1' || a.planRole === 'e2')) {
         const matched = plan.entries.find((e) => e.id === a.planRole);
         if (matched && typeof matched.price === 'number') {
-          const cleanPrice = roundToTickSize(matched.price);
+          const cleanPrice = roundToTickSize(matched.price, undefined, a.symbol);
           const weightBadge = typeof matched.weight === 'number' ? ` (${Math.round(matched.weight * 100)}%)` : '';
           const levelLabel = matched.label || a.planRole.toUpperCase();
           const newLabel = `⚡ [${biasTag}] ${levelLabel}${weightBadge} @ ${cleanPrice}`;
@@ -422,7 +423,7 @@ class AlertService {
           }
         }
       } else if (a.planRole === 'sl' && typeof plan.stopLoss === 'number') {
-        const cleanSL = roundToTickSize(plan.stopLoss);
+        const cleanSL = roundToTickSize(plan.stopLoss, undefined, a.symbol);
         const newLabel = `🛡️ [${biasTag}] Stop Loss (-1.00R) @ ${cleanSL}`;
         if (a.targetPrice !== cleanSL || a.label !== newLabel) {
           changed = true;
@@ -436,7 +437,7 @@ class AlertService {
         const idx = parseInt(a.planRole.slice(2), 10) - 1;
         const tgt = plan.targets[idx];
         if (tgt && typeof tgt.price === 'number') {
-          const cleanTp = roundToTickSize(tgt.price);
+          const cleanTp = roundToTickSize(tgt.price, undefined, a.symbol);
           const tpName = tgt.label || `TP${idx + 1}`;
           const rBadge =
             typeof tgt.rMultiple === 'number' && !isNaN(tgt.rMultiple)
@@ -476,7 +477,9 @@ class AlertService {
       }
     }
     if (typeof cleanUpdates.targetPrice === 'number') {
-      cleanUpdates.targetPrice = roundToTickSize(cleanUpdates.targetPrice);
+      const existingAlert = this.alerts.find((a) => a.id === id);
+      const refSymbol = cleanUpdates.symbol || existingAlert?.symbol;
+      cleanUpdates.targetPrice = roundToTickSize(cleanUpdates.targetPrice, undefined, refSymbol);
     }
 
     this.alerts = this.alerts.map((a) => {

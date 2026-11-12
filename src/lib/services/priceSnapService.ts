@@ -4,6 +4,7 @@
  */
 
 import type { Candle } from '../types/market';
+import { resolveMacroIndexDescriptor } from './macroIndexCatalog';
 
 export type CandlestickBar = Partial<Candle> & {
   time: number;
@@ -25,6 +26,7 @@ export interface FindOhlcSnapParams {
   isMagnetActive?: boolean;
   shiftKey?: boolean;
   tickSize?: number;
+  symbol?: string;
 }
 
 export interface OhlcSnapResult {
@@ -40,9 +42,23 @@ export interface OhlcSnapResult {
  * Menghitung ukuran tick adaptif berdasarkan magnitudo nominal harga
  * jika tickSize resmi bursa tidak tersedia.
  */
-export function getAdaptiveTickSize(price: number, explicitTickSize?: number): number {
+export function getAdaptiveTickSize(
+  price: number,
+  explicitTickSize?: number,
+  symbol?: string
+): number {
   if (typeof explicitTickSize === 'number' && !isNaN(explicitTickSize) && explicitTickSize > 0) {
     return explicitTickSize;
+  }
+
+  const macroDesc = symbol ? resolveMacroIndexDescriptor(symbol) : null;
+  if (macroDesc) {
+    if (macroDesc.quoteUnit === '%') return 0.01;
+    const absMacro = Math.abs(price);
+    if (absMacro >= 1e12) return 1e9;
+    if (absMacro >= 1e10) return 1e8;
+    if (absMacro >= 1e9) return 1e7;
+    return 1e6;
   }
 
   const absPrice = Math.abs(price);
@@ -62,14 +78,22 @@ export function getAdaptiveTickSize(price: number, explicitTickSize?: number): n
  * Membulatkan harga sesuai kelipatan tickSize (Tick-Aligned Price Guard).
  * Mencegah floating-point noise dan angka desimal liar.
  */
-export function roundToTickSize(rawPrice: number, explicitTickSize?: number): number {
+export function roundToTickSize(
+  rawPrice: number,
+  explicitTickSize?: number,
+  symbol?: string
+): number {
   if (typeof rawPrice !== 'number' || isNaN(rawPrice)) {
     return 0;
   }
   if (rawPrice === 0) return 0;
 
-  const step = getAdaptiveTickSize(rawPrice, explicitTickSize);
+  const step = getAdaptiveTickSize(rawPrice, explicitTickSize, symbol);
   if (step <= 0) return rawPrice;
+
+  if (step >= 1) {
+    return Math.round(rawPrice / step) * step;
+  }
 
   // Tentukan jumlah desimal dari step
   const stepStr = step.toString();
@@ -102,6 +126,7 @@ export function findNearestOhlcPoint(params: FindOhlcSnapParams): OhlcSnapResult
     isMagnetActive = false,
     shiftKey = false,
     tickSize,
+    symbol,
   } = params;
 
   // Shift Inversion Guard: Jika shift ditekan, balik status magnet
@@ -111,7 +136,7 @@ export function findNearestOhlcPoint(params: FindOhlcSnapParams): OhlcSnapResult
   if (!effectiveMagnet || !candles || candles.length === 0 || typeof getPriceY !== 'function') {
     return {
       snapped: false,
-      price: roundToTickSize(targetPrice, tickSize),
+      price: roundToTickSize(targetPrice, tickSize, symbol),
       snappedType: null,
     };
   }
@@ -159,7 +184,7 @@ export function findNearestOhlcPoint(params: FindOhlcSnapParams): OhlcSnapResult
   if (candidates.length === 0) {
     return {
       snapped: false,
-      price: roundToTickSize(targetPrice, tickSize),
+      price: roundToTickSize(targetPrice, tickSize, symbol),
       snappedType: null,
     };
   }
@@ -181,7 +206,7 @@ export function findNearestOhlcPoint(params: FindOhlcSnapParams): OhlcSnapResult
 
   return {
     snapped: true,
-    price: roundToTickSize(best.price, tickSize),
+    price: roundToTickSize(best.price, tickSize, symbol),
     snappedType: best.type,
     candleTime: best.candleTime,
     candleY: best.y,

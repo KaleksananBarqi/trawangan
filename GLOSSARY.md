@@ -233,7 +233,7 @@ Entitas konfigurasi tema kustom tersimpan yang dibuat pengguna melalui aksi "Sav
 _Avoid_: Custom skin slot, Unsaved palette
 
 **Background Alert Engine**:
-Subsistem pengawasan pasar di balik layar yang secara otomatis mendaftarkan seluruh instrumen berstatus alert aktif ke siklus polling bursa, menjamin sinyal harga tetap terpicu meskipun grafik instrumen tersebut sedang tidak dibuka.
+Subsistem pengawasan pasar di balik layar yang secara otomatis mendaftarkan instrumen bursa berstatus alert aktif ke siklus polling latar, menjamin sinyal harga tetap terpicu meskipun grafik instrumen tersebut sedang tidak dibuka. Pengecualian berlaku bagi `Crypto Macro Index` yang hanya dievaluasi saat grafiknya aktif dibuka.
 _Avoid_: Inactive alert sleep, Active chart alert only
 
 **In-Place Theme Color Editing**:
@@ -295,5 +295,9 @@ _Avoid_: Flat v1 workspace JSON, Partial session config
 **Exit Flush & Pending Override**:
 Lapisan penyelamat data penutupan aplikasi (`beforeunload` dan Tauri `onCloseRequested`) yang memaksa pengiriman perubahan tertunda secara sinkron ke cadangan `localStorage` berstempel waktu sambil melakukan flush SQLite, lalu mengecek keutuhan timestamp cadangan saat startup berikutnya lewat `resolvePendingWorkspaceOverride`.
 _Avoid_: Unflushed closing debounce, Silent close data loss
+
+**Crypto Macro Index**:
+Instrumen indeks agregat non-tradable yang merepresentasikan total kapitalisasi pasar atau persentase dominasi kolektif pasar kripto (`TOTAL`, `TOTAL2`, `TOTAL3`, `OTHERS`, `BTC.D`, `ETH.D`, dan `USDT.D`), dengan `TOTAL` sebagai simbol kanonikal untuk total kapitalisasi pasar keseluruhan.
+_Avoid_: Crypto pair, Unique pair, TOTAL1, Tradable index
 
 

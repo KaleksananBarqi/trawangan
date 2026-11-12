@@ -23,6 +23,7 @@
   } from '../../services/watchlistUtils';
   import { parseAdaptiveSymbol } from '../../services/market/symbolSearchService';
   import { formatPriceLabel } from '../../services/priceScaleLabelService';
+  import { resolveMacroIndexDescriptor } from '../../services/macroIndexCatalog';
   import { watchlistRegistry } from '../../services/watchlistRegistryService';
   import WatchlistSwitcher from '../WatchlistSwitcher.svelte';
   import SymbolLogo from '../common/SymbolLogo.svelte';
@@ -244,11 +245,16 @@
 
   function formatPrice(p?: number, sym?: string): string {
     if (!p) return '--';
+    const macroDesc = sym ? resolveMacroIndexDescriptor(sym) : null;
+    if (macroDesc) {
+      const compact = formatPriceLabel(p, macroDesc.quoteUnit, sym);
+      return macroDesc.quoteUnit === '%' ? compact : `$${compact}`;
+    }
     const quote = sym ? parseAdaptiveSymbol(sym).quoteAsset : undefined;
     if (quote === 'IDR') {
       return `Rp ${formatPriceLabel(p, 'IDR')}`;
     }
-    return formatPriceLabel(p, quote);
+    return formatPriceLabel(p, quote, sym);
   }
 </script>
 
@@ -361,7 +367,10 @@
         {#each group.items as sym (sym)}
           {@const symGlobalIndex = symbols.indexOf(sym)}
           {@const entry = parseWatchlistEntry(sym)}
+          {@const macroDesc = resolveMacroIndexDescriptor(entry.symbol)}
+          {@const isMacroEntry = entry.providerId === 'macro' || Boolean(macroDesc)}
           {@const parsedPair = parseAdaptiveSymbol(entry.symbol)}
+          {@const displaySymName = macroDesc ? macroDesc.shortName : parsedPair.baseAsset}
           {@const ticker = tickerMap[sym] || tickerMap[entry.symbol]}
           {@const isBull = (ticker?.change24h ?? 0) >= 0}
           {@const isCurrentActive = activeSymbol === entry.symbol && activeProviderId === entry.providerId}
@@ -388,10 +397,14 @@
                   <GripVertical size={10} />
                 </span>
                 <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} size="sm" />
-                <span class="symbol-name">{parsedPair.baseAsset}</span>
-                <span class="venue-badge {entry.providerId} mono-nums">{entry.providerId.toUpperCase()}</span>
-                {#if entry.symbol.endsWith('.P')}
+                <SymbolLogo baseAsset={displaySymName} quoteAsset={isMacroEntry ? '' : parsedPair.quoteAsset} size="sm" />
+                <span class="symbol-name">{displaySymName}</span>
+                <span class="venue-badge {isMacroEntry ? 'macro' : entry.providerId} mono-nums">
+                  {isMacroEntry ? 'IDX' : entry.providerId.toUpperCase()}
+                </span>
+                {#if isMacroEntry}
+                  <span class="type-tag index mono-nums">{macroDesc?.quoteUnit === '%' ? 'DOM%' : 'MACRO'}</span>
+                {:else if entry.symbol.endsWith('.P')}
                   <span class="type-tag perp mono-nums">.P</span>
                 {:else if entry.symbol.endsWith('IDR')}
                   <span class="type-tag idr mono-nums">IDR</span>
@@ -402,7 +415,10 @@
                 {/if}
               </div>
 
-              <div class="row-price mono-nums">
+              <div
+                class="row-price mono-nums"
+                title={isMacroEntry && !ticker?.price ? 'Nilai indeks makro hanya dihitung saat grafik simbol ini dibuka' : undefined}
+              >
                 {formatPrice(ticker?.price, entry.symbol)}
               </div>
 
@@ -543,7 +559,7 @@
 <style>
   .table-head {
     display: grid;
-    grid-template-columns: 100px 1fr 65px;
+    grid-template-columns: minmax(112px, 1.3fr) minmax(64px, 1fr) 58px;
     padding: 4px 8px;
     background-color: var(--bg-container);
     border-bottom: 1px solid var(--border-hairline);
@@ -602,7 +618,7 @@
 
   .row-select-btn {
     display: grid;
-    grid-template-columns: 100px 1fr 65px;
+    grid-template-columns: minmax(112px, 1.3fr) minmax(64px, 1fr) 58px;
     align-items: center;
     padding: 5px 8px;
     background: none;
@@ -615,7 +631,9 @@
   .row-symbol {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
+    min-width: 0;
+    white-space: nowrap;
   }
 
   .status-pip {
@@ -666,6 +684,12 @@
     border: 1px solid var(--border-hairline);
   }
 
+  .type-tag.index {
+    background-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 14%, transparent);
+    color: var(--brand-cyan, #38bdf8);
+    border: 1px solid color-mix(in srgb, var(--brand-cyan, #38bdf8) 32%, transparent);
+  }
+
   .venue-badge {
     font-size: var(--font-size-2xs, 8.5px);
     font-weight: 700;
@@ -677,6 +701,12 @@
     background-color: var(--bg-elevated);
     color: var(--text-muted);
     border: 1px solid var(--border-hairline);
+  }
+
+  .venue-badge.macro {
+    background-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 14%, transparent);
+    color: var(--brand-cyan, #38bdf8);
+    border-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 32%, transparent);
   }
 
   .venue-badge.binance {

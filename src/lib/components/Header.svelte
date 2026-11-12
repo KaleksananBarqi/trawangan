@@ -218,6 +218,10 @@
         <span class="delayed-badge mono-nums" title="Data Yahoo Finance (Saham Indo IDX & US) mengalami jeda waktu ~15 menit sesuai regulasi bursa">
           DELAYED 15M
         </span>
+      {:else if activeProviderId === 'macro'}
+        <span class="synthetic-badge mono-nums" title="Indeks makro dihitung lokal dari basket terkalibrasi (CoinGecko + DefiLlama + Binance/Coinbase) hanya saat grafik ini aktif">
+          SYNTHETIC (~1Y)
+        </span>
       {/if}
 
       {#if isProviderDropdownOpen}
@@ -235,6 +239,11 @@
           <div class="provider-dropdown-header">
             <span>BURSA / DATA FEED</span>
           </div>
+          {#if activeProviderId === 'macro'}
+            <div class="provider-macro-note">
+              Indeks makro selalu dirutekan otomatis ke Synthetic Basket lokal saat grafik dibuka.
+            </div>
+          {/if}
           <div class="provider-list">
             {#each availableProviders as prov (prov.id)}
               <button
@@ -572,6 +581,34 @@
     letter-spacing: 0.04em;
     white-space: nowrap;
     align-self: center;
+  }
+
+  .provider-pill-btn.macro {
+    background-color: rgba(56, 189, 248, 0.12);
+    color: var(--brand-cyan, #38bdf8);
+    border-color: rgba(56, 189, 248, 0.32);
+  }
+
+  .synthetic-badge {
+    font-size: 8.5px;
+    font-weight: 700;
+    color: var(--brand-cyan, #38bdf8);
+    background-color: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.32);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs, 4px);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    align-self: center;
+  }
+
+  .provider-macro-note {
+    padding: 6px 10px;
+    font-size: 10px;
+    line-height: 1.35;
+    color: var(--brand-cyan, #38bdf8);
+    background-color: rgba(56, 189, 248, 0.08);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.18);
   }
 
   .provider-pill-btn.bitunix {

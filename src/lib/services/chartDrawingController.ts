@@ -1978,7 +1978,7 @@ export class ChartDrawingController {
 
     // Hitung offset spasial harga dan waktu adaptif
     const firstPrice = source.anchors?.[0]?.price ?? 100;
-    const tick = getAdaptiveTickSize(firstPrice);
+    const tick = getAdaptiveTickSize(firstPrice, undefined, this.getSymbol());
     const priceOffset = tick * 5;
     const { deltaT } = resolveCandleMetrics(activeChart, this.getTimeframe());
     const timeOffset = deltaT > 0 ? deltaT : 60000;
@@ -2358,11 +2358,12 @@ export class ChartDrawingController {
         this.planLifecycle.reattachMetadataToDrawings(this.activeDrawings);
 
         // Tick-Aligned Price Guard: Sanitasi anchors harga khusus gambar pada pane utama 'price'
+        const activeSym = this.getSymbol();
         for (const d of this.activeDrawings) {
           if ((!d.paneId || d.paneId === 'price') && Array.isArray(d.anchors)) {
             for (const a of d.anchors) {
               if (typeof a.price === 'number') {
-                a.price = roundToTickSize(a.price);
+                a.price = roundToTickSize(a.price, undefined, activeSym);
               }
             }
           }

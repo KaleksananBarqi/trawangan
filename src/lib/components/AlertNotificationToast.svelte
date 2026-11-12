@@ -1,6 +1,8 @@
 <script lang="ts">
   import { Bell, X, ExternalLink, CheckCircle } from '@lucide/svelte';
   import type { PriceAlert } from '../types/market';
+  import { parseAdaptiveSymbol } from '../services/market/symbolSearchService';
+  import { formatPriceWithQuoteSymbol } from '../services/priceScaleLabelService';
 
   interface Props {
     alerts: PriceAlert[];
@@ -14,11 +16,10 @@
     onDismiss,
   }: Props = $props();
 
-  function formatPrice(p?: number): string {
-    if (!p) return '--';
-    if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (p >= 1) return p.toFixed(4);
-    return p.toFixed(6);
+  function formatToastPrice(p?: number, sym?: string): string {
+    if (p === undefined || p === null || isNaN(p) || p <= 0) return '--';
+    const quote = sym ? parseAdaptiveSymbol(sym).quoteAsset : 'USDT';
+    return formatPriceWithQuoteSymbol(p, quote, sym);
   }
 
   function formatTime(timestamp?: number): string {
@@ -55,9 +56,9 @@
         <div class="price-row mono-nums">
           <span class="symbol-name">{a.symbol}</span>
           <div class="price-details">
-            <span class="target-lbl">Target: ${formatPrice(a.targetPrice)}</span>
+            <span class="target-lbl">Target: {formatToastPrice(a.targetPrice, a.symbol)}</span>
             {#if a.triggeredPrice}
-              <span class="hit-lbl text-bull">Hit: ${formatPrice(a.triggeredPrice)}</span>
+              <span class="hit-lbl text-bull">Hit: {formatToastPrice(a.triggeredPrice, a.symbol)}</span>
             {/if}
           </div>
         </div>

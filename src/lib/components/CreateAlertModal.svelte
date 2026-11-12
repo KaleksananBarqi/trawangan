@@ -7,6 +7,7 @@
   import { isSameInstrument } from '../services/instrumentIdentity';
   import { parseAdaptiveSymbol } from '../services/market/symbolSearchService';
   import { formatPriceWithQuoteSymbol } from '../services/priceScaleLabelService';
+  import { resolveMacroIndexDescriptor } from '../services/macroIndexCatalog';
   import {
     buildAlertModalInitialDraft,
     buildAlertModalInitSignature,
@@ -73,7 +74,10 @@
     resolveAlertTargetSymbol(symbolInput, editingAlert?.symbol || initialSymbol || effectiveChartSymbol)
   );
   let isDifferentFromChart = $derived(!isSameInstrument(canonicalSymbol, effectiveChartSymbol));
-  let targetQuote = $derived(parseAdaptiveSymbol(canonicalSymbol).quoteAsset || 'USDT');
+  let macroDescriptor = $derived(resolveMacroIndexDescriptor(canonicalSymbol));
+  let targetQuote = $derived(
+    macroDescriptor ? macroDescriptor.quoteUnit : (parseAdaptiveSymbol(canonicalSymbol).quoteAsset || 'USDT')
+  );
   let symbolSuggestions = $derived(
     mergeAlertSymbolSuggestions(effectiveChartSymbol, availableSymbols, symbolInput)
   );
@@ -90,7 +94,7 @@
 
   function formatMoney(val: number, quote = targetQuote): string {
     if (!Number.isFinite(val) || val <= 0) return '--';
-    return formatPriceWithQuoteSymbol(val, quote);
+    return formatPriceWithQuoteSymbol(val, quote, canonicalSymbol);
   }
 
   // Inisialisasi nilai modal HANYA saat modal baru dibuka atau target alert/simbol awal berubah
@@ -235,7 +239,7 @@
   function applyPercentageOffset(percent: number) {
     if (!referenceMarketPrice || referenceMarketPrice <= 0) return;
     const computedPrice = percent === 0 ? referenceMarketPrice : referenceMarketPrice * (1 + percent / 100);
-    const aligned = computeTickAlignedAlertPrice(computedPrice, !isDifferentFromChart, chartTickSize);
+    const aligned = computeTickAlignedAlertPrice(computedPrice, !isDifferentFromChart, chartTickSize, canonicalSymbol);
     const snappedPrice = aligned.price > 0 ? aligned.price : computedPrice;
     targetPrice = aligned.formattedText || String(snappedPrice);
     validationError = '';
@@ -267,7 +271,7 @@
     }
 
     const sameAsChart = isSameInstrument(finalSymbol, effectiveChartSymbol);
-    const aligned = computeTickAlignedAlertPrice(p, sameAsChart, chartTickSize);
+    const aligned = computeTickAlignedAlertPrice(p, sameAsChart, chartTickSize, finalSymbol);
     const snappedPrice = aligned.price > 0 ? aligned.price : p;
     const labelPriceText = aligned.formattedText || String(snappedPrice);
     const finalLabel = label.trim() || buildAutoAlertLabel(finalSymbol, labelPriceText);
@@ -407,7 +411,7 @@
               bind:this={priceInputEl}
               type="text"
               inputmode="decimal"
-              placeholder="0.00"
+              placeholder={macroDescriptor ? (macroDescriptor.quoteUnit === '%' ? 'Misal: 56.50' : 'Misal: 2.65T atau 2650B') : '0.00'}
               value={targetPrice}
               oninput={handleTargetPriceInput}
               class="text-input mono-nums price-large {validationError && (!parsedTargetPrice || parsedTargetPrice <= 0) ? 'input-invalid' : ''}"
@@ -415,6 +419,11 @@
               required
             />
           </div>
+          {#if macroDescriptor}
+            <div class="macro-scope-hint">
+              Alert indeks makro hanya dievaluasi saat grafik {macroDescriptor.symbol} sedang terbuka (kebijakan nol beban background).
+            </div>
+          {/if}
 
           <!-- Tombol Shortcut Jarak Persentase Cepat -->
           <div class="percentage-presets">
@@ -929,6 +938,17 @@
     border: 1px solid rgba(246, 70, 93, 0.35);
     border-radius: var(--radius-xs);
     padding: 6px 8px;
+  }
+
+  .macro-scope-hint {
+    margin-top: 4px;
+    font-size: 10px;
+    line-height: 1.35;
+    color: var(--brand-cyan, #38bdf8);
+    background-color: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: var(--radius-xs);
+    padding: 5px 7px;
   }
 
   /* Modal Footer */

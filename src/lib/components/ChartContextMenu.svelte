@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Bell, Minus, Copy, RotateCcw, Check } from '@lucide/svelte';
+  import { parseAdaptiveSymbol } from '../services/market/symbolSearchService';
+  import { formatPriceWithQuoteSymbol } from '../services/priceScaleLabelService';
 
   interface Props {
 
@@ -69,13 +71,10 @@
     return Math.max(10, Math.min(y, window.innerHeight - menuHeight - 12));
   });
 
-  function formatPrice(p: number | null): string {
-    if (p === null || p === undefined || isNaN(p)) return '--';
-    if (p >= 1000) {
-      return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-    if (p >= 1) return p.toFixed(4);
-    return p.toFixed(6);
+  function formatMenuPrice(p: number | null): string {
+    if (p === null || p === undefined || isNaN(p) || p <= 0) return '--';
+    const quote = symbol ? parseAdaptiveSymbol(symbol).quoteAsset : 'USDT';
+    return formatPriceWithQuoteSymbol(p, quote, symbol);
   }
 
   function handleCreateAlertClick(e?: MouseEvent) {
@@ -175,7 +174,7 @@
       <!-- Header Informasi Harga Kursor -->
       <div class="menu-header mono-nums">
         <span class="sym-badge">{symbol}</span>
-        <span class="price-val">${formatPrice(price)}</span>
+        <span class="price-val">{formatMenuPrice(price)}</span>
       </div>
 
       <div class="menu-divider"></div>
@@ -189,7 +188,7 @@
       >
         <div class="item-left">
           <span class="icon-wrap bell-icon"><Bell size={13} /></span>
-          <span class="item-label font-semibold">+ Buat Alert di ${formatPrice(price)}</span>
+          <span class="item-label font-semibold">+ Buat Alert di {formatMenuPrice(price)}</span>
         </div>
         <span class="shortcut-tag mono-nums">Alt+A</span>
       </button>

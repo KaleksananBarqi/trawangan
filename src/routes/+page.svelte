@@ -53,6 +53,7 @@
   import { commandDispatcher } from '../lib/services/commandDispatcher';
   import { chartDrawingController, isSameSymbol } from '../lib/services/chartDrawingController';
   import { routeVenueForSymbol } from '../lib/services/instrumentIdentity';
+  import { canonicalizeMacroIndexSymbol } from '../lib/services/macroIndexCatalog';
   import {
     executeWorkspaceLoadPipeline,
     WorkspaceAutoSaveCoordinator,
@@ -592,7 +593,12 @@
     // Dengarkan event saat Price Alert terpicu secara real-time
     unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
       triggeredAlertsToasts = [alert, ...triggeredAlertsToasts.slice(0, 3)];
-      addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di $${actualPrice}`, 'warn');
+      const triggerPriceStr = formatPriceWithQuoteSymbol(
+        actualPrice,
+        parseAdaptiveSymbol(alert.symbol).quoteAsset,
+        alert.symbol
+      );
+      addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di ${triggerPriceStr}`, 'warn');
       schedulePageTimeout(() => {
         if (!isPageActive) return;
         handleDismissAlertToast(alert.id);
@@ -866,18 +872,19 @@
 
   async function handleSymbolChange(newSym: string, providerHint?: string) {
     const targetProvider = routeVenueForSymbol(newSym, activeProviderId, providerHint);
+    const nextSym = targetProvider === 'macro' ? (canonicalizeMacroIndexSymbol(newSym) || newSym) : newSym;
 
     if (targetProvider !== activeProviderId) {
       await handleProviderChange(targetProvider);
     }
 
-    if (activeSymbol && activeSymbol !== newSym) {
+    if (activeSymbol && activeSymbol !== nextSym) {
       try {
         await flushDrawings();
       } catch (_) {}
     }
-    activeSymbol = newSym;
-    addSystemLog(`Simbol berganti ke ${newSym} (${targetProvider.toUpperCase()})`, 'info');
+    activeSymbol = nextSym;
+    addSystemLog(`Simbol berganti ke ${nextSym} (${targetProvider.toUpperCase()})`, 'info');
   }
 
   function handleTimeframeChange(newTf: Timeframe) {
@@ -1794,7 +1801,7 @@
           onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
           onRemovePlan={(id) => chartDrawingController.removePlan(id)}
           currentPrice={ticker?.price ?? null}
-          tickSize={ticker?.price ? getAdaptiveTickSize(ticker.price) : undefined}
+          tickSize={ticker?.price ? getAdaptiveTickSize(ticker.price, undefined, activeSymbol) : undefined}
           {planActivationRequest}
           onConsumePlanActivation={handleConsumePlanActivation}
           onApplyPlan={handleApplyPlanFromTab}
@@ -1950,7 +1957,7 @@
   <CreateAlertModal
     isOpen={isCreateAlertModalOpen}
     chartSymbol={activeSymbol}
-    chartTickSize={ticker?.price ? getAdaptiveTickSize(ticker.price) : undefined}
+    chartTickSize={ticker?.price ? getAdaptiveTickSize(ticker.price, undefined, activeSymbol) : undefined}
     initialSymbol={createAlertSymbol}
     initialPrice={createAlertTargetPrice}
     editingAlert={editingAlert}
@@ -1961,16 +1968,20 @@
       editingAlert = null;
     }}
     onCreated={(newAlert: any) => {
+      const targetSym = newAlert.symbol || activeSymbol;
       const priceStr = formatPriceWithQuoteSymbol(
         newAlert.targetPrice,
-        parseAdaptiveSymbol(newAlert.symbol || activeSymbol).quoteAsset
+        parseAdaptiveSymbol(targetSym).quoteAsset,
+        targetSym
       );
       addSystemLog(`Price Alert dibuat: ${newAlert.symbol} @ ${priceStr}`, 'success');
     }}
     onUpdated={(upAlert: any) => {
+      const targetSym = upAlert.symbol || activeSymbol;
       const priceStr = formatPriceWithQuoteSymbol(
         upAlert.targetPrice,
-        parseAdaptiveSymbol(upAlert.symbol || activeSymbol).quoteAsset
+        parseAdaptiveSymbol(targetSym).quoteAsset,
+        targetSym
       );
       addSystemLog(`Price Alert diperbarui: ${upAlert.symbol} @ ${priceStr}`, 'success');
     }}

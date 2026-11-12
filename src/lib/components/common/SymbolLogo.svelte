@@ -4,6 +4,7 @@
     getMonogramInitials,
     getMonogramColor,
   } from '../../services/symbolLogoService';
+  import { isMacroIndexSymbol } from '../../services/macroIndexCatalog';
 
   interface Props {
     baseAsset: string;
@@ -46,7 +47,7 @@
     if (!quoteAsset) return false;
     const q = quoteAsset.toUpperCase();
     const b = baseAsset.toUpperCase();
-    if (q === b) return false;
+    if (q === b || q === '%' || q === 'MACRO_USD' || isMacroIndexSymbol(b)) return false;
     if (showDualBadge) return true;
     // Tampilkan dual-badge jika bukan kuotasi standar USDT
     return q !== 'USDT';

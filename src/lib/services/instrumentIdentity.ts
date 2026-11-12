@@ -9,6 +9,12 @@
  * 5. Guard routing bursa otomatis berdasarkan karakteristik simbol dan provider hint.
  */
 
+import {
+  canonicalizeMacroIndexSymbol,
+  isMacroIndexSymbol,
+  resolveMacroIndexDescriptor,
+} from './macroIndexCatalog';
+
 export interface InstrumentIdentity {
   raw: string;
   providerId: string;
@@ -103,6 +109,11 @@ export function resolveCanonicalInstrumentSymbol(
   const token = rawSymbol ? normalizeInstrumentToken(rawSymbol) : '';
   if (!token) return cleanFallback;
 
+  const macroCanonical = canonicalizeMacroIndexSymbol(token);
+  if (macroCanonical) {
+    return macroCanonical;
+  }
+
   if (
     isYahooSymbol(token) ||
     DEFAULT_EXACT_YAHOO_SYMBOLS.has(token) ||
@@ -127,6 +138,7 @@ export function resolveCanonicalInstrumentSymbol(
   if (
     cleanFallback &&
     !isYahooSymbol(cleanFallback) &&
+    !isMacroIndexSymbol(cleanFallback) &&
     !DEFAULT_EXACT_YAHOO_SYMBOLS.has(cleanFallback) &&
     !exactSymbols?.has(cleanFallback)
   ) {
@@ -174,6 +186,12 @@ export function normalizeSymbolForMatching(symbol?: string | null): string {
   const trimmed = symbol.trim();
   if (!trimmed) return '';
 
+  // Pertahankan titik dominansi (.D) dan samakan seluruh alias makro ke bentuk kanonikal.
+  const macroCanonical = canonicalizeMacroIndexSymbol(trimmed);
+  if (macroCanonical) {
+    return macroCanonical;
+  }
+
   // 1. Hilangkan awalan bursa jika ada (misal: 'binance:BTCUSDT' -> 'BTCUSDT')
   const cleanPrefix = trimmed.includes(':') ? trimmed.split(':')[1].trim() : trimmed;
   const upper = cleanPrefix.toUpperCase();
@@ -216,6 +234,19 @@ export function parseInstrumentIdentity(rawSymbol: string, providerHint?: string
       providerId = parts[0].trim().toLowerCase();
     }
     cleanSymbol = parts.slice(1).join(':').trim();
+  }
+
+  const macroDesc = resolveMacroIndexDescriptor(cleanSymbol);
+  if (macroDesc) {
+    return {
+      raw,
+      providerId: providerId === 'cryptocap' || providerId === 'index' ? 'macro' : 'macro',
+      symbol: macroDesc.symbol,
+      canonicalSymbol: macroDesc.symbol,
+      base: macroDesc.symbol,
+      quote: macroDesc.quoteUnit,
+      contractType: 'spot',
+    };
   }
 
   const upper = cleanSymbol.toUpperCase();
@@ -267,6 +298,12 @@ export function resolveDrawingStorageKey(
     const parts = clean.split(':');
     provider = parts[0].trim().toLowerCase() || 'binance';
     normalizedSymbol = parts.slice(1).join(':').trim().toUpperCase();
+  }
+
+  const macroCanonical = canonicalizeMacroIndexSymbol(normalizedSymbol);
+  if (macroCanonical) {
+    provider = 'macro';
+    normalizedSymbol = macroCanonical;
   }
 
   const baseKey = `${provider}:${normalizedSymbol}`;
@@ -355,6 +392,11 @@ export function resolveVelaSymbolKey(sym: string, pId: string): string {
   const clean = colonIdx >= 0 ? raw.slice(colonIdx + 1).trim() : raw;
   const p = rawPrefix || (pId || 'binance').trim().toLowerCase();
 
+  const macroCanonical = canonicalizeMacroIndexSymbol(clean);
+  if (p === 'macro' || macroCanonical) {
+    return `macro:${macroCanonical || clean.toUpperCase()}`;
+  }
+
   if (p === 'yahoo' || isYahooSymbol(clean)) {
     return `yahoo:${clean.toUpperCase()}`;
   } else if (p === 'indodax' || clean.toUpperCase().endsWith('IDR')) {
@@ -411,16 +453,22 @@ export function routeVenueForSymbol(
     if (hint.includes('hyperliquid') || hint === 'hyperliquid') return 'hyperliquid';
     if (hint.includes('coinbase') || hint === 'coinbase') return 'coinbase';
     if (hint.includes('yahoo') || hint === 'yahoo') return 'yahoo';
+    if (hint.includes('macro') || hint === 'macro') return 'macro';
     return hint;
   }
 
-  if (isYahooSymbol(clean)) {
+  if (isMacroIndexSymbol(clean)) {
+    return 'macro';
+  } else if (isYahooSymbol(clean)) {
     return 'yahoo';
   } else if (clean.endsWith('IDR')) {
     return 'indodax';
   } else if (clean.endsWith('.P') && currentVenue === 'indodax') {
     return 'bitunix';
   } else if (clean.includes('USDT') && currentVenue === 'indodax') {
+    return 'binance';
+  } else if (currentVenue === 'macro') {
+    // Hindari pasangan biasa mewarisi provider non-tradable macro setelah user berpindah simbol.
     return 'binance';
   }
 
@@ -440,9 +488,24 @@ export function getCellMarketIdentity(cell: any): { providerId: string; symbol: 
     const parts = rawSymbol.split(':');
     const prefix = parts[0].toLowerCase();
     const cleanSym = parts.slice(1).join(':').toUpperCase();
+    const macroCanonical = canonicalizeMacroIndexSymbol(cleanSym);
+    if (prefix === 'macro' || macroCanonical) {
+      return {
+        providerId: 'macro',
+        symbol: macroCanonical || cleanSym,
+      };
+    }
     return {
       providerId: rawProvider || prefix,
       symbol: cleanSym,
+    };
+  }
+
+  const macroCanonical = canonicalizeMacroIndexSymbol(rawSymbol);
+  if (macroCanonical) {
+    return {
+      providerId: 'macro',
+      symbol: macroCanonical,
     };
   }
 

@@ -32,6 +32,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::fetch_candles,
+            commands::load_cached_candles,
+            commands::store_cached_candles,
             commands::save_workspace_layout,
             commands::load_workspace_layout,
             commands::get_data_providers,

@@ -1,6 +1,11 @@
 import type { MarketSearchResult } from '../../types/market';
 import type { MarketProviderAdapter, SearchSymbolsOptions } from './types';
 import { KNOWN_QUOTE_ASSETS } from '../instrumentIdentity';
+import {
+  MACRO_INDEX_CATALOG,
+  isMacroIndexSymbol,
+  resolveMacroIndexDescriptor,
+} from '../macroIndexCatalog';
 import { VERIFIED_CRYPTO_ASSETS } from './constants';
 
 /**
@@ -123,6 +128,17 @@ export function parseAdaptiveSymbol(raw: string): ParsedSymbolPair {
     return { baseAsset: '', quoteAsset: 'USDT', cleanSymbol: '', isQuoteExplicit: false, isPerp: false };
   }
 
+  const macroDesc = resolveMacroIndexDescriptor(raw);
+  if (macroDesc) {
+    return {
+      baseAsset: macroDesc.symbol,
+      quoteAsset: macroDesc.quoteUnit,
+      cleanSymbol: macroDesc.symbol,
+      isQuoteExplicit: true,
+      isPerp: false,
+    };
+  }
+
   let s = raw.trim().toUpperCase();
   const isPerp = s.endsWith('.P');
   if (isPerp) s = s.slice(0, -2);
@@ -214,7 +230,12 @@ export function calculateSearchScore(rawQuery: string, item: MarketSearchResult)
     return 115;
   }
 
-  // 1b. Symbol Aliasing Engine Match (misal: XAUUSD, GOLD -> GC=F; NASDAQ -> ^IXIC)
+  // 1b. Symbol Aliasing Engine Match (misal: XAUUSD, GOLD -> GC=F; NASDAQ -> ^IXIC; TOTAL1 -> TOTAL)
+  const macroAliasTarget = resolveMacroIndexDescriptor(rawQuery);
+  if (macroAliasTarget && item.provider === 'Macro Index' && sym === macroAliasTarget.symbol) {
+    return sym === q ? 120 : 119;
+  }
+
   const aliasMatch = POPULAR_YAHOO_ASSETS.find((y) => y.symbol.toUpperCase().replace(/[\/\-_]/g, '') === sym);
   if (aliasMatch && aliasMatch.aliases.some((a) => a.toUpperCase() === q)) {
     return 118; // Hampir setara exact match
@@ -375,6 +396,18 @@ export class SymbolSearchEngine {
       });
     }
 
+    // Indeks makro kripto sintetis (non-tradable, aktif hanya saat grafik dibuka)
+    for (const macro of MACRO_INDEX_CATALOG) {
+      list.push({
+        symbol: macro.symbol,
+        baseAsset: macro.symbol,
+        quoteAsset: macro.quoteUnit,
+        displayName: macro.displayName,
+        type: 'spot',
+        provider: 'Macro Index',
+      });
+    }
+
     this.localRegistry = list;
   }
 
@@ -515,7 +548,12 @@ export class SymbolSearchEngine {
     }
 
     // Dynamic Online Fallback jika query memiliki isi dan belum ada hasil yang cocok persis
-    if (cleanQ && !deduplicated.some((r) => r.baseAsset === cleanQ || r.symbol === cleanQ || r.symbol === parsedQuery.cleanSymbol)) {
+    if (
+      cleanQ &&
+      exchange !== 'macro' &&
+      !isMacroIndexSymbol(cleanQ) &&
+      !deduplicated.some((r) => r.baseAsset === cleanQ || r.symbol === cleanQ || r.symbol === parsedQuery.cleanSymbol)
+    ) {
       const isBinanceAllowed = exchange === 'all' || exchange === 'binance';
       const isIndodaxAllowed = exchange === 'all' || exchange === 'indodax';
 

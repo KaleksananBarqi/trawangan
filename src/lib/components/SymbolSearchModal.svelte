@@ -3,6 +3,8 @@
   import { Search, X, Check, Plus, ArrowRight, CornerDownLeft, Sparkles, TrendingUp, Layers } from '@lucide/svelte';
   import { marketFeed } from '../services/market';
   import { getSearchResultKey, parseAdaptiveSymbol } from '../services/market/symbolSearchService';
+  import { isMacroIndexSymbol } from '../services/macroIndexCatalog';
+  import { formatPriceWithQuoteSymbol } from '../services/priceScaleLabelService';
   import SymbolLogo from './common/SymbolLogo.svelte';
   import { formatWatchlistEntry, isSymbolInWatchlist } from '../services/watchlistUtils';
   import { applySearchInputFocus, type SearchTriggerSource } from '../services/symbolSearchFocusGuard';
@@ -34,7 +36,7 @@
 
   let query = $state('');
   let filterType = $state<'all' | 'spot' | 'perp'>('all');
-  let assetCategory = $state<'all' | 'crypto' | 'idx' | 'metals_indices'>('all');
+  let assetCategory = $state<'all' | 'crypto' | 'macro' | 'idx' | 'metals_indices'>('all');
   let selectedExchange = $state<string>('all');
   let selectedQuote = $state<'all' | 'IDR' | 'USDT' | 'BTC' | 'USD'>('all');
   let searchResults = $state<MarketSearchResult[]>([]);
@@ -87,9 +89,12 @@
     }
   }
 
-  function formatPricePreview(price: number, quoteAsset = 'USDT'): string {
+  function formatPricePreview(price: number, quoteAsset = 'USDT', symbol?: string): string {
     if (!price || isNaN(price)) return '-';
     const q = (quoteAsset || 'USDT').toUpperCase();
+    if ((symbol && isMacroIndexSymbol(symbol)) || q === '%' || q === 'MACRO_USD') {
+      return formatPriceWithQuoteSymbol(price, q, symbol);
+    }
     if (q === 'IDR') {
       if (price >= 1) {
         return `Rp ${Math.round(price).toLocaleString('id-ID')}`;
@@ -104,24 +109,28 @@
     return `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
+  function filterByAssetCategory(items: MarketSearchResult[]): MarketSearchResult[] {
+    if (assetCategory === 'crypto') {
+      return items.filter((r) => r.provider !== 'Yahoo Finance' && r.provider !== 'Macro Index');
+    }
+    if (assetCategory === 'macro') {
+      return items.filter((r) => r.provider === 'Macro Index' || isMacroIndexSymbol(r.symbol));
+    }
+    if (assetCategory === 'idx') {
+      return items.filter((r) => r.symbol.endsWith('.JK') || r.symbol === '^JKSE');
+    }
+    if (assetCategory === 'metals_indices') {
+      return items.filter((r) => r.symbol.includes('=F') || (r.symbol.startsWith('^') && r.symbol !== '^JKSE') || r.symbol === 'QQQ' || r.symbol === 'SPY');
+    }
+    return items;
+  }
+
   // Perbarui hasil pencarian saat query, filter, exchange, atau quote berubah
   $effect(() => {
     if (isOpen) {
       loadRecentSearches();
       marketFeed.getSavedProviders().then((res) => (availableProviders = res));
 
-      // Respon Instan (< 5ms) dari cache lokal / registry offline sebelum agregasi jaringan
-      const localResults = marketFeed.searchLocalSymbols(query, {
-        filterType,
-        exchange: selectedExchange as any,
-        quoteAsset: selectedQuote,
-      });
-      if (localResults.length > 0) {
-        searchResults = localResults;
-        selectedIndex = 0;
-      }
-
-      // Terapkan filter kategori aset pada exchange/quoteAsset jika dipilih
       let effectiveExchange = selectedExchange;
       let effectiveQuote = selectedQuote;
 
@@ -131,8 +140,24 @@
       } else if (assetCategory === 'metals_indices') {
         effectiveExchange = 'yahoo';
         effectiveQuote = 'USD';
+      } else if (assetCategory === 'macro') {
+        effectiveExchange = 'macro';
+        effectiveQuote = 'all';
       } else if (assetCategory === 'crypto') {
-        if (effectiveExchange === 'yahoo') effectiveExchange = 'all';
+        if (effectiveExchange === 'yahoo' || effectiveExchange === 'macro') effectiveExchange = 'all';
+      }
+
+      // Respon Instan (< 5ms) dari cache lokal / registry offline sebelum agregasi jaringan
+      const localResults = filterByAssetCategory(
+        marketFeed.searchLocalSymbols(query, {
+          filterType,
+          exchange: effectiveExchange as any,
+          quoteAsset: effectiveQuote,
+        })
+      );
+      if (localResults.length > 0 || assetCategory === 'macro') {
+        searchResults = localResults;
+        selectedIndex = 0;
       }
 
       marketFeed
@@ -142,22 +167,33 @@
           quoteAsset: effectiveQuote,
         })
         .then((res) => {
-          let list = res;
-          if (assetCategory === 'crypto') {
-            list = list.filter((r) => r.provider !== 'Yahoo Finance');
-          } else if (assetCategory === 'idx') {
-            list = list.filter((r) => r.symbol.endsWith('.JK') || r.symbol === '^JKSE');
-          } else if (assetCategory === 'metals_indices') {
-            list = list.filter((r) => r.symbol.includes('=F') || (r.symbol.startsWith('^') && r.symbol !== '^JKSE') || r.symbol === 'QQQ' || r.symbol === 'SPY');
-          }
+          const list = filterByAssetCategory(res);
 
           searchResults = list;
           selectedIndex = 0;
-          // Ambil preview ticker 24h untuk 20 item pertama
-          const symbols = res.slice(0, 20).map((r) => r.symbol);
-          if (symbols.length > 0) {
+
+          // Indeks makro hanya membaca cache in-memory agar modal pencarian tidak memicu request latar belakang.
+          const macroCachedPatch: Record<string, { price: number; change24h: number }> = {};
+          for (const item of list) {
+            if (item.provider === 'Macro Index' || isMacroIndexSymbol(item.symbol)) {
+              const snap = marketFeed.getTickerSnapshot(item.symbol);
+              if (snap && snap.price > 0) {
+                macroCachedPatch[item.symbol] = snap;
+              }
+            }
+          }
+          if (Object.keys(macroCachedPatch).length > 0) {
+            liveTickerMap = { ...liveTickerMap, ...macroCachedPatch };
+          }
+
+          // Ambil preview ticker 24h hanya untuk instrumen bursa non-makro (maks 20 item).
+          const nonMacroSymbols = list
+            .filter((r) => r.provider !== 'Macro Index' && !isMacroIndexSymbol(r.symbol))
+            .slice(0, 20)
+            .map((r) => r.symbol);
+          if (nonMacroSymbols.length > 0) {
             marketFeed
-              .getWatchlistTickers(symbols)
+              .getWatchlistTickers(nonMacroSymbols)
               .then((tickers) => {
                 liveTickerMap = { ...liveTickerMap, ...tickers };
               })
@@ -249,7 +285,7 @@
             bind:this={searchInputEl}
             bind:value={query}
             type="text"
-            placeholder="Cari pair crypto (misal: BTC, BTCUSDT.P, SOL, PEPE)..."
+            placeholder="Cari pair crypto & makro (misal: BTC, BTCUSDT.P, TOTAL, BTC.D)..."
             class="modal-input mono-nums"
           />
           {#if query}
@@ -296,6 +332,18 @@
           </button>
           <button
             type="button"
+            class="category-tab-btn {assetCategory === 'macro' ? 'active' : ''}"
+            onclick={() => {
+              assetCategory = 'macro';
+              filterType = 'all';
+              selectedQuote = 'all';
+              selectedExchange = 'all';
+            }}
+          >
+            Makro Kripto
+          </button>
+          <button
+            type="button"
             class="category-tab-btn {assetCategory === 'idx' ? 'active' : ''}"
             onclick={() => (assetCategory = 'idx')}
           >
@@ -338,7 +386,7 @@
           <div class="active-feed-info">
             <span class="feed-label">Sumber:</span>
             <span class="feed-badge {activeProviderId}">
-              {activeProviderId === 'yahoo' ? 'YAHOO FINANCE (DELAYED 15M)' : activeProviderId === 'indodax' ? 'INDODAX SPOT (IDR)' : activeProviderId === 'bitunix' ? 'BITUNIX FUTURES' : 'BINANCE SPOT/FUTURES'}
+              {activeProviderId === 'macro' ? 'MACRO SYNTHETIC (~1Y)' : activeProviderId === 'yahoo' ? 'YAHOO FINANCE (DELAYED 15M)' : activeProviderId === 'indodax' ? 'INDODAX SPOT (IDR)' : activeProviderId === 'bitunix' ? 'BITUNIX FUTURES' : 'BINANCE SPOT/FUTURES'}
             </span>
           </div>
         </div>
@@ -375,7 +423,7 @@
             >
               Bitunix
             </button>
-            {#each availableProviders.filter((p) => !['binance', 'indodax', 'bitunix'].includes(p.id)) as cProv (cProv.id)}
+            {#each availableProviders.filter((p) => !['binance', 'indodax', 'bitunix', 'macro'].includes(p.id)) as cProv (cProv.id)}
               <button
                 type="button"
                 class="filter-chip {selectedExchange === cProv.id ? 'active' : ''}"
@@ -466,6 +514,7 @@
               {@const isWatchlisted = isSymbolInWatchlist(watchlistSymbols, item.symbol, item.provider)}
               {@const isCurrentChart = activeSymbol === item.symbol}
               {@const isHighlighted = selectedIndex === index}
+              {@const isMacroItem = item.provider === 'Macro Index' || isMacroIndexSymbol(item.symbol)}
 
               <div
                 class="result-item-row {isHighlighted ? 'highlighted' : ''} {isCurrentChart ? 'current-active' : ''}"
@@ -479,12 +528,14 @@
               >
                 <!-- Left: Logo + Symbol + Type Tag + Name -->
                 <div class="item-left">
-                  <SymbolLogo baseAsset={item.baseAsset} quoteAsset={item.quoteAsset} size="md" />
+                  <SymbolLogo baseAsset={item.baseAsset} quoteAsset={isMacroItem ? '' : item.quoteAsset} size="md" />
                   <div class="item-text-info">
                     <div class="symbol-title-row">
                       <span class="symbol-name mono-nums">{item.baseAsset}</span>
-                      <span class="quote-currency mono-nums">/{item.quoteAsset}</span>
-                      {#if item.type === 'perp'}
+                      <span class="quote-currency mono-nums">/{isMacroItem ? (item.quoteAsset === '%' ? '%' : 'USD') : item.quoteAsset}</span>
+                      {#if isMacroItem}
+                        <span class="type-badge index mono-nums">INDEX</span>
+                      {:else if item.type === 'perp'}
                         <span class="type-badge perp mono-nums">.P PERP</span>
                       {:else}
                         <span class="type-badge spot mono-nums">SPOT</span>
@@ -504,7 +555,7 @@
                     {@const ticker = liveTickerMap[item.symbol]}
                     <div class="ticker-preview-col">
                       <span class="preview-price mono-nums">
-                        {formatPricePreview(ticker.price, item.quoteAsset)}
+                        {formatPricePreview(ticker.price, item.quoteAsset, item.symbol)}
                       </span>
                       <span class="preview-change mono-nums {ticker.change24h >= 0 ? 'pos' : 'neg'}">
                         {ticker.change24h >= 0 ? '+' : ''}{ticker.change24h.toFixed(2)}%
@@ -847,6 +898,12 @@
     border: 1px solid rgba(245, 158, 11, 0.3);
   }
 
+  .feed-badge.macro {
+    background-color: rgba(56, 189, 248, 0.14);
+    color: var(--brand-cyan, #38bdf8);
+    border: 1px solid rgba(56, 189, 248, 0.32);
+  }
+
   /* Recent Searches */
   .recent-searches-box {
     padding: 10px 14px;
@@ -1021,6 +1078,12 @@
     background-color: rgba(148, 163, 184, 0.12);
     color: #94a3b8;
     border: 1px solid rgba(148, 163, 184, 0.2);
+  }
+
+  .type-badge.index {
+    background-color: rgba(56, 189, 248, 0.14);
+    color: var(--brand-cyan, #38bdf8);
+    border: 1px solid rgba(56, 189, 248, 0.32);
   }
 
   .item-desc {

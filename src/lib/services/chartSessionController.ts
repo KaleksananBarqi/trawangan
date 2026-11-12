@@ -10,7 +10,10 @@ import { CoinbaseProvider } from '@luxalgo/vela/providers/coinbase';
 import { BitunixProvider } from './bitunixProvider';
 import { IndodaxProvider } from './indodaxProvider';
 import { YahooFinanceProvider } from './yahooFinanceProvider';
+import { MacroIndexProvider } from './macroIndexProvider';
 import { CustomFeedProvider } from './customProvider';
+import { isMacroIndexSymbol } from './macroIndexCatalog';
+import { resolveMacroAxisMode, syncCellMacroVelaAxis } from './macroVelaAxisAdapter';
 import { marketFeed } from './market';
 import {
   StreamGuardCoordinator,
@@ -404,6 +407,7 @@ export class ChartSessionController {
   private lastCapturedPaneLayoutByCell = new WeakMap<any, string>();
   private userTouchedPaneLayoutByCell = new WeakSet<any>();
   private volumeHiddenByCell = new WeakMap<any, boolean>();
+  private preMacroVolumeShowByCell = new WeakMap<any, boolean>();
   private managedTimers = new Set<ReturnType<typeof setTimeout>>();
   private pendingWaitCleanups = new Set<() => void>();
   private workspaceEventUnsubs: Array<() => void> = [];
@@ -735,6 +739,7 @@ export class ChartSessionController {
       coinbase: () => new CoinbaseProvider(),
       bitunix: () => new BitunixProvider({ healthSink: this.feedHealthSink }),
       yahoo: () => new YahooFinanceProvider({ healthSink: this.feedHealthSink }),
+      macro: () => new MacroIndexProvider({ healthSink: this.feedHealthSink }),
     };
 
     this.registeredCustomSignatures.clear();
@@ -1390,6 +1395,7 @@ export class ChartSessionController {
     this.interceptApplyConfig(cell);
     this.enforceCurrentPriceLine(cell);
     this.syncNativeVolumeColors(cell);
+    this.syncCellMacroState(cell);
     attachPriceScaleInputGuard(cell);
 
     const chart = cell.chart || cell.inner;
@@ -1430,12 +1436,15 @@ export class ChartSessionController {
         chart.on('market:changed', () => {
           this.enforceCurrentPriceLine(cell);
           this.syncNativeVolumeColors(cell, false);
+          this.syncCellMacroState(cell);
         });
         chart.on('indicator:added', () => {
           this.syncNativeVolumeColors(cell, false);
+          this.syncCellMacroState(cell);
         });
         chart.on('history:complete', () => {
           this.syncNativeVolumeColors(cell, false);
+          this.syncCellMacroState(cell);
         });
         chart.on('indicator:removed', (ev: any) => {
           this.handleIndicatorRemoved(ev?.id);
@@ -1644,18 +1653,48 @@ export class ChartSessionController {
   }
 
   /**
+   * Menyinkronkan formatter sumbu harga dan visibilitas volume native pada sel indeks makro
+   * tanpa mengubah preferensi atau perilaku simbol reguler.
+   */
+  public syncCellMacroState(cell: any): void {
+    if (!cell) return;
+    const { providerId, symbol } = getCellMarketIdentity(cell);
+    const isMacro = providerId === 'macro' || isMacroIndexSymbol(symbol);
+    const mode = isMacro ? resolveMacroAxisMode(symbol) : null;
+
+    syncCellMacroVelaAxis(cell, mode);
+
+    if (mode !== null) {
+      if (!this.preMacroVolumeShowByCell.has(cell)) {
+        const currentlyHidden =
+          this.volumeHiddenByCell.get(cell) ?? Boolean((cell as { volumeHidden?: boolean }).volumeHidden);
+        this.preMacroVolumeShowByCell.set(cell, !currentlyHidden && this.showVolume !== false);
+      }
+      this.applyCellVolumeVisibility(cell, false);
+    } else if (this.preMacroVolumeShowByCell.has(cell)) {
+      const restoreShow = this.preMacroVolumeShowByCell.get(cell) ?? this.showVolume !== false;
+      this.preMacroVolumeShowByCell.delete(cell);
+      this.applyCellVolumeVisibility(cell, restoreShow);
+    }
+  }
+
+  /**
    * Menerapkan status visibilitas volume pasar native WebGL2 pada satu sel tertentu
    */
   public applyCellVolumeVisibility(cell: any, show: boolean): void {
     if (!cell) return;
-    this.syncCellVolumeHiddenState(cell, !show);
+    const { providerId, symbol } = getCellMarketIdentity(cell);
+    const isMacro = providerId === 'macro' || isMacroIndexSymbol(symbol);
+    const effectiveShow = isMacro ? false : show;
+
+    this.syncCellVolumeHiddenState(cell, !effectiveShow);
     const chart = cell.chart || cell.inner;
     if (chart) {
       if (typeof chart.indicators === 'function') {
         for (const ind of Array.from(chart.indicators() || []) as any[]) {
           if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
             try {
-              if (typeof ind.setVisible === 'function') ind.setVisible(show);
+              if (typeof ind.setVisible === 'function') ind.setVisible(effectiveShow);
             } catch (_) {}
           }
         }
@@ -1663,7 +1702,7 @@ export class ChartSessionController {
       try {
         const nativeRenderer = chart.renderer?.renderer || chart.renderer;
         if (typeof nativeRenderer?.set === 'function') {
-          nativeRenderer.set('volumeHidden', !show);
+          nativeRenderer.set('volumeHidden', !effectiveShow);
         }
         if (typeof chart.renderer?.invalidate === 'function') {
           chart.renderer.invalidate(4);
@@ -2074,6 +2113,7 @@ export class ChartSessionController {
             if ((regStatus.replaced || cell.symbol !== targetSym) && typeof cell.setSymbol === 'function') {
               cell.setSymbol(targetSym);
             }
+            this.syncCellMacroState(cell);
           }
         } else if (
           this.workspace.active &&
@@ -2081,6 +2121,9 @@ export class ChartSessionController {
           typeof this.workspace.active.setSymbol === 'function'
         ) {
           this.workspace.active.setSymbol(targetSym);
+          this.syncCellMacroState(this.workspace.active);
+        } else if (this.workspace.active) {
+          this.syncCellMacroState(this.workspace.active);
         }
 
         // Pulihkan gambar spesifik untuk simbol dan provider target secara terisolasi (kecuali saat restorasi atau baru diganti oleh activeCell)
@@ -3640,6 +3683,7 @@ export class ChartSessionController {
         if (cell.timeframe !== targetTf && typeof cell.setTimeframe === 'function') {
           cell.setTimeframe(targetTf);
         }
+        this.syncCellMacroState(cell);
 
         // Langkah 2a: Konfigurasi gaya lokal & tipe chart terlebih dahulu sebelum membangun indikator & sub-pane
         if (snap.rendererConfig && typeof snap.rendererConfig === 'object') {
