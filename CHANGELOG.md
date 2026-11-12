@@ -5,6 +5,32 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.46.0] - 2026-11-12
+
+### 🚀 Ditambahkan (Added)
+- **Skema SQLite Terstruktur v1 & Migrasi Atomik (`src-tauri/src/db/`, Spec #171, ADR-0025):**
+  - Memodularisasi lapisan penyimpanan Rust menjadi modul domain (`db/schema.rs`, `db/migration.rs`, `db/workspaces.rs`, `db/drawings.rs`, `db/watchlists.rs`, `db/alerts.rs`, `db/plans.rs`, `db/preferences.rs`, `db/providers.rs`, `db/pine.rs`, `db/candles.rs`) dengan *schema versioning* SQLite (`v0 -> v1`), migrasi atomik dari `layout_slots`, serta perintah `clone_workspace_drawings` dan hapus workspace anti-yatim langsung di SQLite.
+  - Menambahkan query batch `load_all_app_preferences`, kontrak `Bootstrap Hydration` di `PersistenceService.bootstrap()`, serta mekanisme gating mounting aplikasi startup di `+page.svelte`.
+- **Migrasi Satu-Kali `localStorage` & Perlindungan Bucket C (Spec #172, ADR-0026):**
+  - Menambahkan `legacyMigration.ts` berbasis allowlist eksplisit untuk memigrasikan pengaturan/preferensi lama ke tabel `app_preferences` SQLite dan menghapus kunci lama pasca-konfirmasi, sambil menjaga proteksi mutlak bagi **Bucket C** (**Exit Flush & Pending Override** ADR-0023 dan **Crypto Macro Index** ADR-0024).
+- **Kontrak `DrawingScope` & Otoritas Tunggal Plan Aktif (`ADR-0027`, Spec #174):**
+  - Menambahkan tipe kontrak `DrawingScope` beserta metode scoped (`loadScopedDrawings`, `saveScopedDrawingsDebounced`, `flushScopedDrawings`, `clearScopedDrawings`) dan resolusi fallback 6-tahap terpusat di `PersistenceService`.
+  - Menjadikan envelope `_trawangan_meta` dan `TradingPlanLifecycle` sebagai otoritas tunggal plan aktif di atas fallback warisan `SavedWorkspace.activePlans` (`hasAuthoritativePlanMeta`), serta mendokumentasikannya pada `docs/adr/0025`, `0026`, `0027`, amandemen `ADR-0003` / `ADR-0023`, dan `GLOSSARY.md`.
+
+### 🔄 Diubah (Changed)
+- **Konsolidasi Total Konfigurasi, Provider Feed, & Preferensi UI ke SQLite (Spec #172):**
+  - Memindahkan persistensi `workspaces`, `watchlists` relasional, `price_alerts`, **Trade Plan Vault**, `appSettings`, `chartDefaultConfig`, `lastActiveWorkspaceId`, daftar provider pasar (`loadProviders` / `saveProvider` / `setActiveProvider` / `deleteProvider`), serta 10 kunci preferensi UI tertutup (`UiPreferenceKey`, **Bucket B**) ke `PersistenceAdapter` / `PersistenceService` dengan penghapusan penulisan dual-write dan slot legacy `layout_slots`.
+- **Pencabutan `resolveDrawingKey` & Isolasi Envelope Per-Instrumen (`ChartDrawingController`, `TradingPlanLifecycle`, Spec #174):**
+  - Mencabut impor dan kalkulasi `resolveDrawingKey` / `resolveDrawingStorageKey` dari `ChartDrawingController` ke `PersistenceService`.
+  - Memperbarui `toPersistedEnvelope(symbolFilter?)`, `hydrateFromEnvelope(meta, symbolFilter?)`, dan `reconcileCanvasMutation` melalui helper murni `filterEnvelopeEntries` agar `activePlans`, `planDrawingIds`, dan `drawingMetadata` terisolasi per instrumen di workspace multi-sel tanpa menulis ke **Trade Plan Vault** saat drag/hapus kanvas.
+
+### 🐛 Diperbaiki (Fixed)
+- **Arsitektur *Fail-Loud* `TauriSqliteAdapter`, *Falsy Reads*, & Penyaluran Error ke `Terminal Logs` (Spec #173):**
+  - Mencabut `fallbackAdapter`, `InMemoryLocalStorageAdapter` fallback, penelanan `try/catch`, serta permukaan `listDrawingKeys` dari `TauriSqliteAdapter`, menjadikan error IPC SQLite langsung terpropagasi (`fail-loud`), dan menambahkan mode `memoryOnly` + `clearMemory()` pada adapter web.
+  - Memperbaiki *falsy reads* string kosong (`""`) pada `TauriSqliteAdapter` dan `PersistenceService.loadWatchlist()`, menyalurkan kegagalan `flushDrawings` / `saveDrawingsDebounced` via hook `onError` ke **Terminal Logs**, serta menambah suite uji mocked `invokeFn` (`tests/tauriSqliteAdapter.test.ts`).
+- **Perbaikan `clearAll()` & Kebangkitan Plan Terhapus (Spec #174):**
+  - Memperbaiki `ChartDrawingController.clearAll()` agar membersihkan dokumen gambar melalui `clearScopedDrawings(resolveActiveDrawingScope())` serta mencegah `restoreWorkspaceChartAndPlans` membangkitkan kembali plan yang sudah dihapus ketika dokumen membawa `_trawangan_meta` (`activePlans: []`).
+
 ## [0.45.1] - 2026-11-12
 
 ### 🐛 Diperbaiki (Fixed)
