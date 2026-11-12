@@ -138,7 +138,8 @@
   let workspaceMode = $state<WorkspaceMode>('terminal');
   let activeWorkspace = $state<SavedWorkspace | null>(null);
   let isAutoSaveWorkspace = $state<boolean>(true);
-  let isPageMounted = false;
+  let isPageMounted = $state(false);
+  let isPersistenceBootstrapped = $state(false);
   let isLoadingWorkspace = false;
   let isClosingApp = false;
   let chartDirtyTick = $state(0);
@@ -429,6 +430,7 @@
   let unsubReplay: (() => void) | null = null;
 
   $effect(() => {
+    if (!isPersistenceBootstrapped) return;
     const sym = activeSymbol;
     if (sym) {
       if (unsubTicker) unsubTicker();
@@ -492,37 +494,45 @@
           pinePanelWidth = savedPineWidth;
         }
 
-        isPageMounted = true;
-
-        // Auto-load workspace terakhir saat startup jika preferensi aktif (disertai recovery pending backup bila ada)
-        if (appSettings.autoLoadLastWorkspace !== false) {
-          const lastWorkspaceId = getLastActiveWorkspaceId();
-          if (lastWorkspaceId) {
-            loadWorkspaces().then(async (list) => {
-              if (!isPageActive) return;
-              const target = list.find((w) => w.id === lastWorkspaceId);
-              if (target) {
-                const { workspace: recoveredWs, usedPending } = resolvePendingWorkspaceOverride(target, lastWorkspaceId);
-                if (usedPending) {
-                  try {
-                    await saveWorkspace(recoveredWs as any);
-                  } catch (_) {}
-                }
-                // Beri jeda singkat agar WebGL container mount sempurna sebelum inject layout & indikator
-                schedulePageTimeout(() => {
-                  if (!isPageActive) return;
-                  handleLoadWorkspace(recoveredWs).catch((err) => {
-                    console.warn('[Startup] Gagal auto-load workspace terakhir:', err);
-                  });
-                }, 400);
-              }
-            }).catch((err) => {
-              console.warn('[Startup] Gagal auto-load workspace terakhir:', err);
-            });
-          }
+        const activeBootProvider = storage.getProvidersSync().find((p) => p.is_active);
+        if (activeBootProvider?.id && activeBootProvider.id.toLowerCase() !== 'macro') {
+          activeProviderId = activeBootProvider.id;
+          marketFeed.setActiveProviderContext(activeBootProvider.id);
+          telemetryService.setActiveProvider(activeBootProvider.id);
         }
       } catch (e) {
         console.warn('Gagal memuat pengaturan tersimpan:', e);
+      }
+
+      isPersistenceBootstrapped = true;
+      isPageMounted = true;
+
+      // Auto-load workspace terakhir saat startup jika preferensi aktif (disertai recovery pending backup bila ada)
+      if (appSettings.autoLoadLastWorkspace !== false) {
+        const lastWorkspaceId = getLastActiveWorkspaceId();
+        if (lastWorkspaceId) {
+          loadWorkspaces().then(async (list) => {
+            if (!isPageActive) return;
+            const target = list.find((w) => w.id === lastWorkspaceId);
+            if (target) {
+              const { workspace: recoveredWs, usedPending } = resolvePendingWorkspaceOverride(target, lastWorkspaceId);
+              if (usedPending) {
+                try {
+                  await saveWorkspace(recoveredWs as any);
+                } catch (_) {}
+              }
+              // Beri jeda singkat agar WebGL container mount sempurna sebelum inject layout & indikator
+              schedulePageTimeout(() => {
+                if (!isPageActive) return;
+                handleLoadWorkspace(recoveredWs).catch((err) => {
+                  console.warn('[Startup] Gagal auto-load workspace terakhir:', err);
+                });
+              }, 400);
+            }
+          }).catch((err) => {
+            console.warn('[Startup] Gagal auto-load workspace terakhir:', err);
+          });
+        }
       }
 
       // Sinkronisasi preferensi audio notifikasi & notifikasi sistem Windows
@@ -1648,7 +1658,8 @@
 
     <!-- WORKSPACE UNIFIED VIEWPORT (Docked Structural Shell: Left Rail | Chart Canvas | Drawer Panel | Right Dock Rail) -->
     <div class="workspace-viewport mode-{workspaceMode}">
-      <!-- 1. DOCKED LEFT RAIL: Drawing Toolbar (Lebar 44px struktural, zero overlap lilin) -->
+      {#if isPersistenceBootstrapped}
+        <!-- 1. DOCKED LEFT RAIL: Drawing Toolbar (Lebar 44px struktural, zero overlap lilin) -->
       {#if workspaceMode === 'terminal'}
         <DrawingToolbar
           isCollapsed={shellState.isLeftRailCollapsed}
@@ -1854,6 +1865,7 @@
           handleWorkspaceModeChange(workspaceMode === 'pine' ? 'terminal' : 'pine');
         }}
       />
+      {/if}
     </div>
   </main>
 

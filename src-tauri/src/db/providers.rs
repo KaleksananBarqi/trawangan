@@ -24,28 +24,67 @@ pub fn create_table(conn: &Connection) -> Result<()> {
     )
 }
 
-/// Sisipkan preset provider bawaan apabila belum ada
+/// Sisipkan preset provider bawaan hanya apabila tabel providers masih kosong
 pub fn seed_defaults(conn: &Connection) -> Result<()> {
-    conn.execute(
-        "INSERT OR IGNORE INTO providers (id, name, rest_url, ws_url, is_active)
-         VALUES ('binance', 'Binance Official Public', 'https://api.binance.com', 'wss://stream.binance.com:9443', 1)",
-        [],
-    )?;
-    conn.execute(
-        "INSERT OR IGNORE INTO providers (id, name, rest_url, ws_url, is_active)
-         VALUES ('hyperliquid', 'Hyperliquid DEX Perpetuals', 'https://api.hyperliquid.xyz', 'wss://api.hyperliquid.xyz/ws', 0)",
-        [],
-    )?;
-    conn.execute(
-        "INSERT OR IGNORE INTO providers (id, name, rest_url, ws_url, is_active)
-         VALUES ('coinbase', 'Coinbase Exchange Spot', 'https://api.exchange.coinbase.com', 'wss://ws-feed.exchange.coinbase.com', 0)",
-        [],
-    )?;
-    conn.execute(
-        "INSERT OR IGNORE INTO providers (id, name, rest_url, ws_url, is_active)
-         VALUES ('bitunix', 'Bitunix Futures', 'https://fapi.bitunix.com', 'wss://fapi.bitunix.com/public/', 0)",
-        [],
-    )?;
+    let existing_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM providers", [], |r| r.get(0))?;
+    if existing_count > 0 {
+        return Ok(());
+    }
+
+    let defaults = [
+        (
+            "binance",
+            "Binance Official Public",
+            "https://api.binance.com",
+            "wss://stream.binance.com:9443",
+            1,
+        ),
+        (
+            "indodax",
+            "Indodax Official Spot (IDR)",
+            "https://indodax.com",
+            "",
+            0,
+        ),
+        (
+            "bitunix",
+            "Bitunix Futures (USDT-M)",
+            "https://fapi.bitunix.com",
+            "wss://fapi.bitunix.com/public/",
+            0,
+        ),
+        (
+            "hyperliquid",
+            "Hyperliquid DEX Perpetuals",
+            "https://api.hyperliquid.xyz",
+            "wss://api.hyperliquid.xyz/ws",
+            0,
+        ),
+        (
+            "coinbase",
+            "Coinbase Exchange Spot",
+            "https://api.exchange.coinbase.com",
+            "wss://ws-feed.exchange.coinbase.com",
+            0,
+        ),
+        (
+            "yahoo",
+            "Yahoo Finance (Delayed 15m)",
+            "https://query1.finance.yahoo.com",
+            "",
+            0,
+        ),
+    ];
+
+    for (id, name, rest_url, ws_url, is_active) in defaults {
+        conn.execute(
+            "INSERT OR IGNORE INTO providers (id, name, rest_url, ws_url, is_active)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, name, rest_url, ws_url, is_active],
+        )?;
+    }
+
     Ok(())
 }
 

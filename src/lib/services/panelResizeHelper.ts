@@ -24,8 +24,6 @@ export interface EdgeResizeOptions {
   edge?: 'left-edge' | 'right-edge';
   /** Kunci preferensi UI PersistenceService untuk menyimpan lebar final saat pointer dilepas */
   preferenceKey?: UiPreferenceKey;
-  /** Kunci storage kustom opsional (hanya dipakai jika `storage` disuntikkan eksplisit) */
-  storageKey?: string;
   /** Pancarkan `window.dispatchEvent(new Event('resize'))` setelah selesai drag (default `true`) */
   dispatchResizeEvent?: boolean;
   onResize: (nextWidth: number) => void;
@@ -33,7 +31,6 @@ export interface EdgeResizeOptions {
   /** Dependency injection opsional untuk pengujian unit tanpa DOM global */
   windowTarget?: ResizeWindowTarget | null;
   persistence?: Pick<IPersistenceService, 'setUiPreference'> | null;
-  storage?: Pick<Storage, 'setItem'> | null;
 }
 
 export interface EdgeResizeSession {
@@ -142,10 +139,6 @@ export function startEdgeResizeSession(options: EdgeResizeOptions): EdgeResizeSe
         if (persistenceService) {
           void persistenceService.setUiPreference(options.preferenceKey, latestWidth).catch(() => {});
         }
-      } else if (options.storageKey && options.storage) {
-        try {
-          options.storage.setItem(options.storageKey, String(latestWidth));
-        } catch (_) {}
       }
 
       if (shouldDispatch && typeof target.dispatchEvent === 'function' && typeof Event !== 'undefined') {

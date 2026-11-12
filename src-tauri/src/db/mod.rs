@@ -859,4 +859,26 @@ mod tests {
         assert_eq!(after_delete[0].key, "app_settings");
         assert_eq!(after_delete[1].key, "ui_left_rail_collapsed");
     }
+
+    #[test]
+    fn test_seed_defaults_includes_indodax_yahoo_and_does_not_resurrect_deleted_provider() {
+        let conn = setup_v1_test_db();
+        let initial = get_providers(&conn).unwrap();
+        assert_eq!(initial.len(), 6);
+        assert!(initial.iter().any(|p| p.id == "binance" && p.is_active));
+        assert!(initial.iter().any(|p| p.id == "indodax" && !p.is_active));
+        assert!(initial.iter().any(|p| p.id == "bitunix" && !p.is_active));
+        assert!(initial.iter().any(|p| p.id == "hyperliquid" && !p.is_active));
+        assert!(initial.iter().any(|p| p.id == "coinbase" && !p.is_active));
+        assert!(initial.iter().any(|p| p.id == "yahoo" && !p.is_active));
+
+        // Hapus coinbase lalu panggil init_connection & seed_defaults lagi
+        delete_provider(&conn, "coinbase").unwrap();
+        init_connection(&conn).unwrap();
+        providers::seed_defaults(&conn).unwrap();
+
+        let after_reinit = get_providers(&conn).unwrap();
+        assert_eq!(after_reinit.len(), 5);
+        assert!(!after_reinit.iter().any(|p| p.id == "coinbase"));
+    }
 }

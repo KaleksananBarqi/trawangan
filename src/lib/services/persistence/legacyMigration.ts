@@ -323,9 +323,17 @@ function parseLegacyProviders(raw: string): ProviderConfig[] | null {
   return result;
 }
 
-function hasPersistedProviderOverrides(sqliteProviders: ProviderConfig[]): boolean {
+function hasPersistedProviderOverrides(
+  sqliteProviders: ProviderConfig[],
+  hasExistingPreferences = false
+): boolean {
   if (!Array.isArray(sqliteProviders) || sqliteProviders.length === 0) {
     return false;
+  }
+
+  if (hasExistingPreferences) {
+    // SQLite sudah memiliki app_preferences dari sesi sebelumnya; anggap status provider aktif saat ini disengaja
+    return true;
   }
 
   for (const p of sqliteProviders) {
@@ -351,7 +359,8 @@ function hasPersistedProviderOverrides(sqliteProviders: ProviderConfig[]): boole
 async function migrateProviders(
   adapter: PersistenceAdapter,
   currentProviders: ProviderConfig[],
-  legacyStorage: LegacyStorageLike
+  legacyStorage: LegacyStorageLike,
+  hasExistingPreferences = false
 ): Promise<ProviderConfig[] | null> {
   const rawProviders = safeGetItem(legacyStorage, 'trawangan_providers');
   if (rawProviders === null) return null;
@@ -365,7 +374,10 @@ async function migrateProviders(
   const sqliteById = new Map<string, ProviderConfig>(
     currentProviders.filter((p) => p && typeof p.id === 'string').map((p) => [p.id, p])
   );
-  const sqliteHasOverrides = hasPersistedProviderOverrides(currentProviders);
+  const sqliteHasOverrides = hasPersistedProviderOverrides(
+    currentProviders,
+    hasExistingPreferences
+  );
 
   try {
     let wroteToSqlite = false;
@@ -483,12 +495,16 @@ export async function migrateLegacyLocalStorage(params: {
     return { providers: params.currentProviders };
   }
 
+  // Tangkap keberadaan app_preferences SQLite sebelum migrasi preferensi mengisi preferenceCache
+  const hasExistingPreferences = params.preferenceCache.size > 0;
+
   await migrateAppSettings(params.adapter, params.preferenceCache, legacyStorage);
   await migrateMappedPreferences(params.adapter, params.preferenceCache, legacyStorage);
   const migratedProviders = await migrateProviders(
     params.adapter,
     params.currentProviders,
-    legacyStorage
+    legacyStorage,
+    hasExistingPreferences
   );
   await cleanupOrphanTradingPlanVault(params.adapter, legacyStorage);
 

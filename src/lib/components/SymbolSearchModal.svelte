@@ -69,17 +69,16 @@
     } catch (_) {}
   }
 
-  function addRecentSearch(sym: string) {
-    const clean = sym.trim().toUpperCase();
-    if (!clean) return;
-    const prev = recentSearches;
-    recentSearches = [clean, ...prev.filter((s) => s.toUpperCase() !== clean)].slice(0, 5);
-    void recordRecentSymbolSearch(clean, prev).catch(() => {});
+  async function addRecentSearch(sym: string) {
+    try {
+      recentSearches = await recordRecentSymbolSearch(sym, recentSearches);
+    } catch (_) {}
   }
 
-  function clearRecentSearches() {
-    recentSearches = [];
-    void clearRecentSymbolSearches().catch(() => {});
+  async function clearRecentSearches() {
+    try {
+      recentSearches = await clearRecentSymbolSearches();
+    } catch (_) {}
   }
 
   function formatPricePreview(price: number, quoteAsset = 'USDT', symbol?: string): string {

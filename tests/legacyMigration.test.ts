@@ -794,4 +794,73 @@ describe('Tiket #185: Migrasi Satu Kali Legacy localStorage & Proteksi Bucket C'
     assert.equal(providers.find((p) => p.id === 'binance')?.is_active, false);
     assert.equal(fake.store.size, 0);
   });
+
+  it('Slice 4e: jika SQLite sudah memiliki app_preferences dan binance aktif standar, migrasi trawangan_providers hanya menyelamatkan custom provider tanpa menimpa is_active', async () => {
+    const adapter = new MockSqlitePersistenceAdapter({
+      initialPreferences: {
+        // Menandakan pengguna sudah pernah menjalankan sesi SQLite sebelumnya dan sengaja memilih binance aktif
+        right_dock_state: JSON.stringify({ isOpen: true, activeTab: 'watchlist', lastOpenedTab: 'watchlist' }),
+      },
+      initialProviders: [
+        {
+          id: 'binance',
+          name: 'Binance Official Public',
+          rest_url: 'https://api.binance.com',
+          ws_url: 'wss://stream.binance.com:9443',
+          is_active: true,
+        },
+        {
+          id: 'coinbase',
+          name: 'Coinbase Exchange Spot',
+          rest_url: 'https://api.exchange.coinbase.com',
+          ws_url: 'wss://ws-feed.exchange.coinbase.com',
+          is_active: false,
+        },
+      ],
+    });
+
+    const fake = createFakeLocalStorage({
+      trawangan_providers: JSON.stringify([
+        {
+          id: 'binance',
+          name: 'Binance Official Public',
+          rest_url: 'https://stale-mirror.binance.example',
+          ws_url: 'wss://stale-mirror.binance.example',
+          is_active: false,
+        },
+        {
+          id: 'coinbase',
+          name: 'Coinbase Exchange Spot',
+          rest_url: 'https://api.exchange.coinbase.com',
+          ws_url: 'wss://ws-feed.exchange.coinbase.com',
+          is_active: true,
+        },
+        {
+          id: 'custom-rescued-1',
+          name: 'Custom Lama',
+          rest_url: 'https://rescued.example.com',
+          ws_url: '',
+          is_active: true,
+        },
+      ]),
+    });
+
+    const service = new PersistenceService(adapter);
+    await withFakeWindowLocalStorage(fake.api, async () => {
+      await service.bootstrap();
+    });
+
+    const providers = service.getProvidersSync();
+    // Pilihan aktif SQLite (binance) & URL standarnya tetap terjaga; coinbase tidak merebut status aktif
+    assert.equal(providers.find((p) => p.id === 'binance')?.is_active, true);
+    assert.equal(providers.find((p) => p.id === 'binance')?.rest_url, 'https://api.binance.com');
+    assert.equal(providers.find((p) => p.id === 'coinbase')?.is_active, false);
+    // Custom provider yang belum ada di SQLite tetap diselamatkan dengan is_active: false
+    const rescued = providers.find((p) => p.id === 'custom-rescued-1');
+    assert.ok(rescued);
+    assert.equal(rescued?.is_active, false);
+    assert.equal(rescued?.rest_url, 'https://rescued.example.com');
+    assert.equal(adapter.setActiveProviderCalls.length, 0);
+    assert.equal(fake.store.size, 0);
+  });
 });

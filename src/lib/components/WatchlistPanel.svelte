@@ -11,7 +11,7 @@
     startEdgeResizeSession,
     type EdgeResizeSession
   } from '../services/panelResizeHelper';
-  import { storage } from '../services/persistence';
+  import { storage, onPersistenceReady } from '../services/persistence';
   import { readClampedPanelWidth } from '../services/persistence/uiPreferencesHelper';
   import type { RightDockTab } from '../services/workspaceShellService';
   import type { ParsedTradingPlan } from '../services/planParserService';
@@ -265,22 +265,14 @@
     await watchlistRegistry.updateActiveItems(newSymbols);
   }
 
-  let isPanelMounted = true;
+  let cancelPersistenceReady: (() => void) | null = null;
 
   onMount(() => {
-    isPanelMounted = true;
-    if (storage.isBootstrapped()) {
-      hydratePanelWidths();
-    } else {
-      void storage
-        .bootstrap()
-        .then(() => {
-          if (isPanelMounted && !isResizingPanel) {
-            hydratePanelWidths();
-          }
-        })
-        .catch(() => {});
-    }
+    cancelPersistenceReady = onPersistenceReady(() => {
+      if (!isResizingPanel) {
+        hydratePanelWidths();
+      }
+    });
 
     unsubRegistry = watchlistRegistry.subscribe(({ watchlists: list, activeId }) => {
       registryWatchlists = list;
@@ -301,7 +293,8 @@
   });
 
   onDestroy(() => {
-    isPanelMounted = false;
+    cancelPersistenceReady?.();
+    cancelPersistenceReady = null;
     activeResizeSession?.cancel();
     activeResizeSession = null;
     if (resizeDispatchTimer !== null) {

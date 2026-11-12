@@ -866,5 +866,63 @@ describe('Deep Persistence Module Unit Tests', () => {
       /JSON/
     );
   });
+
+  test('deleteProvider("coinbase") tetap terhapus lintas loadProviders() dan bootstrap() tanpa menghidupkan ulang default atau mengaktifkan paksa binance', async () => {
+    await service.bootstrap();
+
+    await service.deleteProvider('coinbase');
+    assert.strictEqual(service.getProvidersSync().some((p) => p.id === 'coinbase'), false);
+
+    // loadProviders() tidak boleh menghidupkan kembali coinbase
+    const afterLoad = await service.loadProviders();
+    assert.strictEqual(afterLoad.some((p) => p.id === 'coinbase'), false);
+    assert.strictEqual(service.getProvidersSync().some((p) => p.id === 'coinbase'), false);
+
+    // Sesi/bootstrap baru dengan adapter yang sama juga tidak boleh memunculkan coinbase kembali
+    const secondService = new PersistenceService(adapter);
+    await secondService.bootstrap();
+    assert.strictEqual(secondService.getProvidersSync().some((p) => p.id === 'coinbase'), false);
+    assert.strictEqual((await secondService.loadProviders()).some((p) => p.id === 'coinbase'), false);
+
+    // Menghapus provider yang sedang aktif (binance) tidak boleh mengaktifkan paksa binance kembali saat loadProviders()
+    await secondService.deleteProvider('binance');
+    const withoutBinance = await secondService.loadProviders();
+    assert.strictEqual(withoutBinance.some((p) => p.id === 'binance'), false);
+    assert.strictEqual(secondService.getProvidersSync().some((p) => p.id === 'binance'), false);
+  });
+
+  test('onPersistenceReady memanggil callback langsung bila sudah bootstrapped, menunggu bootstrap bila belum, dan menghormati pembatalan', async () => {
+    const { onPersistenceReady } = await import('../src/lib/services/persistence');
+
+    // 1. Bila belum bootstrapped, menunggu bootstrap selesai
+    let earlyCalls = 0;
+    const cancelEarly = onPersistenceReady(() => {
+      earlyCalls += 1;
+    }, service);
+    assert.strictEqual(earlyCalls, 0);
+    await service.bootstrap();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.strictEqual(earlyCalls, 1);
+    cancelEarly();
+
+    // 2. Bila sudah bootstrapped, dipanggil secara sinkron
+    let syncCalls = 0;
+    const cancelSync = onPersistenceReady(() => {
+      syncCalls += 1;
+    }, service);
+    assert.strictEqual(syncCalls, 1);
+    cancelSync();
+
+    // 3. Pembatalan sebelum bootstrap selesai mencegah callback dijalankan
+    const freshService = new PersistenceService(new InMemoryLocalStorageAdapter());
+    let cancelledCalls = 0;
+    const cancelPending = onPersistenceReady(() => {
+      cancelledCalls += 1;
+    }, freshService);
+    cancelPending();
+    await freshService.bootstrap();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.strictEqual(cancelledCalls, 0);
+  });
 });
 

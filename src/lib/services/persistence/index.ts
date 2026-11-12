@@ -28,31 +28,44 @@ function isTauriEnvironment(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+const LEGACY_UNSEEDED_DEFAULT_IDS = ['indodax', 'yahoo'] as const;
+const DEFAULT_PROVIDER_BY_ID = new Map<string, ProviderConfig>(
+  DEFAULT_PROVIDERS.map((p) => [p.id, p])
+);
+
 function cloneProviders(list: ProviderConfig[]): ProviderConfig[] {
   return list.map((p) => ({ ...p }));
 }
 
-function mergeProvidersWithDefaults(persisted: ProviderConfig[]): ProviderConfig[] {
+function mergeProvidersWithDefaults(
+  persisted: ProviderConfig[],
+  deletedIds: ReadonlySet<string> = new Set()
+): ProviderConfig[] {
   const validPersisted = Array.isArray(persisted)
-    ? persisted.filter((p) => p && typeof p.id === 'string' && p.id.trim().length > 0)
+    ? persisted.filter(
+        (p) => p && typeof p.id === 'string' && p.id.trim().length > 0 && !deletedIds.has(p.id)
+      )
     : [];
   if (validPersisted.length === 0) {
-    return cloneProviders(DEFAULT_PROVIDERS);
+    return deletedIds.size === 0 ? cloneProviders(DEFAULT_PROVIDERS) : [];
   }
 
-  const hasActivePersisted = validPersisted.some((p) => Boolean(p.is_active));
   const byId = new Map<string, ProviderConfig>();
 
-  for (const def of DEFAULT_PROVIDERS) {
-    byId.set(def.id, {
-      ...def,
-      is_active: hasActivePersisted ? false : def.is_active,
-    });
+  for (const item of validPersisted) {
+    const existingDefault = DEFAULT_PROVIDER_BY_ID.get(item.id);
+    byId.set(item.id, existingDefault ? { ...existingDefault, ...item } : { ...item });
   }
 
-  for (const item of validPersisted) {
-    const existingDefault = byId.get(item.id);
-    byId.set(item.id, existingDefault ? { ...existingDefault, ...item } : { ...item });
+  // Untuk DB legacy (mis. 4 baris seed Rust lama sebelum indodax & yahoo), gabungkan preset yang belum ada kecuali dihapus
+  if (!byId.has('indodax') && !byId.has('yahoo')) {
+    for (const id of LEGACY_UNSEEDED_DEFAULT_IDS) {
+      if (deletedIds.has(id)) continue;
+      const def = DEFAULT_PROVIDER_BY_ID.get(id);
+      if (def) {
+        byId.set(id, { ...def, is_active: false });
+      }
+    }
   }
 
   return Array.from(byId.values());
@@ -66,6 +79,7 @@ export class PersistenceService implements IPersistenceService {
   private preferenceWriteEpoch = new Map<string, number>();
   private providersCache: ProviderConfig[] | null = null;
   private adapterPersistedProviderIds: Set<string> | null = null;
+  private deletedProviderIds = new Set<string>();
   private bootstrapped = false;
   private bootstrapPromise: Promise<void> | null = null;
   private legacyStorageOverride?: LegacyStorageLike | null;
@@ -95,6 +109,7 @@ export class PersistenceService implements IPersistenceService {
     this.preferenceWriteEpoch.clear();
     this.providersCache = null;
     this.adapterPersistedProviderIds = null;
+    this.deletedProviderIds.clear();
   }
 
   // ─── Bootstrap & Cache Sinkron Preferensi ───
@@ -161,12 +176,15 @@ export class PersistenceService implements IPersistenceService {
     return this.preferenceCache.get(key) ?? null;
   }
 
-  private parseCachedJsonPreference<T>(key: AppPreferenceKey): T | null {
+  private parseCachedJsonPreference<T>(key: AppPreferenceKey, warnContext?: string): T | null {
     const raw = this.getPreferenceSync(key);
     if (!raw) return null;
     try {
       return JSON.parse(raw) as T;
-    } catch {
+    } catch (err) {
+      if (warnContext) {
+        console.warn(`[PersistenceService] Gagal parsing JSON ${warnContext} "${key}":`, err);
+      }
       return null;
     }
   }
@@ -175,14 +193,7 @@ export class PersistenceService implements IPersistenceService {
    * Membaca dan mem-parsing preferensi UI bertipe dari cache bootstrap secara sinkron.
    */
   getUiPreferenceSync<T>(key: UiPreferenceKey): T | null {
-    const raw = this.getPreferenceSync(key);
-    if (raw === null) return null;
-    try {
-      return JSON.parse(raw) as T;
-    } catch (err) {
-      console.warn(`[PersistenceService] Gagal parsing JSON preferensi UI "${key}":`, err);
-      return null;
-    }
+    return this.parseCachedJsonPreference<T>(key, 'preferensi UI');
   }
 
   /**
@@ -220,14 +231,22 @@ export class PersistenceService implements IPersistenceService {
     return raw;
   }
 
-  private async setAndSyncPreference(key: AppPreferenceKey, valueJson: string): Promise<void> {
+  private async mutatePreferenceWithCacheRollback(
+    key: AppPreferenceKey,
+    nextValue: string | null,
+    persistFn: () => Promise<void>
+  ): Promise<void> {
     // Perbarui cache secara optimistik agar pembaca sinkron langsung konsisten, lalu rollback bila adapter gagal
     const nextEpoch = (this.preferenceWriteEpoch.get(key) ?? 0) + 1;
     this.preferenceWriteEpoch.set(key, nextEpoch);
     const prev = this.preferenceCache.get(key);
-    this.preferenceCache.set(key, valueJson);
+    if (nextValue !== null) {
+      this.preferenceCache.set(key, nextValue);
+    } else {
+      this.preferenceCache.delete(key);
+    }
     try {
-      await this.adapter.setPreference(key, valueJson);
+      await persistFn();
     } catch (err) {
       if (this.preferenceWriteEpoch.get(key) === nextEpoch) {
         if (prev !== undefined) {
@@ -240,21 +259,16 @@ export class PersistenceService implements IPersistenceService {
     }
   }
 
+  private async setAndSyncPreference(key: AppPreferenceKey, valueJson: string): Promise<void> {
+    await this.mutatePreferenceWithCacheRollback(key, valueJson, () =>
+      this.adapter.setPreference(key, valueJson)
+    );
+  }
+
   private async deleteAndSyncPreference(key: AppPreferenceKey): Promise<void> {
-    const nextEpoch = (this.preferenceWriteEpoch.get(key) ?? 0) + 1;
-    this.preferenceWriteEpoch.set(key, nextEpoch);
-    const prev = this.preferenceCache.get(key);
-    this.preferenceCache.delete(key);
-    try {
-      await this.adapter.deletePreference(key);
-    } catch (err) {
-      if (this.preferenceWriteEpoch.get(key) === nextEpoch) {
-        if (prev !== undefined) {
-          this.preferenceCache.set(key, prev);
-        }
-      }
-      throw err;
-    }
+    await this.mutatePreferenceWithCacheRollback(key, null, () =>
+      this.adapter.deletePreference(key)
+    );
   }
 
   // ─── Drawings Persistence (Debounced) ───
@@ -604,7 +618,7 @@ export class PersistenceService implements IPersistenceService {
       }
     }
     this.adapterPersistedProviderIds = persistedIds;
-    const merged = mergeProvidersWithDefaults(rawProviders);
+    const merged = mergeProvidersWithDefaults(rawProviders, this.deletedProviderIds);
     this.providersCache = merged;
     return merged;
   }
@@ -621,6 +635,7 @@ export class PersistenceService implements IPersistenceService {
 
   async saveProvider(provider: ProviderConfig): Promise<void> {
     await this.adapter.saveProvider(provider);
+    this.deletedProviderIds.delete(provider.id);
     this.adapterPersistedProviderIds?.add(provider.id);
 
     const base = cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS).filter(
@@ -646,6 +661,7 @@ export class PersistenceService implements IPersistenceService {
     } else {
       await this.adapter.setActiveProvider(id);
     }
+    this.deletedProviderIds.delete(id);
 
     const base = cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS);
     this.providersCache = base.map((p) => ({
@@ -656,6 +672,7 @@ export class PersistenceService implements IPersistenceService {
 
   async deleteProvider(id: string): Promise<void> {
     await this.adapter.deleteProvider(id);
+    this.deletedProviderIds.add(id);
     this.adapterPersistedProviderIds?.delete(id);
     const base = cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS);
     this.providersCache = base.filter((p) => p.id !== id);
@@ -670,6 +687,31 @@ export const storage = new PersistenceService();
 export type { AppPreferenceKey, IPersistenceService, UiPreferenceKey } from './types';
 export const bootstrapPersistence = () => storage.bootstrap();
 export const isPersistenceBootstrapped = () => storage.isBootstrapped();
+
+/**
+ * Menjalankan callback secara langsung bila persistence sudah di-bootstrap,
+ * atau setelah `bootstrap()` selesai apabila dipanggil lebih awal.
+ * Mengembalikan fungsi pembatalan agar aman saat komponen di-unmount sebelum selesai.
+ */
+export function onPersistenceReady(
+  callback: () => void,
+  persistence: Pick<IPersistenceService, 'isBootstrapped' | 'bootstrap'> = storage
+): () => void {
+  if (persistence.isBootstrapped()) {
+    callback();
+    return () => {};
+  }
+  let cancelled = false;
+  void persistence
+    .bootstrap()
+    .then(() => {
+      if (!cancelled) callback();
+    })
+    .catch(() => {});
+  return () => {
+    cancelled = true;
+  };
+}
 export const getPreferenceSync = (key: AppPreferenceKey) => storage.getPreferenceSync(key);
 export const getUiPreferenceSync = <T>(key: UiPreferenceKey) => storage.getUiPreferenceSync<T>(key);
 export const setUiPreference = <T>(key: UiPreferenceKey, value: T) => storage.setUiPreference<T>(key, value);

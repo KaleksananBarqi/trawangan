@@ -72,7 +72,7 @@
     type DrawingGroupId,
     type DrawingToolItem,
   } from '../services/drawingToolsService.js';
-  import { storage } from '../services/persistence';
+  import { onPersistenceReady } from '../services/persistence';
 
   interface Props {
     activeTool: DrawingToolType | null;
@@ -162,18 +162,12 @@
       }
     });
 
-    if (storage.isBootstrapped()) {
+    const cancelPersistenceReady = onPersistenceReady(() => {
       hydrateDrawingToolsFromPersistence();
-    } else {
-      void storage
-        .bootstrap()
-        .then(() => {
-          hydrateDrawingToolsFromPersistence();
-        })
-        .catch(() => {});
-    }
+    });
 
     return () => {
+      cancelPersistenceReady();
       unsub();
     };
   });

@@ -70,14 +70,11 @@
     } catch (_) {}
   }
 
-  function toggleFavorite(e: MouseEvent, id: string) {
+  async function toggleFavorite(e: MouseEvent, id: string) {
     e.stopPropagation();
-    const optimistic = favoriteIds.includes(id)
-      ? favoriteIds.filter((item) => item !== id)
-      : [...favoriteIds, id];
-    const snapshot = favoriteIds;
-    favoriteIds = optimistic;
-    void toggleFavoriteIndicatorId(id, snapshot).catch(() => {});
+    try {
+      favoriteIds = await toggleFavoriteIndicatorId(id, favoriteIds);
+    } catch (_) {}
   }
 
   async function handleDeleteScript(e: MouseEvent, script: PineScriptRecord) {

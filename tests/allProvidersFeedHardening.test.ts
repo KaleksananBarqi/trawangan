@@ -957,4 +957,62 @@ test.describe('Phase 2 Hardening — Semua Datafeed, Pair Normalization, & Illiq
 
     controller.destroy();
   });
+
+  test('15. ChartSessionController.attach() mendaftarkan custom provider secara sinkron dari getProvidersSync() saat mount awal binance', async () => {
+    const adapter = new InMemoryLocalStorageAdapter();
+    adapter.clearMemory();
+    await adapter.saveProvider({
+      id: 'custom-initial-mount',
+      name: 'Initial Mount Node',
+      rest_url: 'https://initial-mount.example.com',
+      ws_url: '',
+      is_active: false,
+    });
+
+    const persistence = new PersistenceService(adapter);
+    await persistence.bootstrap();
+
+    const velaRegistry = new Map<string, any>();
+    const registerCalls: string[] = [];
+    const fakeWs: any = {
+      feed: {
+        registerProvider(name: string, prov: any) {
+          registerCalls.push(name);
+          velaRegistry.set(name, prov);
+        },
+        unregisterProvider(name: string) {
+          velaRegistry.delete(name);
+        },
+        providerInstance(name: string) {
+          return velaRegistry.get(name);
+        },
+      },
+      active: { id: 'c1', symbol: 'binance:BTCUSDT', setSymbol(s: string) { this.symbol = s; }, chart: {} },
+      cells: () => [fakeWs.active],
+      on: () => {},
+      destroy: () => {},
+    };
+
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      providerId: 'binance',
+      persistence,
+      workspaceFactory: () => fakeWs,
+    });
+
+    const mockContainer: any = { nodeType: 1, style: {}, children: [], querySelectorAll: () => [] };
+    controller.attach(mockContainer);
+
+    assert.ok(
+      velaRegistry.has('custom_initial_mount'),
+      'attach() dengan providerId binance wajib mendaftarkan custom_initial_mount secara sinkron ke workspace.feed'
+    );
+    assert.ok(
+      registerCalls.includes('custom_initial_mount'),
+      'registerProvider wajib dipanggil secara sinkron pada mount awal binance'
+    );
+
+    controller.destroy();
+  });
 });

@@ -816,9 +816,10 @@ export class ChartSessionController {
       }
       this.attachDrawingSyncBoundaryGuard(this.workspace);
       this.isAttached = true;
-      if (this.providerId.toLowerCase().startsWith('custom')) {
-        void this.hydrateAndRegisterCustomProviders();
+      for (const cfg of knownCustomConfigs) {
+        this.registerCustomConfigIntoVela(cfg);
       }
+      void this.hydrateAndRegisterCustomProviders();
     } catch (err) {
       console.warn('[ChartSessionController] Gagal inisialisasi VelaWorkspace:', err);
       this.workspace = null;
