@@ -51,6 +51,17 @@ export interface PersistenceErrorEvent {
 export type PersistenceErrorListener = (event: PersistenceErrorEvent) => void;
 
 /**
+ * Kontrak ruang lingkup (scope) penyimpanan gambar kanvas secara terstruktur.
+ * Mengabstraksi komposisi kunci workspace, provider, simbol, dan timeframe dari caller.
+ */
+export interface DrawingScope {
+  workspaceId?: string | null;
+  providerId?: string | null;
+  symbol: string;
+  timeframe?: string | null;
+}
+
+/**
  * Adapter tingkat rendah di balik Seam penyimpanan.
  * Mengabstraksi apakah operasi disimpan ke SQLite via Tauri IPC atau In-Memory / LocalStorage.
  */
@@ -118,9 +129,13 @@ export interface IPersistenceService {
 
   // Drawings
   loadDrawings(symbol: string, timeframe: string): Promise<any | null>;
-  saveDrawingsDebounced(symbol: string, timeframe: string, doc: any): void;
+  saveDrawingsDebounced(symbol: string, timeframe: string, doc: any, delayMs?: number): void;
   flushDrawings(symbol?: string, timeframe?: string): Promise<void>;
   clearDrawings(symbol: string, timeframe: string): Promise<void>;
+  loadScopedDrawings(scope: DrawingScope): Promise<any | null>;
+  saveScopedDrawingsDebounced(scope: DrawingScope, doc: any, delayMs?: number): void;
+  flushScopedDrawings(scope?: Partial<DrawingScope>): Promise<void>;
+  clearScopedDrawings(scope: DrawingScope): Promise<void>;
 
   // Watchlist
   loadWatchlist(): Promise<string[]>;

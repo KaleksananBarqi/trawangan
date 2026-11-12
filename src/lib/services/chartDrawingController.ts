@@ -1,10 +1,6 @@
 import type { DrawingToolType, SnapMode } from '../types/market';
-import {
-  saveDrawingsDebounced,
-  loadDrawings,
-  clearDrawings,
-  flushDrawings
-} from './persistence';
+import { storage } from './persistence';
+import type { DrawingScope, IPersistenceService } from './persistence/types';
 import type { CommandDispatcher } from './commandDispatcher';
 import { roundToTickSize, getAdaptiveTickSize } from './priceSnapService';
 import { type ParsedTradingPlan } from './planParserService';
@@ -83,19 +79,20 @@ export interface DrawingContextResolvers {
   getWorkspaceId?: () => string | null | undefined;
 }
 
+export type DrawingPersistencePort = Pick<
+  IPersistenceService,
+  'loadScopedDrawings' | 'saveScopedDrawingsDebounced' | 'flushScopedDrawings' | 'clearScopedDrawings'
+>;
+
 import {
   isSameSymbol,
   isSameInstrument,
-  resolveDrawingKey,
-  resolveDrawingStorageKey,
   normalizeSymbolForMatching,
   getCellMarketIdentity,
 } from './instrumentIdentity';
 export {
   isSameSymbol,
   isSameInstrument,
-  resolveDrawingKey,
-  resolveDrawingStorageKey,
   normalizeSymbolForMatching,
 };
 
@@ -435,10 +432,12 @@ export class ChartDrawingController {
   private currentWorkspaceId: string | null = null;
   private customWorkspaceIdGetter?: () => string | null | undefined;
   private symbolReadyHandler?: (symbol: string) => Promise<void>;
+  private readonly persistence: DrawingPersistencePort;
 
   public readonly planLifecycle: TradingPlanLifecycle;
 
-  constructor() {
+  constructor(persistence: DrawingPersistencePort = storage) {
+    this.persistence = persistence;
     this.planLifecycle = new TradingPlanLifecycle({
       getContext: () => {
         const activeChart = this.getActiveChart();
@@ -598,23 +597,28 @@ export class ChartDrawingController {
           const currentActiveCell = this.workspace?.active;
           const prev = this.lastActiveCellIdentity;
 
-          // Flush perubahan drawing yang tertunda pada sel sebelumnya dengan kunci sel lama sebelum konteks aktif berpindah
+          // Flush perubahan drawing yang tertunda pada sel sebelumnya dengan scope sel lama sebelum konteks aktif berpindah
           if (!this.isRestoring && prev?.cell && prev.cell !== currentActiveCell) {
             const livePrev = getCellMarketIdentity(prev.cell);
             const prevSym = livePrev.symbol || prev.symbol;
             const prevProv = livePrev.providerId || prev.providerId;
             const prevWs = this.getWorkspaceId() ?? prev.workspaceId;
-            const prevKey = resolveDrawingKey(prevProv, prevSym, prevWs);
             const prevChart = this.getChartForCell(prev.cell);
             if (prevChart?.drawings && typeof prevChart.drawings.toJSON === 'function') {
               try {
                 const prevDoc = prevChart.drawings.toJSON();
                 if (prevDoc) {
-                  saveDrawingsDebounced(prevKey, 'GLOBAL', {
+                  const prevScope: DrawingScope = {
+                    workspaceId: prevWs,
+                    providerId: prevProv,
+                    symbol: prevSym,
+                    timeframe: 'GLOBAL',
+                  };
+                  this.persistence.saveScopedDrawingsDebounced(prevScope, {
                     ...prevDoc,
                     _trawangan_meta: this.planLifecycle.toPersistedEnvelope()
                   });
-                  void flushDrawings(prevKey, 'GLOBAL').catch(() => {});
+                  void this.persistence.flushScopedDrawings(prevScope).catch(() => {});
                 }
               } catch (_) {}
             }
@@ -1546,6 +1550,49 @@ export class ChartDrawingController {
   }
 
   /**
+   * Menyusun DrawingScope kanonikal dari sel aktif dan resolver konteks controller.
+   */
+  private resolveActiveDrawingScope(overrides?: {
+    symbol?: string;
+    timeframe?: string | null;
+    providerId?: string | null;
+    workspaceId?: string | null;
+  }): DrawingScope {
+    const activeCell = this.workspace?.active as any;
+    const rawCellSym = typeof activeCell?.symbol === 'string' ? activeCell.symbol.trim() : '';
+    const rawCellProv =
+      typeof activeCell?.providerId === 'string'
+        ? activeCell.providerId.trim()
+        : typeof activeCell?.provider === 'string'
+          ? activeCell.provider.trim()
+          : '';
+    const rawCellTf = typeof activeCell?.timeframe === 'string' ? activeCell.timeframe.trim() : '';
+    const cellIdentity = rawCellSym ? getCellMarketIdentity(activeCell) : null;
+    const hasExplicitCellProvider = Boolean(rawCellProv) || rawCellSym.includes(':');
+
+    const symFromGetter = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
+    const provFromGetter = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
+    const tfFromGetter = typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m';
+
+    const symbol = overrides?.symbol || cellIdentity?.symbol || symFromGetter || 'BTCUSDT';
+    const providerId =
+      overrides?.providerId ||
+      (hasExplicitCellProvider ? cellIdentity?.providerId : undefined) ||
+      provFromGetter ||
+      cellIdentity?.providerId ||
+      'binance';
+    const timeframe = overrides?.timeframe ?? (rawCellTf || tfFromGetter || '15m');
+    const workspaceId = overrides?.workspaceId || this.getWorkspaceId();
+
+    return {
+      workspaceId,
+      providerId,
+      symbol,
+      timeframe,
+    };
+  }
+
+  /**
    * Helper privat untuk membungkus dokumen drawing + `_trawangan_meta` lalu menyimpannya secara persisten.
    */
   private flushDrawingDocumentToStorage(doc: any, envelope?: SerializedPlanEnvelope): void {
@@ -1553,12 +1600,19 @@ export class ChartDrawingController {
     const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
     const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
     const curWs = this.getWorkspaceId();
-    const key = resolveDrawingKey(curProv, curSym, curWs);
 
-    saveDrawingsDebounced(key, 'GLOBAL', {
-      ...doc,
-      _trawangan_meta: envelope ?? this.planLifecycle.toPersistedEnvelope()
-    });
+    this.persistence.saveScopedDrawingsDebounced(
+      {
+        workspaceId: curWs,
+        providerId: curProv,
+        symbol: curSym,
+        timeframe: 'GLOBAL',
+      },
+      {
+        ...doc,
+        _trawangan_meta: envelope ?? this.planLifecycle.toPersistedEnvelope()
+      }
+    );
   }
 
   /**
@@ -1790,10 +1844,7 @@ export class ChartDrawingController {
       }
     }
 
-    const curSym = (this.workspace?.active as any)?.symbol || this.getSymbol();
-    const curTf = (this.workspace?.active as any)?.timeframe || this.getTimeframe();
-    await clearDrawings(curSym, curTf);
-    await clearDrawings(curSym, 'GLOBAL');
+    await this.persistence.clearScopedDrawings(this.resolveActiveDrawingScope());
 
     this.planRevision++;
     this.planLifecycle.resetInMemoryState(true);
@@ -2474,8 +2525,12 @@ export class ChartDrawingController {
       const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
       const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
       const curWs = this.getWorkspaceId();
-      const curKey = resolveDrawingKey(curProv, curSym, curWs);
-      await flushDrawings(curKey, 'GLOBAL');
+      await this.persistence.flushScopedDrawings({
+        workspaceId: curWs,
+        providerId: curProv,
+        symbol: curSym,
+        timeframe: 'GLOBAL',
+      });
     } catch (_) {}
 
     this.isRestoring = true;
@@ -2485,37 +2540,14 @@ export class ChartDrawingController {
       this.planRevision++;
       this.planLifecycle.resetInMemoryState(false);
 
-      const sym = targetSymbol || (this.workspace?.active as any)?.symbol || this.getSymbol();
-      const tf = targetTimeframe || (this.workspace?.active as any)?.timeframe || this.getTimeframe();
-      const prov = targetProvider || this.getProviderId();
-      const ws = targetWorkspace || this.getWorkspaceId();
-      const key = resolveDrawingKey(prov, sym, ws);
-
-      // 3. Coba slot GLOBAL untuk workspace dan bursa aktif
-      let doc = await loadDrawings(key, 'GLOBAL');
-      // 4. Fallback per timeframe bursa aktif
-      if (!doc) {
-        doc = await loadDrawings(key, tf);
-      }
-
-      // 5. Backward Compatibility Fallback:
-      // A. Jika ada workspaceId, coba periksa key lama tanpa prefix workspace (provider:symbol)
-      if (!doc && ws) {
-        const legacyKey = `${(prov || 'binance').toLowerCase()}:${sym.toUpperCase()}`;
-        doc = await loadDrawings(legacyKey, 'GLOBAL');
-        if (!doc) {
-          doc = await loadDrawings(legacyKey, tf);
-        }
-      }
-
-      // B. Jika provider adalah binance dan belum ditemukan, periksa key purba tanpa prefix bursa sama sekali (symbol)
-      if (!doc && (prov || 'binance').toLowerCase() === 'binance') {
-        const legacySym = sym.includes(':') ? sym.split(':')[1] : sym;
-        doc = await loadDrawings(legacySym, 'GLOBAL');
-        if (!doc) {
-          doc = await loadDrawings(legacySym, tf);
-        }
-      }
+      const doc = await this.persistence.loadScopedDrawings(
+        this.resolveActiveDrawingScope({
+          symbol: targetSymbol,
+          timeframe: targetTimeframe,
+          providerId: targetProvider,
+          workspaceId: targetWorkspace,
+        })
+      );
 
       if (doc) {
         // Pulihkan metadata dan activePlans jika tersimpan di payload _trawangan_meta
@@ -2552,8 +2584,12 @@ export class ChartDrawingController {
       const curSym = typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT';
       const curProv = typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance';
       const curWs = targetWorkspace || this.getWorkspaceId();
-      const curKey = resolveDrawingKey(curProv, curSym, curWs);
-      await flushDrawings(curKey, 'GLOBAL');
+      await this.persistence.flushScopedDrawings({
+        workspaceId: curWs,
+        providerId: curProv,
+        symbol: curSym,
+        timeframe: 'GLOBAL',
+      });
     } catch (_) {}
 
     this.isRestoring = true;
@@ -2580,27 +2616,15 @@ export class ChartDrawingController {
         const identity = getCellMarketIdentity(cell);
         const sym = identity.symbol || (typeof this.getSymbol === 'function' ? this.getSymbol() : 'BTCUSDT');
         const prov = identity.providerId || (typeof this.getProviderId === 'function' ? this.getProviderId() : 'binance');
-        const tf = (cell as any)?.timeframe || (typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m');
-        const key = resolveDrawingKey(prov, sym, ws);
+        const tf = (typeof (cell as any)?.timeframe === 'string' && (cell as any).timeframe.trim())
+          || (typeof this.getTimeframe === 'function' ? this.getTimeframe() : '15m');
 
-        let doc = await loadDrawings(key, 'GLOBAL');
-        if (!doc) {
-          doc = await loadDrawings(key, tf);
-        }
-        if (!doc && ws) {
-          const legacyKey = `${(prov || 'binance').toLowerCase()}:${sym.toUpperCase()}`;
-          doc = await loadDrawings(legacyKey, 'GLOBAL');
-          if (!doc) {
-            doc = await loadDrawings(legacyKey, tf);
-          }
-        }
-        if (!doc && (prov || 'binance').toLowerCase() === 'binance') {
-          const legacySym = sym.includes(':') ? sym.split(':')[1] : sym;
-          doc = await loadDrawings(legacySym, 'GLOBAL');
-          if (!doc) {
-            doc = await loadDrawings(legacySym, tf);
-          }
-        }
+        const doc = await this.persistence.loadScopedDrawings({
+          workspaceId: ws,
+          providerId: prov,
+          symbol: sym,
+          timeframe: tf,
+        });
 
         if (doc) {
           if (doc._trawangan_meta) {
