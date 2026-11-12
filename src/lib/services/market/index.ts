@@ -20,14 +20,15 @@ import { CustomFeedAdapter } from './adapters/customAdapter';
 import { MockMarketAdapter } from './adapters/mockAdapter';
 import { YahooFinanceAdapter } from './adapters/yahooAdapter';
 import { MacroIndexAdapter } from './adapters/macroAdapter';
-import { DEFAULT_PROVIDERS, normalizeTicker } from './constants';
+import { normalizeTicker } from './constants';
 import { alertService } from '../alertService';
 import { SymbolSearchEngine } from './symbolSearchService';
 import { isSectionToken } from '../watchlistUtils';
 import { isYahooSymbol } from '../instrumentIdentity';
 import { canonicalizeMacroIndexSymbol, isMacroProviderAlias } from '../macroIndexCatalog';
 import { sharedMacroBasketCoordinator } from '../macroBasketCoordinator';
-import { isTauriEnvironment } from '../../utils/tauriEnv';
+import { storage } from '../persistence';
+import type { IPersistenceService } from '../persistence/types';
 
 /**
  * Memecah simbol pair (baik ber-prefix 'provider:symbol' atau raw) dan menginfer bursa target
@@ -113,8 +114,10 @@ export class MarketFeedService implements IMarketFeedService {
     { providerId: string; state: FeedConnectionState; message?: string; errorCount: number }
   >();
   private unsubscribeAlerts: (() => void) | null = null;
+  private persistence: IPersistenceService;
 
-  constructor() {
+  constructor(persistence: IPersistenceService = storage) {
+    this.persistence = persistence;
     this.registerAdapter(new BinanceAdapter());
     this.registerAdapter(new IndodaxAdapter());
     this.registerAdapter(new BitunixAdapter());
@@ -131,7 +134,7 @@ export class MarketFeedService implements IMarketFeedService {
       },
     });
 
-    // Sinkronkan custom-* endpoint tersimpan di localStorage saat inisialisasi awal
+    // Sinkronkan custom-* endpoint dari cache sinkron PersistenceService saat inisialisasi awal
     for (const cfg of this.getKnownProviderConfigsSync()) {
       this.syncCustomAdapter(cfg);
     }
@@ -171,27 +174,10 @@ export class MarketFeedService implements IMarketFeedService {
   }
 
   /**
-   * Mengembalikan daftar konfigurasi provider secara sinkron (inMemory + fallback localStorage)
+   * Mengembalikan daftar konfigurasi provider secara sinkron dari cache PersistenceService
    */
   public getKnownProviderConfigsSync(): ProviderConfig[] {
-    const byId = new Map<string, ProviderConfig>();
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const raw = localStorage.getItem('trawangan_providers');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            for (const p of parsed) {
-              if (p?.id) byId.set(p.id, p);
-            }
-          }
-        }
-      } catch (_) {}
-    }
-    for (const p of this.inMemoryProviders) {
-      if (p?.id) byId.set(p.id, p);
-    }
-    return Array.from(byId.values());
+    return this.persistence.getProvidersSync();
   }
 
   public getSearchEngine(): SymbolSearchEngine {
@@ -389,6 +375,17 @@ export class MarketFeedService implements IMarketFeedService {
     for (const [k, adapter] of this.adapters.entries()) {
       if (k.toLowerCase().replace(/-/g, '_') === cleanNorm) {
         return adapter;
+      }
+    }
+
+    if (cleanId.startsWith('custom')) {
+      const cfg = this.persistence
+        .getProvidersSync()
+        .find((p) => p.id.toLowerCase().replace(/-/g, '_') === cleanNorm);
+      if (cfg) {
+        this.syncCustomAdapter(cfg);
+        const synced = this.adapters.get(cfg.id.toLowerCase()) || this.adapters.get(cleanId);
+        if (synced) return synced;
       }
     }
 
@@ -881,12 +878,6 @@ export class MarketFeedService implements IMarketFeedService {
 
   // ─── Provider Configuration Management ───
 
-  private isTauri(): boolean {
-    return isTauriEnvironment();
-  }
-
-  private inMemoryProviders: ProviderConfig[] = [...DEFAULT_PROVIDERS];
-
   /**
    * Memperbarui konteks provider aktif di memori tanpa memutasi status `is_active` pada SQLite.
    * Digunakan untuk sinkronisasi sel grid multi-chart atau indeks makro non-tradable per sel.
@@ -898,7 +889,9 @@ export class MarketFeedService implements IMarketFeedService {
       this.activeProviderId = normalized;
       this.resetConnectionError();
     }
-    const targetCfg = this.inMemoryProviders.find((p) => p.id.toLowerCase() === normalized);
+    const targetCfg = this.persistence
+      .getProvidersSync()
+      .find((p) => p.id.toLowerCase() === normalized);
     if (targetCfg) {
       this.syncCustomAdapter(targetCfg);
     }
@@ -906,9 +899,6 @@ export class MarketFeedService implements IMarketFeedService {
 
   public async getActiveProviderId(): Promise<string> {
     const providers = await this.getSavedProviders();
-    for (const p of providers) {
-      this.syncCustomAdapter(p);
-    }
     const active = providers.find((p) => p.is_active);
     const resolved = active && !isMacroProviderAlias(active.id) ? active.id : 'binance';
     this.activeProviderId = resolved;
@@ -923,142 +913,46 @@ export class MarketFeedService implements IMarketFeedService {
       return;
     }
 
+    await this.persistence.setActiveProvider(id);
     this.activeProviderId = id;
     this.resetConnectionError();
 
-    this.inMemoryProviders = this.inMemoryProviders.map((p) => ({
-      ...p,
-      is_active: p.id === id,
-    }));
-    const targetCfg = this.inMemoryProviders.find((p) => p.id === id);
+    let targetCfg = this.persistence.getProvidersSync().find((p) => p.id === id);
+    // Hidrasi daftar provider dari persistence bila provider custom-* belum ada di adapter/cache lokal
+    if (!targetCfg || id.trim().toLowerCase().startsWith('custom')) {
+      const refreshed = await this.getSavedProviders();
+      targetCfg = refreshed.find((p) => p.id === id);
+    }
     if (targetCfg) {
       this.syncCustomAdapter(targetCfg);
     }
 
-    let persistedInTauri = false;
-    if (this.isTauri()) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('set_active_data_provider', { id });
-        persistedInTauri = true;
-
-        // Hidrasi daftar provider dari Rust bila provider custom-* belum ada di adapter/memori lokal
-        if (!targetCfg || id.trim().toLowerCase().startsWith('custom')) {
-          await this.getSavedProviders();
-          this.inMemoryProviders = this.inMemoryProviders.map((p) => ({
-            ...p,
-            is_active: p.id === id,
-          }));
-        }
-      } catch (e) {
-        console.warn('[MarketFeedService] Gagal set_active_data_provider di Rust:', e);
-      }
-    }
-
-    if (!persistedInTauri && typeof localStorage !== 'undefined') {
-      try {
-        const list = await this.getSavedProviders();
-        const updated = list.map((p) => ({
-          ...p,
-          is_active: p.id === id,
-        }));
-        localStorage.setItem('trawangan_providers', JSON.stringify(updated));
-      } catch (_) {}
-    }
-
-    // Segera perbarui polling dengan provider baru pada jalur web maupun desktop Tauri
+    // Segera perbarui polling dengan provider baru pada jalur web maupun desktop
     this.pollTick().catch(() => {});
   }
 
   public async getSavedProviders(): Promise<ProviderConfig[]> {
-    if (this.isTauri()) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const list = await invoke<ProviderConfig[]>('get_data_providers');
-        if (list && list.length > 0) {
-          this.inMemoryProviders = list;
-          for (const p of list) this.syncCustomAdapter(p);
-          return list;
-        }
-      } catch (e) {
-        console.error('[MarketFeedService] Error mengambil data providers dari Rust:', e);
-      }
-    }
-
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const raw = localStorage.getItem('trawangan_providers');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            this.inMemoryProviders = parsed;
-            for (const p of parsed) this.syncCustomAdapter(p);
-            return parsed;
-          }
-        }
-      } catch (_) {}
-    }
-
-    for (const p of this.inMemoryProviders) {
+    const list = await this.persistence.loadProviders();
+    for (const p of list) {
       this.syncCustomAdapter(p);
     }
-    return this.inMemoryProviders;
+    return list;
   }
 
   public async saveProviderConfig(provider: ProviderConfig): Promise<void> {
-    let updated = this.inMemoryProviders.filter((p) => p.id !== provider.id);
+    await this.persistence.saveProvider(provider);
     if (provider.is_active) {
-      updated = updated.map((p) => ({ ...p, is_active: false }));
       this.activeProviderId = provider.id;
     }
-    updated.push(provider);
-    this.inMemoryProviders = updated;
     this.syncCustomAdapter(provider);
-
-    if (this.isTauri()) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('add_or_update_provider', { provider });
-        return;
-      } catch (e) {
-        console.warn('[MarketFeedService] Gagal add_or_update_provider di Rust:', e);
-      }
-    }
-
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const list = await this.getSavedProviders();
-        let listUpdated = list.filter((p) => p.id !== provider.id);
-        if (provider.is_active) {
-          listUpdated = listUpdated.map((p) => ({ ...p, is_active: false }));
-        }
-        listUpdated.push(provider);
-        localStorage.setItem('trawangan_providers', JSON.stringify(listUpdated));
-      } catch (_) {}
-    }
   }
 
   public async deleteProvider(id: string): Promise<void> {
-    this.inMemoryProviders = this.inMemoryProviders.filter((p) => p.id !== id);
+    await this.persistence.deleteProvider(id);
     this.adapters.delete(id);
     this.adapters.delete(id.toLowerCase());
-
-    if (this.isTauri()) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('delete_data_provider', { id });
-        return;
-      } catch (e) {
-        console.warn('[MarketFeedService] Gagal delete_data_provider di Rust:', e);
-      }
-    }
-
-    if (typeof localStorage !== 'undefined') {
-      try {
-        const list = await this.getSavedProviders();
-        const updated = list.filter((p) => p.id !== id);
-        localStorage.setItem('trawangan_providers', JSON.stringify(updated));
-      } catch (_) {}
+    if (this.activeProviderId === id) {
+      this.activeProviderId = 'binance';
     }
   }
 }

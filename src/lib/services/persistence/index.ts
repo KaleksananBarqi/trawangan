@@ -6,6 +6,7 @@ import type {
   AppSettings,
   SavedTradingPlanRecord,
   MultiWatchlistRegistry,
+  ProviderConfig,
 } from '../../types/market';
 import type { AppPreferenceKey, IPersistenceService, PersistenceAdapter } from './types';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
@@ -15,6 +16,7 @@ import {
   buildUpdatedWatchlistRegistry,
   extractActiveWatchlistSymbols,
 } from './watchlistProjection';
+import { DEFAULT_PROVIDERS } from '../market/constants';
 
 export const DEFAULT_WATCHLIST_SYMBOLS: string[] = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
@@ -25,11 +27,43 @@ function isTauriEnvironment(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+function cloneProviders(list: ProviderConfig[]): ProviderConfig[] {
+  return list.map((p) => ({ ...p }));
+}
+
+function mergeProvidersWithDefaults(persisted: ProviderConfig[]): ProviderConfig[] {
+  const validPersisted = Array.isArray(persisted)
+    ? persisted.filter((p) => p && typeof p.id === 'string' && p.id.trim().length > 0)
+    : [];
+  if (validPersisted.length === 0) {
+    return cloneProviders(DEFAULT_PROVIDERS);
+  }
+
+  const hasActivePersisted = validPersisted.some((p) => Boolean(p.is_active));
+  const byId = new Map<string, ProviderConfig>();
+
+  for (const def of DEFAULT_PROVIDERS) {
+    byId.set(def.id, {
+      ...def,
+      is_active: hasActivePersisted ? false : def.is_active,
+    });
+  }
+
+  for (const item of validPersisted) {
+    const existingDefault = byId.get(item.id);
+    byId.set(item.id, existingDefault ? { ...existingDefault, ...item } : { ...item });
+  }
+
+  return Array.from(byId.values());
+}
+
 export class PersistenceService implements IPersistenceService {
   private adapter: PersistenceAdapter;
   private debounceTimers = new Map<string, any>();
   private pendingDebounceData = new Map<string, { symbol: string; timeframe: string; doc: any }>();
   private preferenceCache = new Map<string, string>();
+  private providersCache: ProviderConfig[] | null = null;
+  private adapterPersistedProviderIds: Set<string> | null = null;
   private bootstrapped = false;
   private bootstrapPromise: Promise<void> | null = null;
 
@@ -51,6 +85,8 @@ export class PersistenceService implements IPersistenceService {
     this.bootstrapped = false;
     this.bootstrapPromise = null;
     this.preferenceCache.clear();
+    this.providersCache = null;
+    this.adapterPersistedProviderIds = null;
   }
 
   // ─── Bootstrap & Cache Sinkron Preferensi ───
@@ -60,7 +96,7 @@ export class PersistenceService implements IPersistenceService {
   }
 
   /**
-   * Memuat seluruh entri preferensi secara paralel satu kali saat startup UI (idempoten).
+   * Memuat seluruh entri preferensi dan konfigurasi provider secara paralel satu kali saat startup UI (idempoten).
    */
   async bootstrap(): Promise<void> {
     if (this.bootstrapped) return;
@@ -68,7 +104,10 @@ export class PersistenceService implements IPersistenceService {
 
     const targetAdapter = this.adapter;
     const run = (async () => {
-      const [preferences] = await Promise.all([targetAdapter.loadAllPreferences()]);
+      const [preferences, providers] = await Promise.all([
+        targetAdapter.loadAllPreferences(),
+        targetAdapter.loadProviders(),
+      ]);
       if (this.adapter !== targetAdapter) return;
 
       this.preferenceCache.clear();
@@ -79,6 +118,7 @@ export class PersistenceService implements IPersistenceService {
           }
         }
       }
+      this.syncProvidersCacheFromAdapter(providers);
       this.bootstrapped = true;
     })();
 
@@ -491,6 +531,75 @@ export class PersistenceService implements IPersistenceService {
     await this.adapter.clearTradingPlans();
     this.syncVaultLocalStorageCache([]);
   }
+
+  // ─── Market Data Providers Persistence ───
+
+  private syncProvidersCacheFromAdapter(rawProviders: ProviderConfig[]): ProviderConfig[] {
+    const persistedIds = new Set<string>();
+    if (Array.isArray(rawProviders)) {
+      for (const p of rawProviders) {
+        if (p && typeof p.id === 'string' && p.id.trim().length > 0) {
+          persistedIds.add(p.id);
+        }
+      }
+    }
+    this.adapterPersistedProviderIds = persistedIds;
+    const merged = mergeProvidersWithDefaults(rawProviders);
+    this.providersCache = merged;
+    return merged;
+  }
+
+  getProvidersSync(): ProviderConfig[] {
+    return cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS);
+  }
+
+  async loadProviders(): Promise<ProviderConfig[]> {
+    const raw = await this.adapter.loadProviders();
+    const resolved = this.syncProvidersCacheFromAdapter(raw);
+    return cloneProviders(resolved);
+  }
+
+  async saveProvider(provider: ProviderConfig): Promise<void> {
+    await this.adapter.saveProvider(provider);
+    this.adapterPersistedProviderIds?.add(provider.id);
+
+    const base = cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS).filter(
+      (p) => p.id !== provider.id
+    );
+    const next = provider.is_active
+      ? base.map((p) => ({ ...p, is_active: false }))
+      : base;
+    next.push({ ...provider });
+    this.providersCache = next;
+  }
+
+  async setActiveProvider(id: string): Promise<void> {
+    const defaultCandidate = DEFAULT_PROVIDERS.find((p) => p.id === id);
+    if (
+      this.adapterPersistedProviderIds !== null &&
+      !this.adapterPersistedProviderIds.has(id) &&
+      defaultCandidate
+    ) {
+      // Pastikan preset bawaan TS yang belum di-seed oleh Rust (seperti indodax/yahoo) tetap tersimpan aktif di SQLite
+      await this.adapter.saveProvider({ ...defaultCandidate, is_active: true });
+      this.adapterPersistedProviderIds.add(id);
+    } else {
+      await this.adapter.setActiveProvider(id);
+    }
+
+    const base = cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS);
+    this.providersCache = base.map((p) => ({
+      ...p,
+      is_active: p.id === id,
+    }));
+  }
+
+  async deleteProvider(id: string): Promise<void> {
+    await this.adapter.deleteProvider(id);
+    this.adapterPersistedProviderIds?.delete(id);
+    const base = cloneProviders(this.providersCache ?? DEFAULT_PROVIDERS);
+    this.providersCache = base.filter((p) => p.id !== id);
+  }
 }
 
 
@@ -540,4 +649,10 @@ export const saveTradingPlanToHistory = (
 ) => storage.saveTradingPlanToHistory(record);
 export const deleteTradingPlanFromHistory = (id: string) => storage.deleteTradingPlanFromHistory(id);
 export const clearTradingPlanHistory = () => storage.clearTradingPlanHistory();
+
+export const getProvidersSync = () => storage.getProvidersSync();
+export const loadProviders = () => storage.loadProviders();
+export const saveProvider = (provider: ProviderConfig) => storage.saveProvider(provider);
+export const setActiveProvider = (id: string) => storage.setActiveProvider(id);
+export const deleteProvider = (id: string) => storage.deleteProvider(id);
 

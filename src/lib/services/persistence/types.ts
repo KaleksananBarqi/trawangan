@@ -6,6 +6,7 @@ import type {
   AppSettings,
   SavedTradingPlanRecord,
   MultiWatchlistRegistry,
+  ProviderConfig,
 } from '../../types/market';
 
 export interface DrawingKeyEntry {
@@ -64,6 +65,12 @@ export interface PersistenceAdapter {
   setPreference(key: AppPreferenceKey, valueJson: string): Promise<void>;
   deletePreference(key: AppPreferenceKey): Promise<void>;
   loadAllPreferences(): Promise<AppPreferenceRecord[]>;
+
+  // Konfigurasi provider data pasar (`providers`)
+  loadProviders(): Promise<ProviderConfig[]>;
+  saveProvider(provider: ProviderConfig): Promise<void>;
+  setActiveProvider(id: string): Promise<void>;
+  deleteProvider(id: string): Promise<void>;
 }
 
 /**
@@ -120,6 +127,13 @@ export interface IPersistenceService {
   ): Promise<SavedTradingPlanRecord>;
   deleteTradingPlanFromHistory(id: string): Promise<SavedTradingPlanRecord[]>;
   clearTradingPlanHistory(): Promise<void>;
+
+  // Provider Data Pasar
+  getProvidersSync(): ProviderConfig[];
+  loadProviders(): Promise<ProviderConfig[]>;
+  saveProvider(provider: ProviderConfig): Promise<void>;
+  setActiveProvider(id: string): Promise<void>;
+  deleteProvider(id: string): Promise<void>;
 }
 
 
