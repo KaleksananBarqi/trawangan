@@ -8,7 +8,14 @@ import type {
   MultiWatchlistRegistry,
   ProviderConfig,
 } from '../../types/market';
-import type { AppPreferenceKey, IPersistenceService, PersistenceAdapter, UiPreferenceKey } from './types';
+import type {
+  AppPreferenceKey,
+  IPersistenceService,
+  PersistenceAdapter,
+  PersistenceErrorEvent,
+  PersistenceErrorListener,
+  UiPreferenceKey,
+} from './types';
 import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 import { TauriSqliteAdapter } from './tauriSqliteAdapter';
 import { normalizeWorkspace, WORKSPACE_SCHEMA_VERSION } from './workspaceSchema';
@@ -83,6 +90,7 @@ export class PersistenceService implements IPersistenceService {
   private bootstrapped = false;
   private bootstrapPromise: Promise<void> | null = null;
   private legacyStorageOverride?: LegacyStorageLike | null;
+  private errorListeners = new Set<PersistenceErrorListener>();
 
   constructor(
     customAdapter?: PersistenceAdapter,
@@ -110,6 +118,27 @@ export class PersistenceService implements IPersistenceService {
     this.providersCache = null;
     this.adapterPersistedProviderIds = null;
     this.deletedProviderIds.clear();
+  }
+
+  /**
+   * Mendaftarkan listener untuk kegagalan persistensi latar belakang (mis. `saveDrawingsDebounced`)
+   * dan mengembalikan fungsi unsubscribe.
+   */
+  public onError(listener: PersistenceErrorListener): () => void {
+    this.errorListeners.add(listener);
+    return () => {
+      this.errorListeners.delete(listener);
+    };
+  }
+
+  private emitError(event: PersistenceErrorEvent): void {
+    for (const listener of [...this.errorListeners]) {
+      try {
+        listener(event);
+      } catch (listenerErr) {
+        console.warn('[PersistenceService] Error pada listener onError:', listenerErr);
+      }
+    }
   }
 
   // ─── Bootstrap & Cache Sinkron Preferensi ───
@@ -275,7 +304,7 @@ export class PersistenceService implements IPersistenceService {
 
   async loadDrawings(symbol: string, timeframe: string): Promise<any | null> {
     const raw = await this.adapter.loadDrawings(symbol, timeframe);
-    if (!raw) return null;
+    if (raw === null) return null;
     try {
       return typeof raw === 'string' ? JSON.parse(raw) : raw;
     } catch (err) {
@@ -298,11 +327,27 @@ export class PersistenceService implements IPersistenceService {
         const dataJson = typeof doc === 'string' ? doc : JSON.stringify(doc);
         await this.adapter.saveDrawings(symbol, timeframe, dataJson);
       } catch (err) {
-        console.warn(`[PersistenceService] Gagal menyimpan debounced drawings ${key}:`, err);
+        const detail = err instanceof Error ? err.message : String(err);
+        const message = `Gagal menyimpan gambar (${key}): ${detail}`;
+        console.warn(`[PersistenceService] ${message}`, err);
+        this.emitError({
+          operation: 'saveDrawingsDebounced',
+          message,
+          error: err,
+          symbol,
+          timeframe,
+          key,
+          timestamp: Date.now(),
+        });
       }
     }, delayMs);
 
     this.debounceTimers.set(key, timer);
+  }
+
+  private async persistPendingDrawing(pending: { symbol: string; timeframe: string; doc: any }): Promise<void> {
+    const dataJson = typeof pending.doc === 'string' ? pending.doc : JSON.stringify(pending.doc);
+    await this.adapter.saveDrawings(pending.symbol, pending.timeframe, dataJson);
   }
 
   async flushDrawings(targetSymbol?: string, targetTimeframe?: string): Promise<void> {
@@ -315,16 +360,11 @@ export class PersistenceService implements IPersistenceService {
       const pending = this.pendingDebounceData.get(key);
       this.pendingDebounceData.delete(key);
       if (pending) {
-        try {
-          const dataJson = typeof pending.doc === 'string' ? pending.doc : JSON.stringify(pending.doc);
-          await this.adapter.saveDrawings(pending.symbol, pending.timeframe, dataJson);
-        } catch (err) {
-          console.warn(`[PersistenceService] Gagal flush drawings ${key}:`, err);
-        }
+        await this.persistPendingDrawing(pending);
       }
     } else if (targetSymbol) {
       const prefix = `${targetSymbol}:`;
-      const promises: Promise<void>[] = [];
+      const pendingItems: Array<{ symbol: string; timeframe: string; doc: any }> = [];
       for (const [key, timer] of [...this.debounceTimers.entries()]) {
         if (key.startsWith(prefix)) {
           clearTimeout(timer);
@@ -332,25 +372,26 @@ export class PersistenceService implements IPersistenceService {
           const pending = this.pendingDebounceData.get(key);
           this.pendingDebounceData.delete(key);
           if (pending) {
-            const dataJson = typeof pending.doc === 'string' ? pending.doc : JSON.stringify(pending.doc);
-            promises.push(this.adapter.saveDrawings(pending.symbol, pending.timeframe, dataJson).catch(() => {}));
+            pendingItems.push(pending);
           }
         }
       }
-      await Promise.all(promises);
-    } else {
-      const promises: Promise<void>[] = [];
-      for (const [key, timer] of [...this.debounceTimers.entries()]) {
-        clearTimeout(timer);
-        const pending = this.pendingDebounceData.get(key);
-        if (pending) {
-          const dataJson = typeof pending.doc === 'string' ? pending.doc : JSON.stringify(pending.doc);
-          promises.push(this.adapter.saveDrawings(pending.symbol, pending.timeframe, dataJson).catch(() => {}));
+      // Juga cek jika ada pending data tanpa entri timer aktif
+      for (const [key, pending] of [...this.pendingDebounceData.entries()]) {
+        if (key.startsWith(prefix)) {
+          this.pendingDebounceData.delete(key);
+          pendingItems.push(pending);
         }
       }
+      await Promise.all(pendingItems.map((pending) => this.persistPendingDrawing(pending)));
+    } else {
+      for (const timer of this.debounceTimers.values()) {
+        clearTimeout(timer);
+      }
+      const pendingItems = [...this.pendingDebounceData.values()];
       this.debounceTimers.clear();
       this.pendingDebounceData.clear();
-      await Promise.all(promises);
+      await Promise.all(pendingItems.map((pending) => this.persistPendingDrawing(pending)));
     }
   }
 
@@ -499,7 +540,7 @@ export class PersistenceService implements IPersistenceService {
 
   async loadSettings(): Promise<Partial<AppSettings> | null> {
     const raw = await this.getAndSyncPreference('app_settings');
-    if (!raw) return null;
+    if (raw === null) return null;
     try {
       return JSON.parse(raw);
     } catch {
@@ -520,7 +561,7 @@ export class PersistenceService implements IPersistenceService {
 
   async loadChartDefaultConfig(): Promise<any | null> {
     const raw = await this.getAndSyncPreference('chart_default_config');
-    if (raw) {
+    if (raw !== null) {
       try {
         return JSON.parse(raw);
       } catch (err) {
@@ -684,7 +725,15 @@ export class PersistenceService implements IPersistenceService {
 export const storage = new PersistenceService();
 
 // Export fungsi pembantu langsung untuk kompatibilitas & leverage pemanggil
-export type { AppPreferenceKey, IPersistenceService, UiPreferenceKey } from './types';
+export type {
+  AppPreferenceKey,
+  IPersistenceService,
+  PersistenceErrorEvent,
+  PersistenceErrorListener,
+  PersistenceErrorOperation,
+  UiPreferenceKey,
+} from './types';
+export const onPersistenceError = (listener: PersistenceErrorListener) => storage.onError(listener);
 export const bootstrapPersistence = () => storage.bootstrap();
 export const isPersistenceBootstrapped = () => storage.isBootstrapped();
 

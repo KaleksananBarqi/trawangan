@@ -1103,5 +1103,186 @@ describe('Deep Persistence Module Unit Tests', () => {
       }
     }
   });
+
+  test('Tiket #188: flushDrawings mempropagasi rejection di seluruh cabang (symbol+tf, symbol, global) dan membersihkan timer tertunda', async () => {
+    let saveCalls = 0;
+    const failingAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    failingAdapter.saveDrawings = async (sym, tf) => {
+      saveCalls += 1;
+      throw new Error(`SQLite disk penuh untuk ${sym}:${tf}`);
+    };
+    const svc = new PersistenceService(failingAdapter);
+
+    // 1. Cabang spesifik symbol + timeframe
+    svc.saveDrawingsDebounced('ws1:binance:BTCUSDT', 'GLOBAL', { shapes: [1] }, 30);
+    await assert.rejects(
+      () => svc.flushDrawings('ws1:binance:BTCUSDT', 'GLOBAL'),
+      /SQLite disk penuh untuk ws1:binance:BTCUSDT:GLOBAL/
+    );
+    assert.strictEqual(saveCalls, 1);
+
+    // 2. Cabang per-symbol
+    svc.saveDrawingsDebounced('ws1:binance:ETHUSDT', '15m', { shapes: [2] }, 30);
+    svc.saveDrawingsDebounced('ws1:binance:ETHUSDT', '1h', { shapes: [3] }, 30);
+    await assert.rejects(
+      () => svc.flushDrawings('ws1:binance:ETHUSDT'),
+      /SQLite disk penuh untuk ws1:binance:ETHUSDT/
+    );
+    const callsAfterSymbolFlush = saveCalls;
+
+    // 3. Cabang global (flush seluruh tertunda)
+    svc.saveDrawingsDebounced('ws1:binance:SOLUSDT', 'GLOBAL', { shapes: [4] }, 30);
+    svc.saveDrawingsDebounced('ws1:binance:ADAUSDT', 'GLOBAL', { shapes: [5] }, 30);
+    await assert.rejects(() => svc.flushDrawings(), /SQLite disk penuh/);
+    const callsAfterGlobalFlush = saveCalls;
+    assert.ok(callsAfterGlobalFlush > callsAfterSymbolFlush);
+
+    // Tunggu melewati delayMs untuk memastikan tidak ada stale timer yang menembak ulang setelah flush gagal
+    await new Promise((r) => setTimeout(r, 60));
+    assert.strictEqual(saveCalls, callsAfterGlobalFlush);
+  });
+
+  test('Tiket #188: saveDrawingsDebounced memicu onError terstruktur, mendukung unsubscribe, dan mengisolasi listener yang melempar error', async () => {
+    assert.strictEqual(typeof (persistenceModule as any).onPersistenceError, 'function');
+
+    const rootCause = new Error('SQLite database locked');
+    const failingAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    failingAdapter.saveDrawings = async () => {
+      throw rootCause;
+    };
+    const svc = new PersistenceService(failingAdapter);
+
+    const eventsA: any[] = [];
+    const eventsB: any[] = [];
+
+    const unsubThrowing = svc.onError(() => {
+      throw new Error('Listener rusak tidak boleh memblokir listener lain');
+    });
+    const unsubA = svc.onError((evt) => {
+      eventsA.push(evt);
+    });
+    const unsubB = svc.onError((evt) => {
+      eventsB.push(evt);
+    });
+
+    svc.saveDrawingsDebounced('ws1:binance:BTCUSDT', 'GLOBAL', { shapes: [{ id: 's1' }] }, 25);
+    await new Promise((r) => setTimeout(r, 60));
+
+    assert.strictEqual(eventsA.length, 1);
+    assert.strictEqual(eventsB.length, 1);
+    assert.strictEqual(eventsA[0].operation, 'saveDrawingsDebounced');
+    assert.strictEqual(eventsA[0].symbol, 'ws1:binance:BTCUSDT');
+    assert.strictEqual(eventsA[0].timeframe, 'GLOBAL');
+    assert.strictEqual(eventsA[0].key, 'ws1:binance:BTCUSDT:GLOBAL');
+    assert.strictEqual(eventsA[0].error, rootCause);
+    assert.ok(eventsA[0].message.includes('SQLite database locked'));
+    assert.strictEqual(typeof eventsA[0].timestamp, 'number');
+    assert.ok(eventsA[0].timestamp > 0);
+
+    // Unsubscribe listener A & throwing listener, lalu picu kegagalan kedua
+    unsubA();
+    unsubThrowing();
+
+    svc.saveDrawingsDebounced('ws1:binance:ETHUSDT', '15m', { shapes: [{ id: 's2' }] }, 25);
+    await new Promise((r) => setTimeout(r, 60));
+
+    assert.strictEqual(eventsA.length, 1, 'Listener yang sudah unsubscribe tidak boleh dipanggil lagi');
+    assert.strictEqual(eventsB.length, 2, 'Listener B yang masih aktif tetap menerima event kedua');
+    assert.strictEqual(eventsB[1].symbol, 'ws1:binance:ETHUSDT');
+    assert.strictEqual(eventsB[1].timeframe, '15m');
+
+    unsubB();
+  });
+
+  test('Tiket #188: JSON korup tetap pulih aman (null / []) sementara error pelemparan adapter selalu me-reject seluruh metode async PersistenceService', async () => {
+    // 1. JSON parse korup aman pada loadDrawings, loadSettings, loadChartDefaultConfig (mengembalikan null tanpa melempar)
+    const corruptReadAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    corruptReadAdapter.loadDrawings = async () => '{korup';
+    corruptReadAdapter.getPreference = async (key) => {
+      if (key === 'app_settings') return '{bukan-json';
+      if (key === 'chart_default_config') return '';
+      return null;
+    };
+    const corruptSvc = new PersistenceService(corruptReadAdapter);
+
+    assert.strictEqual(await corruptSvc.loadDrawings('ws1:binance:BTCUSDT', 'GLOBAL'), null);
+    assert.strictEqual(await corruptSvc.loadSettings(), null);
+    assert.strictEqual(await corruptSvc.loadChartDefaultConfig(), null);
+
+    // 2. Adapter yang me-reject seluruh metode async wajib meneruskan rejection tanpa ditelan
+    const boom = new Error('Adapter IPC terputus');
+    const rejectingAdapter: import('../src/lib/services/persistence/types').PersistenceAdapter = {
+      loadDrawings: async () => { throw boom; },
+      saveDrawings: async () => { throw boom; },
+      clearDrawings: async () => { throw boom; },
+      cloneWorkspaceDrawings: async () => { throw boom; },
+      listWorkspaces: async () => { throw boom; },
+      upsertWorkspace: async () => { throw boom; },
+      deleteWorkspace: async () => { throw boom; },
+      listAlerts: async () => { throw boom; },
+      replaceAlerts: async () => { throw boom; },
+      listTradingPlans: async () => { throw boom; },
+      upsertTradingPlan: async () => { throw boom; },
+      deleteTradingPlan: async () => { throw boom; },
+      clearTradingPlans: async () => { throw boom; },
+      loadWatchlist: async () => { throw boom; },
+      saveWatchlist: async () => { throw boom; },
+      loadWatchlistRegistry: async () => { throw boom; },
+      saveWatchlistRegistry: async () => { throw boom; },
+      loadScripts: async () => { throw boom; },
+      saveScript: async () => { throw boom; },
+      deleteScript: async () => { throw boom; },
+      getPreference: async () => { throw boom; },
+      setPreference: async () => { throw boom; },
+      deletePreference: async () => { throw boom; },
+      loadAllPreferences: async () => { throw boom; },
+      loadProviders: async () => { throw boom; },
+      saveProvider: async () => { throw boom; },
+      setActiveProvider: async () => { throw boom; },
+      deleteProvider: async () => { throw boom; },
+    };
+
+    const failSvc = new PersistenceService(rejectingAdapter);
+    const asyncCalls: Array<() => Promise<unknown>> = [
+      () => failSvc.bootstrap(),
+      () => failSvc.setUiPreference('left_rail_collapsed', true),
+      () => failSvc.removeUiPreference('left_rail_collapsed'),
+      () => failSvc.loadDrawings('BTCUSDT', 'GLOBAL'),
+      () => failSvc.clearDrawings('BTCUSDT', 'GLOBAL'),
+      () => failSvc.loadWatchlist(),
+      () => failSvc.saveWatchlist(['BTCUSDT']),
+      () => failSvc.loadWatchlistRegistry(),
+      () => failSvc.saveWatchlistRegistry({ activeWatchlistId: 'default', watchlists: [] }),
+      () => failSvc.loadAlerts(),
+      () => failSvc.saveAlerts([]),
+      () => failSvc.loadWorkspaces(),
+      () => failSvc.saveWorkspace({ name: 'X', symbol: 'BTCUSDT', timeframe: '15m', layout: '1', indicators: [] }),
+      () => failSvc.updateWorkspace({ id: 'w1', name: 'X', symbol: 'BTCUSDT', timeframe: '15m', layout: '1', indicators: [], timestamp: 1 }),
+      () => failSvc.deleteWorkspace('w1'),
+      () => failSvc.cloneWorkspaceDrawings('w1', 'w2'),
+      () => failSvc.setLastActiveWorkspaceId('w1'),
+      () => failSvc.setLastActiveWorkspaceId(null),
+      () => failSvc.loadScripts(),
+      () => failSvc.saveScript({ id: 's1', title: 'S', code: '', is_overlay: true, created_at: 1, updated_at: 1 }),
+      () => failSvc.deleteScript('s1'),
+      () => failSvc.loadSettings(),
+      () => failSvc.saveSettings({ soundEnabled: false }),
+      () => failSvc.loadChartDefaultConfig(),
+      () => failSvc.saveChartDefaultConfig({}),
+      () => failSvc.clearChartDefaultConfig(),
+      () => failSvc.loadTradingPlanHistory(),
+      () => failSvc.saveTradingPlanToHistory({ symbol: 'BTCUSDT', providerId: 'binance', timeframe: '15m', rawText: '', plan: {} as any }),
+      () => failSvc.deleteTradingPlanFromHistory('p1'),
+      () => failSvc.clearTradingPlanHistory(),
+      () => failSvc.loadProviders(),
+      () => failSvc.saveProvider({ id: 'p', name: 'P', rest_url: '', ws_url: '', is_active: false }),
+      () => failSvc.setActiveProvider('binance'),
+      () => failSvc.deleteProvider('binance'),
+    ];
+
+    for (const call of asyncCalls) {
+      await assert.rejects(call, /Adapter IPC terputus/);
+    }
+  });
 });
 

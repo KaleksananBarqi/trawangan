@@ -33,6 +33,23 @@ export interface AppPreferenceRecord {
   updated_at: number;
 }
 
+export type PersistenceErrorOperation = 'saveDrawingsDebounced' | (string & {});
+
+/**
+ * Payload terstruktur yang dikirim ke subscriber `onError` saat operasi latar belakang gagal.
+ */
+export interface PersistenceErrorEvent {
+  operation: PersistenceErrorOperation;
+  message: string;
+  error: unknown;
+  symbol?: string;
+  timeframe?: string;
+  key?: string;
+  timestamp: number;
+}
+
+export type PersistenceErrorListener = (event: PersistenceErrorEvent) => void;
+
 /**
  * Adapter tingkat rendah di balik Seam penyimpanan.
  * Mengabstraksi apakah operasi disimpan ke SQLite via Tauri IPC atau In-Memory / LocalStorage.
@@ -88,6 +105,9 @@ export interface PersistenceAdapter {
  * Memberikan leverage tinggi bagi pemanggil (callers) tanpa kebocoran detail teknis.
  */
 export interface IPersistenceService {
+  // Pelaporan error operasi latar belakang
+  onError(listener: PersistenceErrorListener): () => void;
+
   // Bootstrap & Cache Sinkron Preferensi
   bootstrap(): Promise<void>;
   isBootstrapped(): boolean;
