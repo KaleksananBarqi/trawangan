@@ -81,10 +81,11 @@ export interface WorkspacePlanPort {
   resetInMemoryPlanState?(): void;
   clearCanvasVisuals?(): void;
   restorePlans(plans: any[], showThesisCards?: boolean): void;
-  restoreAllCellDrawings?(targetWorkspace?: string): Promise<void>;
+  restoreAllCellDrawings?(targetWorkspace?: string): Promise<{ hasAuthoritativePlanMeta: boolean } | void>;
   getActivePlans(): any[];
   getAllActivePlans?(): any[];
   isThesisCardsVisible(): boolean;
+  setThesisCardsVisible?(visible: boolean): void;
   getSnapshot?(): { snapMode?: SnapMode; stayMode?: boolean } | undefined;
   setSnapMode?(mode: SnapMode): void;
   setStayMode?(stay: boolean): void;
@@ -227,18 +228,27 @@ export async function restoreWorkspaceChartAndPlans(
   }
 
   let hasRestoredCellDrawings = false;
+  let hasAuthoritativePlanMeta = false;
   if (restoreCellDrawings && typeof plan?.restoreAllCellDrawings === 'function') {
-    await plan.restoreAllCellDrawings(w.id);
+    const cellRestoreResult = await plan.restoreAllCellDrawings(w.id);
     hasRestoredCellDrawings = true;
+    hasAuthoritativePlanMeta = cellRestoreResult?.hasAuthoritativePlanMeta === true;
   }
 
-  if (Array.isArray(w.activePlans) && w.activePlans.length > 0) {
+  if (hasAuthoritativePlanMeta) {
+    // Dokumen gambar (_trawangan_meta) adalah otoritas utama kanvas sehingga snapshot w.activePlans basi
+    // tidak boleh membangkitkan ulang plan yang sudah dihapus pengguna.
+    plan?.setThesisCardsVisible?.(w.showThesisCards ?? true);
+  } else if (Array.isArray(w.activePlans) && w.activePlans.length > 0) {
     plan?.restorePlans?.(w.activePlans, w.showThesisCards ?? true);
-  } else if (resetPlansWhenEmpty && !hasRestoredCellDrawings) {
-    if (typeof plan?.resetInMemoryPlanState === 'function') {
-      plan.resetInMemoryPlanState();
-    } else {
-      plan?.clearAllPlans?.();
+  } else if (resetPlansWhenEmpty) {
+    const existingPlanCount = (plan?.getAllActivePlans?.() ?? plan?.getActivePlans?.() ?? []).length;
+    if (!hasRestoredCellDrawings || existingPlanCount === 0) {
+      if (typeof plan?.resetInMemoryPlanState === 'function') {
+        plan.resetInMemoryPlanState();
+      } else if (!hasRestoredCellDrawings) {
+        plan?.clearAllPlans?.();
+      }
     }
   }
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
-import { chartDrawingController } from '../src/lib/services/chartDrawingController';
+import { ChartDrawingController, chartDrawingController } from '../src/lib/services/chartDrawingController';
 import {
   buildWorkspaceSnapshotPayload,
   executeWorkspaceLoadPipeline,
@@ -11,10 +11,12 @@ import {
   type WorkspacePlanPort,
 } from '../src/lib/services/workspaceLifecycle';
 import {
+  PersistenceService,
   saveChartDefaultConfig,
   clearChartDefaultConfig,
   computeWorkspaceFingerprint,
 } from '../src/lib/services/persistence';
+import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import type { SavedWorkspace } from '../src/lib/types/market';
 import { createMockChartContainer } from './helpers/mockChartContainer';
 
@@ -644,5 +646,205 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.equal(afterRestoreCfg.crosshair?.width, 3, 'crosshair.width non-global wajib tetap dipulihkan');
 
     controller.destroy();
+  });
+
+  test('6. Otoritas tunggal _trawangan_meta vs SavedWorkspace.activePlans & paritas fingerprint pasca-load (#191)', async () => {
+    const adapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    const persistence = new PersistenceService(adapter);
+
+    function createMockDrawingStore() {
+      const items: any[] = [];
+      return {
+        all: () => items,
+        toJSON: () => ({ version: 1, drawings: [...items] }),
+        fromJSON: (doc: any) => {
+          items.length = 0;
+          if (Array.isArray(doc?.drawings)) items.push(...doc.drawings);
+        },
+        add: (d: any) => {
+          const item = { ...d, id: d.id || `d_${items.length + 1}` };
+          items.push(item);
+          return item.id;
+        },
+        removeMany: (ids: string[]) => {
+          for (let i = items.length - 1; i >= 0; i--) {
+            if (ids.includes(items[i].id)) items.splice(i, 1);
+          }
+        },
+        setSnapMode: () => {},
+        setStayMode: () => {},
+      };
+    }
+
+    // Kasus A: Dokumen gambar sudah memiliki _trawangan_meta otoritatif dengan activePlans: [] (dihapus di kanvas),
+    // sementara snapshot SavedWorkspace masih membawa activePlans basi dan showThesisCards: false.
+    await adapter.saveDrawings(
+      'ws-auth-deleted:binance:BTCUSDT',
+      'GLOBAL',
+      JSON.stringify({
+        version: 1,
+        drawings: [],
+        _trawangan_meta: {
+          drawingMetadata: {},
+          activePlans: [],
+          planDrawingIds: [],
+          timestamp: Date.now(),
+        },
+      })
+    );
+
+    const rigA = createFakeCell({ id: 'c1', symbol: 'binance:BTCUSDT' });
+    rigA.chart.drawings = createMockDrawingStore();
+
+    const wsA = createFakeWorkspaceFromCells([rigA.cell]);
+    const ctrlA = new ChartDrawingController(persistence);
+    ctrlA.attachWorkspace(
+      wsA,
+      () => 'BTCUSDT',
+      () => '15m',
+      () => 'binance'
+    );
+
+    const mockChart: WorkspaceChartPort = {
+      clearAllIndicators: () => {},
+      addPineIndicator: async () => {},
+      getActiveIndicators: () => [],
+      toggleIndicatorVisibility: () => {},
+      setPriceStyle: () => {},
+      setBarSpacing: () => {},
+      applyPriceScaleState: () => {},
+      applyPaneWeights: () => {},
+    };
+
+    const staleWorkspacePlan = {
+      id: 'stale-plan-resurrect',
+      symbol: 'BTCUSDT',
+      bias: 'bullish',
+      entry: 65000,
+      stopLoss: 64000,
+      targets: [{ id: 'tp1', label: 'TP1', price: 68000, rMultiple: 3 }],
+      contextZones: [],
+      rationale: 'Stale snapshot plan',
+    };
+
+    const wsSnapshotA: SavedWorkspace = {
+      id: 'ws-auth-deleted',
+      name: 'Auth Deleted Plan',
+      schemaVersion: 2,
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      layout: '1',
+      providerId: 'binance',
+      indicators: [],
+      paneWeights: [],
+      paneLayout: [],
+      nativeIndicators: [],
+      priceScaleState: null,
+      priceStyle: 'candles',
+      barSpacing: 8,
+      showVolume: true,
+      activePlans: [staleWorkspacePlan as any],
+      showThesisCards: false,
+      timestamp: Date.now(),
+    };
+
+    const resA = await executeWorkspaceLoadPipeline({
+      workspace: wsSnapshotA,
+      chart: mockChart,
+      plan: ctrlA as unknown as WorkspacePlanPort,
+      activeProviderId: 'binance',
+      onProviderChange: async () => {},
+      onSymbolChange: async () => {},
+      onTimeframeChange: () => {},
+      onLayoutChange: () => {},
+      onSyncIndicators: () => {},
+    });
+
+    assert.equal(resA.success, true);
+    assert.equal(ctrlA.getAllActivePlans().length, 0, 'Plan yang sudah dihapus di _trawangan_meta tidak boleh dibangkitkan oleh w.activePlans basi');
+    assert.equal(ctrlA.isThesisCardsVisible(), false, 'showThesisCards workspace tetap diterapkan saat _trawangan_meta otoritatif');
+
+    const postLoadA = buildWorkspaceSnapshotPayload({
+      id: 'ws-auth-deleted',
+      name: 'Auth Deleted Plan',
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      layout: '1',
+      providerId: 'binance',
+      chart: mockChart,
+      plan: ctrlA as unknown as WorkspacePlanPort,
+    });
+    assert.deepEqual(postLoadA.activePlans, []);
+    assert.equal(computeWorkspaceFingerprint(postLoadA as any), resA.fingerprint, 'Fingerprint Step 9 & buildWorkspaceSnapshotPayload wajib identik');
+
+    // Kasus B: Dokumen gambar warisan TANPA _trawangan_meta -> fallback ke SavedWorkspace.activePlans tetap bekerja
+    await adapter.saveDrawings(
+      'ws-legacy-no-meta:binance:ETHUSDT',
+      'GLOBAL',
+      JSON.stringify({
+        version: 1,
+        drawings: [{ id: 'legacy_line', type: 'trendline' }],
+      })
+    );
+
+    const rigB = createFakeCell({ id: 'c1', symbol: 'binance:ETHUSDT' });
+    rigB.chart.drawings = createMockDrawingStore();
+
+    const wsB = createFakeWorkspaceFromCells([rigB.cell]);
+    const ctrlB = new ChartDrawingController(persistence);
+    ctrlB.attachWorkspace(
+      wsB,
+      () => 'ETHUSDT',
+      () => '1h',
+      () => 'binance'
+    );
+
+    const legacyPlanB = {
+      id: 'legacy-plan-eth',
+      symbol: 'ETHUSDT',
+      bias: 'bullish',
+      entry: 3000,
+      stopLoss: 2900,
+      targets: [{ id: 'tp1', label: 'TP1', price: 3200, rMultiple: 2 }],
+      contextZones: [],
+      rationale: 'Legacy fallback plan',
+    };
+
+    const resB = await executeWorkspaceLoadPipeline({
+      workspace: {
+        ...wsSnapshotA,
+        id: 'ws-legacy-no-meta',
+        name: 'Legacy No Meta',
+        symbol: 'ETHUSDT',
+        timeframe: '1h',
+        activePlans: [legacyPlanB as any],
+        showThesisCards: true,
+      },
+      chart: mockChart,
+      plan: ctrlB as unknown as WorkspacePlanPort,
+      activeProviderId: 'binance',
+      onProviderChange: async () => {},
+      onSymbolChange: async () => {},
+      onTimeframeChange: () => {},
+      onLayoutChange: () => {},
+      onSyncIndicators: () => {},
+    });
+
+    assert.equal(resB.success, true);
+    assert.equal(ctrlB.getAllActivePlans().length, 1, 'Workspace warisan tanpa _trawangan_meta wajib fallback memulihkan w.activePlans');
+    assert.equal(ctrlB.getAllActivePlans()[0].id, 'legacy-plan-eth');
+
+    const postLoadB = buildWorkspaceSnapshotPayload({
+      id: 'ws-legacy-no-meta',
+      name: 'Legacy No Meta',
+      symbol: 'ETHUSDT',
+      timeframe: '1h',
+      layout: '1',
+      providerId: 'binance',
+      chart: mockChart,
+      plan: ctrlB as unknown as WorkspacePlanPort,
+    });
+    assert.equal(postLoadB.activePlans?.length, 1, 'buildWorkspaceSnapshotPayload tetap mengisi activePlans');
+    assert.equal(computeWorkspaceFingerprint(postLoadB as any), resB.fingerprint);
   });
 });
