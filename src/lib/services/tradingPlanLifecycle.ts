@@ -1407,11 +1407,15 @@ export class TradingPlanLifecycle {
    * - Menyinkronkan Plan-Linked Auto-Alerts
    * - Membersihkan rencana yatim (orphan cleanup) dengan tetap menjaga isolasi simbol
    */
-  reconcileCanvasMutation(activeDrawings?: any[]): SerializedPlanEnvelope {
+  reconcileCanvasMutation(activeDrawings?: any[], symbolFilter?: string): SerializedPlanEnvelope {
     const drawings = activeDrawings ?? this.host.getCanvasDrawings() ?? [];
     this.reattachMetadataToDrawings(drawings);
+    const curSym =
+      (typeof symbolFilter === 'string' && symbolFilter.trim()) ||
+      this.host.getContext().symbol ||
+      'BTCUSDT';
     if (this.isProjecting) {
-      return this.toPersistedEnvelope();
+      return this.toPersistedEnvelope(curSym);
     }
 
     // 1. Bidirectional Sync: Sinkronkan mutasi koordinat anchor posisi ke objek activePlans
@@ -1419,6 +1423,9 @@ export class TradingPlanLifecycle {
       if (drawing && drawing.type === 'position' && drawing.metadata?.planId) {
         const planId = drawing.metadata.planId;
         const plan = this.activePlans.get(planId);
+        if (plan && plan.symbol && !isSamePlanSymbol(plan.symbol, curSym)) {
+          continue;
+        }
         if (plan && Array.isArray(drawing.anchors) && drawing.anchors.length >= 3) {
           const sanitize = (val: unknown) =>
             typeof val === 'number' && !isNaN(val) ? roundToTickSize(val) : undefined;
@@ -1586,7 +1593,6 @@ export class TradingPlanLifecycle {
 
     // 2. Orphan Cleanup: Hapus rencana hanya jika SEMUA drawing miliknya sudah tidak ada di kanvas
     //    DAN rencana tersebut milik simbol aktif saat ini.
-    const curSym = this.host.getContext().symbol || 'BTCUSDT';
     const existingDrawingIds = new Set(drawings.map((d: any) => d?.id).filter(Boolean));
 
     for (const [pid, drawingIdSet] of Array.from(this.planDrawingIds.entries())) {
@@ -1619,55 +1625,176 @@ export class TradingPlanLifecycle {
       }
     }
 
-    return this.toPersistedEnvelope();
+    return this.toPersistedEnvelope(curSym);
   }
 
   /**
-   * Mengekstrak envelope metadata (_trawangan_meta) untuk disimpan bersama dokumen kanvas
+   * Menyaring kumpulan entri envelope (activePlans, planDrawingIds, drawingMetadata) sesuai symbolFilter kanonikal.
    */
-  toPersistedEnvelope(): SerializedPlanEnvelope {
+  private filterEnvelopeEntries(
+    source: {
+      activePlans: Iterable<ActiveTradingPlan>;
+      planDrawingEntries: Iterable<[string, Iterable<string>]>;
+      drawingMetadata: Iterable<[string, any]>;
+    },
+    symbolFilter?: string,
+    assignMissingPlanSymbol = false
+  ): {
+    activePlans: ActiveTradingPlan[];
+    planDrawingIds: Array<[string, string[]]>;
+    drawingMetadata: Record<string, any>;
+  } {
+    const trimmedFilter = typeof symbolFilter === 'string' ? symbolFilter.trim() : '';
+    const activeFilter =
+      trimmedFilter && trimmedFilter !== '*' && trimmedFilter.toUpperCase() !== 'ALL'
+        ? trimmedFilter
+        : null;
+
+    if (!activeFilter) {
+      const metaObj: Record<string, any> = {};
+      for (const [id, meta] of source.drawingMetadata) {
+        metaObj[id] = meta;
+      }
+      const plansArr: ActiveTradingPlan[] = [];
+      for (const p of source.activePlans) {
+        if (p && p.id) plansArr.push(p);
+      }
+      const planDrawingEntries: Array<[string, string[]]> = [];
+      for (const [pid, ids] of source.planDrawingEntries) {
+        if (pid && ids && typeof (ids as any)[Symbol.iterator] === 'function') {
+          planDrawingEntries.push([pid, Array.from(ids)]);
+        }
+      }
+      return {
+        drawingMetadata: metaObj,
+        activePlans: plansArr,
+        planDrawingIds: planDrawingEntries
+      };
+    }
+
+    const plansArr: ActiveTradingPlan[] = [];
+    for (const p of source.activePlans) {
+      if (!p || !p.id) continue;
+      if (!p.symbol || isSamePlanSymbol(p.symbol, activeFilter)) {
+        plansArr.push(
+          assignMissingPlanSymbol && !p.symbol ? { ...p, symbol: activeFilter } : p
+        );
+      }
+    }
+    const allowedPlanIds = new Set(plansArr.map((p) => p.id));
+
+    const planDrawingEntries: Array<[string, string[]]> = [];
+    const foreignDrawingIds = new Set<string>();
+    const localDrawingToPlan = new Map<string, string>();
+
+    for (const [pid, ids] of source.planDrawingEntries) {
+      if (!pid || !ids) continue;
+      const idList = Array.from(ids);
+      for (const did of idList) {
+        localDrawingToPlan.set(did, pid);
+      }
+      if (allowedPlanIds.has(pid)) {
+        planDrawingEntries.push([pid, idList]);
+      } else {
+        for (const did of idList) {
+          foreignDrawingIds.add(did);
+        }
+      }
+    }
+
     const metaObj: Record<string, any> = {};
-    for (const [id, meta] of this.drawingMetadata.entries()) {
+    for (const [id, meta] of source.drawingMetadata) {
+      const linkedPlanId =
+        (meta && typeof meta === 'object' ? meta.planId : undefined) ??
+        localDrawingToPlan.get(id) ??
+        this.drawingPlanMap.get(id);
+      if (linkedPlanId) {
+        const existingPlan = this.activePlans.get(linkedPlanId);
+        const isExistingSameSymbol =
+          Boolean(existingPlan) &&
+          (!existingPlan!.symbol || isSamePlanSymbol(existingPlan!.symbol, activeFilter));
+        if (allowedPlanIds.has(linkedPlanId) || (assignMissingPlanSymbol && isExistingSameSymbol)) {
+          metaObj[id] = meta;
+        }
+        continue;
+      }
+      if (foreignDrawingIds.has(id)) {
+        continue;
+      }
+      if (
+        meta &&
+        typeof meta === 'object' &&
+        typeof meta.symbol === 'string' &&
+        meta.symbol.trim() &&
+        !isSamePlanSymbol(meta.symbol, activeFilter)
+      ) {
+        continue;
+      }
       metaObj[id] = meta;
     }
-    const plansArr = Array.from(this.activePlans.values());
-    const planDrawingEntries: Array<[string, string[]]> = Array.from(
-      this.planDrawingIds.entries()
-    ).map(([k, set]) => [k, Array.from(set)]);
 
     return {
       drawingMetadata: metaObj,
       activePlans: plansArr,
-      planDrawingIds: planDrawingEntries,
+      planDrawingIds: planDrawingEntries
+    };
+  }
+
+  /**
+   * Mengekstrak envelope metadata (_trawangan_meta) untuk disimpan bersama dokumen kanvas.
+   * Saat `symbolFilter` diberikan (non-kosong dan bukan `*`/`ALL`), hasil disaring secara kanonikal
+   * agar state instrumen lain tidak bocor ke dokumen sel yang sedang disimpan.
+   */
+  toPersistedEnvelope(symbolFilter?: string): SerializedPlanEnvelope {
+    const filtered = this.filterEnvelopeEntries(
+      {
+        activePlans: this.activePlans.values(),
+        planDrawingEntries: this.planDrawingIds.entries(),
+        drawingMetadata: this.drawingMetadata.entries()
+      },
+      symbolFilter,
+      false
+    );
+
+    return {
+      ...filtered,
       timestamp: Date.now()
     };
   }
 
   /**
-   * Hidrasi state rencana dari payload _trawangan_meta yang dimuat dari storage
+   * Hidrasi state rencana dari payload _trawangan_meta yang dimuat dari storage.
+   * Bila `symbolFilter` diberikan, state plan lintas instrumen diabaikan agar dokumen satu sel
+   * tidak mencemari state instrumen lain.
    */
-  hydrateFromEnvelope(meta?: Partial<SerializedPlanEnvelope> | null): void {
+  hydrateFromEnvelope(
+    meta?: Partial<SerializedPlanEnvelope> | null,
+    symbolFilter?: string
+  ): void {
     if (!meta) return;
-    if (meta.drawingMetadata && typeof meta.drawingMetadata === 'object') {
-      for (const [id, m] of Object.entries(meta.drawingMetadata)) {
-        this.drawingMetadata.set(id, m);
-      }
+    const filtered = this.filterEnvelopeEntries(
+      {
+        activePlans: Array.isArray(meta.activePlans) ? meta.activePlans : [],
+        planDrawingEntries: Array.isArray(meta.planDrawingIds) ? meta.planDrawingIds : [],
+        drawingMetadata:
+          meta.drawingMetadata && typeof meta.drawingMetadata === 'object'
+            ? Object.entries(meta.drawingMetadata)
+            : []
+      },
+      symbolFilter,
+      true
+    );
+
+    for (const [id, m] of Object.entries(filtered.drawingMetadata)) {
+      this.drawingMetadata.set(id, m);
     }
-    if (Array.isArray(meta.activePlans)) {
-      for (const p of meta.activePlans) {
-        if (p && p.id) {
-          this.activePlans.set(p.id, p);
-        }
-      }
+    for (const p of filtered.activePlans) {
+      this.activePlans.set(p.id, p);
     }
-    if (Array.isArray(meta.planDrawingIds)) {
-      for (const [k, ids] of meta.planDrawingIds) {
-        if (k && Array.isArray(ids)) {
-          this.planDrawingIds.set(k, new Set(ids));
-          for (const did of ids) {
-            this.drawingPlanMap.set(did, k);
-          }
-        }
+    for (const [k, ids] of filtered.planDrawingIds) {
+      this.planDrawingIds.set(k, new Set(ids));
+      for (const did of ids) {
+        this.drawingPlanMap.set(did, k);
       }
     }
   }
