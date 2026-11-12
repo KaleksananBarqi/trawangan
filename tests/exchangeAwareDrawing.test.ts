@@ -1,10 +1,8 @@
 // Unit & Seam Tests untuk Tiket #65: Exchange-Aware Drawing Isolation and Legacy Fallback Persistence
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  ChartDrawingController,
-  resolveDrawingKey,
-} from '../src/lib/services/chartDrawingController';
+import { ChartDrawingController } from '../src/lib/services/chartDrawingController';
+import { resolveDrawingKey } from '../src/lib/services/instrumentIdentity';
 import { storage } from '../src/lib/services/persistence';
 
 describe('Tiket #65: Exchange-Aware Drawing Isolation and Legacy Fallback Persistence', () => {

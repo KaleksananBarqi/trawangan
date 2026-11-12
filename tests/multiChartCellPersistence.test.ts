@@ -7,9 +7,41 @@ import {
   buildWorkspaceSnapshotPayload,
   type WorkspacePlanPort,
 } from '../src/lib/services/workspaceLifecycle';
-import { storage } from '../src/lib/services/persistence';
+import { PersistenceService, storage } from '../src/lib/services/persistence';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import { createMockChartContainer } from './helpers/mockChartContainer';
+
+/**
+ * Helper deterministik untuk menunggu sinyal pemanggilan spy asinkron tanpa bergantung pada delay tetap.
+ */
+function createCallWaiter() {
+  const waiters: Array<() => void> = [];
+  return {
+    notify: () => {
+      const pending = waiters.splice(0, waiters.length);
+      for (const check of pending) {
+        check();
+      }
+    },
+    waitUntil: async (predicate: () => boolean, label: string, timeoutMs = 1000): Promise<void> => {
+      if (predicate()) return;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`Timeout menunggu kondisi: ${label}`));
+        }, timeoutMs);
+        const check = () => {
+          if (predicate()) {
+            clearTimeout(timer);
+            resolve();
+          } else {
+            waiters.push(check);
+          }
+        };
+        waiters.push(check);
+      });
+    },
+  };
+}
 
 function createFakeMultiCellVelaWorkspace(initialLayout: string = '4') {
   const wsListeners = new Map<string, Set<(payload?: any) => void>>();
@@ -620,8 +652,8 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
   });
 
   it('4. ChartDrawingController memulihkan drawing masing-masing sel saat restoreAllCellDrawings dan sync saat cell:active', async () => {
-    const adapter = new InMemoryLocalStorageAdapter();
-    storage.setAdapter(adapter);
+    const adapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    const persistence = new PersistenceService(adapter);
 
     const btcDoc = { version: 1, drawings: [{ id: 'd_btc', type: 'trendline' }] };
     const ethDoc = { version: 1, drawings: [{ id: 'd_eth', type: 'hline' }] };
@@ -635,9 +667,9 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
     cells[1].setSymbol('binance:ETHUSDT');
     mock.ws.setActiveCell('c1');
 
-    const drawingCtrl = new ChartDrawingController();
+    const drawingCtrl = new ChartDrawingController(persistence);
     drawingCtrl.setWorkspaceId('ws-draw');
-    drawingCtrl.attachWorkspace(
+    const detach = drawingCtrl.attachWorkspace(
       mock.ws,
       () => (mock.ws.active.symbol.split(':')[1] || 'BTCUSDT'),
       () => '15m',
@@ -645,22 +677,26 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
       () => 'ws-draw'
     );
 
-    await drawingCtrl.restoreAllCellDrawings('ws-draw');
-    assert.deepEqual(
-      cells[0].chart.drawings.all().map((d: any) => d.id),
-      ['d_btc']
-    );
-    assert.deepEqual(
-      cells[1].chart.drawings.all().map((d: any) => d.id),
-      ['d_eth']
-    );
+    try {
+      await drawingCtrl.restoreAllCellDrawings('ws-draw');
+      assert.deepEqual(
+        cells[0].chart.drawings.all().map((d: any) => d.id),
+        ['d_btc']
+      );
+      assert.deepEqual(
+        cells[1].chart.drawings.all().map((d: any) => d.id),
+        ['d_eth']
+      );
 
-    // Pindah active cell ke c2 -> activeDrawings mencerminkan drawing milik ETHUSDT
-    mock.ws.setActiveCell('c2');
-    assert.deepEqual(
-      drawingCtrl.getSnapshot().activeDrawings.map((d: any) => d.id),
-      ['d_eth']
-    );
+      // Pindah active cell ke c2 -> activeDrawings mencerminkan drawing milik ETHUSDT
+      mock.ws.setActiveCell('c2');
+      assert.deepEqual(
+        drawingCtrl.getSnapshot().activeDrawings.map((d: any) => d.id),
+        ['d_eth']
+      );
+    } finally {
+      detach();
+    }
   });
 
   it('5. R3: Urutan restorasi applyCellsSnapshot sesuai Fase 5, getCellsSnapshot menyembunyikan cells[].indicators saat synced, & multi-cell memulihkan sharedIndicators', async () => {
@@ -815,14 +851,16 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
   });
 
   it('6. R4: perpindahan cell:active langsung mem-flush drawing sel sebelumnya dengan kunci sel lama sebelum beralih', async () => {
-    const adapter = new InMemoryLocalStorageAdapter();
+    const adapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    const persistence = new PersistenceService(adapter);
     const savedCalls: Array<{ symbol: string; tf: string; json: string }> = [];
+    const saveWaiter = createCallWaiter();
     const origSave = adapter.saveDrawings.bind(adapter);
     adapter.saveDrawings = async (symbol: string, tf: string, data: string) => {
+      await origSave(symbol, tf, data);
       savedCalls.push({ symbol, tf, json: data });
-      return origSave(symbol, tf, data);
+      saveWaiter.notify();
     };
-    storage.setAdapter(adapter);
 
     const mock = createFakeMultiCellVelaWorkspace('2v');
     mock.ws.setLayout('2v');
@@ -831,9 +869,9 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
     cells[1].setSymbol('binance:ETHUSDT');
     mock.ws.setActiveCell('c1');
 
-    const drawingCtrl = new ChartDrawingController();
+    const drawingCtrl = new ChartDrawingController(persistence);
     drawingCtrl.setWorkspaceId('ws-switch');
-    drawingCtrl.attachWorkspace(
+    const detach = drawingCtrl.attachWorkspace(
       mock.ws,
       () => {
         const sym = mock.ws.active?.symbol || 'BTCUSDT';
@@ -847,26 +885,33 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
       () => 'ws-switch'
     );
 
-    // Simulasi user menggambar di c1 (BTCUSDT) lalu langsung klik pindah ke c2 (ETHUSDT) sebelum debounce 400ms
-    cells[0].chart.drawings.fromJSON({
-      version: 1,
-      drawings: [{ id: 'd_btc_unsaved', type: 'trendline' }],
-    });
-    mock.ws.setActiveCell('c2');
+    try {
+      // Simulasi user menggambar di c1 (BTCUSDT) lalu langsung klik pindah ke c2 (ETHUSDT) sebelum debounce 400ms
+      cells[0].chart.drawings.fromJSON({
+        version: 1,
+        drawings: [{ id: 'd_btc_unsaved', type: 'trendline' }],
+      });
+      const waitForBtcFlush = saveWaiter.waitUntil(
+        () => savedCalls.some((c) => c.symbol === 'ws-switch:binance:BTCUSDT'),
+        'flush drawing sel c1 BTCUSDT'
+      );
+      mock.ws.setActiveCell('c2');
+      await waitForBtcFlush;
 
-    // Tunggu microtask flush asinkron
-    await new Promise((r) => setTimeout(r, 15));
-
-    const btcFlush = savedCalls.find((c) => c.symbol === 'ws-switch:binance:BTCUSDT');
-    assert.ok(btcFlush, 'Drawing sel c1 wajib langsung di-flush ke kunci BTCUSDT saat pindah ke c2');
-    assert.ok(
-      JSON.parse(btcFlush!.json).drawings.some((d: any) => d.id === 'd_btc_unsaved'),
-      'Payload flush wajib memuat d_btc_unsaved milik sel c1'
-    );
-    const leakedToEth = savedCalls.find(
-      (c) => c.symbol === 'ws-switch:binance:ETHUSDT' && c.json.includes('d_btc_unsaved')
-    );
-    assert.equal(leakedToEth, undefined, 'Drawing sel lama tidak boleh tertulis ke kunci sel baru');
+      const btcFlush = savedCalls.find((c) => c.symbol === 'ws-switch:binance:BTCUSDT');
+      assert.ok(btcFlush, 'Drawing sel c1 wajib langsung di-flush ke kunci BTCUSDT saat pindah ke c2');
+      assert.ok(
+        JSON.parse(btcFlush!.json).drawings.some((d: any) => d.id === 'd_btc_unsaved'),
+        'Payload flush wajib memuat d_btc_unsaved milik sel c1'
+      );
+      const leakedToEth = savedCalls.find(
+        (c) => c.symbol === 'ws-switch:binance:ETHUSDT' && c.json.includes('d_btc_unsaved')
+      );
+      assert.equal(leakedToEth, undefined, 'Drawing sel lama tidak boleh tertulis ke kunci sel baru');
+    } finally {
+      detach();
+      await persistence.flushScopedDrawings();
+    }
   });
 
   it('7. R5: ChartDrawingController.attachWorkspace() cleanup melepas listener workspace.on (cell:created & cell:active)', () => {
@@ -927,5 +972,242 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
     ]);
 
     controller.destroy();
+  });
+
+  it('9. Tiket #190: Isolasi _trawangan_meta per instrumen saat onCellActive & handleDrawingMutated serta tanpa penulisan Vault saat drag kanvas', async () => {
+    const adapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    const savedCalls: Array<{ symbol: string; tf: string; doc: any }> = [];
+    const vaultWriteCalls: any[] = [];
+    const saveWaiter = createCallWaiter();
+    const vaultWaiter = createCallWaiter();
+
+    const origSaveDrawings = adapter.saveDrawings.bind(adapter);
+    adapter.saveDrawings = async (symbol: string, tf: string, data: string) => {
+      await origSaveDrawings(symbol, tf, data);
+      savedCalls.push({ symbol, tf, doc: JSON.parse(data) });
+      saveWaiter.notify();
+    };
+    const origUpsertPlan = adapter.upsertTradingPlan.bind(adapter);
+    adapter.upsertTradingPlan = async (record: any) => {
+      await origUpsertPlan(record);
+      vaultWriteCalls.push(record);
+      vaultWaiter.notify();
+    };
+    storage.setAdapter(adapter);
+
+    const mock = createFakeMultiCellVelaWorkspace('2v');
+    mock.ws.setLayout('2v');
+    const [c1, c2] = mock.ws.cells();
+    c1.setSymbol('binance:BTCUSDT');
+    c2.setSymbol('binance:ETHUSDT');
+    mock.ws.setActiveCell('c1');
+
+    // Dukung add/removeMany pada kedua mock chart agar projectPlan & mutasi berjalan penuh
+    for (const cell of [c1, c2]) {
+      const dApi = cell.chart.drawings;
+      dApi.add = (type: string, spec: any) => {
+        const cur = dApi.toJSON();
+        const item = { id: spec.id || `draw_${cell.id}_${cur.drawings.length + 1}`, type, ...spec };
+        cur.drawings.push(item);
+        dApi.fromJSON(cur);
+        return item;
+      };
+      dApi.removeMany = (ids: string[]) => {
+        const cur = dApi.toJSON();
+        cur.drawings = (cur.drawings || []).filter((d: any) => !ids.includes(d.id));
+        dApi.fromJSON(cur);
+      };
+    }
+
+    // Seed dokumen awal masing-masing sel dengan satu plan terpisah
+    const btcDoc = {
+      version: 1,
+      drawings: [
+        {
+          id: 'd_btc_pos_1',
+          type: 'position',
+          anchors: [
+            { time: 1700000000000, price: 65000 },
+            { time: 1700000900000, price: 63000 },
+            { time: 1700001800000, price: 68000 },
+          ],
+          metadata: { planId: 'plan_btc', stageIndex: 1, lastEntry: 65000, lastStop: 63000, lastTarget: 68000 },
+        },
+      ],
+      _trawangan_meta: {
+        activePlans: [
+          {
+            id: 'plan_btc',
+            symbol: 'BTCUSDT',
+            bias: 'LONG',
+            entry: 65000,
+            stopLoss: 63000,
+            targets: [{ price: 68000, label: 'TP1', rMultiple: 1.5 }],
+            riskAmount: 2000,
+            reasons: [],
+            rawText: '',
+          },
+        ],
+        planDrawingIds: [['plan_btc', ['d_btc_pos_1']]],
+        drawingMetadata: {
+          d_btc_pos_1: { planId: 'plan_btc', stageIndex: 1, lastEntry: 65000, lastStop: 63000, lastTarget: 68000 },
+        },
+        timestamp: Date.now(),
+      },
+    };
+
+    const ethDoc = {
+      version: 1,
+      drawings: [
+        {
+          id: 'd_eth_pos_1',
+          type: 'position',
+          anchors: [
+            { time: 1700000000000, price: 3200 },
+            { time: 1700000900000, price: 3300 },
+            { time: 1700001800000, price: 3000 },
+          ],
+          metadata: { planId: 'plan_eth', stageIndex: 1, lastEntry: 3200, lastStop: 3300, lastTarget: 3000 },
+        },
+      ],
+      _trawangan_meta: {
+        activePlans: [
+          {
+            id: 'plan_eth',
+            symbol: 'ETHUSDT',
+            bias: 'SHORT',
+            entry: 3200,
+            stopLoss: 3300,
+            targets: [{ price: 3000, label: 'TP1', rMultiple: 2 }],
+            riskAmount: 100,
+            reasons: [],
+            rawText: '',
+          },
+        ],
+        planDrawingIds: [['plan_eth', ['d_eth_pos_1']]],
+        drawingMetadata: {
+          d_eth_pos_1: { planId: 'plan_eth', stageIndex: 1, lastEntry: 3200, lastStop: 3300, lastTarget: 3000 },
+        },
+        timestamp: Date.now(),
+      },
+    };
+
+    const drawingCtrl = new ChartDrawingController();
+    drawingCtrl.setWorkspaceId('ws-iso');
+    const detach = drawingCtrl.attachWorkspace(
+      mock.ws,
+      () => (mock.ws.active.symbol.split(':')[1] || 'BTCUSDT'),
+      () => '15m',
+      () => (mock.ws.active.symbol.split(':')[0] || 'binance'),
+      () => 'ws-iso'
+    );
+
+    try {
+      await adapter.saveDrawings('ws-iso:binance:BTCUSDT', 'GLOBAL', JSON.stringify(btcDoc));
+      await adapter.saveDrawings('ws-iso:binance:ETHUSDT', 'GLOBAL', JSON.stringify(ethDoc));
+
+      await drawingCtrl.restoreAllCellDrawings('ws-iso');
+      savedCalls.length = 0;
+      vaultWriteCalls.length = 0;
+
+      // 1. Berpindah dari c1 (BTCUSDT) ke c2 (ETHUSDT) -> flush c1 hanya boleh memuat state BTCUSDT
+      const waitForBtcSwitchFlush = saveWaiter.waitUntil(
+        () => savedCalls.some((c) => c.symbol === 'ws-iso:binance:BTCUSDT'),
+        'flush sel c1 BTCUSDT saat cell:active'
+      );
+      mock.ws.setActiveCell('c2');
+      await waitForBtcSwitchFlush;
+
+      const btcFlush = savedCalls.find((c) => c.symbol === 'ws-iso:binance:BTCUSDT');
+      assert.ok(btcFlush, 'Switch sel wajib mem-flush dokumen c1 (BTCUSDT)');
+      assert.deepEqual(
+        btcFlush.doc._trawangan_meta.activePlans.map((p: any) => p.id),
+        ['plan_btc'],
+        'Envelope BTCUSDT tidak boleh membocorkan plan milik ETHUSDT'
+      );
+      assert.deepEqual(
+        btcFlush.doc._trawangan_meta.planDrawingIds.map(([pid]: [string, string[]]) => pid),
+        ['plan_btc']
+      );
+      assert.equal(btcFlush.doc._trawangan_meta.drawingMetadata.d_eth_pos_1, undefined);
+
+      // 2. Drag Stop Loss di c2 (ETHUSDT) lalu handleDrawingMutated -> simpan ETHUSDT terisolasi dan tanpa Vault write
+      savedCalls.length = 0;
+      const ethCanvasDrawings = c2.chart.drawings.all();
+      ethCanvasDrawings[0].anchors[1].price = 3350;
+      c2.chart.drawings.fromJSON({ version: 1, drawings: ethCanvasDrawings });
+
+      drawingCtrl.handleDrawingMutated();
+      await storage.flushDrawings('ws-iso:binance:ETHUSDT', 'GLOBAL');
+
+      const ethSave = savedCalls.find((c) => c.symbol === 'ws-iso:binance:ETHUSDT');
+      assert.ok(ethSave, 'Mutasi di c2 wajib tersimpan ke dokumen ETHUSDT');
+      assert.deepEqual(
+        ethSave.doc._trawangan_meta.activePlans.map((p: any) => p.id),
+        ['plan_eth'],
+        'Envelope ETHUSDT tidak boleh membocorkan plan milik BTCUSDT'
+      );
+      assert.equal(ethSave.doc._trawangan_meta.activePlans[0].stopLoss, 3350);
+      assert.equal(ethSave.doc._trawangan_meta.drawingMetadata.d_btc_pos_1, undefined);
+      assert.equal(
+        vaultWriteCalls.length,
+        0,
+        'Drag kanvas (Bidirectional Sync) tidak boleh menulis ke Trade Plan Vault'
+      );
+
+      // 3. Proyeksi plan baru via createMultiTargetPosition / updateTradingPlan tetap menulis ke Vault,
+      // dan flush-nya tetap terisolasi di ETHUSDT
+      const waitForVaultCreate = vaultWaiter.waitUntil(
+        () => vaultWriteCalls.length >= 1,
+        'penulisan Trade Plan Vault saat createMultiTargetPosition'
+      );
+      drawingCtrl.createMultiTargetPosition(
+        {
+          symbol: 'ETHUSDT',
+          bias: 'SHORT',
+          entry: 3250,
+          stopLoss: 3400,
+          targets: [{ price: 3000, label: 'TP1' }],
+          reasons: [],
+          rawText: 'Short ETH',
+        } as any,
+        { planId: 'plan_eth_new', replaceExistingOnSymbol: true }
+      );
+      await storage.flushDrawings('ws-iso:binance:ETHUSDT', 'GLOBAL');
+      await waitForVaultCreate;
+
+      assert.equal(vaultWriteCalls.length, 1, 'createMultiTargetPosition eksplisit wajib menulis ke Trade Plan Vault');
+      const waitForVaultUpdate = vaultWaiter.waitUntil(
+        () => vaultWriteCalls.length >= 2,
+        'penulisan Trade Plan Vault saat updateTradingPlan'
+      );
+      await drawingCtrl.updateTradingPlan('plan_eth_new', {
+        symbol: 'ETHUSDT',
+        bias: 'SHORT',
+        entry: 3260,
+        stopLoss: 3410,
+        targets: [{ price: 3000, label: 'TP1' }],
+        reasons: [],
+        rawText: 'Short ETH updated',
+      } as any);
+      await storage.flushDrawings('ws-iso:binance:ETHUSDT', 'GLOBAL');
+      await waitForVaultUpdate;
+      assert.equal(vaultWriteCalls.length, 2, 'updateTradingPlan eksplisit wajib menulis ke Trade Plan Vault');
+
+      const ethAfterProject = savedCalls
+        .filter((c) => c.symbol === 'ws-iso:binance:ETHUSDT')
+        .pop();
+      assert.ok(ethAfterProject);
+      assert.deepEqual(
+        ethAfterProject.doc._trawangan_meta.activePlans.map((p: any) => p.id),
+        ['plan_eth_new'],
+        'Dokumen ETHUSDT tetap tidak boleh membawa plan_btc setelah projectPlan/updateTradingPlan'
+      );
+      assert.equal(drawingCtrl.getAllActivePlans().some((p) => p.id === 'plan_btc'), true);
+    } finally {
+      detach();
+      await storage.flushDrawings();
+      storage.setAdapter(new InMemoryLocalStorageAdapter());
+    }
   });
 });

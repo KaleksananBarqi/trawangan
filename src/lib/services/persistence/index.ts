@@ -10,7 +10,9 @@ import type {
 } from '../../types/market';
 import type {
   AppPreferenceKey,
+  DrawingScope,
   IPersistenceService,
+  PersistedDrawingDocument,
   PersistenceAdapter,
   PersistenceErrorEvent,
   PersistenceErrorListener,
@@ -25,6 +27,7 @@ import {
 } from './watchlistProjection';
 import { DEFAULT_PROVIDERS } from '../market/constants';
 import { migrateLegacyLocalStorage, type LegacyStorageLike } from './legacyMigration';
+import { resolveDrawingStorageKey } from '../instrumentIdentity';
 
 export const DEFAULT_WATCHLIST_SYMBOLS: string[] = [
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
@@ -408,6 +411,141 @@ export class PersistenceService implements IPersistenceService {
     await this.adapter.clearDrawings(symbol, timeframe);
   }
 
+  /**
+   * Menyusun kunci penyimpanan kanonikal dari komponen DrawingScope.
+   */
+  private resolveCanonicalScopeKey(
+    scope: Pick<DrawingScope, 'providerId' | 'symbol' | 'workspaceId'>
+  ): string {
+    return resolveDrawingStorageKey(
+      scope.providerId ?? undefined,
+      scope.symbol,
+      scope.workspaceId
+    );
+  }
+
+  /**
+   * Menormalkan nilai timeframe pada DrawingScope menjadi string non-kosong atau null.
+   */
+  private normalizeScopeTimeframe(timeframe?: string | null): string | null {
+    return timeframe && timeframe.trim() ? timeframe.trim() : null;
+  }
+
+  /**
+   * Menyusun daftar kandidat lookup (kunci, timeframe) berurutan untuk 6-tahap fallback warisan tanpa duplikasi.
+   */
+  private buildScopedLookupCandidates(scope: DrawingScope): Array<{ key: string; timeframe: string }> {
+    const candidates: Array<{ key: string; timeframe: string }> = [];
+    const seen = new Set<string>();
+    const pushCandidate = (key: string, timeframe: string) => {
+      if (!key || !timeframe) return;
+      const dedupKey = `${key}\u0000${timeframe}`;
+      if (seen.has(dedupKey)) return;
+      seen.add(dedupKey);
+      candidates.push({ key, timeframe });
+    };
+
+    const tf = this.normalizeScopeTimeframe(scope.timeframe);
+    const canonicalKey = this.resolveCanonicalScopeKey(scope);
+
+    // Tahap 1 & 2: Kunci kanonikal (workspace + provider + simbol) di GLOBAL lalu timeframe aktif
+    pushCandidate(canonicalKey, 'GLOBAL');
+    if (tf && tf !== 'GLOBAL') {
+      pushCandidate(canonicalKey, tf);
+    }
+
+    // Tahap 3 & 4: Fallback warisan tanpa prefix workspace (provider:simbol) di GLOBAL lalu timeframe aktif
+    if (scope.workspaceId && scope.workspaceId.trim()) {
+      const noWorkspaceKey = this.resolveCanonicalScopeKey({
+        providerId: scope.providerId,
+        symbol: scope.symbol,
+        workspaceId: null,
+      });
+      pushCandidate(noWorkspaceKey, 'GLOBAL');
+      if (tf && tf !== 'GLOBAL') {
+        pushCandidate(noWorkspaceKey, tf);
+      }
+    }
+
+    // Tahap 5 & 6: Fallback purba bare symbol khusus provider default ('binance')
+    const normalizedProvider = (scope.providerId || 'binance').trim().toLowerCase() || 'binance';
+    const rawTrimmedSymbol = (scope.symbol || '').trim();
+    const symbolParts = rawTrimmedSymbol.includes(':') ? rawTrimmedSymbol.split(':') : null;
+    const symbolPrefix = symbolParts ? symbolParts[0].trim().toLowerCase() : null;
+    const isBinanceDefault =
+      normalizedProvider === 'binance' && (!symbolPrefix || symbolPrefix === 'binance');
+
+    if (isBinanceDefault) {
+      const bareSymbol = (symbolParts
+        ? symbolParts.slice(1).join(':').trim()
+        : rawTrimmedSymbol
+      ).toUpperCase();
+      if (bareSymbol) {
+        pushCandidate(bareSymbol, 'GLOBAL');
+        if (tf && tf !== 'GLOBAL') {
+          pushCandidate(bareSymbol, tf);
+        }
+      }
+    }
+
+    return candidates;
+  }
+
+  /**
+   * Memuat dokumen gambar kanvas sesuai DrawingScope dengan 6-tahap fallback lookup warisan terpadu.
+   */
+  async loadScopedDrawings(scope: DrawingScope): Promise<PersistedDrawingDocument | null> {
+    const candidates = this.buildScopedLookupCandidates(scope);
+    for (const candidate of candidates) {
+      const doc = await this.loadDrawings(candidate.key, candidate.timeframe);
+      if (doc) return doc as PersistedDrawingDocument;
+    }
+    return null;
+  }
+
+  /**
+   * Menyimpan dokumen gambar kanvas secara debounced menggunakan kunci kanonikal dari DrawingScope.
+   */
+  saveScopedDrawingsDebounced(
+    scope: DrawingScope,
+    doc: PersistedDrawingDocument,
+    delayMs = 400
+  ): void {
+    const key = this.resolveCanonicalScopeKey(scope);
+    const timeframe = this.normalizeScopeTimeframe(scope.timeframe) ?? 'GLOBAL';
+    this.saveDrawingsDebounced(key, timeframe, doc, delayMs);
+  }
+
+  /**
+   * Mem-flush simpanan gambar tertunda sesuai DrawingScope (atau seluruh antrean bila scope/symbol kosong).
+   */
+  async flushScopedDrawings(scope?: Partial<DrawingScope>): Promise<void> {
+    if (!scope?.symbol || !scope.symbol.trim()) {
+      await this.flushDrawings();
+      return;
+    }
+    const key = this.resolveCanonicalScopeKey({
+      providerId: scope.providerId,
+      symbol: scope.symbol,
+      workspaceId: scope.workspaceId,
+    });
+    const timeframe = this.normalizeScopeTimeframe(scope.timeframe) ?? undefined;
+    await this.flushDrawings(key, timeframe);
+  }
+
+  /**
+   * Menghapus seluruh varian dokumen gambar kanonikal pada scope aktif (GLOBAL dan timeframe sel aktif).
+   */
+  async clearScopedDrawings(scope: DrawingScope): Promise<void> {
+    const canonicalKey = this.resolveCanonicalScopeKey(scope);
+    await this.clearDrawings(canonicalKey, 'GLOBAL');
+
+    const tf = this.normalizeScopeTimeframe(scope.timeframe);
+    if (tf && tf !== 'GLOBAL') {
+      await this.clearDrawings(canonicalKey, tf);
+    }
+  }
+
   // ─── Multi-Watchlist Registry & Watchlist Projection ───
 
   async loadWatchlistRegistry(): Promise<MultiWatchlistRegistry | null> {
@@ -730,7 +868,9 @@ export const storage = new PersistenceService();
 // Export fungsi pembantu langsung untuk kompatibilitas & leverage pemanggil
 export type {
   AppPreferenceKey,
+  DrawingScope,
   IPersistenceService,
+  PersistedDrawingDocument,
   PersistenceErrorEvent,
   PersistenceErrorListener,
   PersistenceErrorOperation,
@@ -773,6 +913,14 @@ export const loadDrawings = (sym: string, tf: string) => storage.loadDrawings(sy
 export const saveDrawingsDebounced = (sym: string, tf: string, doc: any) => storage.saveDrawingsDebounced(sym, tf, doc);
 export const flushDrawings = (sym?: string, tf?: string) => storage.flushDrawings(sym, tf);
 export const clearDrawings = (sym: string, tf: string) => storage.clearDrawings(sym, tf);
+export const loadScopedDrawings = (scope: DrawingScope) => storage.loadScopedDrawings(scope);
+export const saveScopedDrawingsDebounced = (
+  scope: DrawingScope,
+  doc: PersistedDrawingDocument,
+  delayMs?: number
+) => storage.saveScopedDrawingsDebounced(scope, doc, delayMs);
+export const flushScopedDrawings = (scope?: Partial<DrawingScope>) => storage.flushScopedDrawings(scope);
+export const clearScopedDrawings = (scope: DrawingScope) => storage.clearScopedDrawings(scope);
 
 export const loadWatchlist = () => storage.loadWatchlist();
 export const saveWatchlist = (symbols: string[]) => storage.saveWatchlist(symbols);

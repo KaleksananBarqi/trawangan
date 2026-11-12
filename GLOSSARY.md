@@ -312,5 +312,9 @@ _Avoid_: Lazy localStorage peek, Top-level side-effect read
 Taksonomi kunci tertutup untuk preferensi ergonomi antarmuka pengguna `trawangan` (status lipat rel kiri, kondisi `Right Dock Rail`, lebar panel, memori alat gambar, indikator favorit, dan riwayat pencarian simbol) yang disatukan penyimpanannya di basis data lokal.
 _Avoid_: Scattered localStorage keys, Unbounded preference string
 
+**DrawingScope**:
+Identitas cakupan terstruktur untuk lapisan coretan gambar pada kanvas `trawangan` yang mengikat workspace, bursa penyedia data, simbol instrumen, dan timeframe tanpa merangkai kunci penyimpanan secara manual.
+_Avoid_: Raw drawing key string, Unscoped symbol key, Timeframe-only drawing key
+
 
 
