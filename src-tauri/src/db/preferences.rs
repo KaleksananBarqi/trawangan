@@ -1,5 +1,13 @@
 // Sub-modul preferensi aplikasi dan konfigurasi default chart
 use rusqlite::{params, Connection, Result};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppPreferenceEntry {
+    pub key: String,
+    pub value_json: String,
+    pub updated_at: i64,
+}
 
 /// Pastikan tabel app_preferences tersedia
 pub fn create_table(conn: &Connection) -> Result<()> {
@@ -66,4 +74,21 @@ pub fn delete_app_preference(conn: &Connection, key: &str) -> Result<()> {
     }
     conn.execute("DELETE FROM app_preferences WHERE key = ?1", params![clean_key])?;
     Ok(())
+}
+
+/// Muat seluruh baris preferensi aplikasi secara batch dalam satu query (terurut berdasarkan key)
+pub fn load_all_app_preferences(conn: &Connection) -> Result<Vec<AppPreferenceEntry>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT key, value_json, updated_at FROM app_preferences ORDER BY key ASC",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut entries = Vec::new();
+    while let Some(row) = rows.next()? {
+        entries.push(AppPreferenceEntry {
+            key: row.get(0)?,
+            value_json: row.get(1)?,
+            updated_at: row.get(2)?,
+        });
+    }
+    Ok(entries)
 }

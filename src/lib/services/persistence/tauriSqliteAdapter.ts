@@ -1,5 +1,5 @@
 // Adapter Native SQLite via Tauri IPC Command
-import type { AppPreferenceKey, DrawingKeyEntry, PersistenceAdapter } from './types';
+import type { AppPreferenceKey, AppPreferenceRecord, DrawingKeyEntry, PersistenceAdapter } from './types';
 import type {
   MultiWatchlistRegistry,
   PineScriptRecord,
@@ -228,5 +228,11 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
   async deletePreference(key: AppPreferenceKey): Promise<void> {
     const invoke = await this.getInvoke();
     await invoke('delete_app_preference', { key });
+  }
+
+  async loadAllPreferences(): Promise<AppPreferenceRecord[]> {
+    const invoke = await this.getInvoke();
+    const rows = await invoke<AppPreferenceRecord[]>('load_all_app_preferences');
+    return Array.isArray(rows) ? rows : [];
   }
 }
