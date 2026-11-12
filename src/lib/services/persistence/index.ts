@@ -377,11 +377,11 @@ export class PersistenceService implements IPersistenceService {
   async loadWatchlist(): Promise<string[]> {
     const registry = await this.adapter.loadWatchlistRegistry();
     const projected = extractActiveWatchlistSymbols(registry);
-    if (projected) return projected;
+    if (projected !== null) return projected;
 
     // Fallback satu kali untuk data legacy sebelum registry terisi
     const legacy = await this.adapter.loadWatchlist();
-    if (legacy && legacy.length > 0) return legacy;
+    if (legacy !== null) return legacy;
     return [...DEFAULT_WATCHLIST_SYMBOLS];
   }
 

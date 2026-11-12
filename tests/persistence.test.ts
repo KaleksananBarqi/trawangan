@@ -393,6 +393,23 @@ describe('Deep Persistence Module Unit Tests', () => {
     assert.deepStrictEqual(await service.loadWatchlist(), ['binance:SOLUSDT']);
   });
 
+  test('Tiket #187: PersistenceService.loadWatchlist() mempertahankan [] eksplisit dari registry maupun legacy tanpa menimpa DEFAULT_WATCHLIST_SYMBOLS', async () => {
+    // 1. Registry aktif ada tetapi kosong ([]) -> wajib kembali [], bukan DEFAULT_WATCHLIST_SYMBOLS
+    await service.saveWatchlist([]);
+    assert.deepStrictEqual(await service.loadWatchlist(), []);
+
+    // 2. Registry null tetapi adapter.loadWatchlist() mengembalikan [] -> wajib kembali []
+    const legacyEmptyAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    await legacyEmptyAdapter.saveWatchlist([]);
+    const legacyEmptyService = new PersistenceService(legacyEmptyAdapter);
+    assert.deepStrictEqual(await legacyEmptyService.loadWatchlist(), []);
+
+    // 3. Hanya jika registry null DAN legacy null baru mengembalikan DEFAULT_WATCHLIST_SYMBOLS
+    const pristineAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    const pristineService = new PersistenceService(pristineAdapter);
+    assert.deepStrictEqual(await pristineService.loadWatchlist(), persistenceModule.DEFAULT_WATCHLIST_SYMBOLS);
+  });
+
   test('Tiket #179: app_preferences menyimpan settings & chart default config dan menghapus lewat real DELETE (bukan sentinel "")', async () => {
     await service.saveSettings({ theme: 'light', autoSaveWorkspace: false });
     assert.strictEqual((await service.loadSettings())?.theme, 'light');
