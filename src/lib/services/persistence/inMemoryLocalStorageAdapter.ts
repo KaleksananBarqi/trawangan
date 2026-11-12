@@ -1,5 +1,5 @@
 // Adapter In-Memory & Web LocalStorage untuk Lingkungan Pengujian dan Web Fallback
-import type { DrawingKeyEntry, PersistenceAdapter } from './types';
+import type { AppPreferenceKey, DrawingKeyEntry, PersistenceAdapter } from './types';
 import type {
   MultiWatchlistRegistry,
   PineScriptRecord,
@@ -93,6 +93,17 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     return Array.from(seen.values());
   }
 
+  private parseJsonArray<T>(key: string): T[] {
+    const raw = this.getItem(key);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
   async cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number> {
     if (!fromWsId || !toWsId) return 0;
     const normFrom = fromWsId.trim().toLowerCase();
@@ -100,26 +111,12 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     if (!normFrom || !normTo || normFrom === normTo) return 0;
 
     const lowerPrefix = `${normFrom}:`;
-    const entries = await this.listDrawingKeys(lowerPrefix);
-    const prefixes = [lowerPrefix];
-
-    const rawTrimmedFrom = fromWsId.trim();
-    if (rawTrimmedFrom && rawTrimmedFrom !== normFrom) {
-      const rawPrefix = `${rawTrimmedFrom}:`;
-      prefixes.push(rawPrefix);
-      const rawEntries = await this.listDrawingKeys(rawPrefix);
-      for (const re of rawEntries) {
-        if (!entries.some((e) => e.symbol === re.symbol && e.timeframe === re.timeframe)) {
-          entries.push(re);
-        }
-      }
-    }
-
+    const allEntries = await this.listDrawingKeys('');
     let copied = 0;
-    for (const entry of entries) {
-      const matchedPrefix = prefixes.find((p) => entry.symbol.startsWith(p));
-      if (!matchedPrefix) continue;
-      const suffix = entry.symbol.slice(matchedPrefix.length);
+
+    for (const entry of allEntries) {
+      if (!entry.symbol.toLowerCase().startsWith(lowerPrefix)) continue;
+      const suffix = entry.symbol.slice(lowerPrefix.length);
       if (!suffix) continue;
 
       const rawJson = await this.loadDrawings(entry.symbol, entry.timeframe);
@@ -132,14 +129,7 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   }
 
   async listWorkspaces(): Promise<SavedWorkspace[]> {
-    const raw = this.getItem('trawangan_workspaces');
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+    return this.parseJsonArray<SavedWorkspace>('trawangan_workspaces');
   }
 
   async upsertWorkspace(workspace: SavedWorkspace): Promise<void> {
@@ -182,38 +172,27 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   }
 
   async listAlerts(): Promise<PriceAlert[]> {
-    const raw = this.getItem('trawangan_price_alerts');
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+    return this.parseJsonArray<PriceAlert>('trawangan_price_alerts');
   }
 
   async replaceAlerts(alerts: PriceAlert[]): Promise<void> {
     this.setItem('trawangan_price_alerts', JSON.stringify(alerts));
   }
 
+  private sortPlansNewestFirst(list: SavedTradingPlanRecord[]): SavedTradingPlanRecord[] {
+    return [...list].sort((a, b) => (b?.updatedAt || 0) - (a?.updatedAt || 0));
+  }
+
   async listTradingPlans(): Promise<SavedTradingPlanRecord[]> {
-    const raw = this.getItem('trawangan_trade_plan_vault');
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return [...parsed].sort((a, b) => (b?.updatedAt || 0) - (a?.updatedAt || 0));
-    } catch {
-      return [];
-    }
+    return this.sortPlansNewestFirst(
+      this.parseJsonArray<SavedTradingPlanRecord>('trawangan_trade_plan_vault')
+    );
   }
 
   async upsertTradingPlan(record: SavedTradingPlanRecord): Promise<void> {
     const list = await this.listTradingPlans();
     const remaining = list.filter((item) => item.id !== record.id);
-    const nextList = [record, ...remaining]
-      .sort((a, b) => (b?.updatedAt || 0) - (a?.updatedAt || 0))
-      .slice(0, 200);
+    const nextList = this.sortPlansNewestFirst([record, ...remaining]).slice(0, 200);
     this.setItem('trawangan_trade_plan_vault', JSON.stringify(nextList));
   }
 
@@ -227,21 +206,26 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
     this.removeItem('trawangan_trade_plan_vault');
   }
 
-  async getPreference(key: string): Promise<string | null> {
-    const val = this.getItem(`trawangan_pref_${key}`);
+  async getPreference(key: AppPreferenceKey): Promise<string | null> {
+    const cleanKey = key.trim();
+    if (!cleanKey) return null;
+    const val = this.getItem(`trawangan_pref_${cleanKey}`);
     return val ?? null;
   }
 
-  async setPreference(key: string, valueJson: string): Promise<void> {
-    if (!key.trim() || !valueJson.trim()) {
+  async setPreference(key: AppPreferenceKey, valueJson: string): Promise<void> {
+    const cleanKey = key.trim();
+    if (!cleanKey || !valueJson.trim()) {
       throw new Error('Kunci atau value JSON preferensi tidak boleh kosong');
     }
     JSON.parse(valueJson);
-    this.setItem(`trawangan_pref_${key.trim()}`, valueJson);
+    this.setItem(`trawangan_pref_${cleanKey}`, valueJson);
   }
 
-  async deletePreference(key: string): Promise<void> {
-    this.removeItem(`trawangan_pref_${key.trim()}`);
+  async deletePreference(key: AppPreferenceKey): Promise<void> {
+    const cleanKey = key.trim();
+    if (!cleanKey) return;
+    this.removeItem(`trawangan_pref_${cleanKey}`);
   }
 
   async loadWatchlist(): Promise<string[] | null> {
@@ -278,14 +262,7 @@ export class InMemoryLocalStorageAdapter implements PersistenceAdapter {
   }
 
   async loadScripts(): Promise<PineScriptRecord[]> {
-    const raw = this.getItem('trawangan_scripts');
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+    return this.parseJsonArray<PineScriptRecord>('trawangan_scripts');
   }
 
   async saveScript(script: PineScriptRecord): Promise<void> {

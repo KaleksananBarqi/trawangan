@@ -224,27 +224,17 @@ export class PersistenceService implements IPersistenceService {
     const withVersion = { ...workspace, schemaVersion: workspace.schemaVersion ?? WORKSPACE_SCHEMA_VERSION };
 
     // 1. Jika ada ID yang ditentukan, timpa workspace dengan ID tersebut
-    if (withVersion.id) {
-      const existing = list.find((w) => w.id === withVersion.id);
-      if (existing) {
-        const updated: SavedWorkspace = {
-          ...existing,
-          ...withVersion,
-          id: withVersion.id,
-          timestamp: Date.now(),
-        };
-        await this.adapter.upsertWorkspace(updated);
-        return updated;
-      }
-    }
-
     // 2. Jika nama sama persis sudah ada di daftar, timpa entri tersebut
-    const existingByName = list.find((w) => w.name.trim().toLowerCase() === withVersion.name.trim().toLowerCase());
-    if (existingByName) {
+    const existingById = withVersion.id ? list.find((w) => w.id === withVersion.id) : undefined;
+    const existingByName = !existingById
+      ? list.find((w) => w.name.trim().toLowerCase() === withVersion.name.trim().toLowerCase())
+      : undefined;
+    const targetExisting = existingById || existingByName;
+    if (targetExisting) {
       const updated: SavedWorkspace = {
-        ...existingByName,
+        ...targetExisting,
         ...withVersion,
-        id: existingByName.id,
+        id: existingById ? withVersion.id! : targetExisting.id,
         timestamp: Date.now(),
       };
       await this.adapter.upsertWorkspace(updated);
@@ -435,6 +425,16 @@ export class PersistenceService implements IPersistenceService {
           rawText: record.rawText || record.plan?.rawText || '',
           plan: JSON.parse(JSON.stringify(record.plan)),
         };
+
+    // Jika adapter masih kosong namun cache localStorage fallback berisi riwayat lama, migrasikan lebih dulu sebelum upsert
+    const existingAdapterList = await this.adapter.listTradingPlans();
+    if (existingAdapterList.length === 0 && list.length > 0) {
+      for (const legacyItem of [...list].reverse()) {
+        if (legacyItem.id !== savedRecord.id) {
+          await this.adapter.upsertTradingPlan(legacyItem);
+        }
+      }
+    }
 
     await this.adapter.upsertTradingPlan(savedRecord);
     const updatedList = await this.adapter.listTradingPlans();

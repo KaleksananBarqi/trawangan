@@ -14,8 +14,12 @@ pub fn create_table(conn: &Connection) -> Result<()> {
 
 /// Baca nilai JSON preferensi berdasarkan kunci
 pub fn get_app_preference(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let clean_key = key.trim();
+    if clean_key.is_empty() {
+        return Ok(None);
+    }
     let mut stmt = conn.prepare_cached("SELECT value_json FROM app_preferences WHERE key = ?1")?;
-    let mut rows = stmt.query(params![key])?;
+    let mut rows = stmt.query(params![clean_key])?;
     if let Some(row) = rows.next()? {
         let val: String = row.get(0)?;
         Ok(Some(val))
@@ -56,6 +60,10 @@ pub fn set_app_preference(conn: &Connection, key: &str, value_json: &str) -> Res
 
 /// Hapus baris preferensi secara nyata via SQL DELETE
 pub fn delete_app_preference(conn: &Connection, key: &str) -> Result<()> {
-    conn.execute("DELETE FROM app_preferences WHERE key = ?1", params![key])?;
+    let clean_key = key.trim();
+    if clean_key.is_empty() {
+        return Ok(());
+    }
+    conn.execute("DELETE FROM app_preferences WHERE key = ?1", params![clean_key])?;
     Ok(())
 }

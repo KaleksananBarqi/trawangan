@@ -416,5 +416,13 @@ describe('Deep Persistence Module Unit Tests', () => {
     assert.strictEqual(await service.loadChartDefaultConfig(), null);
     assert.strictEqual(slotWrites, 0, 'Settings & chartDefaultConfig tidak boleh memakai workspaces layout slot');
   });
+
+  test('Workspaces: cloneWorkspaceDrawings di InMemoryAdapter memiliki parity case-insensitive seperti SQLite', async () => {
+    await adapter.saveDrawings('Default_Workspace:binance:BTCUSDT', 'GLOBAL', JSON.stringify({ shapes: [42] }));
+    const copied = await service.cloneWorkspaceDrawings('default_workspace', 'WS_MixedCopy');
+    assert.strictEqual(copied, 1);
+    const loaded = await service.loadDrawings('ws_mixedcopy:binance:BTCUSDT', 'GLOBAL');
+    assert.deepStrictEqual(loaded, { shapes: [42] });
+  });
 });
 

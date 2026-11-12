@@ -13,6 +13,8 @@ export interface DrawingKeyEntry {
   timeframe: string;
 }
 
+export type AppPreferenceKey = 'app_settings' | 'chart_default_config';
+
 /**
  * Adapter tingkat rendah di balik Seam penyimpanan.
  * Mengabstraksi apakah operasi disimpan ke SQLite via Tauri IPC atau In-Memory / LocalStorage.
@@ -52,9 +54,9 @@ export interface PersistenceAdapter {
   deleteScript(id: string): Promise<void>;
 
   // Preferensi aplikasi & konfigurasi default chart (`app_preferences`)
-  getPreference(key: string): Promise<string | null>;
-  setPreference(key: string, valueJson: string): Promise<void>;
-  deletePreference(key: string): Promise<void>;
+  getPreference(key: AppPreferenceKey): Promise<string | null>;
+  setPreference(key: AppPreferenceKey, valueJson: string): Promise<void>;
+  deletePreference(key: AppPreferenceKey): Promise<void>;
 
   // Slot tata letak & dokumen terstruktur (Workspaces, Alerts, Configs)
   loadLayoutSlot(id: string): Promise<string | null>;
