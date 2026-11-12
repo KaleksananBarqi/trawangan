@@ -945,8 +945,8 @@
     font-size: 10px;
     line-height: 1.35;
     color: var(--brand-cyan, #38bdf8);
-    background-color: rgba(56, 189, 248, 0.08);
-    border: 1px solid rgba(56, 189, 248, 0.25);
+    background-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand-cyan, #38bdf8) 25%, transparent);
     border-radius: var(--radius-xs);
     padding: 5px 7px;
   }

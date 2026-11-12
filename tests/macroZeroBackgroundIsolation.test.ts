@@ -144,4 +144,54 @@ describe('ADR-0024: Kebijakan Isolasi Zero-Background untuk Indeks Makro', () =>
       feed.destroy();
     }
   });
+
+  test('setActiveProvider(macro) & setActiveProviderContext tidak menimpa provider global SQLite/localStorage', async () => {
+    const prevLS = (globalThis as any).localStorage;
+    const store = new Map<string, string>();
+    (globalThis as any).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+      removeItem: (k: string) => {
+        store.delete(k);
+      },
+      clear: () => {
+        store.clear();
+      },
+    };
+
+    const feed = new MarketFeedService();
+    try {
+      await feed.setActiveProvider('binance');
+      const beforeRaw = JSON.parse(store.get('trawangan_providers') || '[]') as Array<{
+        id: string;
+        is_active: boolean;
+      }>;
+      assert.equal(beforeRaw.find((p) => p.id === 'binance')?.is_active, true);
+
+      // Baik setActiveProvider('macro') maupun setActiveProviderContext('macro') dilarang memutasi is_active binance.
+      await feed.setActiveProvider('macro');
+      feed.setActiveProviderContext('macro');
+
+      const afterRaw = JSON.parse(store.get('trawangan_providers') || '[]') as Array<{
+        id: string;
+        is_active: boolean;
+      }>;
+      assert.equal(
+        afterRaw.find((p) => p.id === 'binance')?.is_active,
+        true,
+        'Binance wajib tetap is_active: true pada persistence layer saat sel makro dibuka'
+      );
+      assert.equal(afterRaw.some((p) => p.id === 'macro' && p.is_active), false);
+      assert.equal(
+        await feed.getActiveProviderId(),
+        'binance',
+        'getActiveProviderId tidak boleh memulihkan macro sebagai global provider'
+      );
+    } finally {
+      feed.destroy();
+      (globalThis as any).localStorage = prevLS;
+    }
+  });
 });

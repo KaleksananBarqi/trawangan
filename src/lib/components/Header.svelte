@@ -577,26 +577,26 @@
     background-color: rgba(245, 158, 11, 0.12);
     border: 1px solid rgba(245, 158, 11, 0.3);
     padding: 2px 6px;
-    border-radius: var(--radius-xs, 4px);
+    border-radius: var(--radius-xs, 2px);
     letter-spacing: 0.04em;
     white-space: nowrap;
     align-self: center;
   }
 
   .provider-pill-btn.macro {
-    background-color: rgba(56, 189, 248, 0.12);
+    background-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 12%, transparent);
     color: var(--brand-cyan, #38bdf8);
-    border-color: rgba(56, 189, 248, 0.32);
+    border-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 32%, transparent);
   }
 
   .synthetic-badge {
     font-size: 8.5px;
     font-weight: 700;
     color: var(--brand-cyan, #38bdf8);
-    background-color: rgba(56, 189, 248, 0.12);
-    border: 1px solid rgba(56, 189, 248, 0.32);
+    background-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand-cyan, #38bdf8) 32%, transparent);
     padding: 2px 6px;
-    border-radius: var(--radius-xs, 4px);
+    border-radius: var(--radius-xs, 2px);
     letter-spacing: 0.04em;
     white-space: nowrap;
     align-self: center;
@@ -607,8 +607,8 @@
     font-size: 10px;
     line-height: 1.35;
     color: var(--brand-cyan, #38bdf8);
-    background-color: rgba(56, 189, 248, 0.08);
-    border-bottom: 1px solid rgba(56, 189, 248, 0.18);
+    background-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 8%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--brand-cyan, #38bdf8) 18%, transparent);
   }
 
   .provider-pill-btn.bitunix {

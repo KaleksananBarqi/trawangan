@@ -896,4 +896,36 @@ describe('Fase 5: State Per-Sel Multi-Chart & Hybrid Restore', () => {
     assert.equal(wsListeners.get('cell:created')?.size ?? 0, 0, 'cell:created harus dilepas oleh detach()');
     assert.equal(wsListeners.get('cell:active')?.size ?? 0, 0, 'cell:active harus dilepas oleh detach()');
   });
+
+  it('8. Perpindahan cell:active antara macro:TOTAL dan binance:BTCUSDT meneruskan providerId lewat onActiveCellChange', () => {
+    const mock = createFakeMultiCellVelaWorkspace('2v');
+    const cells = mock.cells();
+    cells[0].setSymbol('macro:TOTAL');
+    cells[0].setTimeframe('D');
+    cells[1].setSymbol('binance:BTCUSDT');
+    cells[1].setTimeframe('15');
+    mock.ws.setActiveCell('c2');
+
+    const activeCellEvents: Array<{ symbol: string; timeframe: string; providerId?: string }> = [];
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      layout: '2v',
+      providerId: 'binance',
+      onActiveCellChange: (info) => {
+        activeCellEvents.push(info);
+      },
+    });
+    controller.attach(createMockChartContainer(1200, 800), { workspaceFactory: () => mock.ws });
+
+    mock.ws.setActiveCell('c1');
+    mock.ws.setActiveCell('c2');
+
+    assert.deepEqual(activeCellEvents, [
+      { symbol: 'TOTAL', timeframe: '1D', providerId: 'macro' },
+      { symbol: 'BTCUSDT', timeframe: '15m', providerId: 'binance' },
+    ]);
+
+    controller.destroy();
+  });
 });

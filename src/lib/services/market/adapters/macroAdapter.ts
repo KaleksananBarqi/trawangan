@@ -1,4 +1,4 @@
-import type { MarketProviderAdapter } from '../types';
+import type { MarketProviderAdapter, SearchFilterType } from '../types';
 import type { Candle, MarketSearchResult, TickerInfo } from '../../../types/market';
 import {
   canonicalizeMacroIndexSymbol,
@@ -69,9 +69,9 @@ export class MacroIndexAdapter implements MarketProviderAdapter {
 
   async searchSymbols(
     query: string,
-    filterType: 'all' | 'spot' | 'perp' = 'all'
+    filterType: SearchFilterType = 'all'
   ): Promise<MarketSearchResult[]> {
-    if (filterType === 'perp') return [];
+    if (filterType === 'spot' || filterType === 'perp') return [];
     const q = (query || '').trim().toUpperCase().replace(/[\/\-_]/g, '');
     if (!q) {
       return MACRO_INDEX_CATALOG.map((item) => ({
@@ -79,7 +79,7 @@ export class MacroIndexAdapter implements MarketProviderAdapter {
         baseAsset: item.symbol,
         quoteAsset: item.quoteUnit,
         displayName: item.displayName,
-        type: 'spot',
+        type: 'index',
         provider: 'Macro Index',
       }));
     }
@@ -98,7 +98,7 @@ export class MacroIndexAdapter implements MarketProviderAdapter {
           baseAsset: item.symbol,
           quoteAsset: item.quoteUnit,
           displayName: item.displayName,
-          type: 'spot',
+          type: 'index',
           provider: 'Macro Index',
         });
       }

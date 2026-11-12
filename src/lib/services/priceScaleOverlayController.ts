@@ -196,7 +196,7 @@ export class PriceScaleOverlayController {
     const s = (this.activeSymbol || '').toUpperCase();
     const macroDesc = resolveMacroIndexDescriptor(s);
     if (macroDesc) {
-      return macroDesc.quoteUnit === '%' ? '%' : 'MACRO_USD';
+      return macroDesc.quoteUnit === '%' ? '%' : 'USD';
     }
     const parsed = parseAdaptiveSymbol(s);
     return parsed.quoteAsset || 'USDT';

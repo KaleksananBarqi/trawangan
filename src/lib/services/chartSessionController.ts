@@ -80,7 +80,7 @@ export interface ChartSessionOptions {
   showVolume?: boolean;
   gridMode?: GridMode;
   syncConfig?: MultiChartSyncConfig;
-  onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
+  onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
   onPersistableStateChange?: (reason: string) => void;
@@ -378,7 +378,7 @@ export class ChartSessionController {
   private showCurrentPriceLine: boolean;
   private showVolume: boolean;
   private syncConfig: MultiChartSyncConfig;
-  private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
+  private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   private workspaceFactory?: (container: HTMLElement, config: any) => any;
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
@@ -889,12 +889,20 @@ export class ChartSessionController {
             const { providerId: rawProv, symbol: rawSym } = getCellMarketIdentity(cur);
             const cleanSym = rawSym || this.symbol;
             const curTf = (fromVelaTimeframe(cur.timeframe || this.timeframe) as Timeframe);
+            const prevProv = this.providerId;
             this.activeCellInfo = { symbol: cleanSym, timeframe: curTf };
             if (!this.isRestoringWorkspace && rawProv) {
               this.providerId = rawProv;
             }
-            if (this.onActiveCellChange && (cleanSym !== this.symbol || curTf !== this.timeframe)) {
-              this.onActiveCellChange({ symbol: cleanSym, timeframe: curTf });
+            if (
+              this.onActiveCellChange &&
+              (cleanSym !== this.symbol || curTf !== this.timeframe || this.providerId !== prevProv)
+            ) {
+              this.onActiveCellChange({
+                symbol: cleanSym,
+                timeframe: curTf,
+                providerId: this.providerId,
+              });
             }
             this.attachCellListeners(cur);
             this.emitPersistableChange('activeCell');
@@ -3784,7 +3792,11 @@ export class ChartSessionController {
         this.activeCellInfo = { symbol: this.symbol, timeframe: this.timeframe };
 
         if (this.onActiveCellChange && (this.symbol !== '' || this.timeframe !== '')) {
-          this.onActiveCellChange({ symbol: this.symbol, timeframe: this.timeframe });
+          this.onActiveCellChange({
+            symbol: this.symbol,
+            timeframe: this.timeframe,
+            providerId: this.providerId,
+          });
         }
       }
 

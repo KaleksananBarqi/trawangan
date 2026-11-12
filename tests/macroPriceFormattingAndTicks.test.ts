@@ -1,7 +1,10 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatMacroCompactValue } from '../src/lib/services/macroIndexCatalog';
-import { formatMacroTickValue, resolveMacroAxisMode } from '../src/lib/services/macroVelaAxisAdapter';
+import {
+  resolveMacroAxisMode,
+  syncCellMacroVelaAxis,
+} from '../src/lib/services/macroVelaAxisAdapter';
 import {
   formatPriceLabel,
   formatPriceWithQuoteSymbol,
@@ -15,7 +18,7 @@ import {
 import { formatSnapshotPrice } from '../src/lib/services/chartSnapshotService';
 
 describe('ADR-0024: Pemformatan Nilai Makro, Sumbu Vela, Tick Size, & Zero Regresi Reguler', () => {
-  test('1. formatMacroCompactValue dan formatMacroTickValue menyesuaikan zoom tanpa duplikasi tick', () => {
+  test('1. formatMacroCompactValue menyesuaikan zoom tanpa duplikasi tick', () => {
     const capSamples = [2.65e12, 1.08e12, 850.5e9, 45.25e9, 12.5e6];
     for (const val of capSamples) {
       const label = formatMacroCompactValue(val, 'USD');
@@ -31,17 +34,20 @@ describe('ADR-0024: Pemformatan Nilai Makro, Sumbu Vela, Tick Size, & Zero Regre
     assert.equal(resolveMacroAxisMode('BTCUSDT'), null);
 
     // Zoom dalam pada Triliunan (step < 10B) menambah 1 digit presisi agar label tick unik
-    assert.equal(formatMacroTickValue(2.654e12, 'macro_usd', 2e9), '2.654T');
-    assert.equal(formatMacroTickValue(2.654e12, 'macro_usd', 5e10), '2.65T');
-    assert.equal(formatMacroTickValue(56.842, 'macro_percent', 0.005), '56.842%');
-    assert.equal(formatMacroTickValue(56.842, 'macro_percent', 0.05), '56.84%');
+    assert.equal(formatMacroCompactValue(2.654e12, 'TOTAL', 2e9), '2.654T');
+    assert.equal(formatMacroCompactValue(2.654e12, 'TOTAL', 5e10), '2.65T');
+    assert.equal(formatMacroCompactValue(850.123e9, 'TOTAL3', 5e7), '850.123B');
+    assert.equal(formatMacroCompactValue(56.842, 'BTC.D', 0.005), '56.842%');
+    assert.equal(formatMacroCompactValue(56.842, 'BTC.D', 0.05), '56.84%');
   });
 
   test('2. priceScaleLabelService & chartSnapshotService memformat makro sekaligus mempertahankan format IDR/BTC/USDT', () => {
     assert.equal(formatPriceLabel(2.65e12, undefined, 'TOTAL'), '2.65T');
     assert.equal(formatPriceLabel(56.84, undefined, 'BTC.D'), '56.84%');
-    assert.equal(formatPriceLabel(2.65e12, 'MACRO_USD'), '2.65T');
+    assert.equal(formatPriceLabel(2.65e12, 'USD', 'TOTAL'), '2.65T');
     assert.equal(formatPriceLabel(56.84, '%'), '56.84%');
+    // Tanpa simbol makro, quote 'USD' memakai formatter reguler (bukan sentinel MAGIK MACRO_USD).
+    assert.equal(formatPriceLabel(68500.1, 'USD'), '68,500.10');
 
     assert.equal(formatPriceWithQuoteSymbol(2.65e12, 'USD', 'TOTAL'), '$2.65T');
     assert.equal(formatPriceWithQuoteSymbol(56.84, '%', 'BTC.D'), '56.84%');
@@ -87,5 +93,84 @@ describe('ADR-0024: Pemformatan Nilai Makro, Sumbu Vela, Tick Size, & Zero Regre
     const alignedDom = computeTickAlignedAlertPrice(56.844, false, undefined, 'BTC.D');
     assert.equal(alignedDom.price, 56.84);
     assert.equal(alignedDom.formattedText, '56.84');
+  });
+
+  test('4. macroVelaAxisAdapter menghitung kontras WCAG hex 3-digit & crosshair chip secara dinamis', () => {
+    const chipCalls: Array<{ text: string; bg: string; over: string }> = [];
+    const fillStylesUsed: string[] = [];
+    const fakePane = {
+      kind: 'price',
+      bounds: { top: 0, height: 200 },
+      scale: {},
+      axisFormat: 'price',
+    };
+    const fakeCtx: any = {
+      _fillStyle: '',
+      set fillStyle(v: string) {
+        this._fillStyle = v;
+        fillStylesUsed.push(v);
+      },
+      get fillStyle() {
+        return this._fillStyle;
+      },
+      strokeStyle: '',
+      lineWidth: 1,
+      textBaseline: 'middle',
+      textAlign: 'start',
+      setLineDash: () => {},
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      stroke: () => {},
+      fillRect: () => {},
+      fillText: () => {},
+      measureText: (txt: string) => ({ width: txt.length * 6 }),
+    };
+    let activeUpColor = '#FFF';
+    const native: any = {
+      scene: {
+        scaleMode: 'price',
+        showPriceLabel: true,
+        showPriceLine: false,
+        showCountdown: false,
+        bars: [{ time: 1_700_000_000_000, close: 2.65e12 }],
+        panes: new Map([['price', fakePane]]),
+      },
+      coords: {
+        priceToY: () => 100,
+        yToPrice: () => 2.65e12,
+        barInterval: 0,
+      },
+      set: () => {},
+      scheduler: { invalidate: () => {} },
+      crosshairLayer: {
+        chip(_ctx: any, _x: number, _y: number, text: string, bg: string, _align: string, _below?: boolean, over = '#000000') {
+          chipCalls.push({ text, bg, over });
+        },
+      },
+      chrome: {
+        priceElementColor: () => activeUpColor,
+        drawPriceLineAndCountdown() {},
+      },
+    };
+    const fakeCell = { chart: { renderer: { renderer: native } } };
+
+    syncCellMacroVelaAxis(fakeCell, 'macro_usd');
+
+    // Crosshair chip wajib menghitung kontras terhadap bg (hex 3-digit #FFF & #000) alih-alih hardcode #000000
+    native.crosshairLayer.chip(fakeCtx, 100, 100, 'raw', '#FFF', 'left', false, '#000000');
+    native.crosshairLayer.chip(fakeCtx, 100, 100, 'raw', '#000', 'left', false, '#000000');
+    assert.equal(chipCalls[0].text, '2.65T');
+    assert.equal(chipCalls[0].over, '#0A0A0A');
+    assert.equal(chipCalls[1].over, '#FFFFFF');
+
+    // Badge harga terakhir untuk short hex #FFF & #000 wajib memakai teks gelap vs terang WCAG
+    native.chrome.drawPriceLineAndCountdown(fakeCtx, native.scene, native.coords, { upColor: '#FFF' }, 500, fakePane);
+    assert.equal(fillStylesUsed.includes('#0A0A0A'), true);
+
+    fillStylesUsed.length = 0;
+    activeUpColor = '#000';
+    native.chrome.drawPriceLineAndCountdown(fakeCtx, native.scene, native.coords, { upColor: '#000' }, 500, fakePane);
+    assert.equal(fillStylesUsed.includes('#FFFFFF'), true);
   });
 });

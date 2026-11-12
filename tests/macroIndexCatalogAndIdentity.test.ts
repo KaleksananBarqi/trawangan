@@ -29,6 +29,8 @@ import {
   resolveCoinLogoUrl,
 } from '../src/lib/services/symbolLogoService';
 import { SymbolSearchEngine } from '../src/lib/services/market/symbolSearchService';
+import { MacroIndexAdapter } from '../src/lib/services/market/adapters/macroAdapter';
+import { MarketFeedService } from '../src/lib/services/market';
 
 describe('ADR-0024: Katalog Indeks Makro, Identitas Instrumen, & Isolasi Watchlist', () => {
   test('1. Seluruh 7 simbol makro kanonikal beserta aliasnya terpetakan akurat', () => {
@@ -183,6 +185,7 @@ describe('ADR-0024: Katalog Indeks Makro, Identitas Instrumen, & Isolasi Watchli
     const resAlias = await engine.search('total1');
     assert.ok(resAlias.length > 0);
     assert.equal(resAlias[0].symbol, 'TOTAL');
+    assert.equal(resAlias[0].type, 'index');
     assert.equal(resAlias[0].provider, 'Macro Index');
     assert.equal(
       resAlias.some((r) => r.symbol.includes('TOTAL1USDT')),
@@ -193,9 +196,79 @@ describe('ADR-0024: Katalog Indeks Makro, Identitas Instrumen, & Isolasi Watchli
     const resDom = await engine.search('btcd');
     assert.ok(resDom.length > 0);
     assert.equal(resDom[0].symbol, 'BTC.D');
+    assert.equal(resDom[0].type, 'index');
     assert.equal(resDom[0].quoteAsset, '%');
+
+    // Filter 'spot' & 'perp' wajib mengecualikan tipe 'index', sementara filter 'index' menampilkan katalog makro.
+    const macroAdapter = new MacroIndexAdapter();
+    assert.deepEqual(await macroAdapter.searchSymbols('TOTAL', 'spot'), []);
+    assert.deepEqual(await macroAdapter.searchSymbols('TOTAL', 'perp'), []);
+    const indexOnly = await macroAdapter.searchSymbols('TOTAL', 'index');
+    assert.equal(indexOnly[0].symbol, 'TOTAL');
+    assert.equal(indexOnly[0].type, 'index');
+
+    const spotFiltered = await engine.search('TOTAL', 'spot');
+    assert.equal(
+      spotFiltered.some((r) => r.provider === 'Macro Index'),
+      false,
+      'Filter spot tidak boleh menyertakan Macro Index bertipe index'
+    );
+    const indexFiltered = engine.searchLocal('BTC.D', 'index');
+    assert.equal(indexFiltered.length, 1);
+    assert.equal(indexFiltered[0].symbol, 'BTC.D');
 
     const btcRegular = await engine.search('BTC');
     assert.ok(btcRegular.some((r) => r.symbol === 'BTCUSDT' && r.provider === 'Binance Spot'));
+  });
+
+  test('7. Isolasi mutlak custom:TOTAL & custom-1:BTC.D dari namespace macro:* serta contractType === index', () => {
+    const macroIdent = parseInstrumentIdentity('TOTAL');
+    assert.equal(macroIdent.providerId, 'macro');
+    assert.equal(macroIdent.contractType, 'index');
+
+    const domIdent = parseInstrumentIdentity('BTC.D');
+    assert.equal(domIdent.providerId, 'macro');
+    assert.equal(domIdent.contractType, 'index');
+
+    // Prefix eksplisit custom / custom-1 tidak boleh membajak rute ke macro:*
+    const customTotalIdent = parseInstrumentIdentity('custom:TOTAL');
+    assert.equal(customTotalIdent.providerId, 'custom');
+    assert.equal(customTotalIdent.canonicalSymbol, 'TOTAL');
+    assert.equal(customTotalIdent.contractType, 'spot');
+
+    const customNodeIdent = parseInstrumentIdentity('BTC.D', 'custom-1');
+    assert.equal(customNodeIdent.providerId, 'custom-1');
+    assert.equal(customNodeIdent.contractType, 'spot');
+
+    assert.equal(resolveDrawingStorageKey('custom', 'custom:TOTAL'), 'custom:TOTAL');
+    assert.equal(resolveDrawingStorageKey('custom-1', 'TOTAL'), 'custom-1:TOTAL');
+    assert.equal(resolveVelaSymbolKey('custom:TOTAL', 'custom'), 'custom:TOTAL');
+    assert.equal(resolveVelaSymbolKey('custom-2:BTC.D', 'custom-2'), 'custom_2:BTC.D');
+    assert.deepEqual(getCellMarketIdentity({ symbol: 'custom:TOTAL' }), {
+      providerId: 'custom',
+      symbol: 'TOTAL',
+    });
+    assert.deepEqual(getCellMarketIdentity({ symbol: 'TOTAL', providerId: 'custom-1' }), {
+      providerId: 'custom-1',
+      symbol: 'TOTAL',
+    });
+
+    assert.deepEqual(parseWatchlistEntry('custom:TOTAL'), {
+      providerId: 'custom',
+      symbol: 'TOTAL',
+    });
+    assert.equal(formatWatchlistEntry('TOTAL', 'custom'), 'custom:TOTAL');
+    assert.equal(formatWatchlistEntry('TOTAL', 'custom-1'), 'custom-1:TOTAL');
+    assert.equal(normalizeSymbolForMatching('custom:TOTAL'), 'TOTAL');
+    assert.equal(normalizeSymbolForMatching('custom:TOTAL1'), 'TOTAL1');
+    assert.equal(resolveCanonicalInstrumentSymbol('custom:TOTAL'), 'TOTAL');
+
+    const feed = new MarketFeedService();
+    try {
+      const searchSpot = feed.searchLocalSymbols('TOTAL', 'spot');
+      assert.equal(searchSpot.some((r) => r.provider === 'Macro Index'), false);
+    } finally {
+      feed.destroy();
+    }
   });
 });

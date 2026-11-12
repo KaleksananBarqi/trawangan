@@ -37,7 +37,7 @@
     providerId?: string; syncConfig?: MultiChartSyncConfig; showWatermark?: boolean;
     showCurrentPriceLine?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
-    onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe }) => void;
+    onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
     onReplayStateChange?: (state: ReplayStateInfo) => void;
     onCutoffSelected?: (timestamp: number) => void; onCutoffCancelled?: () => void;
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
@@ -918,7 +918,7 @@
         </span>
       </div>
       <div class="warning-actions">
-        <button type="button" class="btn-switch-indodax" onclick={() => { marketFeed.setActiveProvider('indodax'); onActiveCellChange?.({ symbol: symbol.toUpperCase().endsWith('IDR') ? symbol : 'BTCIDR', timeframe }); }}>Beralih ke Indodax</button>
+        <button type="button" class="btn-switch-indodax" onclick={() => { marketFeed.setActiveProvider('indodax'); onActiveCellChange?.({ symbol: symbol.toUpperCase().endsWith('IDR') ? symbol : 'BTCIDR', timeframe, providerId: 'indodax' }); }}>Beralih ke Indodax</button>
         <button type="button" class="btn-retry-feed" onclick={handleRetryFeedConnection}>Coba Ulang</button>
         <button type="button" class="btn-dismiss-warning" title="Tutup" onclick={() => (isDismissedConnectionWarning = true)}><X size={14} /></button>
       </div>

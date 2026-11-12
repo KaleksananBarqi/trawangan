@@ -1,5 +1,5 @@
 import type { MarketSearchResult } from '../../types/market';
-import type { MarketProviderAdapter, SearchSymbolsOptions } from './types';
+import type { MarketProviderAdapter, SearchFilterType, SearchSymbolsOptions } from './types';
 import { KNOWN_QUOTE_ASSETS } from '../instrumentIdentity';
 import {
   MACRO_INDEX_CATALOG,
@@ -403,7 +403,7 @@ export class SymbolSearchEngine {
         baseAsset: macro.symbol,
         quoteAsset: macro.quoteUnit,
         displayName: macro.displayName,
-        type: 'spot',
+        type: 'index',
         provider: 'Macro Index',
       });
     }
@@ -421,13 +421,13 @@ export class SymbolSearchEngine {
    */
   public searchLocal(
     query: string,
-    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
+    options?: SearchSymbolsOptions | SearchFilterType
   ): MarketSearchResult[] {
-    let filterType: 'all' | 'spot' | 'perp' = 'all';
+    let filterType: SearchFilterType = 'all';
     let exchange = 'all';
     let quoteAsset = 'all';
 
-    if (options === 'all' || options === 'spot' || options === 'perp') {
+    if (options === 'all' || options === 'spot' || options === 'perp' || options === 'index') {
       filterType = options;
     } else if (options && typeof options === 'object') {
       if (options.filterType) filterType = options.filterType;
@@ -469,13 +469,13 @@ export class SymbolSearchEngine {
    */
   public async search(
     query: string,
-    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
+    options?: SearchSymbolsOptions | SearchFilterType
   ): Promise<MarketSearchResult[]> {
-    let filterType: 'all' | 'spot' | 'perp' = 'all';
+    let filterType: SearchFilterType = 'all';
     let exchange = 'all';
     let quoteAsset = 'all';
 
-    if (options === 'all' || options === 'spot' || options === 'perp') {
+    if (options === 'all' || options === 'spot' || options === 'perp' || options === 'index') {
       filterType = options;
     } else if (options && typeof options === 'object') {
       if (options.filterType) filterType = options.filterType;

@@ -64,7 +64,7 @@ export async function runPineStrategyBacktest(
       high: c.high,
       low: c.low,
       close: c.close,
-      volume: c.volume,
+      volume: c.volume ?? 0,
     }));
 
     // 3. Eksekusi PineTS Runtime Engine

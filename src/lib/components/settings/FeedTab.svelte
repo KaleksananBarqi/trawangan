@@ -63,12 +63,12 @@
     if (selectedProviderId === 'bitunix') return 'Bitunix Futures (USDT-M)';
     if (selectedProviderId === 'hyperliquid') return 'Hyperliquid DEX Perpetuals';
     if (selectedProviderId === 'coinbase') return 'Coinbase Exchange Spot';
-    if (selectedProviderId === 'macro') return 'Macro Index (Synthetic Basket)';
     const custom = providersList.find((p) => p.id === selectedProviderId);
     return custom ? custom.name : 'Binance Official';
   });
 
   async function handleSwitchProvider(providerId: string) {
+    if (!providerId || providerId === 'macro') return;
     selectedProviderId = providerId;
     await marketFeed.setActiveProvider(providerId);
     await loadProviders();

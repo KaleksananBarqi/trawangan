@@ -351,8 +351,8 @@
 
   .badge-cyan {
     color: var(--brand-cyan, #38bdf8);
-    background-color: rgba(56, 189, 248, 0.12);
-    border: 1px solid rgba(56, 189, 248, 0.32);
+    background-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand-cyan, #38bdf8) 32%, transparent);
   }
 
   .badge-bear {

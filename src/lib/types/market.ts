@@ -6,7 +6,7 @@ export interface Candle {
   high: number;
   low: number;
   close: number;
-  volume: number;
+  volume?: number;
 }
 
 export interface TickerInfo {
@@ -569,7 +569,7 @@ export interface MarketSearchResult {
   baseAsset: string;
   quoteAsset: string;
   displayName: string;
-  type: 'spot' | 'perp';
+  type: 'spot' | 'perp' | 'index';
   provider: string;
   price?: number;
   change24h?: number;

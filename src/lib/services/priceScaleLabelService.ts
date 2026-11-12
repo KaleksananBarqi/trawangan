@@ -29,9 +29,6 @@ export function formatPriceLabel(price: number, quoteCurrency?: string, symbol?:
   if (upperQuote === '%') {
     return `${price.toFixed(2)}%`;
   }
-  if (upperQuote === 'MACRO_USD') {
-    return formatMacroCompactValue(price, 'USD');
-  }
   if (upperQuote === 'BTC') {
     return `${price.toFixed(8)} ₿`;
   }
@@ -95,9 +92,6 @@ export function formatPriceWithQuoteSymbol(
 
   if (upperQuote === '%') {
     return formatted;
-  }
-  if (upperQuote === 'MACRO_USD') {
-    return `$${formatted}`;
   }
   if (upperQuote === 'IDR') {
     return `Rp ${formatted}`;

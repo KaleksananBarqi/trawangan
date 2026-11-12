@@ -870,12 +870,29 @@
     if (unsubWatchlistRegistry) unsubWatchlistRegistry();
   });
 
+  async function switchCellProviderContext(nextProviderId: string) {
+    if (!nextProviderId || nextProviderId === activeProviderId) return;
+    try {
+      await flushDrawings();
+    } catch (_) {}
+    activeProviderId = nextProviderId;
+    marketFeed.setActiveProviderContext(nextProviderId);
+    telemetryService.setActiveProvider(nextProviderId);
+  }
+
   async function handleSymbolChange(newSym: string, providerHint?: string) {
     const targetProvider = routeVenueForSymbol(newSym, activeProviderId, providerHint);
-    const nextSym = targetProvider === 'macro' ? (canonicalizeMacroIndexSymbol(newSym) || newSym) : newSym;
+    const nextSym =
+      targetProvider === 'macro'
+        ? (canonicalizeMacroIndexSymbol(newSym) || newSym)
+        : newSym.replace(/^[A-Za-z0-9_-]+:/, '');
 
     if (targetProvider !== activeProviderId) {
-      await handleProviderChange(targetProvider);
+      if (targetProvider === 'macro') {
+        await switchCellProviderContext('macro');
+      } else {
+        await handleProviderChange(targetProvider);
+      }
     }
 
     if (activeSymbol && activeSymbol !== nextSym) {
@@ -897,12 +914,17 @@
     addSystemLog(`Tata letak chart: ${newLayout}`, 'info');
   }
 
-  function handleActiveCellChange(cellInfo: { symbol: string; timeframe: Timeframe }) {
+  function handleActiveCellChange(cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) {
     if (cellInfo.symbol && cellInfo.symbol !== activeSymbol) {
       activeSymbol = cellInfo.symbol;
     }
     if (cellInfo.timeframe && cellInfo.timeframe !== activeTimeframe) {
       activeTimeframe = cellInfo.timeframe;
+    }
+    if (cellInfo.providerId && cellInfo.providerId !== activeProviderId) {
+      activeProviderId = cellInfo.providerId;
+      marketFeed.setActiveProviderContext(cellInfo.providerId);
+      telemetryService.setActiveProvider(cellInfo.providerId);
     }
   }
 

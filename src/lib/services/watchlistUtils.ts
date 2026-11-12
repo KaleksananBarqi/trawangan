@@ -2,7 +2,11 @@
  * Utilitas untuk Serialisasi dan Deserialisasi Item Watchlist Sadar Bursa (Exchange-Aware)
  */
 
-import { canonicalizeMacroIndexSymbol } from './macroIndexCatalog';
+import {
+  canonicalizeMacroIndexSymbol,
+  hasExplicitNonMacroProvider,
+  isMacroProviderAlias,
+} from './macroIndexCatalog';
 
 export interface ParsedWatchlistEntry {
   providerId: string;
@@ -38,9 +42,15 @@ export function parseWatchlistEntry(rawEntry: string): ParsedWatchlistEntry {
     const parts = trimmed.split(':');
     const p = normalizeProviderId(parts[0]);
     const rawSym = parts.slice(1).join(':').trim().toUpperCase();
-    const macroSym = canonicalizeMacroIndexSymbol(rawSym);
-    if (p === 'macro' || macroSym) {
+    if (isMacroProviderAlias(p)) {
+      const macroSym = canonicalizeMacroIndexSymbol(rawSym);
       return { providerId: 'macro', symbol: macroSym || rawSym };
+    }
+    if (!hasExplicitNonMacroProvider(trimmed)) {
+      const macroSym = canonicalizeMacroIndexSymbol(rawSym);
+      if (macroSym) {
+        return { providerId: 'macro', symbol: macroSym };
+      }
     }
     return { providerId: p, symbol: rawSym };
   }
@@ -62,14 +72,23 @@ export function parseWatchlistEntry(rawEntry: string): ParsedWatchlistEntry {
  */
 export function formatWatchlistEntry(symbol: string, rawProvider?: string): string {
   if (!symbol || symbol.startsWith('#section:')) return '';
+  const explicitNonMacro = hasExplicitNonMacroProvider(symbol, rawProvider);
+  const rawHasColon = symbol.includes(':');
+  const colonPrefix = rawHasColon ? normalizeProviderId(symbol.split(':')[0]) : '';
   const cleanSym = symbol.trim().replace(/^[A-Za-z0-9_-]+:/, '').toUpperCase();
-  const macroSym = canonicalizeMacroIndexSymbol(cleanSym);
-  if (macroSym) {
-    return `macro:${macroSym}`;
+
+  if (!explicitNonMacro && (!rawHasColon || isMacroProviderAlias(colonPrefix))) {
+    const macroSym = canonicalizeMacroIndexSymbol(cleanSym);
+    if (macroSym) {
+      return `macro:${macroSym}`;
+    }
   }
-  const providerId = normalizeProviderId(
-    rawProvider || (symbol.includes(':') ? symbol.split(':')[0] : 'binance')
-  );
+
+  const resolvedProviderRaw =
+    rawHasColon && colonPrefix.startsWith('custom')
+      ? colonPrefix
+      : rawProvider || (rawHasColon ? symbol.split(':')[0] : 'binance');
+  const providerId = normalizeProviderId(resolvedProviderRaw);
   return `${providerId}:${cleanSym}`;
 }
 

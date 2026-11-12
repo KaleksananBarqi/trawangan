@@ -11,7 +11,9 @@
 
 import {
   canonicalizeMacroIndexSymbol,
+  hasExplicitNonMacroProvider,
   isMacroIndexSymbol,
+  isMacroProviderAlias,
   resolveMacroIndexDescriptor,
 } from './macroIndexCatalog';
 
@@ -22,7 +24,7 @@ export interface InstrumentIdentity {
   canonicalSymbol: string;
   base: string;
   quote: string;
-  contractType: 'spot' | 'perp' | 'futures';
+  contractType: 'spot' | 'perp' | 'futures' | 'index';
 }
 
 export const KNOWN_QUOTE_ASSETS = [
@@ -106,15 +108,20 @@ export function resolveCanonicalInstrumentSymbol(
     ? normalizeInstrumentToken(fallbackSymbol) || fallbackSymbol.trim().toUpperCase()
     : 'BTCUSDT';
 
+  const explicitNonMacro = hasExplicitNonMacroProvider(rawSymbol);
   const token = rawSymbol ? normalizeInstrumentToken(rawSymbol) : '';
   if (!token) return cleanFallback;
 
-  const macroCanonical = canonicalizeMacroIndexSymbol(token);
-  if (macroCanonical) {
-    return macroCanonical;
+  if (!explicitNonMacro) {
+    const macroCanonical = canonicalizeMacroIndexSymbol(token);
+    if (macroCanonical) {
+      return macroCanonical;
+    }
   }
 
+  const rawPrefix = rawSymbol?.includes(':') ? rawSymbol.split(':')[0].trim().toLowerCase() : '';
   if (
+    rawPrefix.startsWith('custom') ||
     isYahooSymbol(token) ||
     DEFAULT_EXACT_YAHOO_SYMBOLS.has(token) ||
     exactSymbols?.has(token)
@@ -186,14 +193,20 @@ export function normalizeSymbolForMatching(symbol?: string | null): string {
   const trimmed = symbol.trim();
   if (!trimmed) return '';
 
-  // Pertahankan titik dominansi (.D) dan samakan seluruh alias makro ke bentuk kanonikal.
-  const macroCanonical = canonicalizeMacroIndexSymbol(trimmed);
-  if (macroCanonical) {
-    return macroCanonical;
+  const colonIdx = trimmed.indexOf(':');
+  const prefix = colonIdx > 0 ? trimmed.slice(0, colonIdx).trim().toLowerCase() : '';
+
+  // Pertahankan titik dominansi (.D) dan samakan seluruh alias makro ke bentuk kanonikal,
+  // kecuali bila simbol memiliki prefix eksplisit non-makro (mis. custom:TOTAL).
+  if (!prefix || isMacroProviderAlias(prefix)) {
+    const macroCanonical = canonicalizeMacroIndexSymbol(trimmed);
+    if (macroCanonical) {
+      return macroCanonical;
+    }
   }
 
   // 1. Hilangkan awalan bursa jika ada (misal: 'binance:BTCUSDT' -> 'BTCUSDT')
-  const cleanPrefix = trimmed.includes(':') ? trimmed.split(':')[1].trim() : trimmed;
+  const cleanPrefix = colonIdx >= 0 ? trimmed.slice(colonIdx + 1).trim() : trimmed;
   const upper = cleanPrefix.toUpperCase();
 
   // 2. Hilangkan sufiks kontrak derivatif (.P, -PERP, PERP)
@@ -236,21 +249,25 @@ export function parseInstrumentIdentity(rawSymbol: string, providerHint?: string
     cleanSymbol = parts.slice(1).join(':').trim();
   }
 
-  const macroDesc = resolveMacroIndexDescriptor(cleanSymbol);
-  if (macroDesc) {
+  const explicitNonMacro = hasExplicitNonMacroProvider(raw, providerHint);
+  const rawHasColon = raw.includes(':');
+  const macroDesc = explicitNonMacro ? null : resolveMacroIndexDescriptor(cleanSymbol);
+  if (macroDesc && (!rawHasColon || isMacroProviderAlias(providerId))) {
     return {
       raw,
-      providerId: providerId === 'cryptocap' || providerId === 'index' ? 'macro' : 'macro',
+      providerId: 'macro',
       symbol: macroDesc.symbol,
       canonicalSymbol: macroDesc.symbol,
       base: macroDesc.symbol,
       quote: macroDesc.quoteUnit,
-      contractType: 'spot',
+      contractType: 'index',
     };
   }
 
   const upper = cleanSymbol.toUpperCase();
-  const canonical = normalizeSymbolForMatching(cleanSymbol);
+  const canonical = explicitNonMacro
+    ? upper.replace(/\.P$|-PERP$|PERP$/i, '').replace(/[\/\-_]/g, '')
+    : normalizeSymbolForMatching(cleanSymbol);
 
   // Deteksi tipe kontrak
   let contractType: 'spot' | 'perp' | 'futures' = 'spot';
@@ -291,19 +308,23 @@ export function resolveDrawingStorageKey(
   workspaceId?: string | null
 ): string {
   const clean = symbol ? symbol.trim() : 'BTCUSDT';
+  const explicitNonMacro = hasExplicitNonMacroProvider(clean, providerId);
+  const rawHasColon = clean.includes(':');
   let provider = (providerId || 'binance').trim().toLowerCase();
   let normalizedSymbol = clean.toUpperCase();
 
-  if (clean.includes(':')) {
+  if (rawHasColon) {
     const parts = clean.split(':');
     provider = parts[0].trim().toLowerCase() || 'binance';
     normalizedSymbol = parts.slice(1).join(':').trim().toUpperCase();
   }
 
-  const macroCanonical = canonicalizeMacroIndexSymbol(normalizedSymbol);
-  if (macroCanonical) {
-    provider = 'macro';
-    normalizedSymbol = macroCanonical;
+  if (!explicitNonMacro && (!rawHasColon || isMacroProviderAlias(provider))) {
+    const macroCanonical = canonicalizeMacroIndexSymbol(normalizedSymbol);
+    if (macroCanonical) {
+      provider = 'macro';
+      normalizedSymbol = macroCanonical;
+    }
   }
 
   const baseKey = `${provider}:${normalizedSymbol}`;
@@ -391,10 +412,13 @@ export function resolveVelaSymbolKey(sym: string, pId: string): string {
   const rawPrefix = colonIdx > 0 ? raw.slice(0, colonIdx).trim().toLowerCase() : '';
   const clean = colonIdx >= 0 ? raw.slice(colonIdx + 1).trim() : raw;
   const p = rawPrefix || (pId || 'binance').trim().toLowerCase();
+  const explicitNonMacro = hasExplicitNonMacroProvider(raw, pId);
 
-  const macroCanonical = canonicalizeMacroIndexSymbol(clean);
-  if (p === 'macro' || macroCanonical) {
-    return `macro:${macroCanonical || clean.toUpperCase()}`;
+  if (!explicitNonMacro && (!rawPrefix || isMacroProviderAlias(rawPrefix))) {
+    const macroCanonical = canonicalizeMacroIndexSymbol(clean);
+    if (isMacroProviderAlias(p) || macroCanonical) {
+      return `macro:${macroCanonical || clean.toUpperCase()}`;
+    }
   }
 
   if (p === 'yahoo' || isYahooSymbol(clean)) {
@@ -443,7 +467,10 @@ export function routeVenueForSymbol(
   currentVenue: string = 'binance',
   venueHint?: string
 ): string {
-  const clean = symbol ? symbol.trim().toUpperCase() : '';
+  const raw = symbol ? symbol.trim() : '';
+  const colonIdx = raw.indexOf(':');
+  const explicitPrefix = colonIdx > 0 ? raw.slice(0, colonIdx).trim().toLowerCase() : '';
+  const clean = colonIdx >= 0 ? raw.slice(colonIdx + 1).trim().toUpperCase() : raw.toUpperCase();
   const hint = venueHint ? venueHint.trim().toLowerCase() : '';
 
   if (hint) {
@@ -455,6 +482,14 @@ export function routeVenueForSymbol(
     if (hint.includes('yahoo') || hint === 'yahoo') return 'yahoo';
     if (hint.includes('macro') || hint === 'macro') return 'macro';
     return hint;
+  }
+
+  if (explicitPrefix) {
+    return isMacroProviderAlias(explicitPrefix) ? 'macro' : explicitPrefix;
+  }
+
+  if (currentVenue && currentVenue.trim().toLowerCase().startsWith('custom')) {
+    return currentVenue.trim().toLowerCase();
   }
 
   if (isMacroIndexSymbol(clean)) {
@@ -483,30 +518,33 @@ export function getCellMarketIdentity(cell: any): { providerId: string; symbol: 
 
   const rawSymbol = String(cell.symbol || cell.chart?.symbol || '').trim();
   const rawProvider = String(cell.providerId || cell.provider || '').trim().toLowerCase();
+  const explicitNonMacro = hasExplicitNonMacroProvider(rawSymbol, rawProvider);
 
   if (rawSymbol.includes(':')) {
     const parts = rawSymbol.split(':');
     const prefix = parts[0].toLowerCase();
     const cleanSym = parts.slice(1).join(':').toUpperCase();
-    const macroCanonical = canonicalizeMacroIndexSymbol(cleanSym);
-    if (prefix === 'macro' || macroCanonical) {
+    if (!explicitNonMacro && (isMacroProviderAlias(prefix) || isMacroProviderAlias(rawProvider))) {
+      const macroCanonical = canonicalizeMacroIndexSymbol(cleanSym);
       return {
         providerId: 'macro',
         symbol: macroCanonical || cleanSym,
       };
     }
     return {
-      providerId: rawProvider || prefix,
+      providerId: prefix.startsWith('custom') ? prefix : rawProvider || prefix,
       symbol: cleanSym,
     };
   }
 
-  const macroCanonical = canonicalizeMacroIndexSymbol(rawSymbol);
-  if (macroCanonical) {
-    return {
-      providerId: 'macro',
-      symbol: macroCanonical,
-    };
+  if (!explicitNonMacro) {
+    const macroCanonical = canonicalizeMacroIndexSymbol(rawSymbol);
+    if (macroCanonical) {
+      return {
+        providerId: 'macro',
+        symbol: macroCanonical,
+      };
+    }
   }
 
   let providerId = rawProvider;

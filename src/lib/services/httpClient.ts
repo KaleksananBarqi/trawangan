@@ -18,11 +18,9 @@ export interface UniversalFetchOptions {
   signal?: AbortSignal;
 }
 
-export const DEFAULT_HTTP_TIMEOUT_MS = 10000;
+import { isTauriEnvironment } from '../utils/tauriEnv';
 
-function isTauriEnvironment(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
+export const DEFAULT_HTTP_TIMEOUT_MS = 10000;
 
 /**
  * Membangun error timeout dengan nama AbortError agar konsisten dengan perilaku standar fetch signal

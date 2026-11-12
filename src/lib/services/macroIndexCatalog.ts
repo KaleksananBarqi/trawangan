@@ -195,6 +195,46 @@ for (const entry of MACRO_INDEX_CATALOG) {
   }
 }
 
+export const MACRO_PROVIDER_ALIASES: ReadonlySet<string> = new Set([
+  'macro',
+  'cryptocap',
+  'index',
+]);
+
+export function isMacroProviderAlias(providerId?: string | null): boolean {
+  if (!providerId || typeof providerId !== 'string') return false;
+  return MACRO_PROVIDER_ALIASES.has(providerId.trim().toLowerCase());
+}
+
+/**
+ * Mengembalikan true bila simbol membawa prefix provider eksplisit non-makro (mis. `custom:TOTAL`)
+ * atau diberi petunjuk provider custom eksplisit, agar tidak dibajak ke `macro:<SYMBOL>`.
+ */
+export function hasExplicitNonMacroProvider(
+  rawSymbol?: string | null,
+  providerHint?: string | null
+): boolean {
+  if (typeof rawSymbol === 'string') {
+    const trimmed = rawSymbol.trim();
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx > 0) {
+      const prefix = trimmed.slice(0, colonIdx).trim().toLowerCase();
+      if (prefix) {
+        return !isMacroProviderAlias(prefix);
+      }
+    }
+  }
+
+  if (typeof providerHint === 'string') {
+    const hintLower = providerHint.trim().toLowerCase();
+    if (hintLower.startsWith('custom')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function extractMacroCandidateToken(raw?: string | null): string {
   if (!raw || typeof raw !== 'string') return '';
   let token = raw.trim().toUpperCase();
@@ -202,8 +242,8 @@ function extractMacroCandidateToken(raw?: string | null): string {
 
   const colonIdx = token.indexOf(':');
   if (colonIdx >= 0) {
-    const prefix = token.slice(0, colonIdx).trim();
-    if (prefix !== 'MACRO' && prefix !== 'CRYPTOCAP' && prefix !== 'INDEX') {
+    const prefix = token.slice(0, colonIdx).trim().toLowerCase();
+    if (!isMacroProviderAlias(prefix)) {
       return '';
     }
     token = token.slice(colonIdx + 1).trim();
@@ -244,10 +284,12 @@ export function isMacroStablecoin(symbol?: string | null): boolean {
 
 /**
  * Memformat nilai indeks makro secara ringkas agar selalu muat di lebar sumbu harga Vela 64px.
+ * Bila `step` diberikan, presisi desimal menyesuaikan jarak antar-tick agar tidak duplikat saat zoom.
  */
 export function formatMacroCompactValue(
   value: number,
-  symbolOrUnit?: string | MacroIndexUnit | null
+  symbolOrUnit?: string | MacroIndexUnit | null,
+  step?: number
 ): string {
   if (!Number.isFinite(value)) return '-';
 
@@ -257,18 +299,22 @@ export function formatMacroCompactValue(
       : resolveMacroIndexDescriptor(symbolOrUnit)?.quoteUnit ?? 'USD';
 
   if (unit === '%') {
-    return `${value.toFixed(2)}%`;
+    const decimals = step !== undefined && step > 0 && step < 0.01 ? 3 : 2;
+    return `${value.toFixed(decimals)}%`;
   }
 
   const sign = value < 0 ? '-' : '';
   const abs = Math.abs(value);
 
   if (abs >= 1e12) {
-    return `${sign}${(abs / 1e12).toFixed(2)}T`;
+    const decimals = step !== undefined && step > 0 && step < 1e10 ? 3 : 2;
+    return `${sign}${(abs / 1e12).toFixed(decimals)}T`;
   }
   if (abs >= 1e9) {
     const scaled = abs / 1e9;
-    return `${sign}${scaled.toFixed(scaled >= 100 ? 1 : 2)}B`;
+    const fine = step !== undefined && step > 0 && step < 1e8;
+    const decimals = fine ? 3 : scaled >= 100 ? 1 : 2;
+    return `${sign}${scaled.toFixed(decimals)}B`;
   }
   if (abs >= 1e6) {
     return `${sign}${(abs / 1e6).toFixed(1)}M`;

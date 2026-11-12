@@ -9,6 +9,7 @@
   import { formatWatchlistEntry, isSymbolInWatchlist } from '../services/watchlistUtils';
   import { applySearchInputFocus, type SearchTriggerSource } from '../services/symbolSearchFocusGuard';
   import type { MarketSearchResult } from '../types/market';
+  import type { SearchFilterType } from '../services/market/types';
 
   interface Props {
     isOpen: boolean;
@@ -35,7 +36,7 @@
   }: Props = $props();
 
   let query = $state('');
-  let filterType = $state<'all' | 'spot' | 'perp'>('all');
+  let filterType = $state<SearchFilterType>('all');
   let assetCategory = $state<'all' | 'crypto' | 'macro' | 'idx' | 'metals_indices'>('all');
   let selectedExchange = $state<string>('all');
   let selectedQuote = $state<'all' | 'IDR' | 'USDT' | 'BTC' | 'USD'>('all');
@@ -92,7 +93,7 @@
   function formatPricePreview(price: number, quoteAsset = 'USDT', symbol?: string): string {
     if (!price || isNaN(price)) return '-';
     const q = (quoteAsset || 'USDT').toUpperCase();
-    if ((symbol && isMacroIndexSymbol(symbol)) || q === '%' || q === 'MACRO_USD') {
+    if ((symbol && isMacroIndexSymbol(symbol)) || q === '%') {
       return formatPriceWithQuoteSymbol(price, q, symbol);
     }
     if (q === 'IDR') {
@@ -285,7 +286,7 @@
             bind:this={searchInputEl}
             bind:value={query}
             type="text"
-            placeholder="Cari pair crypto & makro (misal: BTC, BTCUSDT.P, TOTAL, BTC.D)..."
+            placeholder="Cari instrumen kripto, makro, IDX, atau komoditas (misal: BTC, BTCUSDT.P, TOTAL, BTC.D)..."
             class="modal-input mono-nums"
           />
           {#if query}
@@ -385,7 +386,12 @@
 
           <div class="active-feed-info">
             <span class="feed-label">Sumber:</span>
-            <span class="feed-badge {activeProviderId}">
+            <span
+              class="feed-badge {activeProviderId}"
+              title={activeProviderId === 'macro'
+                ? 'Indeks sintetis berbasis konstituen Top-30 non-stablecoin (CoinGecko + DefiLlama + Binance/Coinbase), akurasi ~99.2-99.8% terhadap indeks TradingView, riwayat ~1 tahun.'
+                : undefined}
+            >
               {activeProviderId === 'macro' ? 'MACRO SYNTHETIC (~1Y)' : activeProviderId === 'yahoo' ? 'YAHOO FINANCE (DELAYED 15M)' : activeProviderId === 'indodax' ? 'INDODAX SPOT (IDR)' : activeProviderId === 'bitunix' ? 'BITUNIX FUTURES' : 'BINANCE SPOT/FUTURES'}
             </span>
           </div>
@@ -532,8 +538,14 @@
                   <div class="item-text-info">
                     <div class="symbol-title-row">
                       <span class="symbol-name mono-nums">{item.baseAsset}</span>
-                      <span class="quote-currency mono-nums">/{isMacroItem ? (item.quoteAsset === '%' ? '%' : 'USD') : item.quoteAsset}</span>
-                      {#if isMacroItem}
+                      <span class="quote-currency mono-nums">
+                        {#if isMacroItem}
+                          {item.quoteAsset === '%' ? '%' : 'USD'}
+                        {:else}
+                          /{item.quoteAsset}
+                        {/if}
+                      </span>
+                      {#if item.type === 'index' || isMacroItem}
                         <span class="type-badge index mono-nums">INDEX</span>
                       {:else if item.type === 'perp'}
                         <span class="type-badge perp mono-nums">.P PERP</span>
@@ -595,7 +607,7 @@
         {:else}
           <div class="empty-results-box">
             <Search size={28} class="empty-icon" />
-            <span class="empty-title">Tidak ada pair kripto yang cocok</span>
+            <span class="empty-title">Tidak ada instrumen yang cocok</span>
             <span class="empty-subtitle">
               Coba cari ticker lain atau gunakan format simbol seperti <code>BTC/IDR</code> atau <code>BTCUSDT.P</code>
             </span>
@@ -899,9 +911,9 @@
   }
 
   .feed-badge.macro {
-    background-color: rgba(56, 189, 248, 0.14);
+    background-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 14%, transparent);
     color: var(--brand-cyan, #38bdf8);
-    border: 1px solid rgba(56, 189, 248, 0.32);
+    border: 1px solid color-mix(in srgb, var(--brand-cyan, #38bdf8) 32%, transparent);
   }
 
   /* Recent Searches */
@@ -1081,9 +1093,9 @@
   }
 
   .type-badge.index {
-    background-color: rgba(56, 189, 248, 0.14);
+    background-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 14%, transparent);
     color: var(--brand-cyan, #38bdf8);
-    border: 1px solid rgba(56, 189, 248, 0.32);
+    border: 1px solid color-mix(in srgb, var(--brand-cyan, #38bdf8) 32%, transparent);
   }
 
   .item-desc {

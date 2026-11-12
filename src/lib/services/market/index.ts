@@ -8,6 +8,7 @@ import type {
   FeedConnectionState,
   FeedConnectionStatus,
   FeedConnectionListener,
+  SearchFilterType,
   SearchSymbolsOptions,
 } from './types';
 import { BinanceAdapter } from './adapters/binanceAdapter';
@@ -24,7 +25,9 @@ import { alertService } from '../alertService';
 import { SymbolSearchEngine } from './symbolSearchService';
 import { isSectionToken } from '../watchlistUtils';
 import { isYahooSymbol } from '../instrumentIdentity';
-import { canonicalizeMacroIndexSymbol } from '../macroIndexCatalog';
+import { canonicalizeMacroIndexSymbol, isMacroProviderAlias } from '../macroIndexCatalog';
+import { sharedMacroBasketCoordinator } from '../macroBasketCoordinator';
+import { isTauriEnvironment } from '../../utils/tauriEnv';
 
 /**
  * Memecah simbol pair (baik ber-prefix 'provider:symbol' atau raw) dan menginfer bursa target
@@ -43,10 +46,16 @@ export function resolveSymbolProvider(
     const pLower = (p || defaultProvider).toLowerCase();
     const sUpper = s.toUpperCase();
     const macroCanon = canonicalizeMacroIndexSymbol(sUpper);
-    if (pLower === 'macro' || (macroCanon && (pLower === 'cryptocap' || pLower === 'index'))) {
+    if (isMacroProviderAlias(pLower) && macroCanon) {
       return {
         providerId: 'macro',
-        cleanSymbol: macroCanon || sUpper,
+        cleanSymbol: macroCanon,
+      };
+    }
+    if (isMacroProviderAlias(pLower)) {
+      return {
+        providerId: 'macro',
+        cleanSymbol: sUpper,
       };
     }
     return {
@@ -114,6 +123,13 @@ export class MarketFeedService implements IMarketFeedService {
     this.registerAdapter(new MockMarketAdapter());
     this.registerAdapter(new YahooFinanceAdapter());
     this.registerAdapter(new MacroIndexAdapter());
+
+    sharedMacroBasketCoordinator.setFeedHealthObserver({
+      isBinanceBlocked: () => this.isProviderBlocked('binance'),
+      reportStreamState: (sourceKey, providerId, state, message) => {
+        this.reportStreamState(sourceKey, providerId, state, message);
+      },
+    });
 
     // Sinkronkan custom-* endpoint tersimpan di localStorage saat inisialisasi awal
     for (const cfg of this.getKnownProviderConfigsSync()) {
@@ -224,6 +240,25 @@ export class MarketFeedService implements IMarketFeedService {
       errorCount: effectiveErrors,
       message: effectiveMessage,
     };
+  }
+
+  /**
+   * Memeriksa apakah provider tertentu sedang berstatus blocked di Feed Connection Guard.
+   */
+  public isProviderBlocked(providerId: string): boolean {
+    const targetNorm = providerId.trim().toLowerCase().replace(/-/g, '_');
+    if (!targetNorm) return false;
+    const activeNorm = this.activeProviderId.toLowerCase().replace(/-/g, '_');
+    if (this.connectionState === 'blocked' && activeNorm === targetNorm) {
+      return true;
+    }
+    for (const entry of this.chartStreamHealth.values()) {
+      const entryNorm = (entry.providerId || activeNorm).toLowerCase().replace(/-/g, '_');
+      if (entryNorm === targetNorm && entry.state === 'blocked') {
+        return true;
+      }
+    }
+    return false;
   }
 
   public onConnectionChange(listener: FeedConnectionListener): () => void {
@@ -832,14 +867,14 @@ export class MarketFeedService implements IMarketFeedService {
 
   public async searchSymbols(
     query: string,
-    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
+    options?: SearchSymbolsOptions | SearchFilterType
   ): Promise<MarketSearchResult[]> {
     return this.searchEngine.search(query, options);
   }
 
   public searchLocalSymbols(
     query: string,
-    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
+    options?: SearchSymbolsOptions | SearchFilterType
   ): MarketSearchResult[] {
     return this.searchEngine.searchLocal(query, options);
   }
@@ -847,10 +882,27 @@ export class MarketFeedService implements IMarketFeedService {
   // ─── Provider Configuration Management ───
 
   private isTauri(): boolean {
-    return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+    return isTauriEnvironment();
   }
 
   private inMemoryProviders: ProviderConfig[] = [...DEFAULT_PROVIDERS];
+
+  /**
+   * Memperbarui konteks provider aktif di memori tanpa memutasi status `is_active` pada SQLite.
+   * Digunakan untuk sinkronisasi sel grid multi-chart atau indeks makro non-tradable per sel.
+   */
+  public setActiveProviderContext(id: string): void {
+    const normalized = (id || 'binance').trim().toLowerCase();
+    if (!normalized) return;
+    if (this.activeProviderId !== normalized) {
+      this.activeProviderId = normalized;
+      this.resetConnectionError();
+    }
+    const targetCfg = this.inMemoryProviders.find((p) => p.id.toLowerCase() === normalized);
+    if (targetCfg) {
+      this.syncCustomAdapter(targetCfg);
+    }
+  }
 
   public async getActiveProviderId(): Promise<string> {
     const providers = await this.getSavedProviders();
@@ -858,11 +910,19 @@ export class MarketFeedService implements IMarketFeedService {
       this.syncCustomAdapter(p);
     }
     const active = providers.find((p) => p.is_active);
-    this.activeProviderId = active ? active.id : 'binance';
+    const resolved = active && !isMacroProviderAlias(active.id) ? active.id : 'binance';
+    this.activeProviderId = resolved;
     return this.activeProviderId;
   }
 
   public async setActiveProvider(id: string): Promise<void> {
+    const normalized = (id || 'binance').trim().toLowerCase();
+    // Provider sintetis `macro` bersifat per-sel & non-tradable sehingga tidak boleh menimpa SQLite global.
+    if (isMacroProviderAlias(normalized)) {
+      this.setActiveProviderContext('macro');
+      return;
+    }
+
     this.activeProviderId = id;
     this.resetConnectionError();
 

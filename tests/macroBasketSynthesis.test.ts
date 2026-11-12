@@ -313,4 +313,193 @@ describe('ADR-0024: Sintesis Basket Indeks Makro, Kalibrasi, & Ketahanan Feeder'
     assert.equal(provider.getActiveSubscriptionCount(), 0);
     assert.equal(abortObserved, true, 'Unsubscribe chart wajib menggugurkan AbortSignal in-flight');
   });
+
+  test('5. DefiLlama stablecoin/2 (USDC), metadata SQLite TTL berbasis fetchedAt, & Progressive SWR', async () => {
+    let now = 1_700_100_000_000;
+    const sqliteStore = new Map<string, Candle[]>();
+    let llamaAllCalls = 0;
+    let llamaUsdtCalls = 0;
+    let llamaUsdcCalls = 0;
+    let binanceCalls = 0;
+
+    const coordinator = new MacroBasketCoordinator({
+      disableLocalStorage: true,
+      nowFn: () => now,
+      seriesFreshTtlMs: 15 * 60_000,
+      loadSqliteCache: async (sym, tf) => {
+        const rows = sqliteStore.get(`${sym}:${tf}`) ?? [];
+        // Simulasikan Rust SQLite yang menyimpan volume: 0 agar memastikan strip saat read-back.
+        return rows.map((r) => ({ ...r, volume: 0 }));
+      },
+      saveSqliteCache: async (sym, tf, candles) => {
+        sqliteStore.set(`${sym}:${tf}`, candles);
+      },
+      fetchFn: async (url) => {
+        if (url.includes('api.coingecko.com/api/v3/global')) {
+          return makeJsonResponse({ data: { total_market_cap: { usd: 2.2e12 } } });
+        }
+        if (url.includes('api.coingecko.com/api/v3/coins/markets')) {
+          return makeJsonResponse([
+            { symbol: 'btc', id: 'bitcoin', name: 'Bitcoin', market_cap: 1.3e12, current_price: 65000, circulating_supply: 20_000_000, market_cap_rank: 1 },
+            { symbol: 'eth', id: 'ethereum', name: 'Ethereum', market_cap: 360e9, current_price: 3000, circulating_supply: 120_000_000, market_cap_rank: 2 },
+            { symbol: 'usdt', id: 'tether', name: 'Tether', market_cap: 110e9, current_price: 1, circulating_supply: 110e9, market_cap_rank: 3 },
+            { symbol: 'sol', id: 'solana', name: 'Solana', market_cap: 70e9, current_price: 150, circulating_supply: 466_000_000, market_cap_rank: 4 },
+            { symbol: 'usdc', id: 'usd-coin', name: 'USD Coin', market_cap: 50e9, current_price: 1, circulating_supply: 50e9, market_cap_rank: 5 },
+            { symbol: 'bnb', id: 'binancecoin', name: 'BNB', market_cap: 90e9, current_price: 600, circulating_supply: 150_000_000, market_cap_rank: 6 },
+            { symbol: 'xrp', id: 'ripple', name: 'XRP', market_cap: 35e9, current_price: 0.6, circulating_supply: 58e9, market_cap_rank: 7 },
+          ]);
+        }
+        if (url.includes('stablecoins.llama.fi/stablecoincharts/all')) {
+          llamaAllCalls++;
+          return makeJsonResponse([
+            { date: Math.floor((now - 6 * 3600_000) / 1000), totalCirculatingUSD: { peggedUSD: 180e9 } },
+          ]);
+        }
+        if (url.includes('stablecoins.llama.fi/stablecoin/1')) {
+          llamaUsdtCalls++;
+          return makeJsonResponse({
+            tokens: [{ date: Math.floor((now - 6 * 3600_000) / 1000), circulating: { peggedUSD: 112e9 } }],
+          });
+        }
+        if (url.includes('stablecoins.llama.fi/stablecoin/2')) {
+          llamaUsdcCalls++;
+          return makeJsonResponse({
+            tokens: [{ date: Math.floor((now - 6 * 3600_000) / 1000), circulating: { peggedUSD: 48e9 } }],
+          });
+        }
+        if (url.includes('api.binance.com/api/v3/klines')) {
+          binanceCalls++;
+          return makeJsonResponse([
+            [now - 6 * 3600_000, '60000', '61000', '59000', '60500', '100'],
+          ]);
+        }
+        return makeJsonResponse({}, 404);
+      },
+    });
+
+    const initialBars = await coordinator.getMacroCandles('OTHERS', '1D', 30);
+    assert.equal(initialBars.length, 1);
+    assert.equal(llamaAllCalls, 1);
+    assert.equal(llamaUsdtCalls, 1);
+    assert.equal(llamaUsdcCalls, 1, 'DefiLlama stablecoin/2 (USDC) wajib di-fetch paralel');
+    assert.equal(initialBars[0].volume, undefined, 'Bar sintetis wajib meninggalkan volume undefined');
+
+    const meta = await coordinator.getMetadataSnapshot();
+    const stableHistory = await coordinator.getStablecoinHistory(meta);
+    assert.equal(stableHistory[0].usdcUsd, 48e9);
+
+    // Maju 5 menit (< 15m TTL) sementara timestamp bar berumur 6 jam (> 5m): SQLite metadata harus HIT (0 network calls).
+    now += 5 * 60_000;
+    const callsBeforeHit = binanceCalls;
+    // Simulasikan instance baru atau clear in-memory lewat coordinator baru yang berbagi loadSqliteCache?
+    // Gunakan coordinator yang sama setelah menunggu seriesCache mem 8s berakhir agar membaca SQLite cache:
+    const cachedBars = await coordinator.getMacroCandles('OTHERS', '1D', 30);
+    assert.equal(binanceCalls, callsBeforeHit, 'SQLite metadata cache segar < 15m tidak boleh fetch ulang');
+    assert.equal(cachedBars[0].volume, undefined, 'Bar dari SQLite yang memiliki volume 0 wajib distrip menjadi undefined');
+
+    // Maju melewati 15 menit TTL dan uji Progressive SWR mengembalikan SQLite instan sambil me-refresh di background.
+    now += 20 * 60_000;
+    let swrRefreshedBars: Candle[] = [];
+    const swrReturned = await coordinator.getMacroCandles('OTHERS', '1D', 30, undefined, {
+      onBackgroundRefresh: (fresh) => {
+        swrRefreshedBars = fresh;
+      },
+    });
+    assert.equal(swrReturned.length, 1, 'SWR harus mengembalikan bar SQLite seketika');
+    for (let i = 0; i < 30 && swrRefreshedBars.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.ok(swrRefreshedBars.length >= 1, 'SWR wajib memicu callback refresh latar belakang setelah kedaluwarsa');
+    assert.equal(swrRefreshedBars[0].volume, undefined);
+  });
+
+  test('6. Paginasi Coinbase >300 bar, Feed Connection Guard, & failover 30 konstituen pada live ticker', async () => {
+    const now = 1_700_500_000_000;
+    const thirtyCoins = Array.from({ length: 30 }, (_, idx) => ({
+      symbol: idx === 0 ? 'BTC' : idx === 1 ? 'ETH' : `ALT${idx}`,
+      id: `coin-${idx}`,
+      name: `Coin ${idx}`,
+      market_cap: idx === 0 ? 1.3e12 : idx === 1 ? 360e9 : 5e9,
+      current_price: 100,
+      circulating_supply: idx === 0 ? 2e7 : idx === 1 ? 1.2e8 : 5e7,
+      market_cap_rank: idx + 1,
+    }));
+
+    let binanceKlineCalls = 0;
+    let binanceTickerCalls = 0;
+    let coinbasePagesRequested = 0;
+    const coinbaseStatsCoins = new Set<string>();
+
+    const coordinator = new MacroBasketCoordinator({
+      disableLocalStorage: true,
+      nowFn: () => now,
+      feedHealth: {
+        isBinanceBlocked: () => true,
+      },
+      fetchFn: async (url) => {
+        if (url.includes('api.coingecko.com/api/v3/global')) {
+          return makeJsonResponse({ data: { total_market_cap: { usd: 2.2e12 } } });
+        }
+        if (url.includes('api.coingecko.com/api/v3/coins/markets')) {
+          return makeJsonResponse(thirtyCoins);
+        }
+        if (url.includes('stablecoins.llama.fi/stablecoincharts/all')) {
+          return makeJsonResponse([{ date: Math.floor(now / 1000), totalCirculatingUSD: { peggedUSD: 170e9 } }]);
+        }
+        if (url.includes('stablecoins.llama.fi/stablecoin/')) {
+          return makeJsonResponse({ tokens: [{ date: Math.floor(now / 1000), circulating: { peggedUSD: 110e9 } }] });
+        }
+        if (url.includes('api.binance.com/api/v3/klines')) {
+          binanceKlineCalls++;
+          return makeJsonResponse({}, 451);
+        }
+        if (url.includes('api.binance.com/api/v3/ticker/24hr')) {
+          binanceTickerCalls++;
+          return makeJsonResponse({}, 451);
+        }
+        if (url.includes('/candles?')) {
+          const isPage1 = !url.includes('&end=');
+          coinbasePagesRequested++;
+          const count = isPage1 ? 300 : 65;
+          const baseEndSec = isPage1
+            ? Math.floor(now / 1000)
+            : Math.floor(now / 1000) - 300 * 86400;
+          const rows = Array.from({ length: count }, (_, i) => [
+            baseEndSec - i * 86400,
+            95,
+            105,
+            98,
+            100,
+            10,
+          ]);
+          return makeJsonResponse(rows);
+        }
+        if (url.includes('/stats')) {
+          const symMatch = url.match(/products\/([^-]+)-USD\/stats/);
+          if (symMatch) coinbaseStatsCoins.add(symMatch[1]);
+          return makeJsonResponse({ last: '101', open: '99' });
+        }
+        return makeJsonResponse({}, 404);
+      },
+    });
+
+    const bars365 = await coordinator.getMacroCandles('TOTAL', '1D', 365);
+    assert.equal(binanceKlineCalls, 0, 'Saat Guard Binance blocked aktif, coordinator wajib langsung ke Coinbase');
+    assert.equal(bars365.length, 365, 'Paginasi Coinbase wajib menggabungkan 300 + 65 bar menjadi 365 hari');
+    assert.ok(coinbasePagesRequested >= 60, 'Setiap konstituen melewati 2 halaman paginasi Coinbase');
+    assert.equal(bars365[bars365.length - 1].volume, undefined);
+
+    const tickers = await coordinator.fetchLiveMacroTickers();
+    assert.equal(binanceTickerCalls, 0, 'Ticker saat Guard blocked tidak boleh menyentuh Binance');
+    assert.equal(
+      coinbaseStatsCoins.size,
+      30,
+      'Saat seluruh 30 konstituen melewati Coinbase (tanpa batas <= 8), seluruh 30 koin wajib terambil'
+    );
+    assert.ok(tickers.TOTAL.price > 0);
+
+    const liveBar = await coordinator.getLatestLiveBar('TOTAL', '1D');
+    assert.ok(liveBar !== null);
+    assert.equal(liveBar!.volume, undefined, 'Live bar sintetis wajib tidak menyertakan volume: 0');
+  });
 });

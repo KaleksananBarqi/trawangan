@@ -20,6 +20,8 @@ export type FeedConnectionListener = (status: FeedConnectionStatus) => void;
  * Adapter tingkat rendah di balik Seam Market Feed.
  * Mengabstraksi komunikasi teknis dengan bursa kripto (Binance, Bitunix, Mock).
  */
+export type SearchFilterType = 'all' | 'spot' | 'perp' | 'index';
+
 export interface MarketProviderAdapter {
   id: string;
   name: string;
@@ -34,11 +36,11 @@ export interface MarketProviderAdapter {
   fetchCandles(symbol: string, interval: string, limit?: number): Promise<Candle[]>;
 
   // Pencarian simbol pasar
-  searchSymbols(query: string, filterType?: 'all' | 'spot' | 'perp'): Promise<MarketSearchResult[]>;
+  searchSymbols(query: string, filterType?: SearchFilterType): Promise<MarketSearchResult[]>;
 }
 
 export interface SearchSymbolsOptions {
-  filterType?: 'all' | 'spot' | 'perp';
+  filterType?: SearchFilterType;
   exchange?: 'all' | 'binance' | 'indodax' | 'bitunix' | 'hyperliquid' | 'coinbase' | 'yahoo' | 'macro' | (string & {});
   quoteAsset?: 'all' | 'IDR' | 'USDT' | 'BTC' | 'USD' | 'USDC' | '%';
 }
@@ -75,16 +77,17 @@ export interface IMarketFeedService {
   getCandles(symbol: string, interval: string, limit?: number): Promise<Candle[]>;
   searchSymbols(
     query: string,
-    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
+    options?: SearchSymbolsOptions | SearchFilterType
   ): Promise<MarketSearchResult[]>;
   searchLocalSymbols?(
     query: string,
-    options?: SearchSymbolsOptions | ('all' | 'spot' | 'perp')
+    options?: SearchSymbolsOptions | SearchFilterType
   ): MarketSearchResult[];
 
   // ─── Manajemen Provider ───
   getActiveProviderId(): Promise<string>;
   setActiveProvider(id: string): Promise<void>;
+  setActiveProviderContext?(id: string): void;
   getSavedProviders(): Promise<ProviderConfig[]>;
   saveProviderConfig(provider: ProviderConfig): Promise<void>;
   deleteProvider(id: string): Promise<void>;
