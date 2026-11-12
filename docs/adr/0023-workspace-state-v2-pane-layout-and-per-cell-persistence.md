@@ -33,6 +33,7 @@ Sejak [ADR-0005](0005-multi-quote-feed-guard-and-workspace-layout-persistence.md
 ### 4. Kloning Drawing Lintas Workspace saat "Save As"
 - Menambahkan query **`list_drawing_keys`** pada lapisan SQLite Rust ([db.rs](../../src-tauri/src/db.rs), [commands.rs](../../src-tauri/src/commands.rs), [lib.rs](../../src-tauri/src/lib.rs)) dan adapter TypeScript ([persistence/index.ts](../../src/lib/services/persistence/index.ts)) termasuk capability [default.json](../../src-tauri/capabilities/default.json).
 - `cloneWorkspaceDrawings(sourceWorkspaceId, targetWorkspaceId)` menyalin seluruh record drawing (`{prefix}:{provider}:{symbol}` serta `_trawangan_meta`) sebelum `activeWorkspace` dialihkan ke workspace baru.
+- *(Amandemen `#171` & `#173`):* Sejak [ADR-0025](0025-normalized-sqlite-persistence-and-typed-seam.md) (`#171`) memindahkan kloning ke transaksi SQLite atomik (`clone_workspace_drawings` langsung di kontrak `PersistenceAdapter`) dan Spec `#173` (`#186`) meniadakan penggabungan *ghost-key* `localStorage`, command IPC `list_drawing_keys` di Rust beserta metode `listDrawingKeys` di TypeScript telah dihapus seluruhnya.
 
 ### 5. Keputusan K1 — Multi-Cell Hybrid State & `restoreAllCellDrawings`
 - Pada grid multi-chart (`layout !== '1'`), tiap sel diabadikan dalam **`cells: CellSnapshot[]`** bersama **`trackSizes`** (`cols`, `rows`) dan **`activeCellIndex`**.

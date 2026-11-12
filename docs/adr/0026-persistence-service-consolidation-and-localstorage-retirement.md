@@ -29,5 +29,5 @@ Setelah [ADR-0025](0025-normalized-sqlite-persistence-and-typed-seam.md) menorma
 
 ## Konsekuensi
 - Kuota `localStorage` WebView kembali lega untuk keperluan penyelamatan sinkron **Exit Flush & Pending Override** meskipun pengguna menyimpan avatar profil berukuran besar di SQLite.
-- Pengujian unit/integrasi lintas layanan cukup menyuntikkan `PersistenceService` berbasis `InMemoryLocalStorageAdapter` atau adapter tiruan tanpa perlu memanipulasi `globalThis.localStorage`.
-- Penghapusan sisa `fallbackAdapter` internal pada `TauriSqliteAdapter` dan pengetatan *fail-loud* error ditangani secara terpisah pada spesifikasi lanjutan `#173`.
+- Pengujian unit/integrasi lintas layanan cukup menyuntikkan `PersistenceService` berbasis `InMemoryLocalStorageAdapter` (dengan opsi `{ memoryOnly: true }` untuk isolasi total) atau `TauriSqliteAdapter` (dengan injeksi seam `invokeFn` untuk pengujian IPC) tanpa perlu memanipulasi `globalThis.localStorage`.
+- *(Pembaruan `#173` / `#186`–`#188`):* Sisa `fallbackAdapter` dan pembacaan `localStorage` diam-diam di `TauriSqliteAdapter` telah dicabut total sehingga seluruh error IPC SQLite bersifat *fail-loud* murni. Selain itu, `listDrawingKeys` / `list_drawing_keys` telah dihapus, pembacaan nilai *falsy* valid (`""` dan `[]`) dipertahankan, `flushDrawings` mempropagasi rejection di semua cabang, dan kegagalan penulisan latar belakang `saveDrawingsDebounced` disalurkan lewat hook `onError` (`PersistenceService`) ke `Terminal Logs`.
