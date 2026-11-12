@@ -1,5 +1,5 @@
 // Adapter Native SQLite via Tauri IPC Command
-import type { AppPreferenceKey, AppPreferenceRecord, DrawingKeyEntry, PersistenceAdapter } from './types';
+import type { AppPreferenceKey, AppPreferenceRecord, PersistenceAdapter } from './types';
 import type {
   MultiWatchlistRegistry,
   PineScriptRecord,
@@ -8,17 +8,23 @@ import type {
   SavedTradingPlanRecord,
   SavedWorkspace,
 } from '../../types/market';
-import { InMemoryLocalStorageAdapter } from './inMemoryLocalStorageAdapter';
 import {
   buildUpdatedWatchlistRegistry,
   extractActiveWatchlistSymbols,
 } from './watchlistProjection';
 
-export class TauriSqliteAdapter implements PersistenceAdapter {
-  private fallbackAdapter = new InMemoryLocalStorageAdapter();
-  private invokePromise: Promise<typeof import('@tauri-apps/api/core').invoke> | null = null;
+export type TauriInvokeFn = typeof import('@tauri-apps/api/core').invoke;
 
-  private async getInvoke(): Promise<typeof import('@tauri-apps/api/core').invoke> {
+export class TauriSqliteAdapter implements PersistenceAdapter {
+  private invokePromise: Promise<TauriInvokeFn> | null = null;
+
+  constructor(invokeFn?: TauriInvokeFn) {
+    if (invokeFn) {
+      this.invokePromise = Promise.resolve(invokeFn);
+    }
+  }
+
+  private async getInvoke(): Promise<TauriInvokeFn> {
     if (!this.invokePromise) {
       this.invokePromise = import('@tauri-apps/api/core').then((m) => m.invoke);
     }
@@ -26,86 +32,32 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
   }
 
   async loadDrawings(symbol: string, timeframe: string): Promise<string | null> {
-    try {
-      const invoke = await this.getInvoke();
-      const raw = await invoke<string | null>('load_chart_drawings', { symbol, timeframe });
-      if (raw) return raw;
-    } catch (err) {
-      console.warn(`[TauriSqliteAdapter] Gagal load drawings ${symbol}:${timeframe}, beralih ke fallback:`, err);
-    }
-    return this.fallbackAdapter.loadDrawings(symbol, timeframe);
+    const invoke = await this.getInvoke();
+    const raw = await invoke<string | null>('load_chart_drawings', { symbol, timeframe });
+    return raw ?? null;
   }
 
   async saveDrawings(symbol: string, timeframe: string, dataJson: string): Promise<void> {
-    try {
-      const invoke = await this.getInvoke();
-      await invoke('save_chart_drawings', { symbol, timeframe, dataJson });
-      return;
-    } catch (err) {
-      console.warn(`[TauriSqliteAdapter] Gagal save drawings ${symbol}:${timeframe}, beralih ke fallback:`, err);
-    }
-    await this.fallbackAdapter.saveDrawings(symbol, timeframe, dataJson);
+    const invoke = await this.getInvoke();
+    await invoke('save_chart_drawings', { symbol, timeframe, dataJson });
   }
 
   async clearDrawings(symbol: string, timeframe: string): Promise<void> {
-    try {
-      const invoke = await this.getInvoke();
-      await invoke('clear_chart_drawings', { symbol, timeframe });
-    } catch (err) {
-      console.warn(`[TauriSqliteAdapter] Gagal clear drawings ${symbol}:${timeframe}:`, err);
-    }
-    await this.fallbackAdapter.clearDrawings(symbol, timeframe);
-  }
-
-  async listDrawingKeys(prefix: string): Promise<DrawingKeyEntry[]> {
-    const merged = new Map<string, DrawingKeyEntry>();
-    try {
-      const invoke = await this.getInvoke();
-      const sqliteKeys = await invoke<DrawingKeyEntry[]>('list_drawing_keys', { prefix });
-      if (Array.isArray(sqliteKeys)) {
-        for (const item of sqliteKeys) {
-          if (item?.symbol && item?.timeframe) {
-            merged.set(`${item.symbol}::${item.timeframe}`, item);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn(`[TauriSqliteAdapter] Gagal listDrawingKeys "${prefix}" dari SQLite:`, err);
-    }
-    try {
-      const fallbackKeys = await this.fallbackAdapter.listDrawingKeys(prefix);
-      for (const item of fallbackKeys) {
-        if (item?.symbol && item?.timeframe) {
-          merged.set(`${item.symbol}::${item.timeframe}`, item);
-        }
-      }
-    } catch (_) {}
-    return Array.from(merged.values());
+    const invoke = await this.getInvoke();
+    await invoke('clear_chart_drawings', { symbol, timeframe });
   }
 
   async loadWatchlist(): Promise<string[] | null> {
-    try {
-      const registry = await this.loadWatchlistRegistry();
-      const projected = extractActiveWatchlistSymbols(registry);
-      if (projected) return projected;
-    } catch (err) {
-      console.warn('[TauriSqliteAdapter] Gagal load watchlist dari SQLite, beralih ke fallback:', err);
-    }
-    return this.fallbackAdapter.loadWatchlist();
+    const registry = await this.loadWatchlistRegistry();
+    return extractActiveWatchlistSymbols(registry);
   }
 
   async saveWatchlist(symbols: string[]): Promise<void> {
-    try {
-      const existing = await this.loadWatchlistRegistry();
-      const nextRegistry = buildUpdatedWatchlistRegistry(existing, symbols);
-      if (nextRegistry) {
-        await this.saveWatchlistRegistry(nextRegistry);
-      }
-      return;
-    } catch (err) {
-      console.warn('[TauriSqliteAdapter] Gagal save watchlist ke SQLite, beralih ke fallback:', err);
+    const existing = await this.loadWatchlistRegistry();
+    const nextRegistry = buildUpdatedWatchlistRegistry(existing, symbols);
+    if (nextRegistry) {
+      await this.saveWatchlistRegistry(nextRegistry);
     }
-    await this.fallbackAdapter.saveWatchlist(symbols);
   }
 
   async loadWatchlistRegistry(): Promise<MultiWatchlistRegistry | null> {
@@ -120,36 +72,19 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
   }
 
   async loadScripts(): Promise<PineScriptRecord[]> {
-    try {
-      const invoke = await this.getInvoke();
-      const list = await invoke<PineScriptRecord[]>('get_saved_scripts');
-      if (list) return list;
-    } catch (err) {
-      console.warn('[TauriSqliteAdapter] Gagal load Pine scripts dari SQLite, beralih ke fallback:', err);
-    }
-    return this.fallbackAdapter.loadScripts();
+    const invoke = await this.getInvoke();
+    const list = await invoke<PineScriptRecord[]>('get_saved_scripts');
+    return Array.isArray(list) ? list : [];
   }
 
   async saveScript(script: PineScriptRecord): Promise<void> {
-    try {
-      const invoke = await this.getInvoke();
-      await invoke('save_script', { script });
-      return;
-    } catch (err) {
-      console.warn('[TauriSqliteAdapter] Gagal save Pine script ke SQLite, beralih ke fallback:', err);
-    }
-    await this.fallbackAdapter.saveScript(script);
+    const invoke = await this.getInvoke();
+    await invoke('save_script', { script });
   }
 
   async deleteScript(id: string): Promise<void> {
-    try {
-      const invoke = await this.getInvoke();
-      await invoke('delete_script', { id });
-      return;
-    } catch (err) {
-      console.warn('[TauriSqliteAdapter] Gagal delete Pine script dari SQLite, beralih ke fallback:', err);
-    }
-    await this.fallbackAdapter.deleteScript(id);
+    const invoke = await this.getInvoke();
+    await invoke('delete_script', { id });
   }
 
   async cloneWorkspaceDrawings(fromWsId: string, toWsId: string): Promise<number> {
@@ -160,6 +95,7 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
   async listWorkspaces(): Promise<SavedWorkspace[]> {
     const invoke = await this.getInvoke();
     const rawList = await invoke<string[]>('list_workspaces');
+    if (!Array.isArray(rawList)) return [];
     const result: SavedWorkspace[] = [];
     for (const raw of rawList) {
       try {
@@ -218,7 +154,7 @@ export class TauriSqliteAdapter implements PersistenceAdapter {
 
   async getPreference(key: AppPreferenceKey): Promise<string | null> {
     const invoke = await this.getInvoke();
-    return await invoke<string | null>('get_app_preference', { key });
+    return (await invoke<string | null>('get_app_preference', { key })) ?? null;
   }
 
   async setPreference(key: AppPreferenceKey, valueJson: string): Promise<void> {

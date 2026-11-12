@@ -23,9 +23,10 @@
     activeWorkspace?: SavedWorkspace | null;
     isAutoSaveWorkspace?: boolean;
     onToggleAutoSaveWorkspace?: () => void;
-    onSaveWorkspace?: (name: string, overwriteId?: string) => void;
+    onSaveWorkspace?: (name: string, overwriteId?: string) => boolean | void | Promise<boolean | void>;
     onLoadWorkspace?: (w: SavedWorkspace) => void;
     onNewWorkspace?: () => void;
+    onLog?: (msg: string, level?: 'info' | 'success' | 'warn' | 'error') => void;
   }
 
   let {
@@ -37,6 +38,7 @@
     onSaveWorkspace,
     onLoadWorkspace,
     onNewWorkspace,
+    onLog,
   }: Props = $props();
 
   let showMenu = $state(false);
@@ -64,15 +66,54 @@
   });
 
   async function loadWorkspacesList() {
-    savedWorkspaces = await loadWorkspaces();
+    try {
+      savedWorkspaces = await loadWorkspaces();
+    } catch (err) {
+      console.warn('[WorkspaceLayoutMenu] Gagal memuat daftar workspace:', err);
+      onLog?.(
+        `Gagal memuat daftar workspace: ${err instanceof Error ? err.message : String(err)}`,
+        'error'
+      );
+    }
   }
 
-  function handleSaveWorkspace() {
+  async function executeSaveWorkspace(name: string, overwriteId?: string): Promise<boolean> {
+    if (!onSaveWorkspace) return false;
+    try {
+      const saved = await onSaveWorkspace(name, overwriteId);
+      return saved !== false;
+    } catch (err) {
+      console.warn('[WorkspaceLayoutMenu] Gagal menyimpan workspace:', err);
+      onLog?.(
+        `Gagal menyimpan workspace "${name}": ${err instanceof Error ? err.message : String(err)}`,
+        'error'
+      );
+      return false;
+    }
+  }
+
+  function scheduleWorkspaceListRefresh(delayMs = 120, onRefresh?: () => void) {
+    setTimeout(() => {
+      onRefresh?.();
+      void loadWorkspacesList();
+    }, delayMs);
+  }
+
+  function resetInputAndRefreshWorkspaceList() {
+    workspaceNameInput = '';
+    scheduleWorkspaceListRefresh(120);
+  }
+
+  function flashSaveFeedback(setFeedback: (active: boolean) => void) {
+    setFeedback(true);
+    scheduleWorkspaceListRefresh(1500, () => setFeedback(false));
+  }
+
+  async function handleSaveWorkspace() {
     const name = workspaceNameInput.trim();
-    if (name && onSaveWorkspace) {
-      onSaveWorkspace(name);
-      workspaceNameInput = '';
-      setTimeout(loadWorkspacesList, 120);
+    if (!name || !onSaveWorkspace) return;
+    if (await executeSaveWorkspace(name)) {
+      resetInputAndRefreshWorkspaceList();
     }
   }
 
@@ -83,31 +124,27 @@
     workspaceNameInput = '';
   }
 
-  function handleOverwriteActive() {
+  async function handleOverwriteActive() {
     if (!activeWorkspace || !onSaveWorkspace) return;
-    onSaveWorkspace(activeWorkspace.name, activeWorkspace.id);
-    overwriteFeedback = true;
-    setTimeout(() => {
-      overwriteFeedback = false;
-      loadWorkspacesList();
-    }, 1500);
+    if (!(await executeSaveWorkspace(activeWorkspace.name, activeWorkspace.id))) return;
+    flashSaveFeedback((active) => {
+      overwriteFeedback = active;
+    });
   }
 
-  function handleOverwriteItem(w: SavedWorkspace) {
+  async function handleOverwriteItem(w: SavedWorkspace) {
     if (!onSaveWorkspace) return;
-    onSaveWorkspace(w.name, w.id);
-    itemOverwriteFeedbackId = w.id;
-    setTimeout(() => {
-      itemOverwriteFeedbackId = null;
-      loadWorkspacesList();
-    }, 1500);
+    if (!(await executeSaveWorkspace(w.name, w.id))) return;
+    flashSaveFeedback((active) => {
+      itemOverwriteFeedbackId = active ? w.id : null;
+    });
   }
 
-  function handleConfirmOverwriteDuplicate(target: SavedWorkspace) {
+  async function handleConfirmOverwriteDuplicate(target: SavedWorkspace) {
     if (!onSaveWorkspace) return;
-    onSaveWorkspace(target.name, target.id);
-    workspaceNameInput = '';
-    setTimeout(loadWorkspacesList, 120);
+    if (await executeSaveWorkspace(target.name, target.id)) {
+      resetInputAndRefreshWorkspaceList();
+    }
   }
 
   function handleLoadWorkspace(w: SavedWorkspace) {
@@ -118,8 +155,16 @@
   }
 
   async function handleDeleteWorkspace(id: string) {
-    await deleteWorkspace(id);
-    await loadWorkspacesList();
+    try {
+      await deleteWorkspace(id);
+      await loadWorkspacesList();
+    } catch (err) {
+      console.warn('[WorkspaceLayoutMenu] Gagal menghapus workspace:', err);
+      onLog?.(
+        `Gagal menghapus workspace: ${err instanceof Error ? err.message : String(err)}`,
+        'error'
+      );
+    }
   }
 
   function handleLayoutSelect(id: string) {

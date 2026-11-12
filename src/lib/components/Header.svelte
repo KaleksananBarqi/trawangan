@@ -49,9 +49,10 @@
     activeWorkspace?: SavedWorkspace | null;
     isAutoSaveWorkspace?: boolean;
     onToggleAutoSaveWorkspace?: () => void;
-    onSaveWorkspace?: (name: string, overwriteId?: string) => void;
+    onSaveWorkspace?: (name: string, overwriteId?: string) => boolean | void | Promise<boolean | void>;
     onLoadWorkspace?: (w: SavedWorkspace) => void;
     onNewWorkspace?: () => void;
+    onLog?: (msg: string, level?: 'info' | 'success' | 'warn' | 'error') => void;
     onToggleSyncCrosshair?: () => void;
     onToggleSyncViewport?: () => void;
     onToggleSyncSymbol?: () => void;
@@ -101,6 +102,7 @@
     onSaveWorkspace,
     onLoadWorkspace,
     onNewWorkspace,
+    onLog,
     onToggleSyncCrosshair,
     onToggleSyncViewport,
     onToggleSyncSymbol,
@@ -305,6 +307,7 @@
     {onSaveWorkspace}
     {onLoadWorkspace}
     {onNewWorkspace}
+    {onLog}
   />
 
   <div class="divider"></div>

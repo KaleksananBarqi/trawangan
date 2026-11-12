@@ -419,7 +419,7 @@
   let activePineResizeSession: EdgeResizeSession | null = null;
 
   // Terminal Diagnostics Logs
-  let systemLogs = $state<{ time: string; msg: string; level: 'info' | 'success' | 'warn' }[]>([
+  let systemLogs = $state<{ time: string; msg: string; level: 'info' | 'success' | 'warn' | 'error' }[]>([
     { time: '16:00:01', msg: 'Trawangan Native Core initialized via Tauri v2.', level: 'info' },
     { time: '16:00:02', msg: 'SQLite embedded database connected (rusqlite 0.32).', level: 'info' },
     { time: '16:00:03', msg: 'Binance WebSocket stream active (wss://stream.binance.com).', level: 'success' },
@@ -450,6 +450,9 @@
 
   onMount(() => {
     let isPageActive = true;
+    const unsubPersistenceError = storage.onError((evt) => {
+      addSystemLog(evt.message, 'error');
+    });
 
     // Jalankan bootstrap persistence paling awal sebelum inisialisasi shell, feed pasar, atau workspace
     const runStartupHydration = async () => {
@@ -457,6 +460,10 @@
         await storage.bootstrap();
       } catch (err) {
         console.warn('[Startup] Gagal menjalankan bootstrap persistence:', err);
+        addSystemLog(
+          `Gagal inisialisasi basis data lokal: ${err instanceof Error ? err.message : String(err)}`,
+          'error'
+        );
       }
       if (!isPageActive) return;
 
@@ -856,6 +863,7 @@
 
     return () => {
       isPageActive = false;
+      unsubPersistenceError();
       clearPageManagedTimers();
       window.removeEventListener('beforeunload', handleBeforeUnload);
       if (unlistenCloseRequested) unlistenCloseRequested();
@@ -882,11 +890,20 @@
     if (unsubWatchlistRegistry) unsubWatchlistRegistry();
   });
 
-  async function switchCellProviderContext(nextProviderId: string) {
-    if (!nextProviderId || nextProviderId === activeProviderId) return;
+  async function flushDrawingsWithLog(context: string): Promise<void> {
     try {
       await flushDrawings();
-    } catch (_) {}
+    } catch (err) {
+      addSystemLog(
+        `Gagal menguras gambar ${context}: ${err instanceof Error ? err.message : String(err)}`,
+        'error'
+      );
+    }
+  }
+
+  async function switchCellProviderContext(nextProviderId: string) {
+    if (!nextProviderId || nextProviderId === activeProviderId) return;
+    await flushDrawingsWithLog('sebelum beralih provider sel');
     activeProviderId = nextProviderId;
     marketFeed.setActiveProviderContext(nextProviderId);
     telemetryService.setActiveProvider(nextProviderId);
@@ -908,9 +925,7 @@
     }
 
     if (activeSymbol && activeSymbol !== nextSym) {
-      try {
-        await flushDrawings();
-      } catch (_) {}
+      await flushDrawingsWithLog('sebelum ganti simbol');
     }
     activeSymbol = nextSym;
     addSystemLog(`Simbol berganti ke ${nextSym} (${targetProvider.toUpperCase()})`, 'info');
@@ -1095,9 +1110,7 @@
   }
 
   async function handleProviderChange(newProviderId: string) {
-    try {
-      await flushDrawings();
-    } catch (_) {}
+    await flushDrawingsWithLog('sebelum beralih provider');
     activeProviderId = newProviderId;
     marketFeed.setActiveProvider(newProviderId);
     telemetryService.setActiveProvider(newProviderId);
@@ -1137,13 +1150,17 @@
     },
     onError: (err) => {
       console.warn('Auto-save workspace gagal:', err);
+      addSystemLog(
+        `Auto-save workspace gagal: ${err instanceof Error ? err.message : String(err)}`,
+        'error'
+      );
     },
   });
 
-  async function handleSaveWorkspace(name: string, overwriteId?: string) {
+  async function handleSaveWorkspace(name: string, overwriteId?: string): Promise<boolean> {
     workspaceCoordinator.cancel();
     const prevWsId = activeWorkspace?.id || 'default_workspace';
-    try { await flushDrawings(); } catch (_) {}
+    await flushDrawingsWithLog(`sebelum menyimpan workspace "${name}"`);
 
     const targetId =
       overwriteId ||
@@ -1151,35 +1168,56 @@
         ? activeWorkspace.id
         : undefined);
 
-    const payload = buildCurrentWorkspacePayload(name, targetId);
-    const saved = await saveWorkspace(payload as any);
+    try {
+      const payload = buildCurrentWorkspacePayload(name, targetId);
+      const saved = await saveWorkspace(payload as any);
 
-    // Klon seluruh drawing dari workspace sumber (misal default_workspace) SEBELUM activeWorkspace berubah
-    if (saved?.id && prevWsId !== saved.id) {
-      try {
-        await cloneWorkspaceDrawings(prevWsId, saved.id);
-      } catch (err) {
-        console.warn('[SaveWorkspace] Gagal menyalin drawings saat Save As:', err);
+      // Klon seluruh drawing dari workspace sumber (misal default_workspace) SEBELUM activeWorkspace berubah
+      if (saved?.id && prevWsId !== saved.id) {
+        try {
+          await cloneWorkspaceDrawings(prevWsId, saved.id);
+        } catch (err) {
+          console.warn('[SaveWorkspace] Gagal menyalin drawings saat Save As:', err);
+          addSystemLog(
+            `Workspace "${name}" tersimpan, tetapi gagal menyalin gambar: ${err instanceof Error ? err.message : String(err)}`,
+            'warn'
+          );
+        }
       }
-    }
 
-    activeWorkspace = saved;
-    if (saved?.id) {
-      await setLastActiveWorkspaceId(saved.id);
-      clearPendingWorkspaceBackup(saved.id);
+      activeWorkspace = saved;
+      if (saved?.id) {
+        await setLastActiveWorkspaceId(saved.id);
+        clearPendingWorkspaceBackup(saved.id);
+      }
+      workspaceCoordinator.setSavedFingerprint(
+        computeWorkspaceFingerprint({ ...payload, id: saved?.id || payload.id })
+      );
+      addSystemLog(`Workspace "${name}" disimpan`, 'success');
+      return true;
+    } catch (err) {
+      console.warn('[SaveWorkspace] Gagal menyimpan workspace:', err);
+      addSystemLog(
+        `Gagal menyimpan workspace "${name}": ${err instanceof Error ? err.message : String(err)}`,
+        'error'
+      );
+      return false;
     }
-    workspaceCoordinator.setSavedFingerprint(
-      computeWorkspaceFingerprint({ ...payload, id: saved?.id || payload.id })
-    );
-    addSystemLog(`Workspace "${name}" disimpan`, 'success');
   }
 
   async function handleNewWorkspace() {
     workspaceCoordinator.cancel();
     workspaceCoordinator.setSavedFingerprint('');
-    try { await flushDrawings(); } catch (_) {}
+    await flushDrawingsWithLog('sebelum membuat workspace baru');
     activeWorkspace = null;
-    await setLastActiveWorkspaceId(null);
+    try {
+      await setLastActiveWorkspaceId(null);
+    } catch (err) {
+      addSystemLog(
+        `Gagal membersihkan referensi workspace aktif terakhir: ${err instanceof Error ? err.message : String(err)}`,
+        'error'
+      );
+    }
     chartDrawingController.setWorkspaceId('default_workspace');
     chartDrawingController.clearCanvasVisuals();
     chartDrawingController.clearAllPlans();
@@ -1188,7 +1226,7 @@
 
   async function handleLoadWorkspace(w: SavedWorkspace) {
     workspaceCoordinator.cancel();
-    try { await flushDrawings(); } catch (_) {}
+    await flushDrawingsWithLog(`sebelum memuat workspace "${w.name}"`);
     isLoadingWorkspace = true;
     try {
       activeWorkspace = w;
@@ -1221,7 +1259,7 @@
       workspaceCoordinator.setSavedFingerprint(res.fingerprint);
     } catch (e) {
       console.warn('Gagal memuat workspace:', e);
-      addSystemLog(`Gagal memuat workspace: ${e instanceof Error ? e.message : String(e)}`, 'warn');
+      addSystemLog(`Gagal memuat workspace: ${e instanceof Error ? e.message : String(e)}`, 'error');
     } finally {
       isLoadingWorkspace = false;
     }
@@ -1399,7 +1437,7 @@
     handleOpenInEditor(code, title, id);
   }
 
-  function addSystemLog(msg: string, level: 'info' | 'success' | 'warn') {
+  function addSystemLog(msg: string, level: 'info' | 'success' | 'warn' | 'error') {
     const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
     systemLogs = [...systemLogs.slice(-60), { time, msg, level }];
   }
@@ -1611,6 +1649,7 @@
     onSaveWorkspace={handleSaveWorkspace}
     onLoadWorkspace={handleLoadWorkspace}
     onNewWorkspace={handleNewWorkspace}
+    onLog={(msg, level) => addSystemLog(msg, level || 'info')}
     onToggleSyncCrosshair={handleToggleSyncCrosshair}
     onToggleSyncViewport={handleToggleSyncViewport}
     onToggleSyncSymbol={handleToggleSyncSymbol}
@@ -2242,6 +2281,10 @@
 
   .log-row.warn .log-text {
     color: #f59e0b;
+  }
+
+  .log-row.error .log-text {
+    color: #ef4444;
   }
 
   .text-bull {

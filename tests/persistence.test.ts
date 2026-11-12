@@ -393,6 +393,23 @@ describe('Deep Persistence Module Unit Tests', () => {
     assert.deepStrictEqual(await service.loadWatchlist(), ['binance:SOLUSDT']);
   });
 
+  test('Tiket #187: PersistenceService.loadWatchlist() mempertahankan [] eksplisit dari registry maupun legacy tanpa menimpa DEFAULT_WATCHLIST_SYMBOLS', async () => {
+    // 1. Registry aktif ada tetapi kosong ([]) -> wajib kembali [], bukan DEFAULT_WATCHLIST_SYMBOLS
+    await service.saveWatchlist([]);
+    assert.deepStrictEqual(await service.loadWatchlist(), []);
+
+    // 2. Registry null tetapi adapter.loadWatchlist() mengembalikan [] -> wajib kembali []
+    const legacyEmptyAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    await legacyEmptyAdapter.saveWatchlist([]);
+    const legacyEmptyService = new PersistenceService(legacyEmptyAdapter);
+    assert.deepStrictEqual(await legacyEmptyService.loadWatchlist(), []);
+
+    // 3. Hanya jika registry null DAN legacy null baru mengembalikan DEFAULT_WATCHLIST_SYMBOLS
+    const pristineAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    const pristineService = new PersistenceService(pristineAdapter);
+    assert.deepStrictEqual(await pristineService.loadWatchlist(), persistenceModule.DEFAULT_WATCHLIST_SYMBOLS);
+  });
+
   test('Tiket #179: app_preferences menyimpan settings & chart default config dan menghapus lewat real DELETE (bukan sentinel "")', async () => {
     await service.saveSettings({ theme: 'light', autoSaveWorkspace: false });
     assert.strictEqual((await service.loadSettings())?.theme, 'light');
@@ -923,6 +940,349 @@ describe('Deep Persistence Module Unit Tests', () => {
     await freshService.bootstrap();
     await new Promise((r) => setTimeout(r, 0));
     assert.strictEqual(cancelledCalls, 0);
+  });
+
+  test('Tiket #186: kontrak listDrawingKeys telah dihapus dari PersistenceAdapter dan seluruh implementasinya', () => {
+    const tauriAdapter = new TauriSqliteAdapter();
+    assert.strictEqual('listDrawingKeys' in adapter, false);
+    assert.strictEqual('listDrawingKeys' in tauriAdapter, false);
+    assert.strictEqual('listDrawingKeys' in service, false);
+    assert.strictEqual('listDrawingKeys' in persistenceModule, false);
+  });
+
+  test('Tiket #186: InMemoryLocalStorageAdapter({ memoryOnly: true }) terisolasi penuh dari globalThis.localStorage dan clearMemory() deterministik', async () => {
+    const prevLocalStorage = (globalThis as any).localStorage;
+    const lsMap = new Map<string, string>([
+      ['trawangan_drawings_ws_ghost:binance:BTCUSDT_GLOBAL', '{"shapes":[{"id":"ghost"}]}'],
+      ['trawangan_pref_app_settings', '{"theme":"light"}'],
+      ['trawangan_workspaces', JSON.stringify([{ id: 'ws_ghost', name: 'Ghost' }])],
+      ['trawangan_user_watchlist', JSON.stringify(['DOGEUSDT'])],
+      ['trawangan_providers', JSON.stringify([{ id: 'custom_ls', name: 'GhostLS', is_active: true }])],
+    ]);
+    const lsCalls: string[] = [];
+
+    (globalThis as any).localStorage = {
+      get length() {
+        lsCalls.push('length');
+        return lsMap.size;
+      },
+      key(index: number) {
+        lsCalls.push(`key:${index}`);
+        return Array.from(lsMap.keys())[index] ?? null;
+      },
+      getItem(k: string) {
+        lsCalls.push(`getItem:${k}`);
+        return lsMap.get(k) ?? null;
+      },
+      setItem(k: string, v: string) {
+        lsCalls.push(`setItem:${k}`);
+        lsMap.set(k, v);
+      },
+      removeItem(k: string) {
+        lsCalls.push(`removeItem:${k}`);
+        lsMap.delete(k);
+      },
+      clear() {
+        lsCalls.push('clear');
+        lsMap.clear();
+      },
+    };
+
+    try {
+      const isolated = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+
+      assert.strictEqual(await isolated.loadDrawings('ws_ghost:binance:BTCUSDT', 'GLOBAL'), null);
+      assert.strictEqual(await isolated.getPreference('app_settings'), null);
+      assert.deepStrictEqual(await isolated.loadAllPreferences(), []);
+      assert.deepStrictEqual(await isolated.listWorkspaces(), []);
+      assert.strictEqual(await isolated.loadWatchlist(), null);
+      assert.strictEqual(await isolated.loadWatchlistRegistry(), null);
+      assert.strictEqual((await isolated.loadProviders()).some((p) => p.id === 'custom_ls'), false);
+      assert.strictEqual(await isolated.cloneWorkspaceDrawings('ws_ghost', 'ws_target'), 0);
+
+      await isolated.saveDrawings('ws_mem:binance:ETHUSDT', 'GLOBAL', '{"shapes":[{"id":"m1"}]}');
+      await isolated.setPreference('app_settings', '{"theme":"dark"}');
+      await isolated.upsertWorkspace({
+        id: 'ws_mem',
+        name: 'MemWS',
+        schemaVersion: 2,
+        symbol: 'ETHUSDT',
+        timeframe: '15m',
+        layout: '1',
+        indicators: [],
+        providerId: 'binance',
+        timestamp: 1000,
+      });
+      await isolated.deleteWorkspace('ws_ghost');
+      await isolated.deletePreference('app_settings');
+      await isolated.setPreference('pine_panel_width', '420');
+      await isolated.clearDrawings('ws_mem:binance:ETHUSDT', 'GLOBAL');
+
+      assert.deepStrictEqual(lsCalls, [], 'Mode memoryOnly tidak boleh membaca atau menulis globalThis.localStorage');
+      assert.strictEqual(lsMap.has('trawangan_drawings_ws_ghost:binance:BTCUSDT_GLOBAL'), true);
+
+      // clearMemory() mereset total state internal tanpa rehidrasi dari localStorage
+      isolated.clearMemory();
+      assert.strictEqual(await isolated.getPreference('pine_panel_width'), null);
+      assert.deepStrictEqual(await isolated.loadAllPreferences(), []);
+      assert.deepStrictEqual(await isolated.listWorkspaces(), []);
+      assert.deepStrictEqual(lsCalls, [], 'Setelah clearMemory(), mode memoryOnly tetap tidak menyentuh localStorage');
+    } finally {
+      if (prevLocalStorage === undefined) {
+        delete (globalThis as any).localStorage;
+      } else {
+        (globalThis as any).localStorage = prevLocalStorage;
+      }
+    }
+  });
+
+  test('Tiket #186: InMemoryLocalStorageAdapter mempertahankan string kosong "" pada loadDrawings, getPreference, dan cloneWorkspaceDrawings serta tetap mendukung mode Web default', async () => {
+    const prevLocalStorage = (globalThis as any).localStorage;
+    const lsMap = new Map<string, string>([
+      ['trawangan_pref_app_settings', ''],
+      ['trawangan_drawings_ws_web:binance:SOLUSDT_GLOBAL', '{"shapes":[{"id":"web1"}]}'],
+    ]);
+
+    (globalThis as any).localStorage = {
+      get length() {
+        return lsMap.size;
+      },
+      key(index: number) {
+        return Array.from(lsMap.keys())[index] ?? null;
+      },
+      getItem(k: string) {
+        return lsMap.has(k) ? lsMap.get(k)! : null;
+      },
+      setItem(k: string, v: string) {
+        lsMap.set(k, v);
+      },
+      removeItem(k: string) {
+        lsMap.delete(k);
+      },
+      clear() {
+        lsMap.clear();
+      },
+    };
+
+    try {
+      // 1. Retensi string kosong "" pada mode memoryOnly
+      const memOnly = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+      await memOnly.saveDrawings('ws_src:binance:BTCUSDT', 'GLOBAL', '');
+      assert.strictEqual(await memOnly.loadDrawings('ws_src:binance:BTCUSDT', 'GLOBAL'), '');
+
+      const copiedCount = await memOnly.cloneWorkspaceDrawings('ws_src', 'ws_dst');
+      assert.strictEqual(copiedCount, 1);
+      assert.strictEqual(await memOnly.loadDrawings('ws_dst:binance:BTCUSDT', 'GLOBAL'), '');
+
+      // Ghost key dari localStorage tidak ikut terkloning di mode memoryOnly
+      assert.strictEqual(await memOnly.cloneWorkspaceDrawings('ws_web', 'ws_dst'), 0);
+      assert.strictEqual(await memOnly.loadDrawings('ws_dst:binance:SOLUSDT', 'GLOBAL'), null);
+
+      // 2. Mode Web default (tanpa opsi) tetap membaca & menulis browser localStorage dan mempertahankan ""
+      const webAdapter = new InMemoryLocalStorageAdapter();
+      assert.strictEqual(await webAdapter.getPreference('app_settings'), '');
+      // Pembacaan kedua dari memoryStore cache tetap harus mengembalikan "" (bukan null)
+      assert.strictEqual(await webAdapter.getPreference('app_settings'), '');
+
+      await webAdapter.saveDrawings('ws_web:binance:ADAUSDT', '1h', '');
+      assert.strictEqual(lsMap.get('trawangan_drawings_ws_web:binance:ADAUSDT_1h'), '');
+      assert.strictEqual(await webAdapter.loadDrawings('ws_web:binance:ADAUSDT', '1h'), '');
+
+      const webCopied = await webAdapter.cloneWorkspaceDrawings('ws_web', 'ws_web_copy');
+      assert.strictEqual(webCopied, 2);
+      assert.strictEqual(await webAdapter.loadDrawings('ws_web_copy:binance:ADAUSDT', '1h'), '');
+      assert.strictEqual(
+        lsMap.get('trawangan_drawings_ws_web_copy:binance:SOLUSDT_GLOBAL'),
+        '{"shapes":[{"id":"web1"}]}'
+      );
+    } finally {
+      if (prevLocalStorage === undefined) {
+        delete (globalThis as any).localStorage;
+      } else {
+        (globalThis as any).localStorage = prevLocalStorage;
+      }
+    }
+  });
+
+  test('Tiket #188: flushDrawings mempropagasi rejection di seluruh cabang (symbol+tf, symbol, global) dan membersihkan timer tertunda', async () => {
+    let saveCalls = 0;
+    const failingAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    failingAdapter.saveDrawings = async (sym, tf) => {
+      saveCalls += 1;
+      throw new Error(`SQLite disk penuh untuk ${sym}:${tf}`);
+    };
+    const svc = new PersistenceService(failingAdapter);
+
+    // 1. Cabang spesifik symbol + timeframe
+    svc.saveDrawingsDebounced('ws1:binance:BTCUSDT', 'GLOBAL', { shapes: [1] }, 30);
+    await assert.rejects(
+      () => svc.flushDrawings('ws1:binance:BTCUSDT', 'GLOBAL'),
+      /SQLite disk penuh untuk ws1:binance:BTCUSDT:GLOBAL/
+    );
+    assert.strictEqual(saveCalls, 1);
+
+    // 2. Cabang per-symbol
+    svc.saveDrawingsDebounced('ws1:binance:ETHUSDT', '15m', { shapes: [2] }, 30);
+    svc.saveDrawingsDebounced('ws1:binance:ETHUSDT', '1h', { shapes: [3] }, 30);
+    await assert.rejects(
+      () => svc.flushDrawings('ws1:binance:ETHUSDT'),
+      /SQLite disk penuh untuk ws1:binance:ETHUSDT/
+    );
+    const callsAfterSymbolFlush = saveCalls;
+
+    // 3. Cabang global (flush seluruh tertunda)
+    svc.saveDrawingsDebounced('ws1:binance:SOLUSDT', 'GLOBAL', { shapes: [4] }, 30);
+    svc.saveDrawingsDebounced('ws1:binance:ADAUSDT', 'GLOBAL', { shapes: [5] }, 30);
+    await assert.rejects(() => svc.flushDrawings(), /SQLite disk penuh/);
+    const callsAfterGlobalFlush = saveCalls;
+    assert.ok(callsAfterGlobalFlush > callsAfterSymbolFlush);
+
+    // Tunggu melewati delayMs untuk memastikan tidak ada stale timer yang menembak ulang setelah flush gagal
+    await new Promise((r) => setTimeout(r, 60));
+    assert.strictEqual(saveCalls, callsAfterGlobalFlush);
+  });
+
+  test('Tiket #188: saveDrawingsDebounced memicu onError terstruktur, mendukung unsubscribe, dan mengisolasi listener yang melempar error', async () => {
+    assert.strictEqual(typeof (persistenceModule as any).onPersistenceError, 'function');
+
+    const rootCause = new Error('SQLite database locked');
+    const failingAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    failingAdapter.saveDrawings = async () => {
+      throw rootCause;
+    };
+    const svc = new PersistenceService(failingAdapter);
+
+    const eventsA: any[] = [];
+    const eventsB: any[] = [];
+
+    const unsubThrowing = svc.onError(() => {
+      throw new Error('Listener rusak tidak boleh memblokir listener lain');
+    });
+    const unsubA = svc.onError((evt) => {
+      eventsA.push(evt);
+    });
+    const unsubB = svc.onError((evt) => {
+      eventsB.push(evt);
+    });
+
+    svc.saveDrawingsDebounced('ws1:binance:BTCUSDT', 'GLOBAL', { shapes: [{ id: 's1' }] }, 25);
+    await new Promise((r) => setTimeout(r, 60));
+
+    assert.strictEqual(eventsA.length, 1);
+    assert.strictEqual(eventsB.length, 1);
+    assert.strictEqual(eventsA[0].operation, 'saveDrawingsDebounced');
+    assert.strictEqual(eventsA[0].symbol, 'ws1:binance:BTCUSDT');
+    assert.strictEqual(eventsA[0].timeframe, 'GLOBAL');
+    assert.strictEqual(eventsA[0].key, 'ws1:binance:BTCUSDT:GLOBAL');
+    assert.strictEqual(eventsA[0].error, rootCause);
+    assert.ok(eventsA[0].message.includes('SQLite database locked'));
+    assert.strictEqual(typeof eventsA[0].timestamp, 'number');
+    assert.ok(eventsA[0].timestamp > 0);
+
+    // Unsubscribe listener A & throwing listener, lalu picu kegagalan kedua
+    unsubA();
+    unsubThrowing();
+
+    svc.saveDrawingsDebounced('ws1:binance:ETHUSDT', '15m', { shapes: [{ id: 's2' }] }, 25);
+    await new Promise((r) => setTimeout(r, 60));
+
+    assert.strictEqual(eventsA.length, 1, 'Listener yang sudah unsubscribe tidak boleh dipanggil lagi');
+    assert.strictEqual(eventsB.length, 2, 'Listener B yang masih aktif tetap menerima event kedua');
+    assert.strictEqual(eventsB[1].symbol, 'ws1:binance:ETHUSDT');
+    assert.strictEqual(eventsB[1].timeframe, '15m');
+
+    unsubB();
+  });
+
+  test('Tiket #188: JSON korup tetap pulih aman (null / []) sementara error pelemparan adapter selalu me-reject seluruh metode async PersistenceService', async () => {
+    // 1. JSON parse korup aman pada loadDrawings, loadSettings, loadChartDefaultConfig (mengembalikan null tanpa melempar)
+    const corruptReadAdapter = new InMemoryLocalStorageAdapter({ memoryOnly: true });
+    corruptReadAdapter.loadDrawings = async () => '{korup';
+    corruptReadAdapter.getPreference = async (key) => {
+      if (key === 'app_settings') return '{bukan-json';
+      if (key === 'chart_default_config') return '';
+      return null;
+    };
+    const corruptSvc = new PersistenceService(corruptReadAdapter);
+
+    assert.strictEqual(await corruptSvc.loadDrawings('ws1:binance:BTCUSDT', 'GLOBAL'), null);
+    assert.strictEqual(await corruptSvc.loadSettings(), null);
+    assert.strictEqual(await corruptSvc.loadChartDefaultConfig(), null);
+
+    // 2. Adapter yang me-reject seluruh metode async wajib meneruskan rejection tanpa ditelan
+    const boom = new Error('Adapter IPC terputus');
+    const rejectingAdapter: import('../src/lib/services/persistence/types').PersistenceAdapter = {
+      loadDrawings: async () => { throw boom; },
+      saveDrawings: async () => { throw boom; },
+      clearDrawings: async () => { throw boom; },
+      cloneWorkspaceDrawings: async () => { throw boom; },
+      listWorkspaces: async () => { throw boom; },
+      upsertWorkspace: async () => { throw boom; },
+      deleteWorkspace: async () => { throw boom; },
+      listAlerts: async () => { throw boom; },
+      replaceAlerts: async () => { throw boom; },
+      listTradingPlans: async () => { throw boom; },
+      upsertTradingPlan: async () => { throw boom; },
+      deleteTradingPlan: async () => { throw boom; },
+      clearTradingPlans: async () => { throw boom; },
+      loadWatchlist: async () => { throw boom; },
+      saveWatchlist: async () => { throw boom; },
+      loadWatchlistRegistry: async () => { throw boom; },
+      saveWatchlistRegistry: async () => { throw boom; },
+      loadScripts: async () => { throw boom; },
+      saveScript: async () => { throw boom; },
+      deleteScript: async () => { throw boom; },
+      getPreference: async () => { throw boom; },
+      setPreference: async () => { throw boom; },
+      deletePreference: async () => { throw boom; },
+      loadAllPreferences: async () => { throw boom; },
+      loadProviders: async () => { throw boom; },
+      saveProvider: async () => { throw boom; },
+      setActiveProvider: async () => { throw boom; },
+      deleteProvider: async () => { throw boom; },
+    };
+
+    const failSvc = new PersistenceService(rejectingAdapter);
+    const asyncCalls: Array<() => Promise<unknown>> = [
+      () => failSvc.bootstrap(),
+      () => failSvc.setUiPreference('left_rail_collapsed', true),
+      () => failSvc.removeUiPreference('left_rail_collapsed'),
+      () => failSvc.loadDrawings('BTCUSDT', 'GLOBAL'),
+      () => failSvc.clearDrawings('BTCUSDT', 'GLOBAL'),
+      () => failSvc.loadWatchlist(),
+      () => failSvc.saveWatchlist(['BTCUSDT']),
+      () => failSvc.loadWatchlistRegistry(),
+      () => failSvc.saveWatchlistRegistry({ activeWatchlistId: 'default', watchlists: [] }),
+      () => failSvc.loadAlerts(),
+      () => failSvc.saveAlerts([]),
+      () => failSvc.loadWorkspaces(),
+      () => failSvc.saveWorkspace({ name: 'X', symbol: 'BTCUSDT', timeframe: '15m', layout: '1', indicators: [] }),
+      () => failSvc.updateWorkspace({ id: 'w1', name: 'X', symbol: 'BTCUSDT', timeframe: '15m', layout: '1', indicators: [], timestamp: 1 }),
+      () => failSvc.deleteWorkspace('w1'),
+      () => failSvc.cloneWorkspaceDrawings('w1', 'w2'),
+      () => failSvc.setLastActiveWorkspaceId('w1'),
+      () => failSvc.setLastActiveWorkspaceId(null),
+      () => failSvc.loadScripts(),
+      () => failSvc.saveScript({ id: 's1', title: 'S', code: '', is_overlay: true, created_at: 1, updated_at: 1 }),
+      () => failSvc.deleteScript('s1'),
+      () => failSvc.loadSettings(),
+      () => failSvc.saveSettings({ soundEnabled: false }),
+      () => failSvc.loadChartDefaultConfig(),
+      () => failSvc.saveChartDefaultConfig({}),
+      () => failSvc.clearChartDefaultConfig(),
+      () => failSvc.loadTradingPlanHistory(),
+      () => failSvc.saveTradingPlanToHistory({ symbol: 'BTCUSDT', providerId: 'binance', timeframe: '15m', rawText: '', plan: {} as any }),
+      () => failSvc.deleteTradingPlanFromHistory('p1'),
+      () => failSvc.clearTradingPlanHistory(),
+      () => failSvc.loadProviders(),
+      () => failSvc.saveProvider({ id: 'p', name: 'P', rest_url: '', ws_url: '', is_active: false }),
+      () => failSvc.setActiveProvider('binance'),
+      () => failSvc.deleteProvider('binance'),
+    ];
+
+    for (const call of asyncCalls) {
+      await assert.rejects(call, /Adapter IPC terputus/);
+    }
   });
 });
 
