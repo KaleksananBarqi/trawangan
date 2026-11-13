@@ -38,6 +38,7 @@
     showCurrentPriceLine?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
+    onPriceStyleChange?: (style: string) => void;
     onReplayStateChange?: (state: ReplayStateInfo) => void;
     onCutoffSelected?: (timestamp: number) => void; onCutoffCancelled?: () => void;
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
@@ -65,6 +66,7 @@
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
+    onPriceStyleChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
     onEditPlan, onVelaThemeSelect, onPersistableStateChange, securityWatermark, userProfile,
   }: Props = $props();
@@ -76,6 +78,7 @@
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange,
+    onPriceStyleChange,
     onActiveIndicatorsChange: (indicators) => {
       priceScaleOverlayController.updateIndicators(indicators, showIndicatorPriceLabels);
       onActiveIndicatorsChange?.(indicators);
@@ -569,6 +572,18 @@
   }
   export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
     return controller.addPineIndicator(src, t, i, p);
+  }
+  export function addNativeIndicator(type: string, options?: any, title?: string) {
+    return controller.addNativeIndicator(type, options, title);
+  }
+  export function addNativeIndicatorToCell(cell: any, type: string, options?: any, title?: string) {
+    return controller.addNativeIndicatorToCell(cell, type, options, title);
+  }
+  export function addIndicator(descriptor: any, options?: any) {
+    return controller.addIndicator(descriptor, options);
+  }
+  export function addIndicatorToCell(descriptor: any, cell?: any, options?: any) {
+    return controller.addIndicatorToCell(descriptor, cell, options);
   }
   export function removeIndicator(id: string): void { controller.removeIndicator(id); }
   export function clearAllIndicators(): void { controller.clearAllIndicators(); }
