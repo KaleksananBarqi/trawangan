@@ -563,6 +563,18 @@
   export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
     return controller.addPineIndicator(src, t, i, p);
   }
+  export function addNativeIndicator(type: string, options?: any, title?: string) {
+    return controller.addNativeIndicator(type, options, title);
+  }
+  export function addNativeIndicatorToCell(cell: any, type: string, options?: any, title?: string) {
+    return controller.addNativeIndicatorToCell(cell, type, options, title);
+  }
+  export function addIndicator(descriptor: any, options?: any) {
+    return controller.addIndicator(descriptor, options);
+  }
+  export function addIndicatorToCell(descriptor: any, cell?: any, options?: any) {
+    return controller.addIndicatorToCell(descriptor, cell, options);
+  }
   export function removeIndicator(id: string): void { controller.removeIndicator(id); }
   export function clearAllIndicators(): void { controller.clearAllIndicators(); }
   export function toggleIndicatorVisibility(id: string): void { controller.toggleIndicatorVisibility(id); }

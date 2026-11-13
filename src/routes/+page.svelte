@@ -1397,6 +1397,30 @@
     return false;
   }
 
+  async function handleAddNativeIndicator(type: string, title?: string): Promise<boolean> {
+    if (chartComponent) {
+      const ok = await chartComponent.addNativeIndicator(type, undefined, title);
+      if (ok) {
+        syncActiveIndicators();
+        addSystemLog(`Indikator native "${title || type}" berhasil diterapkan ke grafik.`, 'success');
+      }
+      return ok;
+    }
+    return false;
+  }
+
+  async function handleApplyIndicator(descriptor: any): Promise<boolean> {
+    if (chartComponent) {
+      const ok = await chartComponent.addIndicator(descriptor);
+      if (ok) {
+        syncActiveIndicators();
+        addSystemLog(`Indikator "${descriptor?.title || 'Indicator'}" berhasil diterapkan ke grafik.`, 'success');
+      }
+      return ok;
+    }
+    return false;
+  }
+
   function syncActiveIndicators() {
     if (chartComponent && typeof chartComponent.getActiveIndicators === 'function') {
       activeIndicators = chartComponent.getActiveIndicators();
@@ -2004,6 +2028,8 @@
     isOpen={isIndicatorModalOpen}
     onClose={() => (isIndicatorModalOpen = false)}
     onSelectIndicator={handleAddIndicator}
+    onSelectNativeIndicator={handleAddNativeIndicator}
+    onApplyIndicator={handleApplyIndicator}
     onOpenInEditor={handleOpenInEditor}
   />
 
