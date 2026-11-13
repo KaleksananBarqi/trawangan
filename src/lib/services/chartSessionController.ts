@@ -20,13 +20,14 @@ import {
   wrapProviderWithStreamGuard,
   type StreamHealthSink,
 } from './streamHealthGuard';
-import { registerDefaultEngine } from '@luxalgo/vela';
+import { registerDefaultEngine, getNativeIndicator } from '@luxalgo/vela';
 import {
   createPineFetchSeriesAdapter,
   TrawanganPineWorkerEngine,
   type FetchSeriesHandler,
 } from './pineSeriesAdapter';
 import { IndicatorRegistry } from './indicatorRegistry';
+import { normalizeVpvrInputs } from './vpvrProfile';
 import { chartDrawingController } from './chartDrawingController';
 import {
   TimelineMarksController,
@@ -1965,6 +1966,31 @@ export class ChartSessionController {
   }
 
   /**
+   * Menambahkan kemampuan reaktif handle native Vela (handle.update & handle.descriptor)
+   */
+  private enrichNativeHandle(handle: any, type: string): void {
+    if (!handle) return;
+    if (typeof handle.update !== 'function') {
+      handle.update = (newInputs: Record<string, any>) => {
+        if (typeof handle.setInputs === 'function') {
+          handle.setInputs(newInputs);
+        }
+      };
+    }
+    try {
+      const descriptor = getNativeIndicator(type);
+      if (descriptor) {
+        handle.descriptor = descriptor;
+        if (!(descriptor as any).inputs && typeof descriptor.inputsSchema === 'function') {
+          try {
+            (descriptor as any).inputs = descriptor.inputsSchema();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
+  /**
    * Menambahkan indikator native Vela ke seluruh sel aktif dengan sinkronisasi bersih
    */
   public async addNativeIndicator(
@@ -1975,7 +2001,17 @@ export class ChartSessionController {
     if (!this.workspace) return false;
 
     try {
-      const cleanTitle = (customTitle || type).trim();
+      const cleanType = (type || '').trim().replace(/^native:/, '');
+      const cleanTitle = (customTitle || cleanType).trim();
+
+      // Normalisasi opsi khusus untuk Visible Range Volume Profile (VPVR)
+      let resolvedOptions = options || {};
+      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
+        };
+      }
 
       const targetCells = (this.syncConfig.indicators !== false)
         ? this.getAllCells()
@@ -1989,13 +2025,14 @@ export class ChartSessionController {
         if (!chart || typeof chart.addNativeIndicator !== 'function') continue;
 
         try {
-          const handle = chart.addNativeIndicator(type, options || {});
+          const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
           if (handle) {
+            this.enrichNativeHandle(handle, type);
             createdHandles.push(handle);
             if (!firstHandle) firstHandle = handle;
           }
         } catch (err) {
-          console.warn(`[ChartSessionController] addNativeIndicator("${type}") error:`, err);
+          console.warn(`[ChartSessionController] addNativeIndicator("${cleanType}") error:`, err);
         }
       }
 
@@ -2004,11 +2041,11 @@ export class ChartSessionController {
           id: firstHandle.id,
           handle: firstHandle,
           handles: createdHandles,
-          title: cleanTitle || firstHandle.title || type,
-          source: type,
+          title: cleanTitle || firstHandle.title || cleanType,
+          source: cleanType,
           visible: firstHandle.visible ?? true,
-          inputs: options?.inputs,
-          props: options?.props,
+          inputs: resolvedOptions.inputs,
+          props: resolvedOptions.props,
         });
 
         this.notifyActiveIndicators();
@@ -2036,19 +2073,31 @@ export class ChartSessionController {
     if (!cell || !chart || typeof chart.addNativeIndicator !== 'function') return false;
 
     try {
-      const cleanTitle = (customTitle || type).trim();
-      const handle = chart.addNativeIndicator(type, options || {});
+      const cleanType = (type || '').trim().replace(/^native:/, '');
+      const cleanTitle = (customTitle || cleanType).trim();
+
+      let resolvedOptions = options || {};
+      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
+        };
+      }
+
+      const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
       if (!handle) return false;
+
+      this.enrichNativeHandle(handle, type);
 
       this.indicatorRegistry.register({
         id: handle.id || `${cell.id || 'cell'}:${cleanTitle}`,
         handle,
         handles: [handle],
-        title: cleanTitle || handle.title || type,
-        source: type,
+        title: cleanTitle || handle.title || cleanType,
+        source: cleanType,
         visible: handle.visible ?? true,
-        inputs: options?.inputs,
-        props: options?.props,
+        inputs: resolvedOptions.inputs,
+        props: resolvedOptions.props,
       });
 
       this.notifyActiveIndicators();
@@ -2154,10 +2203,49 @@ export class ChartSessionController {
   /**
    * Memperbarui input parameter indikator
    */
-  public updateIndicatorInputs(id: string, inputs: Record<string, any>): void {
-    this.indicatorRegistry.updateInputs(id, inputs);
+  public updateIndicatorInputs(id: string, inputs: Record<string, any>): boolean {
+    let resolvedInputs = inputs;
+    const entry = this.indicatorRegistry.findEntry(id)?.entry;
+    const isVpvr = entry?.source === 'vpvr' || id.toLowerCase().includes('vpvr');
+    if (isVpvr && inputs) {
+      resolvedInputs = normalizeVpvrInputs(inputs);
+    }
+
+    const ok = this.indicatorRegistry.updateInputs(id, resolvedInputs);
     this.notifyActiveIndicators();
     this.emitPersistableChange('indicator:inputs');
+    return ok;
+  }
+
+  /**
+   * Mengambil skema input untuk indikator tertentu
+   */
+  public getIndicatorInputSchema(idOrType: string): any[] {
+    return this.indicatorRegistry.getSchema(idOrType);
+  }
+
+  /**
+   * Mengambil input tersimpan atau live untuk indikator tertentu
+   */
+  public getIndicatorInputs(idOrType: string): Record<string, any> {
+    return this.indicatorRegistry.getInputs(idOrType);
+  }
+
+  /**
+   * Membuka dialog pengaturan indikator (programmatic twin dari ikon gear legend)
+   */
+  public openIndicatorSettings(id: string, cell?: any): boolean {
+    const targetCell = this.resolveTargetCell(cell);
+    const chart = targetCell?.chart || targetCell?.inner;
+    if (chart && typeof chart.openIndicatorSettings === 'function') {
+      try {
+        chart.openIndicatorSettings(id);
+        return true;
+      } catch (err) {
+        console.warn(`[ChartSessionController] openIndicatorSettings(${id}) error:`, err);
+      }
+    }
+    return false;
   }
 
   /**
@@ -3132,7 +3220,16 @@ export class ChartSessionController {
     try {
       const targetCell = this.resolveTargetCell(cell);
       const chart = targetCell?.chart || targetCell?.inner;
-      if (!chart || typeof chart.indicators !== 'function') return [];
+
+      if (!chart || typeof chart.indicators !== 'function') {
+        const regEntries = this.indicatorRegistry.getNativeEntries();
+        return regEntries.map((reg) => ({
+          type: reg.source || reg.title,
+          ...(reg.inputs ? { inputs: reg.inputs } : {}),
+          visible: reg.visible ?? true,
+          placement: 'overlay' as const,
+        }));
+      }
 
       const placementById = new Map<string, 'overlay' | 'own-pane'>();
       if (chart.panes && typeof chart.panes.list === 'function') {
@@ -3160,6 +3257,12 @@ export class ChartSessionController {
             }
           } catch (_) {}
         }
+        const regEntry = this.indicatorRegistry.findEntry(ind.id)?.entry;
+        const mergedInputs = {
+          ...(regEntry?.inputs || {}),
+          ...(inputs || {}),
+        };
+
         const visible = ind.visible !== undefined ? Boolean(ind.visible) : true;
         const placement: 'overlay' | 'own-pane' =
           placementById.get(ind.id) ??
@@ -3167,11 +3270,24 @@ export class ChartSessionController {
 
         list.push({
           type: ind.nativeType,
-          ...(inputs ? { inputs } : {}),
+          ...(Object.keys(mergedInputs).length > 0 ? { inputs: mergedInputs } : {}),
           visible,
           placement,
         });
       }
+
+      if (list.length === 0) {
+        const regEntries = this.indicatorRegistry.getNativeEntries();
+        for (const reg of regEntries) {
+          list.push({
+            type: reg.source || reg.title,
+            ...(reg.inputs ? { inputs: reg.inputs } : {}),
+            visible: reg.visible ?? true,
+            placement: 'overlay',
+          });
+        }
+      }
+
       return list;
     } catch (err) {
       console.warn('[ChartSessionController] Gagal membaca nativeIndicators:', err);
@@ -3228,6 +3344,10 @@ export class ChartSessionController {
         } catch (_) {}
       }
 
+      if (handle) {
+        this.enrichNativeHandle(handle, entry.type);
+      }
+
       // Tunggu model siap di panes.list apabila indikator baru saja dimount secara asinkron
       const needsModelWait =
         !handle || (entry.placement === 'own-pane' && handle?.id && !isHandleInPaneList(handle.id));
@@ -3237,6 +3357,7 @@ export class ChartSessionController {
           ['indicator:added', 'pane:changed'],
           () => {
             handle = findNativeHandle(entry.type) || handle;
+            if (handle) this.enrichNativeHandle(handle, entry.type);
             return Boolean(
               handle &&
                 (!entry.placement || entry.placement !== 'own-pane' || !handle.id || isHandleInPaneList(handle.id))
@@ -3250,11 +3371,21 @@ export class ChartSessionController {
       if (!handle) continue;
 
       this.withSuppressedPersistEvents(() => {
-        if (entry.inputs && typeof handle.setInputs === 'function') {
-          try {
-            handle.setInputs(entry.inputs);
-          } catch (err) {
-            console.warn(`[ChartSessionController] applyNativeIndicators setInputs(${entry.type}) error:`, err);
+        if (entry.inputs) {
+          if (typeof handle.update === 'function') {
+            try {
+              handle.update(entry.inputs);
+            } catch (_) {}
+          } else if (typeof handle.setInputs === 'function') {
+            try {
+              handle.setInputs(entry.inputs);
+            } catch (err) {
+              console.warn(`[ChartSessionController] applyNativeIndicators setInputs(${entry.type}) error:`, err);
+            }
+          }
+
+          if (handle.id) {
+            this.indicatorRegistry.updateInputs(handle.id, entry.inputs as Record<string, any>);
           }
         }
 
