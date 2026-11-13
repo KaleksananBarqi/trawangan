@@ -164,6 +164,12 @@ describe('Multi-Chart Synchronization Engine Unit Tests (ChartSessionController 
     controller.syncLayout({ indicators: true });
     assert.strictEqual(controller.getSnapshot().syncConfig.indicators, true);
 
+    // Toggle Style (#193)
+    controller.syncLayout({ style: true });
+    assert.strictEqual(controller.getSnapshot().syncConfig.style, true);
+    controller.syncLayout({ style: false });
+    assert.strictEqual(controller.getSnapshot().syncConfig.style, false);
+
     controller.destroy();
   });
 
