@@ -12,6 +12,7 @@
     Save
   } from '@lucide/svelte';
   import type { AppSettings } from '../../types/market';
+  import { timelineMarksController } from '../../services/timelineMarksController';
 
   interface Props {
     settings: AppSettings;
@@ -53,6 +54,28 @@
   let saveDefaultFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   let resetChartFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   let currentGridMode = $derived(settings.gridMode || (settings.showGrid === false ? 'hidden' : 'normal'));
+
+  let isMacroMarksVisible = $state(timelineMarksController.isGroupVisible('macro'));
+  let isTradesMarksVisible = $state(timelineMarksController.isGroupVisible('trades'));
+  let isJournalMarksVisible = $state(timelineMarksController.isGroupVisible('journal'));
+
+  function toggleMacroMarks() {
+    const next = !isMacroMarksVisible;
+    timelineMarksController.setGroupVisible('macro', next);
+    isMacroMarksVisible = next;
+  }
+
+  function toggleTradesMarks() {
+    const next = !isTradesMarksVisible;
+    timelineMarksController.setGroupVisible('trades', next);
+    isTradesMarksVisible = next;
+  }
+
+  function toggleJournalMarks() {
+    const next = !isJournalMarksVisible;
+    timelineMarksController.setGroupVisible('journal', next);
+    isJournalMarksVisible = next;
+  }
 
   function handleToggleFavFromSettings(tf: string) {
     const current = settings.favoriteTimeframes || ['1m', '5m', '15m', '1h', '4h', '1D'];
@@ -247,6 +270,79 @@
       onclick={() => onUpdateSettings({ showDrawingPriceLabels: settings.showDrawingPriceLabels === false })}
     >
       {settings.showDrawingPriceLabels !== false ? 'Aktif' : 'Nonaktif'}
+    </button>
+  </div>
+</div>
+
+<!-- Penanda Garis Waktu & Peristiwa Pasar (Timeline Marks & Events) -->
+<div class="section-group">
+  <h4 class="section-title">Penanda Garis Waktu & Peristiwa Pasar (Timeline Marks)</h4>
+  <p class="section-subtitle">
+    Tampilkan penanda peristiwa ekonomi makro, eksekusi trading plan, dan catatan jurnal langsung pada sumbu horizontal waktu chart.
+  </p>
+
+  <!-- Acara Kalender Makroekonomi -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Acara Kalender Makroekonomi (FOMC, CPI, NFP)</span>
+      <span class="setting-desc">Tampilkan badge rilis ekonomi berdampak tinggi/sedang pada sumbu waktu</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {isMacroMarksVisible ? 'active' : ''}"
+      onclick={toggleMacroMarks}
+    >
+      {isMacroMarksVisible ? 'Aktif' : 'Nonaktif'}
+    </button>
+  </div>
+
+  <!-- Eksekusi Trading Plan -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Titik Eksekusi Rencana Trading (Entry, TP, SL)</span>
+      <span class="setting-desc">Tampilkan penanda glyph visual pada lilin di mana order plan terisi atau tersentuh</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {isTradesMarksVisible ? 'active' : ''}"
+      onclick={toggleTradesMarks}
+    >
+      {isTradesMarksVisible ? 'Aktif' : 'Nonaktif'}
+    </button>
+  </div>
+
+  <!-- Catatan Jurnal & Tesis -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Catatan Jurnal & Tesis Trader</span>
+      <span class="setting-desc">Sematkan anotasi personal dan catatan evaluasi pada timestamp candle tertentu</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {isJournalMarksVisible ? 'active' : ''}"
+      onclick={toggleJournalMarks}
+    >
+      {isJournalMarksVisible ? 'Aktif' : 'Nonaktif'}
+    </button>
+  </div>
+
+  <!-- Tombol Dialog Events Bawaan Vela -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Detail Pengaturan Events (Vela Events Tab)</span>
+      <span class="setting-desc">Buka konfigurasi lanjutan penanda peristiwa pada dialog bawaan chart</span>
+    </div>
+    <button
+      type="button"
+      class="btn-test-notification"
+      onclick={() => {
+        onClose();
+        onOpenChartSettings?.('Events');
+      }}
+      title="Buka dialog pengaturan events bawaan Vela"
+    >
+      <SlidersHorizontal size={13} />
+      <span>Buka Events Settings</span>
     </button>
   </div>
 </div>
