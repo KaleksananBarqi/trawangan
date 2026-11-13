@@ -214,6 +214,7 @@ describe('Deep Persistence Module Unit Tests', () => {
       symbol: false,
       drawings: true,
       indicators: true,
+      style: false,
     });
   });
 

@@ -608,7 +608,7 @@ describe('Fase 3: Pemicu Auto-Save Lengkap & Flush saat Exit', () => {
     const controller = new ChartSessionController();
     controller.attach(createMockChartContainer(), { workspaceFactory: () => ws });
 
-    assert.equal(wsListeners.get('cell:created')?.size ?? 0, 1);
+    assert.equal(wsListeners.get('cell:created')?.size ?? 0, 2);
     assert.equal(wsListeners.get('cell:active')?.size ?? 0, 1);
     assert.equal(wsListeners.get('state:changed')?.size ?? 0, 1);
 

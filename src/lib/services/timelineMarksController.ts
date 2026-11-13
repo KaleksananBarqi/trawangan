@@ -303,23 +303,25 @@ export function formatPlanLevelTimelineMarks(
         (a) => (a.planId === planId && a.label?.toLowerCase().includes(`tp${idx + 1}`)) ||
                (a.targetPrice === tp.price && a.triggered)
       );
-      // Jika terpicu gunakan triggeredAt, jika tidak gunakan estimasi waktu mendatang atau offset
-      const tpTime = tpAlert?.triggeredAt || (entryTime + (idx + 1) * 3600000);
+      // Hanya generate timeline mark jika TP telah terpicu dengan timestamp aktual
+      const tpTime = tpAlert?.triggeredAt || (tpAlert?.triggered ? (tpAlert.createdAt || baseTime) : (tp as any).triggeredAt);
 
-      marks.push(
-        formatTradeExecutionTimelineMark({
-          id: `${planId}_tp_${tp.id || idx + 1}`,
-          symbol: planSymbol,
-          time: tpTime,
-          type: 'tp',
-          side: plan.bias === 'bearish' ? 'buy' : 'sell',
-          price: tp.price,
-          rMultiple: tp.rMultiple,
-          planId,
-          label: tp.label || `TP${idx + 1}`,
-          notes: tp.reason || `Target take profit ${tp.label || idx + 1}`
-        })
-      );
+      if (tpTime !== undefined) {
+        marks.push(
+          formatTradeExecutionTimelineMark({
+            id: `${planId}_tp_${tp.id || idx + 1}`,
+            symbol: planSymbol,
+            time: tpTime,
+            type: 'tp',
+            side: plan.bias === 'bearish' ? 'buy' : 'sell',
+            price: tp.price,
+            rMultiple: tp.rMultiple,
+            planId,
+            label: tp.label || `TP${idx + 1}`,
+            notes: tp.reason || `Target take profit ${tp.label || idx + 1}`
+          })
+        );
+      }
     });
   }
 
@@ -328,22 +330,25 @@ export function formatPlanLevelTimelineMarks(
     const slAlert = alerts.find(
       (a) => a.planRole === 'sl' || (a.planId === planId && a.label?.toLowerCase().includes('sl'))
     );
-    const slTime = slAlert?.triggeredAt || (entryTime + 7200000);
+    // Hanya generate timeline mark jika SL telah terpicu dengan timestamp aktual
+    const slTime = slAlert?.triggeredAt || (slAlert?.triggered ? (slAlert.createdAt || baseTime) : (plan as any).slTriggeredAt);
 
-    marks.push(
-      formatTradeExecutionTimelineMark({
-        id: `${planId}_sl`,
-        symbol: planSymbol,
-        time: slTime,
-        type: 'sl',
-        side: plan.bias === 'bearish' ? 'buy' : 'sell',
-        price: plan.stopLoss,
-        rMultiple: -1.0,
-        planId,
-        label: 'Stop Loss',
-        notes: plan.reasons?.sl || 'Stop loss level invalidation'
-      })
-    );
+    if (slTime !== undefined) {
+      marks.push(
+        formatTradeExecutionTimelineMark({
+          id: `${planId}_sl`,
+          symbol: planSymbol,
+          time: slTime,
+          type: 'sl',
+          side: plan.bias === 'bearish' ? 'buy' : 'sell',
+          price: plan.stopLoss,
+          rMultiple: -1.0,
+          planId,
+          label: 'Stop Loss',
+          notes: plan.reasons?.sl || 'Stop loss level invalidation'
+        })
+      );
+    }
   }
 
   return marks;
@@ -486,7 +491,9 @@ export class TimelineMarksController {
     for (const u of this.unsubs) {
       try {
         u();
-      } catch {}
+      } catch (err) {
+        console.warn('[TimelineMarksController] Gagal menjalankan fungsi unsub saat detach:', err);
+      }
     }
     this.unsubs = [];
     this.attachedCharts.clear();

@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import {
   ChartSessionController
 } from '../src/lib/services/chartSessionController';
+import { commandDispatcher } from '../src/lib/services/commandDispatcher';
 import {
   isValidPriceStyle,
   PRICE_STYLE_OPTIONS,
@@ -382,6 +383,85 @@ describe('Header Price Style Selector Suite (#193)', () => {
     controller.setPriceStyle('heikinashi');
     assert.ok(emittedReasons.includes('priceStyle'));
 
+    controller.destroy();
+  });
+
+  test('8. cyclePriceStyle & cycle-price-style shortcut: rotasi gaya lilin secara siklik', () => {
+    const mock = createMockVelaCell('cell_0', 'candles');
+    const mockWs = {
+      cells: () => [mock.cell],
+      active: mock.cell,
+      sync: { set: () => {} },
+      setLayout: () => {},
+      destroy: () => {}
+    };
+
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs
+    });
+    controller.attach({ nodeType: 1 } as any);
+
+    assert.strictEqual(controller.getPriceStyle(), 'candles');
+
+    // Siklus berurutan: candles -> heikinashi -> bars -> line -> area -> baseline -> candles
+    assert.strictEqual(controller.cyclePriceStyle(), 'heikinashi');
+    assert.strictEqual(controller.cyclePriceStyle(), 'bars');
+    assert.strictEqual(controller.cyclePriceStyle(), 'line');
+    assert.strictEqual(controller.cyclePriceStyle(), 'area');
+    assert.strictEqual(controller.cyclePriceStyle(), 'baseline');
+    assert.strictEqual(controller.cyclePriceStyle(), 'candles');
+
+    // Validasi registrasi command cycle-price-style di commandDispatcher
+    const commands = commandDispatcher.getCommands();
+    const cycleCmd = commands.find((c) => c.id === 'cycle-price-style');
+    assert.ok(cycleCmd, 'Perintah cycle-price-style wajib terdaftar di commandDispatcher');
+    assert.ok(cycleCmd.keys.includes('Alt'));
+
+    // Tes binding shortcut Alt+Y ke controller.cyclePriceStyle
+    let shortcutHandled = false;
+    const unbind = commandDispatcher.bindHandler('cycle-price-style', () => {
+      controller.cyclePriceStyle();
+      shortcutHandled = true;
+    });
+
+    // Kirim event Alt+Y
+    const eventY = {
+      target: null,
+      key: 'y',
+      code: 'KeyY',
+      altKey: true,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as any;
+
+    const dispatchedY = commandDispatcher.dispatch(eventY);
+    assert.strictEqual(dispatchedY, true, 'Event Alt+Y harus berhasil didispatch');
+    assert.strictEqual(shortcutHandled, true);
+    assert.strictEqual(controller.getPriceStyle(), 'heikinashi');
+
+    // Kirim event Alt+S
+    shortcutHandled = false;
+    const eventS = {
+      target: null,
+      key: 's',
+      code: 'KeyS',
+      altKey: true,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as any;
+
+    const dispatchedS = commandDispatcher.dispatch(eventS);
+    assert.strictEqual(dispatchedS, true, 'Event Alt+S juga harus cocok untuk cycle-price-style');
+    assert.strictEqual(shortcutHandled, true);
+    assert.strictEqual(controller.getPriceStyle(), 'bars');
+
+    unbind();
     controller.destroy();
   });
 });

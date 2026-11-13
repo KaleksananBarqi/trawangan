@@ -60,6 +60,7 @@ import {
   type WorkspaceTrackSizes,
   type PriceStyle,
   isValidPriceStyle,
+  VALID_PRICE_STYLES,
 } from '../types/market';
 import { WORKSPACE_SCHEMA_VERSION, computePaneSignature } from './persistence/workspaceSchema';
 import {
@@ -1853,12 +1854,7 @@ export class ChartSessionController {
       const isStrategy = /\bstrategy\s*\(/.test(source);
       if (isStrategy) {
         for (const cell of targetCells as any[]) {
-          const chart = cell?.chart || cell?.inner;
-          if (chart?.applyConfig) {
-            try { chart.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
-          } else if (chart?.renderer?.applyConfig) {
-            try { chart.renderer.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
-          }
+          this.enableChartTradeVisibility(cell);
         }
       }
 
@@ -1882,16 +1878,11 @@ export class ChartSessionController {
       for (const cell of targetCells as any[]) {
         const chart = cell?.chart || cell?.inner;
         if (!chart || typeof chart.addIndicator !== 'function') continue;
-        const isStrategy = /\bstrategy\s*\(/.test(source);
-      if (isStrategy) {
-        if (chart?.applyConfig) {
-          try { chart.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
-        } else if (chart?.renderer?.applyConfig) {
-          try { chart.renderer.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
+        if (isStrategy) {
+          this.enableChartTradeVisibility(cell);
         }
-      }
 
-      const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
+        const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
         const addOptions: any = {
           language: 'pine',
           title: cleanTitle,
@@ -1915,13 +1906,23 @@ export class ChartSessionController {
                   this.onStrategyTelemetryHandler?.(payload);
                 }
               }
-            }).catch(() => {});
+            }).catch((err: unknown) => {
+              console.warn('[ChartSessionController] Gagal mengambil context strategi Pine:', err);
+            });
           }
           if (effectiveInputs && typeof handle.setInputs === 'function') {
-            try { handle.setInputs(effectiveInputs); } catch (_) {}
+            try {
+              handle.setInputs(effectiveInputs);
+            } catch (err) {
+              console.warn('[ChartSessionController] Gagal memanggil handle.setInputs:', err);
+            }
           }
           if (savedProps && typeof handle.setProps === 'function') {
-            try { handle.setProps(savedProps); } catch (_) {}
+            try {
+              handle.setProps(savedProps);
+            } catch (err) {
+              console.warn('[ChartSessionController] Gagal memanggil handle.setProps:', err);
+            }
           }
           createdHandles.push(handle);
           if (!firstHandle) firstHandle = handle;
@@ -1966,6 +1967,29 @@ export class ChartSessionController {
   }
 
   /**
+   * Mengaktifkan visibilitas trade markers pada konfigurasi chart atau renderer
+   */
+  private enableChartTradeVisibility(chartOrCell: any): void {
+    if (!chartOrCell) return;
+    const chart = chartOrCell.chart || chartOrCell.inner || chartOrCell;
+    const renderer = chart?.renderer;
+
+    if (typeof chart?.applyConfig === 'function') {
+      try {
+        chart.applyConfig({ trades: { visible: true, labels: true, qty: true } });
+      } catch (err) {
+        console.warn('[ChartSessionController] Gagal mengaktifkan visibilitas trades pada chart:', err);
+      }
+    } else if (typeof renderer?.applyConfig === 'function') {
+      try {
+        renderer.applyConfig({ trades: { visible: true, labels: true, qty: true } });
+      } catch (err) {
+        console.warn('[ChartSessionController] Gagal mengaktifkan visibilitas trades pada renderer:', err);
+      }
+    }
+  }
+
+  /**
    * Menambahkan kemampuan reaktif handle native Vela (handle.update & handle.descriptor)
    */
   private enrichNativeHandle(handle: any, type: string): void {
@@ -1984,10 +2008,14 @@ export class ChartSessionController {
         if (!(descriptor as any).inputs && typeof descriptor.inputsSchema === 'function') {
           try {
             (descriptor as any).inputs = descriptor.inputsSchema();
-          } catch (_) {}
+          } catch (err) {
+            console.warn(`[ChartSessionController] Gagal mengekstrak inputsSchema untuk tipe "${type}":`, err);
+          }
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn(`[ChartSessionController] Gagal memperkaya native handle untuk tipe "${type}":`, err);
+    }
   }
 
   /**
@@ -2273,7 +2301,9 @@ export class ChartSessionController {
         } else if (ind.inputs && typeof ind.inputs === 'object' && Object.keys(ind.inputs).length > 0) {
           liveInputs = { ...ind.inputs };
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn(`[ChartSessionController] Gagal membaca liveInputs indikator ${ind.id || ind.title}:`, err);
+      }
 
       let liveProps: Record<string, any> | undefined;
       try {
@@ -2283,7 +2313,9 @@ export class ChartSessionController {
         } else if (ind.props && typeof ind.props === 'object' && Object.keys(ind.props).length > 0) {
           liveProps = { ...ind.props };
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn(`[ChartSessionController] Gagal membaca liveProps indikator ${ind.id || ind.title}:`, err);
+      }
 
       const mergedInputs =
         liveInputs || reg?.inputs ? { ...(reg?.inputs || {}), ...(liveInputs || {}) } : undefined;
@@ -2357,11 +2389,7 @@ export class ChartSessionController {
 
       const isStrategy = /\bstrategy\s*\(/.test(source);
       if (isStrategy) {
-        if (chart?.applyConfig) {
-          try { chart.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
-        } else if (chart?.renderer?.applyConfig) {
-          try { chart.renderer.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
-        }
+        this.enableChartTradeVisibility(cell);
       }
 
       const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
@@ -2389,17 +2417,31 @@ export class ChartSessionController {
               this.onStrategyTelemetryHandler?.(payload);
             }
           }
-        }).catch(() => {});
+        }).catch((err: unknown) => {
+          console.warn('[ChartSessionController] Gagal mengekstrak konteks strategi Pine pada cell:', err);
+        });
       }
 
       if (effectiveInputs && typeof handle.setInputs === 'function') {
-        try { handle.setInputs(effectiveInputs); } catch (_) {}
+        try {
+          handle.setInputs(effectiveInputs);
+        } catch (err) {
+          console.warn('[ChartSessionController] Gagal menerapkan effectiveInputs pada handle indikator cell:', err);
+        }
       }
       if (savedProps && typeof handle.setProps === 'function') {
-        try { handle.setProps(savedProps); } catch (_) {}
+        try {
+          handle.setProps(savedProps);
+        } catch (err) {
+          console.warn('[ChartSessionController] Gagal menerapkan savedProps pada handle indikator cell:', err);
+        }
       }
       if (visible === false && typeof handle.setVisible === 'function') {
-        try { handle.setVisible(false); } catch (_) {}
+        try {
+          handle.setVisible(false);
+        } catch (err) {
+          console.warn('[ChartSessionController] Gagal menyembunyikan handle indikator cell:', err);
+        }
       }
 
       this.indicatorRegistry.register({
@@ -3341,7 +3383,9 @@ export class ChartSessionController {
       if (!handle && typeof chart.addNativeIndicator === 'function') {
         try {
           handle = chart.addNativeIndicator(entry.type, entry.inputs ? { inputs: entry.inputs } : {});
-        } catch (_) {}
+        } catch (err) {
+          console.warn(`[ChartSessionController] Gagal memanggil chart.addNativeIndicator("${entry.type}"):`, err);
+        }
       }
 
       if (handle) {
@@ -3375,7 +3419,9 @@ export class ChartSessionController {
           if (typeof handle.update === 'function') {
             try {
               handle.update(entry.inputs);
-            } catch (_) {}
+            } catch (err) {
+              console.warn(`[ChartSessionController] Gagal memanggil handle.update("${entry.type}"):`, err);
+            }
           } else if (typeof handle.setInputs === 'function') {
             try {
               handle.setInputs(entry.inputs);
@@ -3855,7 +3901,9 @@ export class ChartSessionController {
         return raw;
       }
       return 'candles';
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal membaca priceStyle:', err);
+    }
     return 'candles';
   }
 
@@ -3900,7 +3948,23 @@ export class ChartSessionController {
         this.notify();
       }
       this.onPriceStyleChange?.(validStyle);
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal menyetel priceStyle:', err);
+    }
+  }
+
+  /**
+   * Mengganti gaya lilin ke gaya berikutnya secara berurutan:
+   * candles -> heikinashi -> bars -> line -> area -> baseline -> candles.
+   */
+  public cyclePriceStyle(cell?: any): PriceStyle {
+    const current = this.getPriceStyle(cell);
+    const styles = VALID_PRICE_STYLES;
+    const currentIndex = styles.indexOf(current as PriceStyle);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % styles.length : 0;
+    const nextStyle = styles[nextIndex];
+    this.setPriceStyle(nextStyle, cell);
+    return nextStyle;
   }
 
   /**

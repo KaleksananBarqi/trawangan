@@ -444,7 +444,8 @@ export class PineStrategyTelemetryService {
     if (typeof run.trades === 'function') {
       try {
         rawTrades = (await run.trades()) || [];
-      } catch (_) {
+      } catch (err) {
+        console.warn('[PineStrategyTelemetry] Gagal mengambil riwayat transaksi dari run.trades():', err);
         rawTrades = [];
       }
     } else if (Array.isArray(run.trades)) {
@@ -531,7 +532,9 @@ export class PineStrategyTelemetryService {
           },
         });
         routed = true;
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[PineStrategyTelemetry] Gagal menerapkan konfigurasi trades ke renderer:', err);
+      }
     } else if (chart && typeof chart.applyConfig === 'function') {
       try {
         chart.applyConfig({
@@ -542,7 +545,9 @@ export class PineStrategyTelemetryService {
           },
         });
         routed = true;
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[PineStrategyTelemetry] Gagal menerapkan konfigurasi trades ke chart:', err);
+      }
     }
 
     // 2. Hubungkan marker ke model indikator di scene jika tersedia
@@ -555,13 +560,23 @@ export class PineStrategyTelemetryService {
           routed = true;
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn(`[PineStrategyTelemetry] Gagal menambatkan trade markers ke scene untuk indikator ${indicatorId}:`, err);
+    }
 
     // 3. Minta re-render visual jika diperlukan
     if (typeof chart?.requestRender === 'function') {
-      try { chart.requestRender(); } catch (_) {}
+      try {
+        chart.requestRender();
+      } catch (err) {
+        console.warn('[PineStrategyTelemetry] Gagal memanggil chart.requestRender():', err);
+      }
     } else if (typeof renderer?.render === 'function') {
-      try { renderer.render(); } catch (_) {}
+      try {
+        renderer.render();
+      } catch (err) {
+        console.warn('[PineStrategyTelemetry] Gagal memanggil renderer.render():', err);
+      }
     }
 
     return routed;

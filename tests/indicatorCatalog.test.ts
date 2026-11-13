@@ -121,6 +121,10 @@ describe('Unified Indicator Catalog & 76 Native Indicators Suite (#194)', () => 
       assert.strictEqual(profileItems.length, 2, 'Profile harus mencakup VPVR dan Pivot Points');
       assert.ok(profileItems.some((i) => i.nativeType === 'vpvr'));
       assert.ok(profileItems.some((i) => i.nativeType === 'pivot-points'));
+
+      const signalsItems = catalogService.filterIndicators(all, { category: 'Signals' });
+      assert.ok(signalsItems.length > 0, 'Kategori Signals harus menemukan indikator (misal: Williams Fractal)');
+      assert.ok(signalsItems.some((i) => i.nativeType === 'williams-fractal'));
     });
 
     test('pencarian teks: menemukan indikator berdasarkan title dan shortTitle', () => {

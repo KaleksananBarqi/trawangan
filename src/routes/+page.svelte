@@ -802,6 +802,21 @@
           addSystemLog(`Invert skala harga: ${nextInvert ? 'AKTIF' : 'NONAKTIF'} (Alt+I)`, 'info');
         }
       }),
+      commandDispatcher.bindHandler('cycle-price-style', () => {
+        if (chartComponent && typeof chartComponent.cyclePriceStyle === 'function') {
+          const nextStyle = chartComponent.cyclePriceStyle();
+          activePriceStyle = nextStyle;
+          addSystemLog(`Siklus gaya lilin grafik: ${nextStyle.toUpperCase()} (Alt+Y)`, 'info');
+        } else if (chartComponent?.getPriceStyle && chartComponent?.setPriceStyle) {
+          const current = chartComponent.getPriceStyle();
+          const styles = ['candles', 'heikinashi', 'bars', 'line', 'area', 'baseline'];
+          const idx = styles.indexOf(current);
+          const next = styles[(idx + 1) % styles.length];
+          chartComponent.setPriceStyle(next);
+          activePriceStyle = next;
+          addSystemLog(`Siklus gaya lilin grafik: ${next.toUpperCase()} (Alt+Y)`, 'info');
+        }
+      }),
       commandDispatcher.bindHandler('draw-undo', () => {
         handleUndo();
       }),

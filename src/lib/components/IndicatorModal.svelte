@@ -53,7 +53,7 @@
 
   // Search & Navigation States
   let searchQuery = $state('');
-  let activeCategory = $state<'All' | 'Trend' | 'Momentum' | 'Volatility' | 'Volume' | 'Profile' | 'Custom Scripts' | 'Favorites'>('All');
+  let activeCategory = $state<'All' | 'Trend' | 'Momentum' | 'Volatility' | 'Volume' | 'Profile' | 'Signals' | 'Custom Scripts' | 'Favorites'>('All');
   let kindFilter = $state<'all' | 'native' | 'pine'>('all');
   let savedScripts = $state<PineScriptRecord[]>([]);
   let favoriteIds = $state<string[]>([]);
@@ -83,14 +83,18 @@
       if (isOpen) {
         favoriteIds = loaded;
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('Gagal memuat daftar indikator favorit:', err);
+    }
   }
 
   async function toggleFavorite(e: MouseEvent, id: string) {
     e.stopPropagation();
     try {
       favoriteIds = await toggleFavoriteIndicatorId(id, favoriteIds);
-    } catch (_) {}
+    } catch (err) {
+      console.warn(`Gagal mengubah status favorit indikator ${id}:`, err);
+    }
   }
 
   async function handleDeleteScript(e: MouseEvent, scriptId: string, title: string) {
@@ -141,6 +145,11 @@
   let countProfile = $derived(
     allIndicators.filter((i) => i.category === 'Profile' || i.categories?.includes('Profile')).length
   );
+  let countSignals = $derived(
+    allIndicators.filter((i) => i.category === 'Signals' || i.categories?.includes('Signals')).length
+  );
+  let countNative = $derived(allIndicators.filter((i) => i.kind === 'native').length);
+  let countPine = $derived(allIndicators.filter((i) => i.kind === 'pine').length);
   let countCustom = $derived(savedScripts.length);
   let countFavorites = $derived(
     allIndicators.filter((i) => indicatorCatalogService.isFavorited(i, favoriteIds)).length
@@ -219,14 +228,14 @@
             onclick={() => (kindFilter = 'native')}
           >
             <Cpu size={11} />
-            <span>Native (76)</span>
+            <span>Native ({countNative})</span>
           </button>
           <button
             class="kind-chip {kindFilter === 'pine' ? 'active' : ''}"
             onclick={() => (kindFilter = 'pine')}
           >
             <Code size={11} />
-            <span>Pine Script ({allIndicators.length - 76})</span>
+            <span>Pine Script ({allIndicators.filter((i) => i.kind === 'pine').length})</span>
           </button>
         </div>
       </div>
@@ -289,6 +298,15 @@
             <Layers size={14} />
             <span class="tab-label">Profil Volume</span>
             <span class="count-pill">{countProfile}</span>
+          </button>
+
+          <button
+            class="nav-tab-btn {activeCategory === 'Signals' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'Signals')}
+          >
+            <Zap size={14} />
+            <span class="tab-label">Signals</span>
+            <span class="count-pill">{countSignals}</span>
           </button>
 
           <div class="nav-section-title mt-2">SKRIP SAYA & PERSONALISASI</div>

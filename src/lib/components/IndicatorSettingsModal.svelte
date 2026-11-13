@@ -76,7 +76,9 @@
         if (desc && typeof desc.inputsSchema === 'function') {
           return desc.inputsSchema();
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn(`[IndicatorSettingsModal] Gagal mengambil skema input untuk tipe "${type}":`, err);
+      }
     }
     return [];
   });
@@ -91,7 +93,9 @@
         if (desc && typeof desc.defaultInputs === 'function') {
           Object.assign(res, desc.defaultInputs());
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn(`[IndicatorSettingsModal] Gagal mengambil default inputs untuk tipe "${type}":`, err);
+      }
     }
     for (const item of resolvedSchema) {
       if (res[item.key] === undefined && item.defval !== undefined) {
@@ -136,18 +140,24 @@
       if (typeof handle.update === 'function') {
         try {
           handle.update(newDraft);
-        } catch (_) {}
+        } catch (err) {
+          console.warn('[IndicatorSettingsModal] Gagal memanggil handle.update:', err);
+        }
       } else if (typeof handle.setInputs === 'function') {
         try {
           handle.setInputs(newDraft);
-        } catch (_) {}
+        } catch (err) {
+          console.warn('[IndicatorSettingsModal] Gagal memanggil handle.setInputs:', err);
+        }
       }
     }
 
     if (onChange) {
       try {
         onChange(newDraft);
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[IndicatorSettingsModal] Gagal memanggil callback onChange:', err);
+      }
     }
   }
 
@@ -176,7 +186,9 @@
     if (onRevert) {
       try {
         onRevert(initialSnapshot);
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[IndicatorSettingsModal] Gagal memanggil callback onRevert:', err);
+      }
     }
     onClose();
   }
@@ -186,7 +198,9 @@
     if (onApply) {
       try {
         onApply(draftInputs);
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[IndicatorSettingsModal] Gagal memanggil callback onApply:', err);
+      }
     }
     onClose();
   }

@@ -262,7 +262,7 @@ test.describe('TimelineMarksController & Event Markers Suite (#198)', () => {
     ];
 
     const marks = formatPlanLevelTimelineMarks(plan, alerts, 1794600000000);
-    assert.ok(marks.length >= 3, 'Harus menghasilkan penanda untuk Entry, TP1, TP2, dan SL');
+    assert.equal(marks.length, 2, 'Hanya menghasilkan penanda untuk Entry dan TP1 yang sudah terpicu (tidak membuat timestamp sintetis masa depan untuk unhit TP2/SL)');
 
     // Penanda entry harus memakai triggeredAt dari alert (1794610000000)
     const entryMark = marks.find((m) => m.group === 'trades.entry');
@@ -274,6 +274,37 @@ test.describe('TimelineMarksController & Event Markers Suite (#198)', () => {
     assert.ok(tp1Mark);
     assert.equal(tp1Mark?.time, 1794640000000);
     assert.equal(tp1Mark?.glyph.shape, 'pin');
+
+    // Pastikan milestone yang belum terpicu (unhit) tidak menghasilkan marker spekulatif
+    const tp2Mark = marks.find((m) => m.id.includes('tp2') || m.id.includes('tp_2'));
+    const slMark = marks.find((m) => m.group === 'trades.sl');
+    assert.equal(tp2Mark, undefined, 'Unhit TP2 tidak boleh memproduksi timeline mark');
+    assert.equal(slMark, undefined, 'Unhit SL tidak boleh memproduksi timeline mark');
+
+    // Jika alert SL terpicu, marker SL wajib dihasilkan dengan timestamp aktual
+    const alertsWithSl: PriceAlert[] = [
+      ...alerts,
+      {
+        id: 'alert_sl',
+        symbol: 'BTCUSDT',
+        targetPrice: 62000,
+        condition: 'crossing',
+        frequency: 'once',
+        label: 'BTCUSDT SL',
+        active: false,
+        triggered: true,
+        createdAt: 1794600000000,
+        triggeredAt: 1794650000000,
+        triggeredPrice: 61990,
+        planId: 'plan_1',
+        planRole: 'sl'
+      }
+    ];
+    const marksWithSl = formatPlanLevelTimelineMarks(plan, alertsWithSl, 1794600000000);
+    assert.equal(marksWithSl.length, 3, 'Wajib menghasilkan 3 marker ketika SL terpicu aktual');
+    const triggeredSlMark = marksWithSl.find((m) => m.group === 'trades.sl');
+    assert.ok(triggeredSlMark);
+    assert.equal(triggeredSlMark?.time, 1794650000000);
   });
 
   test('5. Pemformatan Catatan Jurnal (formatJournalTimelineMark)', () => {

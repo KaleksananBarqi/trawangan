@@ -537,6 +537,7 @@
   export function applyPriceScaleState(state: any, cell?: any): boolean { return controller.applyPriceScaleState(state, cell); }
   export function getPriceStyle(cell?: any): string { return controller.getPriceStyle(cell); }
   export function setPriceStyle(style: string, cell?: any): void { controller.setPriceStyle(style, cell); }
+  export function cyclePriceStyle(cell?: any): string { return controller.cyclePriceStyle(cell); }
   export function setTimeframe(tf: Timeframe): void { controller.setTimeframe(tf); }
   export function getBarSpacing(cell?: any): number { return controller.getBarSpacing(cell); }
   export function setBarSpacing(spacing: number, cell?: any): void { controller.setBarSpacing(spacing, cell); }
