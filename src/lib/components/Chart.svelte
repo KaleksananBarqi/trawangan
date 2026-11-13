@@ -38,6 +38,7 @@
     showCurrentPriceLine?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
+    onPriceStyleChange?: (style: string) => void;
     onReplayStateChange?: (state: ReplayStateInfo) => void;
     onCutoffSelected?: (timestamp: number) => void; onCutoffCancelled?: () => void;
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
@@ -65,6 +66,7 @@
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
+    onPriceStyleChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
     onEditPlan, onVelaThemeSelect, onPersistableStateChange, securityWatermark, userProfile,
   }: Props = $props();
@@ -76,6 +78,7 @@
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange,
+    onPriceStyleChange,
     onActiveIndicatorsChange: (indicators) => {
       priceScaleOverlayController.updateIndicators(indicators, showIndicatorPriceLabels);
       onActiveIndicatorsChange?.(indicators);
@@ -218,6 +221,13 @@
     untrack(() => {
       priceScaleOverlayController.updateIndicators(controller.getActiveIndicators(), lbl);
     });
+  });
+  $effect(() => {
+    const plans = scopedActivePlans;
+    const alerts = allAlerts;
+    if (isMounted && plans) {
+      controller.getTimelineMarksController().loadTradePlans(plans, alerts);
+    }
   });
 
   onMount(() => {

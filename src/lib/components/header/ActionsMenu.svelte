@@ -9,7 +9,8 @@
     Coins,
     Share2,
     ChevronDown,
-    Sparkles
+    Sparkles,
+    ChartCandlestick
   } from '@lucide/svelte';
   import type { MultiChartSyncConfig } from '../../types/market';
 
@@ -25,6 +26,7 @@
     onToggleSyncSymbol?: () => void;
     onToggleSyncDrawings?: () => void;
     onToggleSyncIndicators?: () => void;
+    onToggleSyncStyle?: () => void;
   }
 
   let {
@@ -39,6 +41,7 @@
     onToggleSyncSymbol,
     onToggleSyncDrawings,
     onToggleSyncIndicators,
+    onToggleSyncStyle,
   }: Props = $props();
 
   let showMenu = $state(false);
@@ -172,6 +175,17 @@
           <Share2 size={12} />
           <span>Gambar</span>
           <span class="sync-pip {syncConfig.drawings ? 'on' : 'off'}"></span>
+        </button>
+
+        <!-- Style -->
+        <button
+          class="sync-item-btn {syncConfig.style ? 'active' : ''}"
+          title="Sinkronisasi Gaya Tampilan Harga ({syncConfig.style ? 'ON' : 'OFF'})"
+          onclick={onToggleSyncStyle}
+        >
+          <ChartCandlestick size={12} />
+          <span>Gaya</span>
+          <span class="sync-pip {syncConfig.style ? 'on' : 'off'}"></span>
         </button>
 
         <!-- Indicators -->

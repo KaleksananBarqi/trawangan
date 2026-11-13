@@ -26,9 +26,11 @@
   import WorkspaceLayoutMenu from './header/WorkspaceLayoutMenu.svelte';
   import ActionsMenu from './header/ActionsMenu.svelte';
   import TimeframeSelector from './header/TimeframeSelector.svelte';
+  import PriceStylePicker from './header/PriceStylePicker.svelte';
   import SnapshotMenu from './header/SnapshotMenu.svelte';
   import SymbolLogo from './common/SymbolLogo.svelte';
   import { parseAdaptiveSymbol } from '../services/market/symbolSearchService';
+  import type { PriceStyle } from '../types/market';
 
   interface Props {
     activeSymbol: string;
@@ -58,6 +60,7 @@
     onToggleSyncSymbol?: () => void;
     onToggleSyncDrawings?: () => void;
     onToggleSyncIndicators?: () => void;
+    onToggleSyncStyle?: () => void;
     onToggleDrawingToolbar?: () => void;
     onToggleReplay?: () => void;
     onOpenIndicatorModal: () => void;
@@ -78,6 +81,9 @@
     // Quick Watchlist Toggle pada grup simbol Header (#166)
     isWatchlisted?: boolean;
     onToggleActiveWatchlist?: () => void;
+    // Header Price Style Selector (#193)
+    activePriceStyle?: PriceStyle | string;
+    onPriceStyleChange?: (style: PriceStyle) => void;
   }
 
   let {
@@ -108,6 +114,7 @@
     onToggleSyncSymbol,
     onToggleSyncDrawings,
     onToggleSyncIndicators,
+    onToggleSyncStyle,
     onToggleDrawingToolbar,
     onToggleReplay,
     onOpenIndicatorModal,
@@ -125,7 +132,9 @@
     onCycleColorMode,
     onColorModeChange,
     isWatchlisted = false,
-    onToggleActiveWatchlist
+    onToggleActiveWatchlist,
+    activePriceStyle = 'candles',
+    onPriceStyleChange
   }: Props = $props();
 
   function handleCycleColorMode() {
@@ -295,6 +304,14 @@
     {onCustomTimeframesChange}
   />
 
+  <div class="divider"></div>
+
+  <!-- Price Style Selector (#193) -->
+  <PriceStylePicker
+    {activePriceStyle}
+    onPriceStyleChange={(style) => onPriceStyleChange?.(style)}
+  />
+
   <div class="spacer"></div>
 
   <!-- Multi-Chart Layout & Manajemen Workspace Terpadu -->
@@ -325,6 +342,7 @@
     {onToggleSyncSymbol}
     {onToggleSyncDrawings}
     {onToggleSyncIndicators}
+    {onToggleSyncStyle}
   />
 
   <div class="divider"></div>
