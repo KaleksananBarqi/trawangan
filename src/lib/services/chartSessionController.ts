@@ -21,7 +21,11 @@ import {
   type StreamHealthSink,
 } from './streamHealthGuard';
 import { registerDefaultEngine } from '@luxalgo/vela';
-import { PineWorkerEngine } from '@luxalgo/vela-pinets';
+import {
+  createPineFetchSeriesAdapter,
+  TrawanganPineWorkerEngine,
+  type FetchSeriesHandler,
+} from './pineSeriesAdapter';
 import { IndicatorRegistry } from './indicatorRegistry';
 import { chartDrawingController } from './chartDrawingController';
 import {
@@ -120,12 +124,13 @@ type SessionSubscriber = (snapshot: ChartSessionSnapshot) => void;
 let staticEngineRegistered = false;
 
 /**
- * Daftarkan worker engine PineTS satu kali secara global
+ * Daftarkan worker engine PineTS satu kali secara global dengan adapter fetchSeries
  */
 export function ensurePineEngine(): void {
   if (!staticEngineRegistered) {
     try {
-      registerDefaultEngine('pine', () => new PineWorkerEngine());
+      const globalFetchSeries = createPineFetchSeriesAdapter();
+      registerDefaultEngine('pine', () => new TrawanganPineWorkerEngine({ fetchSeries: globalFetchSeries }));
       staticEngineRegistered = true;
     } catch (_) {
       // Abaikan jika sudah terdaftar
@@ -426,9 +431,14 @@ export class ChartSessionController {
   private registeredCustomSignatures = new Map<string, string>();
   private customHydrationEpoch = 0;
   private timelineMarksController: TimelineMarksController = timelineMarksController;
+  private fetchSeriesAdapter: FetchSeriesHandler = createPineFetchSeriesAdapter();
 
   public getTimelineMarksController(): TimelineMarksController {
     return this.timelineMarksController;
+  }
+
+  public getFetchSeriesAdapter(): FetchSeriesHandler {
+    return this.fetchSeriesAdapter;
   }
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
@@ -805,7 +815,7 @@ export class ChartSessionController {
       timezone: this.timezone,
       providers: guardedProviders,
       engines: {
-        pine: () => new PineWorkerEngine(),
+        pine: () => new TrawanganPineWorkerEngine({ fetchSeries: this.getFetchSeriesAdapter() }),
       },
       maxWebglCells: 8,
       sync: {
@@ -4196,3 +4206,11 @@ export class ChartSessionController {
     this.notify();
   }
 }
+
+export {
+  createPineFetchSeriesAdapter,
+  TrawanganPineWorkerEngine,
+  type FetchSeriesHandler,
+  type FetchSeriesRange,
+  type OHLCVBar,
+} from './pineSeriesAdapter';

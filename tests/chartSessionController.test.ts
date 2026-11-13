@@ -344,4 +344,33 @@ test.describe('ChartSessionController Seam Suite (#51)', () => {
       }
     }
   });
+
+  test('9. Tiket #197: getFetchSeriesAdapter & Injeksi Engine Pine dengan fetchSeries', () => {
+    let capturedEngines: any = null;
+
+    const controller = new ChartSessionController({
+      symbol: 'BTCUSDT',
+      timeframe: '15m',
+      workspaceFactory: (_container: any, config: any) => {
+        capturedEngines = config?.engines;
+        return createMockWorkspace();
+      },
+    });
+
+    // 1. Adapter harus tersedia dan berupa fungsi
+    const adapter = controller.getFetchSeriesAdapter();
+    assert.equal(typeof adapter, 'function', 'getFetchSeriesAdapter mengembalikan fungsi handler');
+
+    // 2. Attach memicu pembuatan workspaceConfig dengan engine pine
+    controller.attach(createMockContainer());
+
+    assert.ok(capturedEngines, 'workspaceConfig harus menyertakan engines');
+    assert.equal(typeof capturedEngines.pine, 'function', 'engine pine harus berupa factory function');
+
+    const pineEngineInstance = capturedEngines.pine();
+    assert.ok(pineEngineInstance, 'Factory pine menghasilkan instance engine');
+    assert.equal(pineEngineInstance.language, 'pine');
+
+    controller.destroy();
+  });
 });
