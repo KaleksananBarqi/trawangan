@@ -25,6 +25,10 @@ import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 import { IndicatorRegistry } from './indicatorRegistry';
 import { chartDrawingController } from './chartDrawingController';
 import {
+  TimelineMarksController,
+  timelineMarksController
+} from './timelineMarksController';
+import {
   type Timeframe,
   type MultiChartSyncConfig,
   type ThemePresetId,
@@ -426,6 +430,11 @@ export class ChartSessionController {
   private onlineListener: (() => void) | null = null;
   private registeredCustomSignatures = new Map<string, string>();
   private customHydrationEpoch = 0;
+  private timelineMarksController: TimelineMarksController = timelineMarksController;
+
+  public getTimelineMarksController(): TimelineMarksController {
+    return this.timelineMarksController;
+  }
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -839,6 +848,10 @@ export class ChartSessionController {
     for (const cell of this.getAllCells()) {
       this.attachCellListeners(cell);
     }
+
+    // Inisialisasi TimelineMarksController pada workspace dan sinkronkan penanda pasar aktif
+    this.timelineMarksController.attach(this.workspace);
+    this.timelineMarksController.syncForMarket(this.symbol, this.providerId);
 
     // Muat & terapkan konfigurasi chart default tersimpan milik pengguna (sinkron dari cache PersistenceService + hidrasi asinkron adapter)
     const attachEpoch = ++this.chartDefaultHydrationEpoch;
@@ -1405,6 +1418,9 @@ export class ChartSessionController {
     attachPriceScaleInputGuard(cell);
 
     const chart = cell.chart || cell.inner;
+    if (chart) {
+      this.timelineMarksController.attachSingleCellOrChart(chart);
+    }
     // Otoritas Tunggal Tema Trawangan: Sembunyikan 'canvas.theme' dari dialog Vela
     if (chart && typeof chart.setSettingsVisibility === 'function') {
       try {
@@ -2142,6 +2158,9 @@ export class ChartSessionController {
             chartDrawingController.restoreDrawings(this.symbol, this.timeframe, this.providerId).catch(() => {});
           }
         }
+
+        // Segarkan penanda waktu timeline marks untuk simbol dan provider baru
+        this.timelineMarksController.syncForMarket(this.symbol, this.providerId);
       } catch (err) {
         console.warn('[ChartSessionController] setSymbol error:', err);
       }
@@ -4197,6 +4216,7 @@ export class ChartSessionController {
 
     this.streamCoordinator.clear();
     this.registeredCustomSignatures.clear();
+    this.timelineMarksController.detach();
 
     if (this.resizeObserver) {
       try {

@@ -222,6 +222,13 @@
       priceScaleOverlayController.updateIndicators(controller.getActiveIndicators(), lbl);
     });
   });
+  $effect(() => {
+    const plans = scopedActivePlans;
+    const alerts = allAlerts;
+    if (isMounted && plans) {
+      controller.getTimelineMarksController().loadTradePlans(plans, alerts);
+    }
+  });
 
   onMount(() => {
     isMounted = true;
