@@ -135,8 +135,12 @@
   let countTrend = $derived(allIndicators.filter((i) => i.category === 'Trend').length);
   let countMomentum = $derived(allIndicators.filter((i) => i.category === 'Momentum').length);
   let countVolatility = $derived(allIndicators.filter((i) => i.category === 'Volatility').length);
-  let countVolume = $derived(allIndicators.filter((i) => i.category === 'Volume').length);
-  let countProfile = $derived(allIndicators.filter((i) => i.category === 'Profile').length);
+  let countVolume = $derived(
+    allIndicators.filter((i) => i.category === 'Volume' || i.categories?.includes('Volume')).length
+  );
+  let countProfile = $derived(
+    allIndicators.filter((i) => i.category === 'Profile' || i.categories?.includes('Profile')).length
+  );
   let countCustom = $derived(savedScripts.length);
   let countFavorites = $derived(
     allIndicators.filter((i) => indicatorCatalogService.isFavorited(i, favoriteIds)).length
@@ -336,7 +340,7 @@
               {@const isFav = indicatorCatalogService.isFavorited(indicator, favoriteIds)}
               {@const isAdded = Boolean(addedFeedbackMap[indicator.id])}
 
-              <div class="indicator-card {indicator.kind === 'native' ? 'native-card' : 'pine-card'} obsidian-panel">
+              <div class="indicator-card {indicator.kind === 'native' ? 'native-card' : 'pine-card'} {indicator.prominent ? 'prominent-card' : ''} obsidian-panel">
                 <div class="card-top-row">
                   <button
                     class="btn-star {isFav ? 'starred' : ''}"
@@ -355,6 +359,10 @@
                     </div>
 
                     <div class="badges-row">
+                      {#if indicator.prominent}
+                        <span class="badge-source badge-prominent" title="Studi Profil Unggulan">Unggulan</span>
+                      {/if}
+
                       <!-- Badge Native vs Pine vs Skrip Saya -->
                       {#if indicator.kind === 'native'}
                         <span class="badge-source badge-native">Native</span>
@@ -855,6 +863,22 @@
     font-weight: 700;
     padding: 1px 6px;
     border-radius: 2px;
+  }
+
+  .badge-prominent {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.15));
+    color: #FBBF24;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.2);
+  }
+
+  .prominent-card {
+    border-color: rgba(245, 158, 11, 0.3) !important;
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.04) 0%, rgba(15, 23, 42, 0.6) 100%) !important;
+  }
+
+  .prominent-card:hover {
+    border-color: rgba(245, 158, 11, 0.55) !important;
   }
 
   .badge-native {

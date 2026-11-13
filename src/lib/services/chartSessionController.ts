@@ -21,8 +21,13 @@ import {
   type StreamHealthSink,
 } from './streamHealthGuard';
 import { registerDefaultEngine, getNativeIndicator } from '@luxalgo/vela';
-import { PineWorkerEngine } from '@luxalgo/vela-pinets';
+import {
+  createPineFetchSeriesAdapter,
+  TrawanganPineWorkerEngine,
+  type FetchSeriesHandler,
+} from './pineSeriesAdapter';
 import { IndicatorRegistry } from './indicatorRegistry';
+import { normalizeVpvrInputs } from './vpvrProfile';
 import { chartDrawingController } from './chartDrawingController';
 import {
   TimelineMarksController,
@@ -125,12 +130,13 @@ type SessionSubscriber = (snapshot: ChartSessionSnapshot) => void;
 let staticEngineRegistered = false;
 
 /**
- * Daftarkan worker engine PineTS satu kali secara global
+ * Daftarkan worker engine PineTS satu kali secara global dengan adapter fetchSeries
  */
 export function ensurePineEngine(): void {
   if (!staticEngineRegistered) {
     try {
-      registerDefaultEngine('pine', () => new PineWorkerEngine());
+      const globalFetchSeries = createPineFetchSeriesAdapter();
+      registerDefaultEngine('pine', () => new TrawanganPineWorkerEngine({ fetchSeries: globalFetchSeries }));
       staticEngineRegistered = true;
     } catch (_) {
       // Abaikan jika sudah terdaftar
@@ -432,9 +438,14 @@ export class ChartSessionController {
   private registeredCustomSignatures = new Map<string, string>();
   private customHydrationEpoch = 0;
   private timelineMarksController: TimelineMarksController = timelineMarksController;
+  private fetchSeriesAdapter: FetchSeriesHandler = createPineFetchSeriesAdapter();
 
   public getTimelineMarksController(): TimelineMarksController {
     return this.timelineMarksController;
+  }
+
+  public getFetchSeriesAdapter(): FetchSeriesHandler {
+    return this.fetchSeriesAdapter;
   }
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
@@ -813,7 +824,7 @@ export class ChartSessionController {
       timezone: this.timezone,
       providers: guardedProviders,
       engines: {
-        pine: () => new PineWorkerEngine(),
+        pine: () => new TrawanganPineWorkerEngine({ fetchSeries: this.getFetchSeriesAdapter() }),
       },
       maxWebglCells: 8,
       sync: {
@@ -1914,7 +1925,17 @@ export class ChartSessionController {
     if (!this.workspace) return false;
 
     try {
-      const cleanTitle = (customTitle || type).trim();
+      const cleanType = (type || '').trim().replace(/^native:/, '');
+      const cleanTitle = (customTitle || cleanType).trim();
+
+      // Normalisasi opsi khusus untuk Visible Range Volume Profile (VPVR)
+      let resolvedOptions = options || {};
+      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
+        };
+      }
 
       const targetCells = (this.syncConfig.indicators !== false)
         ? this.getAllCells()
@@ -1928,14 +1949,14 @@ export class ChartSessionController {
         if (!chart || typeof chart.addNativeIndicator !== 'function') continue;
 
         try {
-          const handle = chart.addNativeIndicator(type, options || {});
+          const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
           if (handle) {
             this.enrichNativeHandle(handle, type);
             createdHandles.push(handle);
             if (!firstHandle) firstHandle = handle;
           }
         } catch (err) {
-          console.warn(`[ChartSessionController] addNativeIndicator("${type}") error:`, err);
+          console.warn(`[ChartSessionController] addNativeIndicator("${cleanType}") error:`, err);
         }
       }
 
@@ -1944,11 +1965,11 @@ export class ChartSessionController {
           id: firstHandle.id,
           handle: firstHandle,
           handles: createdHandles,
-          title: cleanTitle || firstHandle.title || type,
-          source: type,
+          title: cleanTitle || firstHandle.title || cleanType,
+          source: cleanType,
           visible: firstHandle.visible ?? true,
-          inputs: options?.inputs,
-          props: options?.props,
+          inputs: resolvedOptions.inputs,
+          props: resolvedOptions.props,
         });
 
         this.notifyActiveIndicators();
@@ -1976,8 +1997,18 @@ export class ChartSessionController {
     if (!cell || !chart || typeof chart.addNativeIndicator !== 'function') return false;
 
     try {
-      const cleanTitle = (customTitle || type).trim();
-      const handle = chart.addNativeIndicator(type, options || {});
+      const cleanType = (type || '').trim().replace(/^native:/, '');
+      const cleanTitle = (customTitle || cleanType).trim();
+
+      let resolvedOptions = options || {};
+      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
+        };
+      }
+
+      const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
       if (!handle) return false;
 
       this.enrichNativeHandle(handle, type);
@@ -1986,11 +2017,11 @@ export class ChartSessionController {
         id: handle.id || `${cell.id || 'cell'}:${cleanTitle}`,
         handle,
         handles: [handle],
-        title: cleanTitle || handle.title || type,
-        source: type,
+        title: cleanTitle || handle.title || cleanType,
+        source: cleanType,
         visible: handle.visible ?? true,
-        inputs: options?.inputs,
-        props: options?.props,
+        inputs: resolvedOptions.inputs,
+        props: resolvedOptions.props,
       });
 
       this.notifyActiveIndicators();
@@ -2083,7 +2114,14 @@ export class ChartSessionController {
    * Memperbarui input parameter indikator
    */
   public updateIndicatorInputs(id: string, inputs: Record<string, any>): boolean {
-    const ok = this.indicatorRegistry.updateInputs(id, inputs);
+    let resolvedInputs = inputs;
+    const entry = this.indicatorRegistry.findEntry(id)?.entry;
+    const isVpvr = entry?.source === 'vpvr' || id.toLowerCase().includes('vpvr');
+    if (isVpvr && inputs) {
+      resolvedInputs = normalizeVpvrInputs(inputs);
+    }
+
+    const ok = this.indicatorRegistry.updateInputs(id, resolvedInputs);
     this.notifyActiveIndicators();
     this.emitPersistableChange('indicator:inputs');
     return ok;
@@ -4488,3 +4526,11 @@ export class ChartSessionController {
     this.notify();
   }
 }
+
+export {
+  createPineFetchSeriesAdapter,
+  TrawanganPineWorkerEngine,
+  type FetchSeriesHandler,
+  type FetchSeriesRange,
+  type OHLCVBar,
+} from './pineSeriesAdapter';
