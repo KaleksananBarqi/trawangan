@@ -10,6 +10,7 @@
   import StatusBar from '../lib/components/StatusBar.svelte';
   import SettingsModal from '../lib/components/SettingsModal.svelte';
   import IndicatorModal from '../lib/components/IndicatorModal.svelte';
+  import IndicatorSettingsModal from '../lib/components/IndicatorSettingsModal.svelte';
   import SymbolSearchModal from '../lib/components/SymbolSearchModal.svelte';
   import TimeframeQuickBar from '../lib/components/TimeframeQuickBar.svelte';
   import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
@@ -1484,6 +1485,44 @@
     handleOpenInEditor(code, title, id);
   }
 
+  // Dynamic Typed Settings Modal State
+  let isIndicatorSettingsOpen = $state(false);
+  let configuringIndicator = $state<{
+    id: string;
+    title: string;
+    nativeType?: string;
+    schema?: any[];
+    inputs?: Record<string, any>;
+  } | null>(null);
+
+  function handleConfigureIndicator(id: string) {
+    if (!id) return;
+    const found = activeIndicators.find((i) => i.id === id);
+    const title = found?.title || id;
+    const nativeType = id.startsWith('native:') ? id.replace(/^native:/, '') : (found?.source || id);
+
+    let schema: any[] = [];
+    let currentInputs: Record<string, any> = {};
+
+    if (chartComponent) {
+      if (typeof chartComponent.getIndicatorInputSchema === 'function') {
+        schema = chartComponent.getIndicatorInputSchema(id);
+      }
+      if (typeof chartComponent.getIndicatorInputs === 'function') {
+        currentInputs = chartComponent.getIndicatorInputs(id);
+      }
+    }
+
+    configuringIndicator = {
+      id,
+      title,
+      nativeType,
+      schema,
+      inputs: { ...(found?.inputs || {}), ...currentInputs },
+    };
+    isIndicatorSettingsOpen = true;
+  }
+
   function addSystemLog(msg: string, level: 'info' | 'success' | 'warn' | 'error') {
     const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
     systemLogs = [...systemLogs.slice(-60), { time, msg, level }];
@@ -1900,7 +1939,7 @@
           onWatchlistChange={handleWatchlistChange}
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
           onRemoveIndicator={handleRemoveIndicator}
-          onConfigureIndicator={() => (isIndicatorModalOpen = true)}
+          onConfigureIndicator={handleConfigureIndicator}
           onOpenIndicatorInPine={handleOpenIndicatorInPine}
           onToggleDrawingVisibility={(id) => chartDrawingController.toggleDrawingVisibility(id)}
           onToggleDrawingLock={(id) => chartDrawingController.toggleDrawingLock(id)}
@@ -2059,6 +2098,38 @@
     onApplyIndicator={handleApplyIndicator}
     onOpenInEditor={handleOpenInEditor}
   />
+
+  <!-- Dynamic Native & Pine Indicator Settings Dialog -->
+  {#if isIndicatorSettingsOpen && configuringIndicator}
+    <IndicatorSettingsModal
+      isOpen={isIndicatorSettingsOpen}
+      indicatorId={configuringIndicator.id}
+      indicatorTitle={configuringIndicator.title}
+      nativeType={configuringIndicator.nativeType}
+      schema={configuringIndicator.schema}
+      inputs={configuringIndicator.inputs}
+      onClose={() => {
+        isIndicatorSettingsOpen = false;
+        configuringIndicator = null;
+      }}
+      onChange={(draft) => {
+        if (chartComponent && configuringIndicator) {
+          chartComponent.updateIndicatorInputs(configuringIndicator.id, draft);
+        }
+      }}
+      onRevert={(prev) => {
+        if (chartComponent && configuringIndicator) {
+          chartComponent.updateIndicatorInputs(configuringIndicator.id, prev);
+        }
+      }}
+      onApply={(finalInputs) => {
+        if (chartComponent && configuringIndicator) {
+          chartComponent.updateIndicatorInputs(configuringIndicator.id, finalInputs);
+        }
+        addSystemLog(`Pengaturan parameter indikator "${configuringIndicator?.title}" diperbarui.`, 'info');
+      }}
+    />
+  {/if}
 
   <!-- Replay Jump to Date Modal -->
   <ReplayDatePickerModal

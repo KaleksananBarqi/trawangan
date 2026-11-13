@@ -1,4 +1,5 @@
 import type { ActiveIndicatorInfo } from '../types/market';
+import { getNativeIndicator } from '@luxalgo/vela';
 
 export interface ManagedIndicatorEntry {
   id: string;
@@ -291,7 +292,9 @@ export class IndicatorRegistry {
 
     for (const h of entry.handles || []) {
       try {
-        if (typeof h?.setInputs === 'function') {
+        if (typeof h?.update === 'function') {
+          h.update(inputs);
+        } else if (typeof h?.setInputs === 'function') {
           h.setInputs(inputs);
         } else if (typeof h?.updateInputs === 'function') {
           h.updateInputs(inputs);
@@ -299,6 +302,78 @@ export class IndicatorRegistry {
       } catch (_) {}
     }
     return true;
+  }
+
+  /**
+   * Mengambil entri indikator berdasarkan ID
+   */
+  getEntry(id: string): ManagedIndicatorEntry | null {
+    const matched = this.findEntry(id);
+    return matched ? matched.entry : null;
+  }
+
+  /**
+   * Mengambil seluruh entri native indicators yang terdaftar
+   */
+  getNativeEntries(): ManagedIndicatorEntry[] {
+    const results: ManagedIndicatorEntry[] = [];
+    for (const entry of this.entries.values()) {
+      const isNative =
+        entry.id.startsWith('native:') ||
+        (entry.handle && (entry.handle.nativeType || entry.handle.descriptor)) ||
+        (entry.source && !entry.source.includes('\n') && !entry.source.includes('indicator('));
+      if (isNative) {
+        results.push(entry);
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Mengambil nilai input saat ini untuk suatu indikator
+   */
+  getInputs(id: string): Record<string, any> {
+    const matched = this.findEntry(id);
+    if (!matched) return {};
+    const entry = matched.entry;
+    if (entry.handle && typeof entry.handle.inputValues === 'function') {
+      try {
+        const live = entry.handle.inputValues();
+        if (live && typeof live === 'object') {
+          return { ...(entry.inputs || {}), ...live };
+        }
+      } catch (_) {}
+    }
+    return entry.inputs ? { ...entry.inputs } : {};
+  }
+
+  /**
+   * Mengambil skema input untuk suatu indikator
+   */
+  getSchema(id: string): any[] {
+    const matched = this.findEntry(id);
+    const entry = matched?.entry;
+    if (entry?.handle) {
+      if (entry.handle.descriptor?.inputs && Array.isArray(entry.handle.descriptor.inputs)) {
+        return entry.handle.descriptor.inputs;
+      }
+      if (entry.handle.descriptor && typeof entry.handle.descriptor.inputsSchema === 'function') {
+        try {
+          return entry.handle.descriptor.inputsSchema();
+        } catch (_) {}
+      }
+      if (Array.isArray(entry.handle.inputs) && entry.handle.inputs.length > 0) {
+        return entry.handle.inputs;
+      }
+    }
+    const nativeType = entry?.source || id.replace(/^native:/, '');
+    try {
+      const desc = getNativeIndicator(nativeType);
+      if (desc && typeof desc.inputsSchema === 'function') {
+        return desc.inputsSchema();
+      }
+    } catch (_) {}
+    return [];
   }
 
   /**

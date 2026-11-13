@@ -633,6 +633,18 @@
     if (r?.openSettings) r.openSettings(section);
     else if (r?.openSettingsDialog) r.openSettingsDialog(section);
   }
+  export function openIndicatorSettings(id: string): boolean {
+    return controller.openIndicatorSettings(id);
+  }
+  export function updateIndicatorInputs(id: string, inputs: Record<string, any>): boolean {
+    return controller.updateIndicatorInputs(id, inputs);
+  }
+  export function getIndicatorInputSchema(idOrType: string): any[] {
+    return controller.getIndicatorInputSchema(idOrType);
+  }
+  export function getIndicatorInputs(idOrType: string): Record<string, any> {
+    return controller.getIndicatorInputs(idOrType);
+  }
 
   // Delegasi Drawing ke ChartDrawingController
   export function setDrawingTool(tool: DrawingToolType | null): void { chartDrawingController.setTool(tool); }
