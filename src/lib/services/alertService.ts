@@ -522,6 +522,46 @@ class AlertService {
   }
 
   /**
+   * Hapus seluruh alert milik simbol tertentu
+   * Mengembalikan jumlah alert yang berhasil dihapus
+   */
+  public async deleteAlertsBySymbol(symbol: string): Promise<number> {
+    if (!symbol) return 0;
+    const beforeCount = this.alerts.length;
+    // Pertahankan alert yang simbolnya TIDAK cocok dengan target simbol
+    this.alerts = this.alerts.filter((a) => !isSameInstrument(a.symbol, symbol));
+    const removedCount = beforeCount - this.alerts.length;
+    // Hanya panggil save jika memang ada yang terhapus
+    if (removedCount > 0) {
+      await this.save();
+    }
+    return removedCount;
+  }
+
+  /**
+   * Hapus seluruh alert yang sudah berstatus terpicu (triggered: true)
+   * Jika parameter symbol diberikan, hanya menghapus alert terpicu milik simbol tersebut
+   * Mengembalikan jumlah alert yang berhasil dihapus
+   */
+  public async deleteTriggeredAlerts(symbol?: string): Promise<number> {
+    const beforeCount = this.alerts.length;
+    this.alerts = this.alerts.filter((a) => {
+      // Alert yang belum terpicu → selalu dipertahankan
+      if (!a.triggered) return true;
+      // Alert terpicu dengan filter simbol → hapus hanya jika simbol cocok
+      if (symbol) return !isSameInstrument(a.symbol, symbol);
+      // Alert terpicu tanpa filter → hapus semua
+      return false;
+    });
+    const removedCount = beforeCount - this.alerts.length;
+    // Hanya panggil save jika memang ada yang terhapus
+    if (removedCount > 0) {
+      await this.save();
+    }
+    return removedCount;
+  }
+
+  /**
    * Hapus seluruh alert (digunakan untuk reset total atau pengujian)
    */
   public async clearAllAlerts(): Promise<void> {

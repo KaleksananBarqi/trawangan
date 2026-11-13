@@ -5,6 +5,28 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.47.0] - 2026-11-14
+
+### 🚀 Ditambahkan (Added)
+- **Navigasi Koin Cepat & Interaksi Kartu Alert Penuh (`AlertsTab.svelte`):**
+  - Mengubah seluruh baris kartu alert menjadi target klik interaktif (`role="button"`, `tabindex="0"`) sehingga klik di area mana saja pada kartu langsung mengalihkan grafik chart utama ke simbol koin terkait (`onSelectSymbol`).
+  - Menambahkan penanda visual koin aktif (`.is-active-coin`) berupa aksen border kiri warna cyan (`--brand-cyan`) dan latar transparan halus untuk koin yang sedang dibuka di chart.
+  - Mengisolasi tombol aksi kartu (Pause/Play, Reset, Edit, Hapus) dengan `e.stopPropagation()` agar tidak memicu pergantian chart secara tidak sengaja.
+- **Pemisahan Section Alert Aktif vs Riwayat Terpicu & Tombol Cepat Bersihkan (`AlertsTab.svelte`):**
+  - Mengelompokkan tampilan alert menjadi dua bagian: **Aktif** (termasuk status dijeda) di bagian atas dan **Riwayat Terpicu** di bagian bawah yang dapat dilipat (*collapsible*).
+  - Menambahkan tombol cepat **Bersihkan** pada header section riwayat dengan proteksi konfirmasi dua langkah (*two-step inline confirmation*).
+- **Filter Simbol Koin Dinamis di Sub-Toolbar (`AlertsTab.svelte`):**
+  - Menghasilkan pil filter koin secara dinamis untuk seluruh simbol instrumen yang memiliki alert terdaftar lengkap dengan *counter badge* dan dukungan *horizontal scroll*.
+- **Menu Hapus Massal & Hapus per Simbol Terpusat (`AlertsTab.svelte`, `alertService.ts`):**
+  - Menambahkan metode `deleteAlertsBySymbol(symbol: string): Promise<number>` dan `deleteTriggeredAlerts(symbol?: string): Promise<number>` pada `alertService`.
+  - Menambahkan menu dropdown popover hapus massal di sub-toolbar dengan opsi: *Hapus Semua Alert*, *Bersihkan Alert Terpicu*, serta daftar *Hapus per Simbol* individual.
+  - Menerapkan konfirmasi dua langkah inline (tombol berubah status konfirmasi merah selama 3.5 detik) dengan pembatalan otomatis jika diabaikan.
+
+### 🐛 Diperbaiki (Fixed)
+- **Perbaikan Dropdown Hapus Massal Terpotong & Event Bubbling Reset Konfirmasi (`AlertsTab.svelte`):**
+  - Memperbaiki properti CSS `overflow: hidden;` pada `.alert-sub-toolbar` menjadi `overflow: visible;` dan `position: relative; z-index: 10;` sehingga popover menu hapus tidak terpotong dan tampil sempurna di atas daftar alert.
+  - Memperbaiki event bubbling pada tombol menu dan tombol *Bersihkan* dengan `e.stopPropagation()` agar klik tombol tidak memicu `handleOutsideClick` di level `window` yang sebelumnya me-reset status konfirmasi sebelum aksi sempat dieksekusi.
+
 ## [0.46.0] - 2026-11-12
 
 ### 🚀 Ditambahkan (Added)
