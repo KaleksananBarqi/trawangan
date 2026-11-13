@@ -10,6 +10,7 @@ export const DEFAULT_SYNC_CONFIG: MultiChartSyncConfig = {
   symbol: false,
   drawings: true,
   indicators: true,
+  style: false,
 };
 
 /**

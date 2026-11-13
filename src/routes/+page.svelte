@@ -133,6 +133,7 @@
   let currentLayout = $state('1');
   let ticker = $state<TickerInfo | null>(null);
   let activeProviderId = $state('binance');
+  let activePriceStyle = $state<string>('candles');
 
   // Dual Workspace Mode: 'terminal' vs 'pine'
   let workspaceMode = $state<WorkspaceMode>('terminal');
@@ -999,6 +1000,24 @@
     }
   }
 
+  function handleToggleSyncStyle() {
+    syncConfig.style = !syncConfig.style;
+    appSettings.syncConfig = { ...syncConfig };
+    persistAppSettings();
+    addSystemLog(`Sinkronisasi gaya lilin multi-chart: ${syncConfig.style ? 'AKTIF' : 'NONAKTIF'}`, 'info');
+    if (syncConfig.style && chartComponent && typeof chartComponent.syncLayout === 'function') {
+      chartComponent.syncLayout({ style: syncConfig.style });
+    }
+  }
+
+  function handlePriceStyleChange(newStyle: string) {
+    activePriceStyle = newStyle;
+    if (chartComponent && typeof chartComponent.setPriceStyle === 'function') {
+      chartComponent.setPriceStyle(newStyle);
+    }
+    addSystemLog(`Gaya tampilan harga diubah ke: ${newStyle}`, 'info');
+  }
+
 
   function handleWorkspaceModeChange(mode: WorkspaceMode) {
     workspaceMode = mode;
@@ -1221,6 +1240,7 @@
     chartDrawingController.setWorkspaceId('default_workspace');
     chartDrawingController.clearCanvasVisuals();
     chartDrawingController.clearAllPlans();
+    activePriceStyle = 'candles';
     addSystemLog('Workspace aktif dilepas. Siap menyetel tata letak atau indikator untuk workspace baru.', 'info');
   }
 
@@ -1230,6 +1250,9 @@
     isLoadingWorkspace = true;
     try {
       activeWorkspace = w;
+      if (w?.priceStyle) {
+        activePriceStyle = w.priceStyle;
+      }
       if (w && w.id) {
         await setLastActiveWorkspaceId(w.id);
         clearPendingWorkspaceBackup(w.id);
@@ -1655,6 +1678,7 @@
     onToggleSyncSymbol={handleToggleSyncSymbol}
     onToggleSyncDrawings={handleToggleSyncDrawings}
     onToggleSyncIndicators={handleToggleSyncIndicators}
+    onToggleSyncStyle={handleToggleSyncStyle}
     onToggleDrawingToolbar={() => workspaceShellService.toggleLeftRail()}
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
@@ -1680,6 +1704,8 @@
     colorModePreference={appSettings.colorModePreference ?? 'system'}
     {systemIsDark}
     onCycleColorMode={handleCycleColorMode}
+    {activePriceStyle}
+    onPriceStyleChange={handlePriceStyleChange}
   />
 
   <!-- Main Viewport Area -->
@@ -1783,6 +1809,7 @@
           userProfile={appSettings.userProfile}
           onActiveIndicatorsChange={(list) => (activeIndicators = list)}
           onActiveCellChange={handleActiveCellChange}
+          onPriceStyleChange={(style) => (activePriceStyle = style)}
           onStrategyUpdate={handleStrategyUpdate}
           onRequestCreateAlert={handleRequestCreateAlert}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}

@@ -24,22 +24,24 @@ import { registerDefaultEngine } from '@luxalgo/vela';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 import { IndicatorRegistry } from './indicatorRegistry';
 import { chartDrawingController } from './chartDrawingController';
-import type {
-  Timeframe,
-  MultiChartSyncConfig,
-  ThemePresetId,
-  ActiveIndicatorInfo,
-  SavedWorkspace,
-  CustomChartBackgroundConfig,
-  CustomThemePalette,
-  GridMode,
-  ProviderConfig,
-  PaneLayoutEntry,
-  NativeIndicatorSnapshot,
-  CellSnapshot,
-  SavedWorkspaceIndicator,
-  VisibleRangeSnapshot,
-  WorkspaceTrackSizes,
+import {
+  type Timeframe,
+  type MultiChartSyncConfig,
+  type ThemePresetId,
+  type ActiveIndicatorInfo,
+  type SavedWorkspace,
+  type CustomChartBackgroundConfig,
+  type CustomThemePalette,
+  type GridMode,
+  type ProviderConfig,
+  type PaneLayoutEntry,
+  type NativeIndicatorSnapshot,
+  type CellSnapshot,
+  type SavedWorkspaceIndicator,
+  type VisibleRangeSnapshot,
+  type WorkspaceTrackSizes,
+  type PriceStyle,
+  isValidPriceStyle,
 } from '../types/market';
 import { WORKSPACE_SCHEMA_VERSION, computePaneSignature } from './persistence/workspaceSchema';
 import {
@@ -78,6 +80,7 @@ export interface ChartSessionOptions {
   gridMode?: GridMode;
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
+  onPriceStyleChange?: (style: PriceStyle | string) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
   onPersistableStateChange?: (reason: string) => void;
@@ -106,6 +109,7 @@ export interface ChartSessionSnapshot {
   showCurrentPriceLine: boolean;
   showVolume: boolean;
   gridMode: GridMode;
+  priceStyle: PriceStyle | string;
   activeCell: { symbol: string; timeframe: Timeframe } | null;
   activeIndicators: ActiveIndicatorInfo[];
   syncConfig: MultiChartSyncConfig;
@@ -377,6 +381,7 @@ export class ChartSessionController {
   private showVolume: boolean;
   private syncConfig: MultiChartSyncConfig;
   private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
+  private onPriceStyleChange?: (style: PriceStyle | string) => void;
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   private workspaceFactory?: (container: HTMLElement, config: any) => any;
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
@@ -453,6 +458,7 @@ export class ChartSessionController {
       indicators: true
     };
     this.onActiveCellChange = options.onActiveCellChange;
+    this.onPriceStyleChange = options.onPriceStyleChange;
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
     this.workspaceFactory = options.workspaceFactory;
     this.hasCustomPersistence = Boolean(options.persistence);
@@ -483,6 +489,7 @@ export class ChartSessionController {
       showCurrentPriceLine: this.showCurrentPriceLine,
       showVolume: this.showVolume,
       gridMode: this.gridMode,
+      priceStyle: this.getPriceStyle(),
       activeCell: this.activeCellInfo
         ? { ...this.activeCellInfo }
         : { symbol: this.symbol, timeframe: this.timeframe },
@@ -890,6 +897,7 @@ export class ChartSessionController {
                 providerId: this.providerId,
               });
             }
+            this.onPriceStyleChange?.(this.getPriceStyle(cur));
             this.attachCellListeners(cur);
             this.emitPersistableChange('activeCell');
           }
@@ -2582,6 +2590,7 @@ export class ChartSessionController {
           this.workspace.sync.set('viewport', Boolean(this.syncConfig.viewport ?? true));
           this.workspace.sync.set('drawings', Boolean(this.syncConfig.drawings));
           this.workspace.sync.set('symbol', Boolean(this.syncConfig.symbol));
+          this.workspace.sync.set('style', Boolean(this.syncConfig.style));
         }
 
         for (const cell of this.getAllCells()) {
@@ -2624,6 +2633,7 @@ export class ChartSessionController {
         this.workspace.sync.set('viewport', Boolean(this.syncConfig.viewport ?? true));
         this.workspace.sync.set('drawings', Boolean(this.syncConfig.drawings));
         this.workspace.sync.set('symbol', Boolean(this.syncConfig.symbol));
+        this.workspace.sync.set('style', Boolean(this.syncConfig.style));
 
         const activeCell = this.workspace.active;
 
@@ -2632,6 +2642,15 @@ export class ChartSessionController {
           for (const cell of this.getAllCells()) {
             if (cell !== activeCell && cell.symbol !== targetSym && typeof cell.setSymbol === 'function') {
               cell.setSymbol(targetSym);
+            }
+          }
+        }
+
+        if (this.syncConfig.style) {
+          const activeStyle = this.getPriceStyle(activeCell);
+          for (const cell of this.getAllCells()) {
+            if (cell !== activeCell && this.getPriceStyle(cell) !== activeStyle) {
+              this.setPriceStyle(activeStyle, cell);
             }
           }
         }
@@ -3396,38 +3415,63 @@ export class ChartSessionController {
 
   /**
    * Mengambil gaya visual lilin pada sel target atau sel aktif.
+   * Fallback otomatis ke 'candles' jika input atau nilai tersimpan tidak valid.
    */
-  public getPriceStyle(cell?: any): string {
+  public getPriceStyle(cell?: any): PriceStyle | string {
     try {
       const targetCell = this.resolveTargetCell(cell) as any;
       const chart = targetCell?.chart || targetCell?.inner;
       const native = chart?.renderer?.renderer || chart?.renderer;
-      return native?.getConfig?.()?.series?.style || targetCell?.priceStyle || 'candles';
+      const raw = native?.getConfig?.()?.series?.style || targetCell?.priceStyle;
+      if (isValidPriceStyle(raw)) {
+        return raw;
+      }
+      return 'candles';
     } catch (_) {}
     return 'candles';
   }
 
   /**
    * Menyetel gaya visual lilin pada sel target atau sel aktif.
+   * Mendukung propagasi multi-cell otomatis jika syncConfig.style aktif.
+   * Fallback otomatis ke 'candles' jika style yang diberikan tidak valid.
    */
   public setPriceStyle(style: string, cell?: any): void {
-    if (!style) return;
+    const validStyle: PriceStyle = isValidPriceStyle(style) ? style : 'candles';
     try {
-      const targetCell = this.resolveTargetCell(cell) as any;
-      if (this.getPriceStyle(targetCell) === style) {
-        return;
+      const isSyncActive = Boolean(this.syncConfig.style);
+      const isTargetActiveOrUnspecified = !cell || cell === this.workspace?.active;
+      const targetCells = (isSyncActive && isTargetActiveOrUnspecified)
+        ? this.getAllCells()
+        : [this.resolveTargetCell(cell)];
+
+      let anyChanged = false;
+      for (const targetCell of targetCells) {
+        if (!targetCell) continue;
+        const currentStyle = this.getPriceStyle(targetCell);
+        if (currentStyle === validStyle) {
+          continue;
+        }
+        anyChanged = true;
+        const chart = targetCell?.chart || targetCell?.inner;
+        const native = chart?.renderer?.renderer || chart?.renderer;
+        this.withSuppressedPersistEvents(() => {
+          if (native?.applyConfig) {
+            native.applyConfig({ series: { style: validStyle } });
+          }
+          if (typeof targetCell?.setPriceStyle === 'function') {
+            targetCell.setPriceStyle(validStyle);
+          } else {
+            targetCell.priceStyle = validStyle;
+          }
+        });
       }
-      const chart = targetCell?.chart || targetCell?.inner;
-      const native = chart?.renderer?.renderer || chart?.renderer;
-      this.withSuppressedPersistEvents(() => {
-        if (native?.applyConfig) {
-          native.applyConfig({ series: { style } });
-        }
-        if (typeof targetCell?.setPriceStyle === 'function') {
-          targetCell.setPriceStyle(style);
-        }
-      });
-      this.emitPersistableChange('priceStyle');
+
+      if (anyChanged) {
+        this.emitPersistableChange('priceStyle');
+        this.notify();
+      }
+      this.onPriceStyleChange?.(validStyle);
     } catch (_) {}
   }
 
@@ -3650,7 +3694,7 @@ export class ChartSessionController {
             drawings: Boolean(this.syncConfig.drawings),
             symbol: Boolean(this.syncConfig.symbol),
             timeframe: Boolean(this.syncConfig.timeframe),
-            style: true,
+            style: Boolean(this.syncConfig.style),
           },
           charts: chartsDoc,
           ...(options?.trackSizes && (options.trackSizes.cols || options.trackSizes.rows)
@@ -3791,6 +3835,7 @@ export class ChartSessionController {
       }
 
       this.notifyActiveIndicators();
+      this.onPriceStyleChange?.(this.getPriceStyle());
       this.notify();
     } finally {
       this.isRestoringWorkspace = wasRestoring;
