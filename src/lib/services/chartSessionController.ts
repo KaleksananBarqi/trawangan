@@ -54,6 +54,7 @@ import {
 } from './workspaceLifecycle';
 import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors, resolveThemeConfig } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
+import type { UnifiedIndicatorDescriptor } from './indicatorCatalogService';
 import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 import { applyLayoutTimeframePolicy } from '../constants/defaults';
 import { storage } from './persistence';
@@ -1878,6 +1879,147 @@ export class ChartSessionController {
   }
 
   /**
+   * Menambahkan indikator native Vela ke seluruh sel aktif dengan sinkronisasi bersih
+   */
+  public async addNativeIndicator(
+    type: string,
+    options?: any,
+    customTitle?: string
+  ): Promise<boolean> {
+    if (!this.workspace) return false;
+
+    try {
+      const cleanTitle = (customTitle || type).trim();
+
+      const targetCells = (this.syncConfig.indicators !== false)
+        ? this.getAllCells()
+        : (this.workspace.active ? [this.workspace.active] : this.getAllCells());
+
+      const createdHandles: any[] = [];
+      let firstHandle: any = null;
+
+      for (const cell of targetCells as any[]) {
+        const chart = cell?.chart || cell?.inner;
+        if (!chart || typeof chart.addNativeIndicator !== 'function') continue;
+
+        try {
+          const handle = chart.addNativeIndicator(type, options || {});
+          if (handle) {
+            createdHandles.push(handle);
+            if (!firstHandle) firstHandle = handle;
+          }
+        } catch (err) {
+          console.warn(`[ChartSessionController] addNativeIndicator("${type}") error:`, err);
+        }
+      }
+
+      if (firstHandle) {
+        this.indicatorRegistry.register({
+          id: firstHandle.id,
+          handle: firstHandle,
+          handles: createdHandles,
+          title: cleanTitle || firstHandle.title || type,
+          source: type,
+          visible: firstHandle.visible ?? true,
+          inputs: options?.inputs,
+          props: options?.props,
+        });
+
+        this.notifyActiveIndicators();
+        this.emitPersistableChange('indicator:add_native');
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      console.error('[ChartSessionController] addNativeIndicator error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Menambahkan indikator native Vela ke satu sel tertentu
+   */
+  public async addNativeIndicatorToCell(
+    cell: any,
+    type: string,
+    options?: any,
+    customTitle?: string
+  ): Promise<boolean> {
+    const chart = cell?.chart || cell?.inner;
+    if (!cell || !chart || typeof chart.addNativeIndicator !== 'function') return false;
+
+    try {
+      const cleanTitle = (customTitle || type).trim();
+      const handle = chart.addNativeIndicator(type, options || {});
+      if (!handle) return false;
+
+      this.indicatorRegistry.register({
+        id: handle.id || `${cell.id || 'cell'}:${cleanTitle}`,
+        handle,
+        handles: [handle],
+        title: cleanTitle || handle.title || type,
+        source: type,
+        visible: handle.visible ?? true,
+        inputs: options?.inputs,
+        props: options?.props,
+      });
+
+      this.notifyActiveIndicators();
+      this.emitPersistableChange('indicator:add_native_cell');
+      return true;
+    } catch (err) {
+      console.error('[ChartSessionController] addNativeIndicatorToCell error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Menambahkan indikator secara polimorfik (baik native study maupun Pine script)
+   */
+  public async addIndicator(
+    descriptor: UnifiedIndicatorDescriptor | { kind: 'native' | 'pine'; [key: string]: any },
+    options?: any
+  ): Promise<boolean> {
+    if (!descriptor) return false;
+    if (descriptor.kind === 'native') {
+      const type = descriptor.nativeType || descriptor.id.replace(/^native:/, '');
+      return this.addNativeIndicator(type, options, descriptor.title);
+    } else {
+      const source = descriptor.sourceCode || '';
+      return this.addPineIndicator(source, descriptor.title, options?.inputs, options?.props);
+    }
+  }
+
+  /**
+   * Menambahkan indikator secara polimorfik ke satu sel tertentu
+   */
+  public async addIndicatorToCell(
+    descriptor: UnifiedIndicatorDescriptor | { kind: 'native' | 'pine'; [key: string]: any },
+    cell?: any,
+    options?: any
+  ): Promise<boolean> {
+    if (!descriptor) return false;
+    const targetCell = this.resolveTargetCell(cell);
+    if (!targetCell) return false;
+
+    if (descriptor.kind === 'native') {
+      const type = descriptor.nativeType || descriptor.id.replace(/^native:/, '');
+      return this.addNativeIndicatorToCell(targetCell, type, options, descriptor.title);
+    } else {
+      const source = descriptor.sourceCode || '';
+      return this.addPineIndicatorToCell(
+        targetCell,
+        source,
+        descriptor.title,
+        options?.inputs,
+        options?.props,
+        descriptor.visible ?? true
+      );
+    }
+  }
+
+  /**
    * Menghapus indikator secara tuntas di seluruh sel (mencegah zombie indicator)
    */
   public removeIndicator(id: string): void {
@@ -1921,7 +2063,7 @@ export class ChartSessionController {
   /**
    * Mengekstrak daftar indikator Pine/custom yang benar-benar terpasang pada satu cell spesifik tanpa melakukan pruning registry global.
    */
-  private extractCellIndicators(cell: any): ActiveIndicatorInfo[] {
+  private extractCellIndicators(cell: any, includeNative: boolean = false): ActiveIndicatorInfo[] {
     const chart = cell?.chart || cell?.inner;
     if (!chart || typeof chart.indicators !== 'function') {
       return [];
@@ -1929,7 +2071,9 @@ export class ChartSessionController {
 
     const result: ActiveIndicatorInfo[] = [];
     for (const ind of Array.from(chart.indicators() || []) as any[]) {
-      if (!ind || ind.nativeType) continue;
+      if (!ind) continue;
+      if (!includeNative && ind.nativeType) continue;
+      if (includeNative && ind.nativeType === 'volume' && !this.indicatorRegistry.findEntry(ind.id || ind.title)) continue;
       const matched = this.indicatorRegistry.findEntry(ind.id || ind.title);
       const reg = matched?.entry;
 
@@ -1975,7 +2119,7 @@ export class ChartSessionController {
    */
   public getCellIndicators(cell?: any): SavedWorkspaceIndicator[] {
     const targetCell = this.resolveTargetCell(cell);
-    return this.extractCellIndicators(targetCell).map((i) => ({
+    return this.extractCellIndicators(targetCell, false).map((i) => ({
       title: i.title,
       source: i.source,
       visible: i.visible,
@@ -2072,7 +2216,7 @@ export class ChartSessionController {
    */
   public getActiveIndicators(): ActiveIndicatorInfo[] {
     if (this.syncConfig.indicators === false && this.workspace?.active) {
-      return this.extractCellIndicators(this.workspace.active);
+      return this.extractCellIndicators(this.workspace.active, true);
     }
     return this.indicatorRegistry.getActiveIndicators(
       this.workspace?.active?.chart,
