@@ -34,6 +34,15 @@ import {
   timelineMarksController
 } from './timelineMarksController';
 import {
+  PineStrategyTelemetryService,
+  pineStrategyTelemetry,
+  tradesToTradeExecutions,
+  type StrategyState,
+  type StrategyTrade,
+  type TradeExecution,
+  type StrategyTelemetryPayload,
+} from './pineStrategyTelemetry';
+import {
   type Timeframe,
   type MultiChartSyncConfig,
   type ThemePresetId,
@@ -92,6 +101,8 @@ export interface ChartSessionOptions {
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
   onPriceStyleChange?: (style: PriceStyle | string) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
+  onStrategyTelemetry?: (payload: StrategyTelemetryPayload) => void;
+  strategyTelemetry?: PineStrategyTelemetryService;
   onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
   onPersistableStateChange?: (reason: string) => void;
   viewportPersistDebounceMs?: number;
@@ -394,6 +405,8 @@ export class ChartSessionController {
   private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
   private onPriceStyleChange?: (style: PriceStyle | string) => void;
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
+  private onStrategyTelemetryHandler?: (payload: StrategyTelemetryPayload) => void;
+  public readonly strategyTelemetry: PineStrategyTelemetryService;
   private workspaceFactory?: (container: HTMLElement, config: any) => any;
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
   private activeChartDefaultConfig: any = null;
@@ -481,6 +494,8 @@ export class ChartSessionController {
     this.onActiveCellChange = options.onActiveCellChange;
     this.onPriceStyleChange = options.onPriceStyleChange;
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
+    this.onStrategyTelemetryHandler = options.onStrategyTelemetry;
+    this.strategyTelemetry = options.strategyTelemetry ?? new PineStrategyTelemetryService();
     this.workspaceFactory = options.workspaceFactory;
     this.hasCustomPersistence = Boolean(options.persistence);
     this.persistence = options.persistence ?? storage;
@@ -947,6 +962,26 @@ export class ChartSessionController {
             ? uState
             : () => {
                 if (stateChangedHandler) wsRef.off?.('state:changed', stateChangedHandler);
+              }
+        );
+
+        let scriptRunHandler: ((run: any) => void) | null = null;
+        const uScriptRun = this.workspace.on('script:run', (scriptRunHandler = async (run: any) => {
+          if (run?.kind === 'strategy' || Boolean(run?.strategy) || typeof run?.trades === 'function') {
+            const cellId = run?.cell || this.workspace?.active?.id;
+            const targetCell = (cellId && this.workspace?.cell?.(cellId)) || this.workspace?.active;
+            const payload = await this.strategyTelemetry.extractFromScriptRun(run, cellId);
+            if (payload && targetCell) {
+              this.strategyTelemetry.routeTradeMarkersToCell(targetCell, payload.indicatorId, payload.tradeExecutions);
+              this.onStrategyTelemetryHandler?.(payload);
+            }
+          }
+        }));
+        this.workspaceEventUnsubs.push(
+          typeof uScriptRun === 'function'
+            ? uScriptRun
+            : () => {
+                if (scriptRunHandler) wsRef.off?.('script:run', scriptRunHandler);
               }
         );
       } catch (_) {}
@@ -1503,6 +1538,15 @@ export class ChartSessionController {
           this.capturePaneLayoutIfChanged(cell, { silent: true });
           this.emitPersistableChange('pane:changed');
         });
+        chart.on('script:run', async (run: any) => {
+          if (run?.kind === 'strategy' || Boolean(run?.strategy) || typeof run?.trades === 'function') {
+            const payload = await this.strategyTelemetry.extractFromScriptRun(run, cell?.id);
+            if (payload) {
+              this.strategyTelemetry.routeTradeMarkersToCell(cell, payload.indicatorId, payload.tradeExecutions);
+              this.onStrategyTelemetryHandler?.(payload);
+            }
+          }
+        });
         chart.on('viewport:changed', () => {
           this.scheduleViewportPersistChange();
         });
@@ -1806,6 +1850,18 @@ export class ChartSessionController {
       }
 
       // 3. Tambahkan indikator ke cell target
+      const isStrategy = /\bstrategy\s*\(/.test(source);
+      if (isStrategy) {
+        for (const cell of targetCells as any[]) {
+          const chart = cell?.chart || cell?.inner;
+          if (chart?.applyConfig) {
+            try { chart.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
+          } else if (chart?.renderer?.applyConfig) {
+            try { chart.renderer.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
+          }
+        }
+      }
+
       const isVolumeScript = isVolumeIndicator(cleanTitle);
       let effectiveInputs = savedInputs ? { ...savedInputs } : undefined;
       if (isVolumeScript) {
@@ -1826,7 +1882,16 @@ export class ChartSessionController {
       for (const cell of targetCells as any[]) {
         const chart = cell?.chart || cell?.inner;
         if (!chart || typeof chart.addIndicator !== 'function') continue;
-        const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
+        const isStrategy = /\bstrategy\s*\(/.test(source);
+      if (isStrategy) {
+        if (chart?.applyConfig) {
+          try { chart.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
+        } else if (chart?.renderer?.applyConfig) {
+          try { chart.renderer.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
+        }
+      }
+
+      const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
         const addOptions: any = {
           language: 'pine',
           title: cleanTitle,
@@ -1841,6 +1906,17 @@ export class ChartSessionController {
 
         const handle = chart.addIndicator(source, addOptions);
         if (handle) {
+          if (isStrategy && typeof handle.context === 'function') {
+            void handle.context().then((ctx: any) => {
+              if (ctx) {
+                const payload = this.strategyTelemetry.extractFromContext(handle.id, ctx, cleanTitle, cell?.id);
+                if (payload) {
+                  this.strategyTelemetry.routeTradeMarkersToCell(cell, handle.id, payload.tradeExecutions);
+                  this.onStrategyTelemetryHandler?.(payload);
+                }
+              }
+            }).catch(() => {});
+          }
           if (effectiveInputs && typeof handle.setInputs === 'function') {
             try { handle.setInputs(effectiveInputs); } catch (_) {}
           }
@@ -2082,6 +2158,19 @@ export class ChartSessionController {
    * Menghapus indikator secara tuntas di seluruh sel (mencegah zombie indicator)
    */
   public removeIndicator(id: string): void {
+    if (id) {
+      this.strategyTelemetry.clearTelemetry(id);
+      for (const cell of this.getAllCells()) {
+        const chart = cell?.chart || cell?.inner;
+        const scene = chart?.renderer?.scene || chart?.scene;
+        if (scene?.indicators && typeof scene.indicators.get === 'function') {
+          const model = scene.indicators.get(id);
+          if (model && model.trades) {
+            model.trades = [];
+          }
+        }
+      }
+    }
     this.indicatorRegistry.removeIndicator(
       id,
       this.syncConfig.indicators !== false,
@@ -2094,6 +2183,7 @@ export class ChartSessionController {
    * Membersihkan seluruh indikator aktif di workspace
    */
   public clearAllIndicators(): void {
+    this.strategyTelemetry.clearTelemetry();
     this.desiredPaneWeightsByCell = new WeakMap();
     this.lastCapturedPaneLayoutByCell = new WeakMap();
     this.userTouchedPaneLayoutByCell = new WeakSet<any>();
@@ -2265,6 +2355,15 @@ export class ChartSessionController {
         };
       }
 
+      const isStrategy = /\bstrategy\s*\(/.test(source);
+      if (isStrategy) {
+        if (chart?.applyConfig) {
+          try { chart.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
+        } else if (chart?.renderer?.applyConfig) {
+          try { chart.renderer.applyConfig({ trades: { visible: true, labels: true, qty: true } }); } catch (_) {}
+        }
+      }
+
       const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
       const addOptions: any = {
         language: 'pine',
@@ -2280,6 +2379,18 @@ export class ChartSessionController {
 
       const handle = chart.addIndicator(source, addOptions);
       if (!handle) return false;
+
+      if (isStrategy && typeof handle.context === 'function') {
+        void handle.context().then((ctx: any) => {
+          if (ctx) {
+            const payload = this.strategyTelemetry.extractFromContext(handle.id, ctx, cleanTitle, cell?.id);
+            if (payload) {
+              this.strategyTelemetry.routeTradeMarkersToCell(cell, handle.id, payload.tradeExecutions);
+              this.onStrategyTelemetryHandler?.(payload);
+            }
+          }
+        }).catch(() => {});
+      }
 
       if (effectiveInputs && typeof handle.setInputs === 'function') {
         try { handle.setInputs(effectiveInputs); } catch (_) {}
@@ -2333,6 +2444,19 @@ export class ChartSessionController {
    * Menangani event penghapusan dari engine Vela native
    */
   public handleIndicatorRemoved(removedId?: string): void {
+    if (removedId) {
+      this.strategyTelemetry.clearTelemetry(removedId);
+      for (const cell of this.getAllCells()) {
+        const chart = cell?.chart || cell?.inner;
+        const scene = chart?.renderer?.scene || chart?.scene;
+        if (scene?.indicators && typeof scene.indicators.get === 'function') {
+          const model = scene.indicators.get(removedId);
+          if (model && model.trades) {
+            model.trades = [];
+          }
+        }
+      }
+    }
     this.indicatorRegistry.handleRemovedEvent(
       removedId,
       this.syncConfig.indicators !== false,
@@ -4473,6 +4597,52 @@ export class ChartSessionController {
   }
 
   /**
+   * Mengambil rekam telemetri performa strategi Pine Script aktif
+   */
+  public getStrategyTelemetry(indicatorId?: string): StrategyTelemetryPayload | null {
+    return this.strategyTelemetry.getTelemetry(indicatorId);
+  }
+
+  /**
+   * Mengambil seluruh rekam telemetri strategi aktif di workspace
+   */
+  public getAllStrategyTelemetry(): StrategyTelemetryPayload[] {
+    return this.strategyTelemetry.getAllTelemetry();
+  }
+
+  /**
+   * Mengambil daftar marker eksekusi order (on-chart TradeExecution[])
+   */
+  public getStrategyTradeExecutions(indicatorId?: string): TradeExecution[] {
+    return this.strategyTelemetry.getTradeExecutions(indicatorId);
+  }
+
+  /**
+   * Menghapus data telemetri strategi secara bersih
+   */
+  public clearStrategyTelemetry(indicatorId?: string): void {
+    this.strategyTelemetry.clearTelemetry(indicatorId);
+  }
+
+  /**
+   * Mendaftarkan pendengar pembaruan telemetri strategi
+   */
+  public onStrategyTelemetry(handler: (payload: StrategyTelemetryPayload) => void): () => void {
+    return this.strategyTelemetry.subscribe(handler);
+  }
+
+  /**
+   * Mengalirkan marker eksekusi transaksi ke renderer chart tertentu
+   */
+  public routeStrategyTradeMarkers(
+    cellOrChart: any,
+    indicatorId: string,
+    executions: TradeExecution[]
+  ): boolean {
+    return this.strategyTelemetry.routeTradeMarkersToCell(cellOrChart, indicatorId, executions);
+  }
+
+  /**
    * Menghancurkan sesi, melepaskan observer, timer, listener, dan membebaskan alokasi WebGL Context
    */
   public destroy(): void {
@@ -4502,6 +4672,7 @@ export class ChartSessionController {
     this.streamCoordinator.clear();
     this.registeredCustomSignatures.clear();
     this.timelineMarksController.detach();
+    this.strategyTelemetry.clearTelemetry();
 
     if (this.resizeObserver) {
       try {
@@ -4534,3 +4705,16 @@ export {
   type FetchSeriesRange,
   type OHLCVBar,
 } from './pineSeriesAdapter';
+
+export {
+  PineStrategyTelemetryService,
+  pineStrategyTelemetry,
+  parseStrategyState,
+  parseStrategyTrades,
+  tradesToTradeExecutions,
+  type StrategyState,
+  type StrategyFill,
+  type StrategyTrade,
+  type TradeExecution,
+  type StrategyTelemetryPayload,
+} from './pineStrategyTelemetry';
