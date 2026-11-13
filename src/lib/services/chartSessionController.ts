@@ -23,6 +23,7 @@ import {
 import { registerDefaultEngine } from '@luxalgo/vela';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 import { IndicatorRegistry } from './indicatorRegistry';
+import { normalizeVpvrInputs } from './vpvrProfile';
 import { chartDrawingController } from './chartDrawingController';
 import {
   TimelineMarksController,
@@ -1889,7 +1890,17 @@ export class ChartSessionController {
     if (!this.workspace) return false;
 
     try {
-      const cleanTitle = (customTitle || type).trim();
+      const cleanType = (type || '').trim().replace(/^native:/, '');
+      const cleanTitle = (customTitle || cleanType).trim();
+
+      // Normalisasi opsi khusus untuk Visible Range Volume Profile (VPVR)
+      let resolvedOptions = options || {};
+      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
+        };
+      }
 
       const targetCells = (this.syncConfig.indicators !== false)
         ? this.getAllCells()
@@ -1903,13 +1914,13 @@ export class ChartSessionController {
         if (!chart || typeof chart.addNativeIndicator !== 'function') continue;
 
         try {
-          const handle = chart.addNativeIndicator(type, options || {});
+          const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
           if (handle) {
             createdHandles.push(handle);
             if (!firstHandle) firstHandle = handle;
           }
         } catch (err) {
-          console.warn(`[ChartSessionController] addNativeIndicator("${type}") error:`, err);
+          console.warn(`[ChartSessionController] addNativeIndicator("${cleanType}") error:`, err);
         }
       }
 
@@ -1918,11 +1929,11 @@ export class ChartSessionController {
           id: firstHandle.id,
           handle: firstHandle,
           handles: createdHandles,
-          title: cleanTitle || firstHandle.title || type,
-          source: type,
+          title: cleanTitle || firstHandle.title || cleanType,
+          source: cleanType,
           visible: firstHandle.visible ?? true,
-          inputs: options?.inputs,
-          props: options?.props,
+          inputs: resolvedOptions.inputs,
+          props: resolvedOptions.props,
         });
 
         this.notifyActiveIndicators();
@@ -1950,19 +1961,29 @@ export class ChartSessionController {
     if (!cell || !chart || typeof chart.addNativeIndicator !== 'function') return false;
 
     try {
-      const cleanTitle = (customTitle || type).trim();
-      const handle = chart.addNativeIndicator(type, options || {});
+      const cleanType = (type || '').trim().replace(/^native:/, '');
+      const cleanTitle = (customTitle || cleanType).trim();
+
+      let resolvedOptions = options || {};
+      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
+        };
+      }
+
+      const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
       if (!handle) return false;
 
       this.indicatorRegistry.register({
         id: handle.id || `${cell.id || 'cell'}:${cleanTitle}`,
         handle,
         handles: [handle],
-        title: cleanTitle || handle.title || type,
-        source: type,
+        title: cleanTitle || handle.title || cleanType,
+        source: cleanType,
         visible: handle.visible ?? true,
-        inputs: options?.inputs,
-        props: options?.props,
+        inputs: resolvedOptions.inputs,
+        props: resolvedOptions.props,
       });
 
       this.notifyActiveIndicators();
@@ -2055,7 +2076,14 @@ export class ChartSessionController {
    * Memperbarui input parameter indikator
    */
   public updateIndicatorInputs(id: string, inputs: Record<string, any>): void {
-    this.indicatorRegistry.updateInputs(id, inputs);
+    let resolvedInputs = inputs;
+    const entry = this.indicatorRegistry.findEntry(id)?.entry;
+    const isVpvr = entry?.source === 'vpvr' || id.toLowerCase().includes('vpvr');
+    if (isVpvr && inputs) {
+      resolvedInputs = normalizeVpvrInputs(inputs);
+    }
+
+    this.indicatorRegistry.updateInputs(id, resolvedInputs);
     this.notifyActiveIndicators();
     this.emitPersistableChange('indicator:inputs');
   }

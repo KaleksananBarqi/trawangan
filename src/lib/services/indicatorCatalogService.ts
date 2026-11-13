@@ -20,6 +20,7 @@ export interface UnifiedIndicatorDescriptor {
   title: string;
   shortTitle?: string;
   category: IndicatorCategory;
+  categories?: IndicatorCategory[];
   kind: 'native' | 'pine';
   overlay: boolean;
   visible?: boolean;
@@ -30,6 +31,7 @@ export interface UnifiedIndicatorDescriptor {
   defaultInputs?: Record<string, any>;
   multiInstance?: boolean;
   paneHint?: string;
+  prominent?: boolean;
 }
 
 export interface FilterCatalogOptions {
@@ -137,7 +139,7 @@ export const NATIVE_CATEGORY_MAP: Record<string, IndicatorCategory> = {
  * Ringkasan deskripsi bahasa Indonesia untuk studi native populer
  */
 export const NATIVE_DESCRIPTION_MAP: Record<string, string> = {
-  'vpvr': 'Visible Range Volume Profile: Menampilkan distribusi volume transaksi per level harga pada rentang grafik yang terlihat, termasuk Point of Control (POC) dan Value Area.',
+  'vpvr': 'Visible Range Volume Profile: Menampilkan distribusi volume transaksi per level harga pada rentang grafik yang terlihat (visible range), dilengkapi Point of Control (POC), Value Area (VAH/VAL 70%), dan pemisahan volume naik/turun berbasis WebGL2 60 FPS.',
   'pivot-points': 'Pivot Points Standard: Level support dan resistance matematis (Traditional, Fibonacci, Woodie, Classic, Demark, Camarilla).',
   'volume': 'Volume Transaksi: Menampilkan batang volume trading per lilin dengan indikator moving average.',
   'vwap': 'Volume Weighted Average Price: Rata-rata harga tertimbang volume untuk mengukur nilai wajar intraday.',
@@ -265,6 +267,10 @@ export class IndicatorCatalogService {
         NATIVE_DESCRIPTION_MAP[d.type] ||
         `${d.title} (${d.shortTitle || d.type.toUpperCase()}) — Studi native berkecepatan tinggi dengan WebGL2 bar transform.`;
 
+      const isVpvr = d.type === 'vpvr';
+      const categories: IndicatorCategory[] = isVpvr ? ['Profile', 'Volume'] : [category];
+      const prominent = isVpvr ? true : false;
+
       let inputsSchema: any;
       try {
         if (typeof d.inputsSchema === 'function') {
@@ -283,11 +289,43 @@ export class IndicatorCatalogService {
         }
       } catch (_) {}
 
+      // Perkaya skema parameter untuk Visible Range Volume Profile (VPVR)
+      if (isVpvr) {
+        inputsSchema = [
+          { key: 'rows', title: 'Rows (Jumlah Baris)', type: 'int', defval: 24, min: 2, max: 400, step: 1 },
+          { key: 'rowCount', title: 'Row Count', type: 'int', defval: 24, min: 2, max: 400, step: 1 },
+          { key: 'rowHeightMode', title: 'Mode Tinggi Baris', type: 'text', defval: 'number-of-rows', options: ['number-of-rows', 'ticks-per-row'] },
+          { key: 'valueAreaPct', title: 'Value Area Volume %', type: 'int', defval: 70, min: 0, max: 100, step: 1, tooltip: 'Persentase total volume transaksi yang dicakup oleh Value Area' },
+          { key: 'widthPct', title: 'Lebar Histogram %', type: 'int', defval: 30, min: 5, max: 90, step: 1, tooltip: 'Lebar maksimum profil relatif terhadap pane harga' },
+          { key: 'upColor', title: 'Warna Volume Naik (Up)', type: 'color', defval: '#2962ff' },
+          { key: 'downColor', title: 'Warna Volume Turun (Down)', type: 'color', defval: '#f23645' },
+          { key: 'showPoc', title: 'Tampilkan Point of Control (POC)', type: 'bool', defval: true },
+          { key: 'pocColor', title: 'Warna Garis POC', type: 'color', defval: '#eab308' },
+          { key: 'vaOpacity', title: 'Opasitas Value Area %', type: 'int', defval: 62, min: 0, max: 100, step: 1 },
+          { key: 'outsideOpacity', title: 'Opasitas Luar Value Area %', type: 'int', defval: 28, min: 0, max: 100, step: 1 },
+        ];
+        defaultInputs = {
+          rows: 24,
+          rowCount: 24,
+          rowHeightMode: 'number-of-rows',
+          valueAreaPct: 70,
+          valueAreaVolumePercentage: 70,
+          widthPct: 30,
+          upColor: '#2962ff',
+          downColor: '#f23645',
+          showPoc: true,
+          pocColor: '#eab308',
+          vaOpacity: 62,
+          outsideOpacity: 28,
+        };
+      }
+
       return {
         id: `native:${d.type}`,
         title: d.title,
         shortTitle: d.shortTitle,
         category,
+        categories,
         kind: 'native',
         overlay: Boolean(d.overlay),
         description,
@@ -296,6 +334,7 @@ export class IndicatorCatalogService {
         defaultInputs,
         multiInstance: Boolean(d.multiInstance),
         paneHint: d.paneHint,
+        prominent,
       };
     });
 
@@ -380,8 +419,13 @@ export class IndicatorCatalogService {
         if (isCustomCategory) {
           if (item.category !== 'Custom' && item.kind !== 'pine') return false;
           if (item.category !== 'Custom' && !item.id.includes('-') && item.id.length < 15) return false;
-        } else if (item.category.toLowerCase() !== category.toLowerCase()) {
-          return false;
+        } else {
+          const targetCat = category.toLowerCase();
+          const matchPrimary = item.category.toLowerCase() === targetCat;
+          const matchSecondary = Array.isArray(item.categories) && item.categories.some((c) => c.toLowerCase() === targetCat);
+          if (!matchPrimary && !matchSecondary) {
+            return false;
+          }
         }
       }
 
@@ -419,13 +463,17 @@ export class IndicatorCatalogService {
       return true;
     });
 
-    // Urutkan: favorit di posisi paling atas, disusul abjad judul
+    // Urutkan: favorit di posisi paling atas, disusul indikator prominent (misal VPVR), lalu abjad judul
     return filtered.sort((a, b) => {
       const favA = this.isFavorited(a, favoriteIds);
       const favB = this.isFavorited(b, favoriteIds);
 
       if (favA && !favB) return -1;
       if (!favA && favB) return 1;
+
+      // Prioritas indikator prominent (seperti VPVR) di posisi atas
+      if (a.prominent && !b.prominent) return -1;
+      if (!a.prominent && b.prominent) return 1;
 
       return a.title.localeCompare(b.title, 'id-ID', { sensitivity: 'base' });
     });
