@@ -505,6 +505,8 @@
 
     if (isAxis) {
       fitChart();
+    } else {
+      chartDrawingController.handleDrawingDblClick();
     }
     // Deteksi reset tinggi pane setelah double-click separator
     controller.capturePaneLayoutIfChanged();
