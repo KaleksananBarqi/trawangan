@@ -652,5 +652,16 @@
   user-select: none;
 }
 
+/* Bilah Toolbar Preset Rentang Waktu Institusional (#204) */
+.chart-viewport-footer-presets {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  z-index: 25;
+  pointer-events: auto;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+
 
 
