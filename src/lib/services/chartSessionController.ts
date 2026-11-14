@@ -52,6 +52,10 @@ import {
   type StrategyTelemetryPayload,
 } from './pineStrategyTelemetry';
 import {
+  PineAlertBridge,
+  pineAlertBridge,
+} from './pineAlertBridge';
+import {
   type Timeframe,
   type MultiChartSyncConfig,
   type ThemePresetId,
@@ -125,6 +129,7 @@ export interface ChartSessionOptions {
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   onStrategyTelemetry?: (payload: StrategyTelemetryPayload) => void;
   strategyTelemetry?: PineStrategyTelemetryService;
+  pineAlertBridge?: PineAlertBridge;
   onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
   onPersistableStateChange?: (reason: string) => void;
   viewportPersistDebounceMs?: number;
@@ -437,6 +442,7 @@ export class ChartSessionController {
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   private onStrategyTelemetryHandler?: (payload: StrategyTelemetryPayload) => void;
   public readonly strategyTelemetry: PineStrategyTelemetryService;
+  public readonly pineAlertBridge: PineAlertBridge;
   private workspaceFactory?: (container: HTMLElement, config: any) => any;
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
   private activeChartDefaultConfig: any = null;
@@ -529,6 +535,7 @@ export class ChartSessionController {
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
     this.onStrategyTelemetryHandler = options.onStrategyTelemetry;
     this.strategyTelemetry = options.strategyTelemetry ?? new PineStrategyTelemetryService();
+    this.pineAlertBridge = options.pineAlertBridge ?? pineAlertBridge;
     this.workspaceFactory = options.workspaceFactory;
     this.hasCustomPersistence = Boolean(options.persistence);
     this.persistence = options.persistence ?? storage;
@@ -1506,6 +1513,8 @@ export class ChartSessionController {
     const chart = cell.chart || cell.inner;
     if (chart) {
       this.timelineMarksController.attachSingleCellOrChart(chart);
+      const { symbol: cellSym } = getCellMarketIdentity(cell);
+      this.pineAlertBridge.attach(chart, { symbol: cellSym || this.symbol, cellId: cell?.id });
     }
     // Otoritas Tunggal Tema Trawangan: Sembunyikan 'canvas.theme' dari dialog Vela
     if (chart && typeof chart.setSettingsVisibility === 'function') {
@@ -1547,6 +1556,7 @@ export class ChartSessionController {
           this.syncCellMacroState(cell);
           const { symbol: cellSym, providerId: cellProv } = getCellMarketIdentity(cell);
           this.timelineMarksController.syncForMarket(cellSym || this.symbol, cellProv || this.providerId);
+          this.pineAlertBridge.attach(chart, { symbol: cellSym || this.symbol, cellId: cell?.id });
         });
         chart.on('indicator:added', () => {
           this.syncNativeVolumeColors(cell, false);
@@ -1560,6 +1570,9 @@ export class ChartSessionController {
         });
         chart.on('indicator:removed', (ev: any) => {
           this.handleIndicatorRemoved(ev?.id);
+          if (ev?.id) {
+            this.pineAlertBridge.handleIndicatorRemoved(ev.id);
+          }
           this.emitPersistableChange('indicator:removed');
         });
         chart.on('priceStyle:change', () => {
@@ -2427,6 +2440,7 @@ export class ChartSessionController {
   public removeIndicator(id: string): void {
     if (id) {
       this.strategyTelemetry.clearTelemetry(id);
+      this.pineAlertBridge.handleIndicatorRemoved(id);
       for (const cell of this.getAllCells()) {
         const chart = cell?.chart || cell?.inner;
         const scene = chart?.renderer?.scene || chart?.scene;
@@ -5172,6 +5186,12 @@ export class ChartSessionController {
     this.streamCoordinator.clear();
     this.registeredCustomSignatures.clear();
     this.timelineMarksController.detach();
+    for (const cell of this.getAllCells()) {
+      const chart = cell?.chart || cell?.inner;
+      if (chart) {
+        this.pineAlertBridge.detach(chart);
+      }
+    }
     this.strategyTelemetry.clearTelemetry();
 
     if (this.resizeObserver) {

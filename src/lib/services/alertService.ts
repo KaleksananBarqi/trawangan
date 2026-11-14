@@ -45,8 +45,16 @@ class AlertService {
     this.soundEnabled = enabled;
   }
 
+  public isSoundEnabled(): boolean {
+    return this.soundEnabled;
+  }
+
   public setSystemNotificationEnabled(enabled: boolean) {
     this.systemNotificationEnabled = enabled;
+  }
+
+  public isSystemNotificationEnabled(): boolean {
+    return this.systemNotificationEnabled;
   }
 
   public getAlerts(): PriceAlert[] {
@@ -581,6 +589,53 @@ class AlertService {
       return a;
     });
     await this.save();
+  }
+
+  /**
+   * Mengirimkan alert Pine Script langsung ke pipeline alert terminal (in-app toast & audio chime)
+   */
+  public dispatchPineAlert(params: {
+    id?: string;
+    symbol: string;
+    message: string;
+    indicatorTitle?: string;
+    timestamp?: number;
+    freq?: string;
+    barIndex?: number;
+  }): PriceAlert {
+    const now = params.timestamp || Date.now();
+    const cleanSymbol = (params.symbol || 'CHART').trim().toUpperCase();
+    const titleTag = params.indicatorTitle ? `[${params.indicatorTitle}] ` : '';
+    const alertId = params.id || `alt_pine_${now}_${Math.random().toString(36).slice(2, 7)}`;
+
+    const alertRecord: PriceAlert = {
+      id: alertId,
+      symbol: cleanSymbol,
+      targetPrice: 0,
+      condition: 'crossing',
+      frequency: (params.freq as AlertFrequency) || 'once',
+      label: `${titleTag}${params.message}`,
+      active: false,
+      triggered: true,
+      createdAt: now,
+      triggeredAt: now,
+      triggeredPrice: undefined,
+      planRole: 'pine_alert',
+    };
+
+    if (this.soundEnabled) {
+      playAlertChime();
+    }
+
+    for (const listener of this.triggerListeners) {
+      try {
+        listener(alertRecord, 0);
+      } catch (err) {
+        console.warn('[AlertService] Error pada trigger listener:', err);
+      }
+    }
+
+    return alertRecord;
   }
 
   /**

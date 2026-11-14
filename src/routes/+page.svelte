@@ -561,15 +561,19 @@
         updateService.checkForUpdates(true);
       }, 3000);
 
-      // Dengarkan event saat Price Alert terpicu secara real-time
+      // Dengarkan event saat Price Alert / Pine Script Alert terpicu secara real-time
       unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
         triggeredAlertsToasts = [alert, ...triggeredAlertsToasts.slice(0, 3)];
-        const triggerPriceStr = formatPriceWithQuoteSymbol(
-          actualPrice,
-          parseAdaptiveSymbol(alert.symbol).quoteAsset,
-          alert.symbol
-        );
-        addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di ${triggerPriceStr}`, 'warn');
+        if (alert.planRole === 'pine_alert') {
+          addSystemLog(`🔔 Pine Alert Terpicu: ${alert.symbol} — ${alert.label || 'Script Alert'}`, 'warn');
+        } else {
+          const triggerPriceStr = formatPriceWithQuoteSymbol(
+            actualPrice,
+            parseAdaptiveSymbol(alert.symbol).quoteAsset,
+            alert.symbol
+          );
+          addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di ${triggerPriceStr}`, 'warn');
+        }
         schedulePageTimeout(() => {
           if (!isPageActive) return;
           handleDismissAlertToast(alert.id);

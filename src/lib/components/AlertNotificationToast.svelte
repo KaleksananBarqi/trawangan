@@ -39,7 +39,7 @@
         <div class="toast-header">
           <div class="header-left">
             <span class="bell-ringing"><Bell size={13} /></span>
-            <span class="toast-badge">ALERT TRIGGERED</span>
+            <span class="toast-badge">{a.planRole === 'pine_alert' ? 'PINE ALERT' : 'ALERT TRIGGERED'}</span>
             <span class="time-stamp mono-nums">{formatTime(a.triggeredAt)}</span>
           </div>
           <button
@@ -55,12 +55,14 @@
         <!-- Target & Actual Price -->
         <div class="price-row mono-nums">
           <span class="symbol-name">{a.symbol}</span>
-          <div class="price-details">
-            <span class="target-lbl">Target: {formatToastPrice(a.targetPrice, a.symbol)}</span>
-            {#if a.triggeredPrice}
-              <span class="hit-lbl text-bull">Hit: {formatToastPrice(a.triggeredPrice, a.symbol)}</span>
-            {/if}
-          </div>
+          {#if a.planRole !== 'pine_alert' || a.targetPrice > 0}
+            <div class="price-details">
+              <span class="target-lbl">Target: {formatToastPrice(a.targetPrice, a.symbol)}</span>
+              {#if a.triggeredPrice}
+                <span class="hit-lbl text-bull">Hit: {formatToastPrice(a.triggeredPrice, a.symbol)}</span>
+              {/if}
+            </div>
+          {/if}
         </div>
 
         <!-- Label / Catatan -->
