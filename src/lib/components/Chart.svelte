@@ -19,6 +19,8 @@
   import { THEME_PRESETS, resolveThemeConfig } from '../constants/themes';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
+  import RangePresetBar from './RangePresetBar.svelte';
+  import type { VisibleRangePreset } from '../services/rangePresetService';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
     Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
@@ -508,6 +510,8 @@
 
     if (isAxis) {
       fitChart();
+    } else {
+      chartDrawingController.handleDrawingDblClick();
     }
     // Deteksi reset tinggi pane setelah double-click separator
     controller.capturePaneLayoutIfChanged();
@@ -862,6 +866,15 @@
   }
 
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
+  export function setVisibleRangePreset(preset: VisibleRangePreset): Promise<boolean> {
+    return controller.setVisibleRangePreset(preset);
+  }
+  export function getActiveRangePreset(): VisibleRangePreset | null {
+    return controller.getActiveRangePreset();
+  }
+  export function cycleRangePreset(direction: 'next' | 'prev' = 'next'): Promise<VisibleRangePreset | null> {
+    return controller.cycleRangePreset(direction);
+  }
 
   const chartBackgroundStyle = $derived.by(() => {
     const cfg = resolveThemeConfig(themePreset);
@@ -1098,4 +1111,9 @@
     onResetChartScale={fitChart}
     onClose={() => (isContextMenuOpen = false)}
   />
+
+  <!-- Bilah Toolbar Preset Rentang Waktu (1D, 5D, 1M, 3M, 6M, YTD, 1Y, ALL) -->
+  <div class="chart-viewport-footer-presets">
+    <RangePresetBar {controller} />
+  </div>
 </div>

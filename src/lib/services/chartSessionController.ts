@@ -81,6 +81,14 @@ import {
   type ActiveThemeCandleColors,
 } from './persistence/rendererConfigSanitizer';
 import { deriveBorderColor, generateVelaThemeTokens, isDarkColor, withAlpha } from '../utils/colorUtils';
+import {
+  type VisibleRangePreset,
+  isValidRangePreset,
+  getRangePresetConfig,
+  calculateRangePresetSpan,
+  getNextRangePreset,
+} from './rangePresetService';
+export type { VisibleRangePreset };
 
 export interface ChartSessionOptions {
   symbol: string;
@@ -101,6 +109,7 @@ export interface ChartSessionOptions {
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
   onPriceStyleChange?: (style: PriceStyle | string) => void;
+  onRangePresetChange?: (preset: VisibleRangePreset | null) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   onStrategyTelemetry?: (payload: StrategyTelemetryPayload) => void;
   strategyTelemetry?: PineStrategyTelemetryService;
@@ -135,6 +144,7 @@ export interface ChartSessionSnapshot {
   activeCell: { symbol: string; timeframe: Timeframe } | null;
   activeIndicators: ActiveIndicatorInfo[];
   syncConfig: MultiChartSyncConfig;
+  activeRangePreset: VisibleRangePreset | null;
 }
 
 type SessionSubscriber = (snapshot: ChartSessionSnapshot) => void;
@@ -405,6 +415,9 @@ export class ChartSessionController {
   private syncConfig: MultiChartSyncConfig;
   private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
   private onPriceStyleChange?: (style: PriceStyle | string) => void;
+  private onRangePresetChange?: (preset: VisibleRangePreset | null) => void;
+  private activeRangePreset: VisibleRangePreset | null = null;
+  private activeRangePresetSpan: { from: number; to: number } | null = null;
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   private onStrategyTelemetryHandler?: (payload: StrategyTelemetryPayload) => void;
   public readonly strategyTelemetry: PineStrategyTelemetryService;
@@ -494,6 +507,7 @@ export class ChartSessionController {
     };
     this.onActiveCellChange = options.onActiveCellChange;
     this.onPriceStyleChange = options.onPriceStyleChange;
+    this.onRangePresetChange = options.onRangePresetChange;
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
     this.onStrategyTelemetryHandler = options.onStrategyTelemetry;
     this.strategyTelemetry = options.strategyTelemetry ?? new PineStrategyTelemetryService();
@@ -531,7 +545,8 @@ export class ChartSessionController {
         ? { ...this.activeCellInfo }
         : { symbol: this.symbol, timeframe: this.timeframe },
       activeIndicators: this.getActiveIndicators(),
-      syncConfig: { ...this.syncConfig }
+      syncConfig: { ...this.syncConfig },
+      activeRangePreset: this.activeRangePreset
     };
   }
 
@@ -1553,6 +1568,7 @@ export class ChartSessionController {
           }
         });
         chart.on('viewport:changed', () => {
+          this.checkRangePresetViewportDrift(cell);
           this.scheduleViewportPersistChange();
         });
         chart.__trawanganChartEventsAttached = true;
@@ -2578,6 +2594,7 @@ export class ChartSessionController {
     if (!symbol) return;
     this.symbol = symbol;
     if (providerId) this.providerId = providerId;
+    this.resetActiveRangePreset();
 
     if (this.workspace) {
       try {
@@ -2637,6 +2654,7 @@ export class ChartSessionController {
   public setTimeframe(timeframe: Timeframe): void {
     if (!timeframe) return;
     this.timeframe = timeframe;
+    this.resetActiveRangePreset();
 
     if (this.workspace) {
       try {
@@ -4053,6 +4071,155 @@ export class ChartSessionController {
     const nextStyle = styles[nextIndex];
     this.setPriceStyle(nextStyle, cell);
     return nextStyle;
+  }
+
+  /**
+   * Mengatur preset rentang waktu terlihat (Visible Range Preset) secara single-pass.
+   * Mendukung '1D', '5D', '1M', '3M', '6M', 'YTD', '1Y', 'ALL'.
+   * Secara otomatis memetakan ke resolusi timeframe candle optimal, menghitung bar budget,
+   * dan membingkai viewport tanpa kedipan (visual snapping).
+   */
+  public async setVisibleRangePreset(preset: VisibleRangePreset, cell?: any): Promise<boolean> {
+    if (!isValidRangePreset(preset)) {
+      return false;
+    }
+
+    const targetCell = this.resolveTargetCell(cell);
+    if (!targetCell) {
+      return false;
+    }
+
+    const chart = targetCell.chart || targetCell.inner;
+    if (!chart) {
+      return false;
+    }
+
+    const config = getRangePresetConfig(preset);
+    const targetTf = config.timeframe;
+    const targetVelaTf = config.velaTimeframe;
+    const requiredBars = config.bars;
+    const prevTimeframe = this.timeframe;
+
+    // Hitung span awal tanpa clamping ke bar timeframe lama agar setMarket memuat kedalaman penuh
+    const initialSpan = calculateRangePresetSpan(preset);
+    this.activeRangePreset = preset;
+    this.activeRangePresetSpan = initialSpan;
+    this.timeframe = targetTf;
+    this.activeCellInfo = { symbol: this.symbol, timeframe: targetTf };
+
+    try {
+      this.withSuppressedPersistEvents(() => {
+        if (typeof targetCell.setTimeframe === 'function' && targetCell.timeframe !== targetVelaTf) {
+          targetCell.setTimeframe(targetVelaTf);
+        }
+      });
+
+      // Panggil setMarket dengan timeframe, bars, dan visibleRange secara single-pass
+      if (typeof chart.setMarket === 'function') {
+        await chart.setMarket({
+          timeframe: targetVelaTf,
+          bars: Math.max(requiredBars, targetCell?.state?.bars ?? 500),
+          visibleRange: initialSpan,
+        });
+      } else if (typeof targetCell.applyRange === 'function') {
+        targetCell.applyRange({
+          id: preset,
+          tf: targetVelaTf,
+          preset,
+          bars: requiredBars,
+        });
+      }
+
+      // Setelah setMarket selesai, ambil bar terbaru untuk framing final yang akurat (termasuk preset 'ALL')
+      const updatedBars =
+        chart?.orchestrator?.rawBars ??
+        chart?.orchestrator?.bars ??
+        chart?.bars ??
+        chart?.rawBars ??
+        (typeof chart?.getBars === 'function' ? chart.getBars() : undefined);
+      const finalSpan = calculateRangePresetSpan(preset, updatedBars);
+      this.activeRangePresetSpan = finalSpan;
+
+      // Pastikan framing diterapkan pada renderer jika belum sinkron
+      if (typeof chart.setVisibleRange === 'function') {
+        chart.setVisibleRange(finalSpan);
+      } else if (typeof chart.setVisibleRangePreset === 'function') {
+        chart.setVisibleRangePreset(preset);
+      }
+
+      if (prevTimeframe !== targetTf) {
+        this.onActiveCellChange?.({
+          symbol: this.symbol,
+          timeframe: targetTf,
+          providerId: this.providerId,
+        });
+      }
+
+      this.onRangePresetChange?.(preset);
+      this.emitPersistableChange('visibleRangePreset');
+      this.notify();
+      return true;
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal menyetel visible range preset:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Mereset state preset rentang aktif saat pengguna mengganti simbol/timeframe secara manual
+   */
+  private resetActiveRangePreset(): void {
+    if (this.activeRangePreset !== null || this.activeRangePresetSpan !== null) {
+      this.activeRangePreset = null;
+      this.activeRangePresetSpan = null;
+      this.onRangePresetChange?.(null);
+    }
+  }
+
+  /**
+   * Mengambil preset rentang waktu yang sedang aktif
+   */
+  public getActiveRangePreset(cell?: any): VisibleRangePreset | null {
+    return this.activeRangePreset;
+  }
+
+  /**
+   * Merotasi preset rentang waktu ke pilihan berikutnya atau sebelumnya secara siklik
+   */
+  public async cycleRangePreset(
+    direction: 'next' | 'prev' = 'next',
+    cell?: any
+  ): Promise<VisibleRangePreset | null> {
+    const current = this.activeRangePreset;
+    const next = getNextRangePreset(current, direction);
+    const success = await this.setVisibleRangePreset(next, cell);
+    return success ? next : null;
+  }
+
+  /**
+   * Mengecek apakah posisi viewport pengguna telah menyimpang jauh dari rentang preset yang dibingkai
+   */
+  private checkRangePresetViewportDrift(cell: any): void {
+    if (!this.activeRangePreset || !this.activeRangePresetSpan) return;
+    const vr = this.getVisibleRangeSnapshot(cell);
+    if (!vr || typeof vr.from !== 'number' || typeof vr.to !== 'number') return;
+
+    const currentSpan = Math.abs(vr.to - vr.from);
+    const targetSpan = Math.abs(this.activeRangePresetSpan.to - this.activeRangePresetSpan.from);
+    if (targetSpan <= 0) return;
+
+    const ratio = currentSpan / targetSpan;
+    const timeDrift = Math.abs(vr.to - this.activeRangePresetSpan.to);
+
+    // Jika rasio lebar span mengecil < 0.65x atau membesar > 1.35x,
+    // atau pergeseran tepi waktu kanan > 35% dari rentang target,
+    // maka pengguna telah melakukan panning/zooming manual di luar cakupan preset.
+    if (ratio < 0.65 || ratio > 1.35 || timeDrift > targetSpan * 0.35) {
+      this.activeRangePreset = null;
+      this.activeRangePresetSpan = null;
+      this.onRangePresetChange?.(null);
+      this.notify();
+    }
   }
 
   /**
