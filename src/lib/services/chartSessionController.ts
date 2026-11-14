@@ -81,6 +81,13 @@ import {
   type ActiveThemeCandleColors,
 } from './persistence/rendererConfigSanitizer';
 import { deriveBorderColor, generateVelaThemeTokens, isDarkColor, withAlpha } from '../utils/colorUtils';
+import {
+  marketSessionService,
+  type MarketSession,
+  isSessionSupported,
+  SESSION_PRE,
+  SESSION_POST,
+} from './marketSessionService';
 
 export interface ChartSessionOptions {
   symbol: string;
@@ -91,6 +98,7 @@ export interface ChartSessionOptions {
   themePreset?: ThemePresetId | string;
   fontSize?: number;
   timezone?: string;
+  session?: MarketSession;
   customPalette?: CustomThemePalette;
   customBullColor?: string;
   customBearColor?: string;
@@ -125,6 +133,8 @@ export interface ChartSessionSnapshot {
   timezone: string;
   themePreset: ThemePresetId | string;
   fontSize: number;
+  session?: MarketSession;
+  sessionAvailable?: boolean;
   customPalette?: CustomThemePalette;
   customBullColor?: string;
   customBearColor?: string;
@@ -453,6 +463,7 @@ export class ChartSessionController {
   private customHydrationEpoch = 0;
   private timelineMarksController: TimelineMarksController = timelineMarksController;
   private fetchSeriesAdapter: FetchSeriesHandler = createPineFetchSeriesAdapter();
+  private session: MarketSession = 'regular';
 
   public getTimelineMarksController(): TimelineMarksController {
     return this.timelineMarksController;
@@ -471,6 +482,7 @@ export class ChartSessionController {
     this.themePreset = options.themePreset || 'signature';
     this.fontSize = options.fontSize || 12;
     this.timezone = options.timezone || 'Asia/Jakarta';
+    this.session = options.session || 'regular';
     this.showCurrentPriceLine = options.showCurrentPriceLine ?? true;
     this.showVolume = options.showVolume ?? true;
     this.gridMode = options.gridMode || 'normal';
@@ -505,6 +517,9 @@ export class ChartSessionController {
     this.providerFactories = options.providerFactories;
     this.streamWatchdogMs = options.streamWatchdogMs;
     this.streamStaleMs = options.streamStaleMs;
+
+    marketSessionService.updateContext(this.symbol, this.providerId);
+    marketSessionService.setSession(this.session);
   }
 
   /**
@@ -520,6 +535,8 @@ export class ChartSessionController {
       timezone: this.timezone,
       themePreset: this.themePreset,
       fontSize: this.fontSize,
+      session: this.session,
+      sessionAvailable: this.isSessionAvailable(),
       customPalette: this.customPalette || undefined,
       customBullColor: this.customCandleColors?.bullColor,
       customBearColor: this.customCandleColors?.bearColor,
@@ -533,6 +550,92 @@ export class ChartSessionController {
       activeIndicators: this.getActiveIndicators(),
       syncConfig: { ...this.syncConfig }
     };
+  }
+
+  /**
+   * Mengambil sesi pasar aktif saat ini ('regular' vs 'extended')
+   */
+  public getSession(): MarketSession {
+    return this.session;
+  }
+
+  /**
+   * Memeriksa apakah simbol atau bursa aktif mendukung sesi perdagangan (RTH/ETH)
+   */
+  public isSessionAvailable(): boolean {
+    if (this.workspace?.active) {
+      if (typeof this.workspace.active.sessionAvailable === 'boolean') {
+        return this.workspace.active.sessionAvailable;
+      }
+    }
+    return isSessionSupported(this.symbol, this.providerId);
+  }
+
+  /**
+   * Menerapkan konfigurasi warna shading sesi translucent dan membersihkan sessionZones
+   * secara otomatis pada pasar continuous 24/7 (seperti kripto).
+   */
+  private applySessionRendererState(cell: any): void {
+    const renderer = cell?.chart?.renderer?.renderer || cell?.chart?.renderer || cell?.inner?.renderer;
+    if (!renderer) return;
+
+    if (typeof renderer.applyConfig === 'function') {
+      renderer.applyConfig({
+        sessions: {
+          premarketColor: withAlpha(SESSION_PRE, 0.08),
+          postmarketColor: withAlpha(SESSION_POST, 0.08),
+          extendedColor: withAlpha(SESSION_POST, 0.08),
+        },
+      });
+    }
+
+    if (!this.isSessionAvailable() && typeof renderer.set === 'function') {
+      renderer.set('sessionZones', null);
+    }
+  }
+
+  /**
+   * Mengubah mode sesi pasar (regular vs extended) dan menyinkronkan ke seluruh sel Vela WebGL2
+   */
+  public setSession(session: MarketSession): void {
+    if (this.session === session && !this.workspace) return;
+    this.session = session;
+    marketSessionService.setSession(session);
+
+    if (this.workspace) {
+      try {
+        const yahooProv =
+          typeof this.workspace.feed?.providerInstance === 'function'
+            ? this.workspace.feed.providerInstance('yahoo')
+            : null;
+        if (yahooProv && typeof yahooProv.setSession === 'function') {
+          yahooProv.setSession(session);
+        }
+
+        for (const cell of this.getAllCells()) {
+          if (typeof cell.setSession === 'function') {
+            cell.setSession(session);
+          } else if (typeof cell.setMarket === 'function') {
+            cell.setMarket({ session });
+          }
+          this.applySessionRendererState(cell);
+        }
+      } catch (err) {
+        console.warn('[ChartSessionController] setSession error:', err);
+      }
+    }
+
+    this.notify();
+    this.emitPersistableChange('session');
+  }
+
+  /**
+   * Membalik status sesi pasar antara 'regular' dan 'extended'
+   */
+  public toggleSession(): MarketSession {
+    const next: MarketSession = this.session === 'regular' ? 'extended' : 'regular';
+    this.setSession(next);
+    return next;
   }
 
   public setGridMode(mode?: GridMode): void {
@@ -744,6 +847,7 @@ export class ChartSessionController {
     if (options.layout) this.layout = options.layout;
     if (options.providerId) this.providerId = options.providerId;
     if (options.timezone) this.timezone = options.timezone;
+    if (options.session) this.session = options.session;
     if (options.themePreset) this.themePreset = options.themePreset;
     if (options.fontSize) this.fontSize = options.fontSize;
     if (options.syncConfig) this.syncConfig = options.syncConfig;
@@ -757,6 +861,8 @@ export class ChartSessionController {
 
     this.container = container;
     this.isDestroyed = false;
+    marketSessionService.updateContext(this.symbol, this.providerId);
+    marketSessionService.setSession(this.session);
     this.clearWorkspaceEventUnsubs();
     this.applyBackground();
     ensurePineEngine();
@@ -784,7 +890,7 @@ export class ChartSessionController {
       hyperliquid: () => new HyperliquidProvider(),
       coinbase: () => new CoinbaseProvider(),
       bitunix: () => new BitunixProvider({ healthSink: this.feedHealthSink }),
-      yahoo: () => new YahooFinanceProvider({ healthSink: this.feedHealthSink }),
+      yahoo: () => new YahooFinanceProvider({ healthSink: this.feedHealthSink, session: this.session }),
       macro: () => new MacroIndexProvider({ healthSink: this.feedHealthSink }),
     };
 
@@ -838,6 +944,7 @@ export class ChartSessionController {
       volume: this.showVolume,
       theme: velaTheme,
       timezone: this.timezone,
+      session: this.session,
       providers: guardedProviders,
       engines: {
         pine: () => new TrawanganPineWorkerEngine({ fetchSeries: this.getFetchSeriesAdapter() }),
@@ -1488,6 +1595,11 @@ export class ChartSessionController {
             grid: {
               vertLines: { visible: this.gridMode !== 'hidden', color: gridCol },
               horzLines: { visible: this.gridMode !== 'hidden', color: gridCol }
+            },
+            sessions: {
+              premarketColor: withAlpha(SESSION_PRE, 0.08),
+              postmarketColor: withAlpha(SESSION_POST, 0.08),
+              extendedColor: withAlpha(SESSION_POST, 0.08),
             }
           });
         });
@@ -2578,6 +2690,8 @@ export class ChartSessionController {
     if (!symbol) return;
     this.symbol = symbol;
     if (providerId) this.providerId = providerId;
+    marketSessionService.updateContext(this.symbol, this.providerId);
+    marketSessionService.setSessionAvailable(this.isSessionAvailable());
 
     if (this.workspace) {
       try {
@@ -2594,6 +2708,7 @@ export class ChartSessionController {
               cell.setSymbol(targetSym);
             }
             this.syncCellMacroState(cell);
+            this.applySessionRendererState(cell);
           }
         } else if (
           this.workspace.active &&
@@ -2602,8 +2717,10 @@ export class ChartSessionController {
         ) {
           this.workspace.active.setSymbol(targetSym);
           this.syncCellMacroState(this.workspace.active);
+          this.applySessionRendererState(this.workspace.active);
         } else if (this.workspace.active) {
           this.syncCellMacroState(this.workspace.active);
+          this.applySessionRendererState(this.workspace.active);
         }
 
         // Pulihkan gambar spesifik untuk simbol dan provider target secara terisolasi (kecuali saat restorasi atau baru diganti oleh activeCell)

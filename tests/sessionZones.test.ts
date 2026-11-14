@@ -319,5 +319,79 @@ describe('Tiket #205: Session Zones & Extended Hours Shading Suite', () => {
       assert.strictEqual(cellSessionSet, 'extended', 'Cell aktif wajib menerima setSession("extended")');
       assert.strictEqual(controller.getSession(), 'extended');
     });
+
+    test('ChartSessionController menerapkan warna sesi translucent, menyinkronkan provider Yahoo, dan membersihkan sessionZones pada kripto 24/7', async () => {
+      const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+
+      let appliedSessionsConfig: any = null;
+      let lastRendererSessionZones: any = 'UNSET';
+      let yahooProviderSession = 'regular';
+
+      const mockCell: any = {
+        id: 'cell_1',
+        symbol: 'yahoo:AAPL',
+        timeframe: '15m',
+        session: 'regular',
+        sessionAvailable: true,
+        setSession: (s: string) => {
+          mockCell.session = s;
+        },
+        setSymbol: (sym: string) => {
+          mockCell.symbol = sym;
+          mockCell.sessionAvailable = sym.startsWith('yahoo:');
+        },
+        chart: {
+          renderer: {
+            renderer: {
+              getConfig: () => ({ sessions: appliedSessionsConfig ?? {} }),
+              applyConfig: (cfg: any) => {
+                if (cfg?.sessions) appliedSessionsConfig = cfg.sessions;
+              },
+              set: (key: string, val: any) => {
+                if (key === 'sessionZones') lastRendererSessionZones = val;
+              },
+            },
+          },
+        },
+      };
+
+      const mockWorkspace: any = {
+        active: mockCell,
+        cells: () => [mockCell],
+        cell: () => mockCell,
+        feed: {
+          providerInstance: (id: string) =>
+            id === 'yahoo'
+              ? {
+                  setSession: (s: string) => {
+                    yahooProviderSession = s;
+                  },
+                }
+              : null,
+        },
+        on: () => () => {},
+        off: () => {},
+      };
+
+      const controller = new ChartSessionController({
+        symbol: 'AAPL',
+        timeframe: '15m',
+        providerId: 'yahoo',
+        layout: 'single',
+        workspaceFactory: () => mockWorkspace,
+      });
+
+      controller.attach(createMockContainer());
+      controller.setSession('extended');
+
+      assert.strictEqual(yahooProviderSession, 'extended', 'Yahoo provider harus tersinkron ke extended');
+      assert.ok(appliedSessionsConfig?.premarketColor?.includes('0.08'), 'premarketColor harus bersifat translucent');
+      assert.ok(appliedSessionsConfig?.postmarketColor?.includes('0.08'), 'postmarketColor harus bersifat translucent');
+
+      // Beralih ke pasar kripto 24/7 -> sessionZones wajib dibersihkan (null)
+      await controller.setSymbol('BTCUSDT', '15m', 'binance');
+      assert.strictEqual(controller.isSessionAvailable(), false);
+      assert.strictEqual(lastRendererSessionZones, null, 'Kripto 24/7 wajib membersihkan sessionZones menjadi null');
+    });
   });
 });

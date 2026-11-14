@@ -13,6 +13,7 @@
   } from '@lucide/svelte';
   import type { AppSettings } from '../../types/market';
   import { timelineMarksController } from '../../services/timelineMarksController';
+  import { marketSessionService, type MarketSessionState } from '../../services/marketSessionService';
 
   interface Props {
     settings: AppSettings;
@@ -58,6 +59,11 @@
   let isMacroMarksVisible = $state(timelineMarksController.isGroupVisible('macro'));
   let isTradesMarksVisible = $state(timelineMarksController.isGroupVisible('trades'));
   let isJournalMarksVisible = $state(timelineMarksController.isGroupVisible('journal'));
+  let sessionState = $state<MarketSessionState>(marketSessionService.getSnapshot());
+  const unsubSession = marketSessionService.subscribe((st) => {
+    sessionState = st;
+  });
+  let currentMarketSession = $derived(settings.marketSession ?? sessionState.session ?? 'regular');
 
   function toggleMacroMarks() {
     const next = !isMacroMarksVisible;
@@ -141,6 +147,7 @@
       clearTimeout(resetChartFeedbackTimer);
       resetChartFeedbackTimer = null;
     }
+    unsubSession();
   });
 </script>
 
@@ -219,6 +226,38 @@
       {settings.showReplayBar ? 'Tampil' : 'Sembunyi'}
     </button>
   </div>
+
+  <!-- Sesi Pasar RTH / ETH (Yahoo Finance Equities & Indices) -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Sesi Perdagangan (RTH / ETH)</span>
+      <span class="setting-desc">
+        {#if sessionState.sessionAvailable}
+          Pilih Regular Trading Hours (RTH) atau Extended Hours (ETH) dengan shading Pre-Market & Post-Market.
+        {:else}
+          Aktif untuk saham & indeks Yahoo Finance. Pasar kripto 24/7 otomatis mengabaikan shading sesi.
+        {/if}
+      </span>
+    </div>
+    <div class="segmented-group" role="group" aria-label="Pilihan Sesi Perdagangan">
+      <button
+        type="button"
+        class="mode-chip {currentMarketSession === 'regular' ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ marketSession: 'regular' })}
+        title="Regular Trading Hours (RTH): Hanya menampilkan jam bursa reguler"
+      >
+        <span>RTH</span>
+      </button>
+      <button
+        type="button"
+        class="mode-chip {currentMarketSession === 'extended' ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ marketSession: 'extended' })}
+        title="Extended Trading Hours (ETH): Menampilkan Pre-Market (amber) dan Post-Market (biru)"
+      >
+        <span>ETH</span>
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- Skala Harga & Label Sumbu Kanan -->
@@ -271,6 +310,36 @@
     >
       {settings.showDrawingPriceLabels !== false ? 'Aktif' : 'Nonaktif'}
     </button>
+  </div>
+
+  <!-- Sesi Jam Perdagangan Ekuitas (RTH / ETH) -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Sesi Jam Perdagangan Ekuitas (RTH / ETH)</span>
+      <span class="setting-desc">Tampilkan sesi reguler saja (RTH) atau sertakan pre-market & post-market dengan shading warna WebGL2 (ETH)</span>
+    </div>
+    <div class="session-segmented-control">
+      <button
+        type="button"
+        class="segment-btn {(!settings.marketSession || settings.marketSession === 'regular') ? 'active' : ''}"
+        onclick={() => {
+          onUpdateSettings({ marketSession: 'regular' });
+          marketSessionService.setSession('regular');
+        }}
+      >
+        RTH (Reguler)
+      </button>
+      <button
+        type="button"
+        class="segment-btn {settings.marketSession === 'extended' ? 'active' : ''}"
+        onclick={() => {
+          onUpdateSettings({ marketSession: 'extended' });
+          marketSessionService.setSession('extended');
+        }}
+      >
+        ETH (Extended)
+      </button>
+    </div>
   </div>
 </div>
 
