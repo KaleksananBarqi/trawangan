@@ -5,6 +5,18 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.49.0] - 2026-11-14
+
+### 🚀 Ditambahkan (Added)
+- **Hybrid In-App Auto-Updater & Deteksi Paket Linux (`ADR-0028`, `updater.rs`, `updateService.ts`, `updateHelpers.ts`):**
+  - Mengintegrasikan `tauri-plugin-updater` dan `tauri-plugin-process` dengan verifikasi tanda tangan kriptografis `minisign` (`latest.json` + `.sig`) untuk pembaruan langsung di dalam aplikasi pada Windows, macOS, dan Linux `.AppImage`.
+  - Menambahkan jalur updater native Rust (`download_and_verify_linux_package`, `install_linux_package_and_relaunch`, `open_local_installer_fallback`) khusus untuk paket sistem Linux `.rpm` (Fedora/RHEL/openSUSE) dan `.deb` (Debian/Ubuntu) lengkap dengan verifikasi `SHA256SUMS.txt`, elevasi standar `pkexec` (`dnf`/`zypper`/`rpm`/`apt-get`) beserta fallback `xdg-open`, serta *relaunch helper* yang melepas lock `tauri-plugin-single-instance` secara bersih.
+  - Menambahkan `detect_install_environment` untuk mendeteksi asal instalasi runtime (`FLATPAK_ID`, `APPIMAGE`, `rpm -qf`, `dpkg -S`, arsitektur CPU, dan mode dev) sehingga pengguna Fedora `.rpm` langsung diarahkan ke paket `.rpm` (~6,7 MB) alih-alih `.AppImage` (~83 MB).
+- **UX Pembaruan Non-Blocking & Persistensi Versi Diabaikan (`AboutTab.svelte`, `Header.svelte`, `StatusBar.svelte`, `+page.svelte`):**
+  - Menambahkan progress unduhan persentase & ukuran MB *real-time* non-blocking di pill `Header`/`StatusBar` serta `AboutTab`, langkah konfirmasi **Pasang & Restart Sekarang**, drawer unduhan manual lintas format, banner panduan mode *store-managed* (Flatpak), pengecekan berkala tiap 6 jam, dan tombol **Abaikan Versi Ini** yang tersimpan di SQLite (`dismissed_update_version`).
+- **Pipeline Manifest Rilis Terpusat (`release.yml`, `generate-release-manifests.mjs`):**
+  - Menambahkan job `publish` pasca-matrix untuk menyusun `latest.json` dan `SHA256SUMS.txt` secara bebas *race condition* tanpa mengubah nama aset biner existing.
+
 ## [0.48.0] - 2026-11-14
 
 ### 🚀 Ditambahkan (Added)
