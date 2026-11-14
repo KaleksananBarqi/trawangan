@@ -10,10 +10,17 @@
     Zap,
     Coffee,
     Sparkles,
-    Globe
+    Globe,
+    Download,
+    RefreshCw
   } from '@lucide/svelte';
   import { telemetryService, type TelemetryData } from '../services/telemetryService';
-  import { updateService, type UpdateState } from '../services/updateService';
+  import {
+    updateService,
+    shouldShowUpdateBadge,
+    getUpdatePillContent,
+    type UpdateState
+  } from '../services/updateService';
   import { openExternalUrl } from '../services/urlService';
   import { marketFeed } from '../services/market';
   import { marketSessionService, type MarketSessionState } from '../services/marketSessionService';
@@ -108,14 +115,21 @@
 <footer class="system-status-bar">
   <!-- Kluster Kiri: Notifikasi Update & Telemetri Runtime Live -->
   <div class="left-cluster">
-    {#if updateState.status === 'available' && updateState.updateInfo}
+    {#if shouldShowUpdateBadge(updateState) && updateState.updateInfo}
+      {@const pill = getUpdatePillContent(updateState)}
       <button
         class="telemetry-pill update-status-pill mono-nums"
-        title="Pembaruan {updateState.updateInfo.latestTag} siap! Klik untuk melihat rilis."
+        title="Pembaruan {updateState.updateInfo.latestTag} — klik untuk membuka tab Tentang Aplikasi."
         onclick={onOpenAbout}
       >
-        <Sparkles size={11} class="text-pink-sparkle" />
-        <span class="pill-badge badge-update">Update {updateState.updateInfo.latestTag}</span>
+        {#if pill.icon === 'download'}
+          <Download size={11} class="text-pink-sparkle" />
+        {:else if pill.icon === 'spin'}
+          <RefreshCw size={11} class="text-pink-sparkle spin" />
+        {:else}
+          <Sparkles size={11} class="text-pink-sparkle" />
+        {/if}
+        <span class="pill-badge badge-update">{pill.label}</span>
       </button>
 
       <div class="divider"></div>

@@ -41,21 +41,6 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
-      - name: Determine release tag
-        id: tag_info
-        shell: bash
-        run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            TAG="${{ github.ref_name }}"
-          else
-            TAG="${{ github.event.inputs.tag }}"
-          fi
-          if [ -z "$TAG" ]; then
-            TAG="v0.1.0"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Building release for tag: $TAG"
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -101,56 +86,108 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Extract Changelog Notes
-        id: changelog_extract
-        shell: bash
-        run: |
-          TAG="${{ steps.tag_info.outputs.tag }}"
-          NOTES=$(node scripts/extract-changelog.cjs "$TAG")
-          {
-            echo "notes<<EOF"
-            echo "$NOTES"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build Tauri app and create release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri bundles and updater artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPIMAGE_EXTRACT_AND_RUN: 1
-        with:
-          tagName: ${{ steps.tag_info.outputs.tag }}
-          releaseName: 'trawangan ${{ steps.tag_info.outputs.tag }}'
-          releaseBody: |
-            ## ꦠꦿꦮꦔꦤ꧀ · trawangan ${{ steps.tag_info.outputs.tag }}
-            
-            > **Professional Desktop Crypto Charting Terminal — Zero Paywall**
-            
-            ${{ steps.changelog_extract.outputs.notes }}
-            
-            ---
-            ### ⚖️ Keunggulan Zero-Paywall Parity:
-            - **Indikator Simultan:** Bebas pasang indikator tanpa batas kuota.
-            - **Kapasitas Watchlist:** Simpan simbol tanpa batas.
-            - **Pine Script v6:** Dijalankan secara lokal via PineTS Web Worker.
-            - **Privasi:** 100% Offline SQLite lokal, tanpa pelacak atau telemetri.
-            - **Engine:** LuxAlgo Vela WebGL2 akselerasi GPU (60-120 FPS).
-            
-            ### 📦 Paket Installer Biner Resmi:
-            - **Windows**: `.exe` (NSIS Setup) & `.msi`
-            - **Linux**: `.AppImage` (Universal Linux) & `.deb` (Debian/Ubuntu)
-            - **macOS**: `.dmg` & `.app` (Apple Silicon & Intel)
-            
-            ---
-            *Filosofi: Penerawangan (ꦠꦿꦮꦔꦤ꧀) — Visi menembus kabut manipulasi pasar.*
-          releaseDraft: false
-          prerelease: false
-          args: ''
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri -- build
 
       - name: Upload build artifacts as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: trawangan-${{ matrix.platform }}
+          name: trawangan-bundle-${{ matrix.platform }}
           path: |
             src-tauri/target/release/bundle/**
           if-no-files-found: ignore
+
+  publish:
+    needs: release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Determine release tag
+        id: tag_info
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          if [ -z "$TAG" ]; then
+            TAG="v0.1.0"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Publishing release for tag: $TAG"
+
+      - name: Download all platform bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: trawangan-bundle-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Extract Changelog Notes and Generate Updater Manifests
+        shell: bash
+        run: |
+          TAG="${{ steps.tag_info.outputs.tag }}"
+          node scripts/extract-changelog.cjs "$TAG" > release-notes.txt
+          node scripts/generate-release-manifests.mjs \
+            --tag "$TAG" \
+            --input release-artifacts \
+            --output dist-release \
+            --notes-file release-notes.txt
+
+          TAG="$TAG" node -e '
+            const fs = require("fs");
+            const tag = process.env.TAG;
+            const notes = fs.readFileSync("release-notes.txt", "utf8").trim();
+            const body = [
+              `## ꦠꦿꦮꦔꦤ꧀ · trawangan ${tag}`,
+              "",
+              "> **Professional Desktop Crypto Charting Terminal — Zero Paywall**",
+              "",
+              notes,
+              "",
+              "---",
+              "### ⚖️ Keunggulan Zero-Paywall Parity:",
+              "- **Indikator Simultan:** Bebas pasang indikator tanpa batas kuota.",
+              "- **Kapasitas Watchlist:** Simpan simbol tanpa batas.",
+              "- **Pine Script v6:** Dijalankan secara lokal via PineTS Web Worker.",
+              "- **Privasi:** 100% Offline SQLite lokal, tanpa pelacak atau telemetri.",
+              "- **Engine:** LuxAlgo Vela WebGL2 akselerasi GPU (60-120 FPS).",
+              "",
+              "### 📦 Paket Installer Biner Resmi:",
+              "- **Windows**: `.exe` (NSIS Setup) & `.msi`",
+              "- **Linux**: `.rpm` (Fedora/RHEL/openSUSE), `.deb` (Debian/Ubuntu), & `.AppImage` (Universal Linux)",
+              "- **macOS**: `.dmg` & `.app` (Apple Silicon)",
+              "",
+              "---",
+              "*Filosofi: Penerawangan (ꦠꦿꦮꦔꦤ꧀) — Visi menembus kabut manipulasi pasar.*"
+            ].join("\n");
+            fs.writeFileSync("release-body.md", body + "\n", "utf8");
+          '
+
+      - name: Publish or Update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag_info.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist-release/* --clobber
+            gh release edit "$TAG" --title "trawangan $TAG" --notes-file release-body.md
+          else
+            gh release create "$TAG" dist-release/* --title "trawangan $TAG" --notes-file release-body.md
+          fi

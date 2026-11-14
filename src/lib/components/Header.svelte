@@ -9,7 +9,9 @@
     Moon,
     Sun,
     Monitor,
-    Star
+    Star,
+    Download,
+    RefreshCw
   } from '@lucide/svelte';
   import type {
     Timeframe,
@@ -18,7 +20,12 @@
     ProviderConfig,
     ColorModePreference
   } from '../types/market';
-  import { updateService, type UpdateState } from '../services/updateService';
+  import {
+    updateService,
+    shouldShowUpdateBadge,
+    getUpdatePillContent,
+    type UpdateState
+  } from '../services/updateService';
   import { marketFeed } from '../services/market';
   import { getNextColorMode } from '../constants/themes';
 
@@ -374,15 +381,22 @@
     />
 
 
-    <!-- Update Notification Pill (Muncul saat rilis baru tersedia) -->
-    {#if updateState.status === 'available' && updateState.updateInfo}
+    <!-- Update Notification Pill (Muncul saat rilis baru tersedia atau progres unduh aktif) -->
+    {#if shouldShowUpdateBadge(updateState) && updateState.updateInfo}
+      {@const pill = getUpdatePillContent(updateState)}
       <button
         class="action-btn update-pill mono-nums"
-        title="Versi baru {updateState.updateInfo.latestTag} tersedia! Klik untuk melihat rilis."
+        title="Versi baru {updateState.updateInfo.latestTag} — klik untuk mengelola pembaruan."
         onclick={() => onOpenSettingsModal?.('about')}
       >
-        <Sparkles size={13} class="update-sparkle-icon" />
-        <span>Update {updateState.updateInfo.latestTag}</span>
+        {#if pill.icon === 'download'}
+          <Download size={12} />
+        {:else if pill.icon === 'spin'}
+          <RefreshCw size={12} class="spin" />
+        {:else}
+          <Sparkles size={13} class="update-sparkle-icon" />
+        {/if}
+        <span>{pill.label}</span>
       </button>
     {/if}
 

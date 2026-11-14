@@ -1,6 +1,7 @@
 pub mod db;
 pub mod market;
 pub mod commands;
+pub mod updater;
 
 use db::{init_db, DbState};
 use market::MarketService;
@@ -18,6 +19,8 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // Inisialisasi basis data SQLite
             let conn = init_db(app.handle())
@@ -65,7 +68,11 @@ pub fn run() {
             commands::get_default_snapshot_directory,
             commands::save_snapshot_file,
             commands::open_snapshot_folder,
-            commands::pick_snapshot_directory
+            commands::pick_snapshot_directory,
+            updater::detect_install_environment,
+            updater::download_and_verify_linux_package,
+            updater::install_linux_package_and_relaunch,
+            updater::open_local_installer_fallback
         ])
         .run(tauri::generate_context!())
         .expect("Terjadi error saat menjalankan aplikasi desktop Trawangan");

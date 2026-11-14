@@ -219,6 +219,7 @@
   let unsubShell: (() => void) | null = null;
   let unsubAlertsList: (() => void) | null = null;
   let unsubWatchlistRegistry: (() => void) | null = null;
+  let stopPeriodicUpdateChecks: (() => void) | null = null;
   const pageManagedTimers = new Set<ReturnType<typeof setTimeout>>();
   let resizeDispatchTimer: ReturnType<typeof setTimeout> | null = null;
   let isPageDestroyed = false;
@@ -555,11 +556,12 @@
         }
       });
 
-      // Pengecekan pembaruan otomatis di latar belakang (silent check)
+      // Pengecekan pembaruan otomatis saat startup dan berkala tiap 6 jam (silent check)
       schedulePageTimeout(() => {
         if (!isPageActive) return;
         updateService.checkForUpdates(true);
       }, 3000);
+      stopPeriodicUpdateChecks = updateService.startPeriodicChecks();
 
       // Dengarkan event saat Price Alert / Pine Script Alert terpicu secara real-time
       unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
@@ -929,6 +931,7 @@
     if (unsubShell) unsubShell();
     if (unsubAlertsList) unsubAlertsList();
     if (unsubWatchlistRegistry) unsubWatchlistRegistry();
+    if (stopPeriodicUpdateChecks) stopPeriodicUpdateChecks();
   });
 
   async function flushDrawingsWithLog(context: string): Promise<void> {

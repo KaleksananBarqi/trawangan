@@ -14,7 +14,7 @@
   } from '@lucide/svelte';
   import { onDestroy } from 'svelte';
   import type { AppSettings } from '../types/market';
-  import { updateService, type UpdateState } from '../services/updateService';
+  import { updateService, shouldShowUpdateBadge, type UpdateState } from '../services/updateService';
 
   // Submodul Pengaturan Terfokus (Architecture Deepening - Issue #9)
   import GeneralTab from './settings/GeneralTab.svelte';
@@ -168,7 +168,7 @@
           >
             <Info size={14} />
             <span>Tentang Aplikasi</span>
-            {#if updateState.status === 'available'}
+            {#if shouldShowUpdateBadge(updateState)}
               <span class="tab-update-dot" title="Pembaruan Tersedia"></span>
             {/if}
           </button>

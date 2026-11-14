@@ -28,6 +28,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -47,6 +48,14 @@
         "languages": ["English", "Indonesian"],
         "displayLanguageSelector": false
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU5OURBMzc1MjdCM0QyMzgKUldRNDByTW5kYU9kNlZyellZNXpXTW56S29hYUJLdGF6b1MzdmtQcE1RQ0d2SUxrUHllSmlqZ0UK",
+      "endpoints": [
+        "https://github.com/KaleksananBarqi/trawangan/releases/latest/download/latest.json"
+      ]
     }
   }
 }

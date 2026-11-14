@@ -19,7 +19,8 @@ export type UiPreferenceKey =
   | 'drawings_favorites'
   | 'drawings_fav_pos'
   | 'fav_indicators'
-  | 'recent_searches';
+  | 'recent_searches'
+  | 'dismissed_update_version';
 
 export type AppPreferenceKey =
   | 'app_settings'

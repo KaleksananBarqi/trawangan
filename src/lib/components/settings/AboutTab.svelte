@@ -8,15 +8,56 @@
     Download,
     ExternalLink,
     Check,
-    AlertCircle
+    AlertCircle,
+    Package,
+    RotateCcw,
+    EyeOff,
+    ChevronDown
   } from '@lucide/svelte';
   import { openExternalUrl } from '../../services/urlService';
-  import { updateService, type UpdateState } from '../../services/updateService';
+  import { updateService, formatBytes, type InstallKind, type UpdateState } from '../../services/updateService';
 
   let updateState = $state<UpdateState>(updateService.getSnapshot());
   let unsubUpdate: (() => void) | null = null;
+  let showManualAssets = $state(false);
+
+  const envLabel = $derived.by(() => {
+    const env = updateState.installEnvironment;
+    if (!env) return null;
+    const kindMap: Record<InstallKind, string> = {
+      rpm: 'Linux · RPM',
+      deb: 'Linux · DEB',
+      appimage: 'Linux · AppImage',
+      flatpak: 'Linux · Flatpak (Store)',
+      windows: 'Windows',
+      macos: 'macOS',
+      dev: 'Mode Pengembangan',
+      'linux-unknown': 'Linux',
+      unknown: env.os,
+    };
+    const base = kindMap[env.installKind] ?? env.os;
+    return `${base} (${env.arch})`;
+  });
+
+  const isUpdateCardVisible = $derived(
+    Boolean(
+      updateState.updateInfo?.isUpdateAvailable &&
+        (updateState.status === 'available' ||
+          updateState.status === 'downloading' ||
+          updateState.status === 'ready_to_install' ||
+          updateState.status === 'installing' ||
+          updateState.status === 'error')
+    )
+  );
+
+  const isBusyUpdating = $derived(
+    updateState.status === 'checking' ||
+      updateState.status === 'downloading' ||
+      updateState.status === 'installing'
+  );
 
   onMount(() => {
+    updateService.init();
     unsubUpdate = updateService.subscribe((s) => {
       updateState = s;
     });
@@ -44,6 +85,9 @@
       <div class="about-title-row">
         <h3 class="about-app-name">trawangan</h3>
         <span class="about-version-badge mono-nums">v{updateState.currentVersion} · Stabil</span>
+        {#if envLabel}
+          <span class="about-env-badge mono-nums" title="Lingkungan paket terdeteksi">{envLabel}</span>
+        {/if}
       </div>
       <div class="about-javanese-tagline">
         <span class="javanese-script">ꦠꦿꦮꦔꦤ꧀</span>
@@ -71,7 +115,7 @@
           type="button"
           class="btn-check-update"
           onclick={handleCheckUpdate}
-          disabled={updateState.status === 'checking'}
+          disabled={isBusyUpdating}
           title="Periksa ketersediaan versi rilis terbaru"
         >
           <RefreshCw size={13} class={updateState.status === 'checking' ? 'spin' : ''} />
@@ -79,15 +123,25 @@
         </button>
       </div>
 
+      <!-- Store-Managed Guard Banner (Selalu tampil pada build Flatpak/Store) -->
+      {#if updateState.updateStrategy === 'store-managed'}
+        <div class="update-feedback-banner info mono-nums">
+          <Package size={14} />
+          <span>Aplikasi terpasang melalui Flatpak/Store. Pembaruan dikelola oleh Software Center atau <code>flatpak update</code>.</span>
+        </div>
+      {/if}
+
       <!-- Dynamic Update Card Showcase -->
-      {#if updateState.status === 'available' && updateState.updateInfo}
+      {#if isUpdateCardVisible && updateState.updateInfo}
+        {@const info = updateState.updateInfo}
+        {@const isDismissed = updateState.dismissedVersion === info.latestVersion}
         <div class="update-card-featured glassmorphism">
           <div class="update-card-header">
             <div class="update-badge-glow">
               <Sparkles size={14} class="sparkle-icon" />
               <span>PEMBARUAN BARU TERSEDIA</span>
             </div>
-            <span class="update-tag mono-nums">{updateState.updateInfo.latestTag}</span>
+            <span class="update-tag mono-nums">{info.latestTag}</span>
           </div>
 
           <div class="update-card-body">
@@ -99,10 +153,10 @@
               <span class="comparison-arrow">➔</span>
               <div class="version-chip latest">
                 <span class="chip-label">Rilis Baru</span>
-                <span class="chip-val">{updateState.updateInfo.latestTag}</span>
+                <span class="chip-val">{info.latestTag}</span>
               </div>
-              {#if updateState.updateInfo.publishedAt}
-                <span class="published-date">({updateState.updateInfo.publishedAt})</span>
+              {#if info.publishedAt}
+                <span class="published-date">({info.publishedAt})</span>
               {/if}
             </div>
 
@@ -110,45 +164,183 @@
             <div class="release-notes-box">
               <div class="notes-header">
                 <Info size={13} />
-                <span>Catatan Pembaruan ({updateState.updateInfo.releaseName})</span>
+                <span>Catatan Pembaruan ({info.releaseName})</span>
               </div>
-              <pre class="notes-content">{updateState.updateInfo.releaseNotes}</pre>
+              <pre class="notes-content">{info.releaseNotes}</pre>
             </div>
 
-            <!-- Direct Actions -->
-            <div class="update-card-actions">
-              {#if updateState.updateInfo.matchedAsset}
+            {#if updateState.updateStrategy === 'store-managed'}
+              <div class="update-card-actions">
                 <button
                   type="button"
-                  class="btn-download-update"
-                  onclick={() => openExternalUrl(updateState.updateInfo!.matchedAsset!.browserDownloadUrl)}
-                  title="Unduh file rilis: {updateState.updateInfo.matchedAsset.name}"
+                  class="btn-view-github"
+                  onclick={() => openExternalUrl(info.releaseUrl)}
+                  title="Buka catatan rilis lengkap di GitHub"
                 >
-                  <Download size={14} />
-                  <span>Unduh {updateState.updateInfo.matchedAsset.name}</span>
+                  <ExternalLink size={13} />
+                  <span>Lihat Catatan Rilis di GitHub</span>
                 </button>
-              {:else}
-                <button
-                  type="button"
-                  class="btn-download-update"
-                  onclick={() => openExternalUrl(updateState.updateInfo!.releaseUrl)}
-                  title="Buka rilis dan unduh installer"
-                >
-                  <Download size={14} />
-                  <span>Unduh Installer Resmi</span>
-                </button>
+              </div>
+            {:else if updateState.status === 'downloading'}
+              <div class="update-progress-box mono-nums">
+                <div class="progress-meta">
+                  <span>Mengunduh {info.matchedAsset?.name ?? 'pembaruan'}...</span>
+                  <span>
+                    {Math.round(updateState.downloadProgress?.percent ?? 0)}%
+                    {#if updateState.downloadProgress?.totalBytes}
+                      · {formatBytes(updateState.downloadProgress.downloadedBytes)} / {formatBytes(updateState.downloadProgress.totalBytes)}
+                    {/if}
+                  </span>
+                </div>
+                <div class="progress-track">
+                  <div
+                    class="progress-fill"
+                    style="width: {Math.min(100, Math.max(0, updateState.downloadProgress?.percent ?? 0))}%"
+                  ></div>
+                </div>
+              </div>
+            {:else if updateState.status === 'ready_to_install' || updateState.status === 'installing'}
+              {#if updateState.statusMessage}
+                <div class="update-feedback-banner info mono-nums">
+                  <Info size={13} />
+                  <span>{updateState.statusMessage}</span>
+                </div>
               {/if}
+              <div class="update-card-actions">
+                <button
+                  type="button"
+                  class="btn-download-update"
+                  disabled={updateState.status === 'installing'}
+                  onclick={() => updateService.installAndRelaunch()}
+                >
+                  {#if updateState.status === 'installing'}
+                    <RefreshCw size={14} class="spin" />
+                    <span>Memasang Pembaruan...</span>
+                  {:else}
+                    <RotateCcw size={14} />
+                    <span>Pasang & Restart Sekarang</span>
+                  {/if}
+                </button>
 
-              <button
-                type="button"
-                class="btn-view-github"
-                onclick={() => openExternalUrl(updateState.updateInfo!.releaseUrl)}
-                title="Buka catatan rilis lengkap di GitHub"
-              >
-                <ExternalLink size={13} />
-                <span>Lihat di GitHub</span>
-              </button>
-            </div>
+                {#if updateState.canRetryFallbackGui}
+                  <button
+                    type="button"
+                    class="btn-view-github"
+                    onclick={() => updateService.openStagedPackageWithSystemGui()}
+                    title="Buka berkas installer lewat Software Center sistem"
+                  >
+                    <Package size={13} />
+                    <span>Buka Software Center</span>
+                  </button>
+                {/if}
+              </div>
+              {#if updateState.updateStrategy === 'linux-package' && updateState.status === 'ready_to_install'}
+                <p class="update-hint-text">
+                  Dialog autentikasi sistem akan muncul untuk memasang paket {info.matchedAsset?.name ?? 'Linux'}, lalu aplikasi akan dibuka ulang otomatis.
+                </p>
+              {/if}
+            {:else}
+              <!-- Status available / error -->
+              <div class="update-card-actions">
+                {#if updateState.updateStrategy === 'tauri-updater' || updateState.updateStrategy === 'linux-package'}
+                  <button
+                    type="button"
+                    class="btn-download-update"
+                    onclick={() => updateService.downloadUpdate()}
+                    title="Unduh dan verifikasi {info.matchedAsset?.name ?? info.latestTag} langsung di dalam aplikasi"
+                  >
+                    <Download size={14} />
+                    <span>Unduh & Pasang Pembaruan</span>
+                  </button>
+                {:else if info.matchedAsset}
+                  <button
+                    type="button"
+                    class="btn-download-update"
+                    onclick={() => openExternalUrl(info.matchedAsset!.browserDownloadUrl)}
+                    title="Unduh file rilis: {info.matchedAsset.name}"
+                  >
+                    <Download size={14} />
+                    <span>Unduh {info.matchedAsset.name}</span>
+                  </button>
+                {:else}
+                  <button
+                    type="button"
+                    class="btn-download-update"
+                    onclick={() => openExternalUrl(info.releaseUrl)}
+                    title="Buka rilis dan unduh installer"
+                  >
+                    <Download size={14} />
+                    <span>Unduh Installer Resmi</span>
+                  </button>
+                {/if}
+
+                {#if !isDismissed}
+                  <button
+                    type="button"
+                    class="btn-view-github"
+                    onclick={() => updateService.dismissCurrentUpdate()}
+                    title="Sembunyikan lencana notifikasi untuk versi ini"
+                  >
+                    <EyeOff size={13} />
+                    <span>Abaikan Versi Ini</span>
+                  </button>
+                {:else}
+                  <button
+                    type="button"
+                    class="btn-view-github"
+                    onclick={() => updateService.clearDismissedUpdate()}
+                    title="Tampilkan kembali lencana notifikasi versi ini"
+                  >
+                    <Sparkles size={13} />
+                    <span>Tampilkan Notifikasi</span>
+                  </button>
+                {/if}
+
+                <button
+                  type="button"
+                  class="btn-view-github"
+                  onclick={() => openExternalUrl(info.releaseUrl)}
+                  title="Buka catatan rilis lengkap di GitHub"
+                >
+                  <ExternalLink size={13} />
+                  <span>GitHub</span>
+                </button>
+              </div>
+            {/if}
+
+            {#if updateState.errorMessage}
+              <div class="update-feedback-banner error mono-nums">
+                <AlertCircle size={14} />
+                <span>{updateState.errorMessage}</span>
+              </div>
+            {/if}
+
+            {#if info.assets.length > 0}
+              <div class="manual-assets-drawer">
+                <button
+                  type="button"
+                  class="manual-assets-toggle"
+                  onclick={() => (showManualAssets = !showManualAssets)}
+                >
+                  <span>Unduh Format Lain (Manual) · {info.assets.length} paket</span>
+                  <ChevronDown size={13} class={showManualAssets ? 'rotated' : ''} />
+                </button>
+                {#if showManualAssets}
+                  <div class="manual-assets-list mono-nums">
+                    {#each info.assets as asset}
+                      <button
+                        type="button"
+                        class="manual-asset-row {info.matchedAsset?.name === asset.name ? 'matched' : ''}"
+                        onclick={() => openExternalUrl(asset.browserDownloadUrl)}
+                      >
+                        <span class="asset-name">{asset.name}</span>
+                        <span class="asset-size">{formatBytes(asset.size)} ↗</span>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
           </div>
         </div>
       {:else if updateState.status === 'latest'}
@@ -300,6 +492,7 @@
   .about-title-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
   }
 
@@ -317,6 +510,15 @@
     color: #58a6ff;
     border-radius: 12px;
     border: 1px solid rgba(88, 166, 255, 0.3);
+  }
+
+  .about-env-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    background: rgba(63, 185, 80, 0.12);
+    color: #3fb950;
+    border-radius: 12px;
+    border: 1px solid rgba(63, 185, 80, 0.3);
   }
 
   .about-javanese-tagline {
@@ -451,6 +653,7 @@
 
   .update-card-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
   }
 
@@ -472,10 +675,114 @@
     color: #ffffff;
   }
 
+  .btn-download-update:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
   .btn-view-github {
     background: var(--bg-hover, #21262d);
     border: 1px solid var(--border-subtle, #30363d);
     color: var(--text-base, #ffffff);
+  }
+
+  .update-progress-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--bg-subtle, #0d1117);
+    border: 1px solid var(--border-subtle, #30363d);
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+
+  .progress-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-base, #ffffff);
+  }
+
+  .progress-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(88, 166, 255, 0.15);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2ea043, #58a6ff);
+    transition: width 0.15s ease;
+  }
+
+  .update-hint-text {
+    font-size: 10px;
+    color: var(--text-dim, #8b949e);
+    margin: 6px 0 0 0;
+  }
+
+  .manual-assets-drawer {
+    margin-top: 10px;
+    border-top: 1px solid var(--border-subtle, #30363d);
+    padding-top: 8px;
+  }
+
+  .manual-assets-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: transparent;
+    border: none;
+    color: var(--text-dim, #8b949e);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 0;
+  }
+
+  .manual-assets-toggle:hover {
+    color: var(--text-base, #ffffff);
+  }
+
+  .manual-assets-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+  }
+
+  .manual-asset-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 8px;
+    background: var(--bg-subtle, #0d1117);
+    border: 1px solid var(--border-subtle, #30363d);
+    border-radius: 4px;
+    color: var(--text-base, #ffffff);
+    font-size: 10px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .manual-asset-row:hover {
+    border-color: #58a6ff;
+  }
+
+  .manual-asset-row.matched {
+    border-color: rgba(63, 185, 80, 0.5);
+  }
+
+  .asset-size {
+    color: var(--text-dim, #8b949e);
+  }
+
+  :global(.rotated) {
+    transform: rotate(180deg);
+    transition: transform 0.15s ease;
   }
 
   .update-feedback-banner {

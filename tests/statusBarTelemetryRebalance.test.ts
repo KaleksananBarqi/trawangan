@@ -95,7 +95,7 @@ describe('Tiket #168: StatusBar Simplification and Left-Cluster Live Telemetry R
       const leftCluster = extractClusterBlock(source, 'left-cluster');
 
       // Pill Update kondisional tetap dipertahankan di sisi kiri
-      assert.match(leftCluster, /updateState\.status === 'available'/, 'Pill Update kondisional harus berada di .left-cluster');
+      assert.match(leftCluster, /shouldShowUpdateBadge\(updateState\)/, 'Pill Update kondisional harus berada di .left-cluster');
       assert.match(leftCluster, /class="pill-badge badge-update"/, 'Badge Update harus berada di .left-cluster');
 
       // Pill telemetri live berpindah ke .left-cluster

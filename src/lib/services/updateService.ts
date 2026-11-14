@@ -1,106 +1,154 @@
 import { APP_VERSION } from '../config/version';
+import { getUiPreferenceSync, setUiPreference, removeUiPreference } from './persistence';
+import {
+  classifyAssetKind,
+  compareSemver,
+  detectPlatform,
+  formatBytes,
+  getUpdatePillContent,
+  isUpdateFlowActive,
+  resolveUpdateStrategy,
+  selectMatchedAsset,
+  shouldShowUpdateBadge,
+  type AssetKind,
+  type DownloadProgress,
+  type InstallEnvironment,
+  type InstallKind,
+  type ReleaseAsset,
+  type UpdateInfo,
+  type UpdatePillContent,
+  type UpdateState,
+  type UpdateStatus,
+  type UpdateStrategy,
+} from './updateHelpers';
 
-export interface ReleaseAsset {
-  name: string;
-  browserDownloadUrl: string;
-  size: number;
-  kind: 'windows' | 'macos' | 'linux' | 'other';
+export {
+  classifyAssetKind,
+  compareSemver,
+  detectPlatform,
+  formatBytes,
+  getUpdatePillContent,
+  isUpdateFlowActive,
+  resolveUpdateStrategy,
+  selectMatchedAsset,
+  shouldShowUpdateBadge,
+};
+export type {
+  AssetKind,
+  DownloadProgress,
+  InstallEnvironment,
+  InstallKind,
+  ReleaseAsset,
+  UpdateInfo,
+  UpdatePillContent,
+  UpdateState,
+  UpdateStatus,
+  UpdateStrategy,
+};
+
+const RELEASE_API_URL = 'https://api.github.com/repos/KaleksananBarqi/trawangan/releases/latest';
+const RELEASE_DOWNLOAD_BASE = 'https://github.com/KaleksananBarqi/trawangan/releases/download';
+const PERIODIC_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+export interface TauriUpdateHandle {
+  download: (cb: (event: any) => void) => Promise<void>;
+  install: () => Promise<void>;
 }
 
-export interface UpdateInfo {
-  currentVersion: string;
-  latestVersion: string;
-  latestTag: string;
-  releaseName: string;
-  releaseNotes: string;
-  releaseUrl: string;
-  publishedAt: string;
-  isUpdateAvailable: boolean;
-  assets: ReleaseAsset[];
-  matchedAsset?: ReleaseAsset;
+export interface UpdateServiceAdapters {
+  fetchFn?: typeof fetch;
+  isTauri?: () => boolean;
+  getAppVersion?: () => Promise<string>;
+  detectEnvironment?: () => Promise<InstallEnvironment>;
+  checkTauriUpdater?: () => Promise<TauriUpdateHandle | null>;
+  relaunchApp?: () => Promise<void>;
+  downloadLinuxPackage?: (
+    params: { assetName: string; assetUrl: string; checksumUrl: string },
+    onProgress: (progress: DownloadProgress) => void
+  ) => Promise<{ filePath: string; sha256: string; fileSize: number }>;
+  installLinuxPackage?: (filePath: string) => Promise<{ status: string; message: string }>;
+  openLinuxFallbackGui?: (filePath: string) => Promise<void>;
+  getDismissedVersion?: () => string | null;
+  saveDismissedVersion?: (version: string | null) => Promise<void>;
 }
 
-export interface UpdateState {
-  status: 'idle' | 'checking' | 'available' | 'latest' | 'error';
-  currentVersion: string;
-  updateInfo: UpdateInfo | null;
-  lastChecked: Date | null;
-  errorMessage: string | null;
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-/**
- * Utilitas komparasi semantic versioning (SemVer).
- * Mengembalikan:
- *   1  jika v1 > v2
- *  -1  jika v1 < v2
- *   0  jika v1 === v2
- */
-export function compareSemver(v1: string, v2: string): number {
-  const clean1 = (v1 || '').replace(/^v/, '').trim();
-  const clean2 = (v2 || '').replace(/^v/, '').trim();
-  const parts1 = clean1.split('.').map((p) => parseInt(p, 10) || 0);
-  const parts2 = clean2.split('.').map((p) => parseInt(p, 10) || 0);
-
-  const len = Math.max(parts1.length, parts2.length);
-  for (let i = 0; i < len; i++) {
-    const a = parts1[i] ?? 0;
-    const b = parts2[i] ?? 0;
-    if (a > b) return 1;
-    if (a < b) return -1;
-  }
-  return 0;
-}
-
-/**
- * Deteksi platform OS desktop aktif untuk rekomendasi installer.
- */
-export function detectPlatform(): 'windows' | 'macos' | 'linux' {
-  if (typeof window === 'undefined') return 'windows';
-  const ua = window.navigator.userAgent.toLowerCase();
-  const platform = (window.navigator as any)?.userAgentData?.platform?.toLowerCase() || window.navigator.platform?.toLowerCase() || '';
-
-  if (platform.includes('mac') || ua.includes('macintosh') || ua.includes('mac os')) {
-    return 'macos';
-  }
-  if (platform.includes('linux') || ua.includes('linux') || ua.includes('x11')) {
-    return 'linux';
-  }
-  return 'windows';
-}
-
-class UpdateService {
+export class UpdateService {
   private state: UpdateState = {
     status: 'idle',
     currentVersion: APP_VERSION,
     updateInfo: null,
+    installEnvironment: null,
+    updateStrategy: 'manual',
+    downloadProgress: null,
+    stagedPackagePath: null,
+    dismissedVersion: null,
     lastChecked: null,
     errorMessage: null,
+    statusMessage: null,
+    canRetryFallbackGui: false,
   };
 
   private listeners: Set<(state: UpdateState) => void> = new Set();
-  private hasInitializedVersion = false;
+  private hasInitializedRuntime = false;
+  private pendingTauriUpdate: TauriUpdateHandle | null = null;
+  private adapters: UpdateServiceAdapters;
 
-  constructor() {
-    this.initCurrentVersion();
+  constructor(adapters: UpdateServiceAdapters = {}) {
+    this.adapters = adapters;
   }
 
   /**
-   * Inisialisasi versi aktif dari runtime Tauri desktop jika tersedia.
+   * Inisialisasi konteks runtime (versi terpasang, lingkungan paket Rust, dan versi yang diabaikan).
+   * Dipanggil secara lazy setelah PersistenceService selesai bootstrap (tanpa side-effect saat import modul).
    */
-  private async initCurrentVersion(): Promise<void> {
-    if (this.hasInitializedVersion) return;
-    try {
-      const { getVersion } = await import('@tauri-apps/api/app');
-      const ver = await getVersion();
-      if (ver) {
-        this.state.currentVersion = ver;
-        this.hasInitializedVersion = true;
-        this.notify();
+  public async init(): Promise<void> {
+    if (this.hasInitializedRuntime) return;
+    this.hasInitializedRuntime = true;
+
+    this.syncDismissedVersionFromPersistence();
+
+    const tauriActive = this.adapters.isTauri ? this.adapters.isTauri() : isTauriRuntime();
+    if (tauriActive) {
+      try {
+        const ver = this.adapters.getAppVersion
+          ? await this.adapters.getAppVersion()
+          : await (await import('@tauri-apps/api/app')).getVersion();
+        if (ver) {
+          this.state.currentVersion = ver;
+        }
+      } catch {
+        this.state.currentVersion = APP_VERSION;
       }
-    } catch {
-      // Fallback ke APP_VERSION package.json
+
+      try {
+        const env = this.adapters.detectEnvironment
+          ? await this.adapters.detectEnvironment()
+          : await (await import('@tauri-apps/api/core')).invoke<InstallEnvironment>('detect_install_environment');
+        this.state.installEnvironment = env;
+        this.state.updateStrategy = resolveUpdateStrategy(env);
+      } catch {
+        this.state.updateStrategy = 'manual';
+      }
+    } else {
       this.state.currentVersion = APP_VERSION;
-      this.hasInitializedVersion = true;
+      this.state.updateStrategy = 'manual';
+    }
+
+    this.notify();
+  }
+
+  private syncDismissedVersionFromPersistence(): void {
+    try {
+      const saved = this.adapters.getDismissedVersion
+        ? this.adapters.getDismissedVersion()
+        : getUiPreferenceSync<string>('dismissed_update_version');
+      this.state.dismissedVersion = typeof saved === 'string' && saved.trim() ? saved.trim() : null;
+    } catch {
+      this.state.dismissedVersion = null;
     }
   }
 
@@ -124,19 +172,76 @@ class UpdateService {
   }
 
   /**
-   * Memeriksa rilis terbaru dari repositori GitHub resmi Trawangan.
+   * Menjadwalkan pengecekan rilis berkala di latar belakang (bawaan setiap 6 jam).
+   */
+  public startPeriodicChecks(intervalMs = PERIODIC_CHECK_INTERVAL_MS): () => void {
+    const timerId = setInterval(() => {
+      if (isUpdateFlowActive(this.state.status)) {
+        return;
+      }
+      this.checkForUpdates(true);
+    }, intervalMs);
+
+    return () => clearInterval(timerId);
+  }
+
+  /**
+   * Menyembunyikan notifikasi pill Header/StatusBar untuk versi rilis tertentu.
+   */
+  public async dismissCurrentUpdate(): Promise<void> {
+    const ver = this.state.updateInfo?.latestVersion;
+    if (!ver) return;
+    this.state.dismissedVersion = ver;
+    this.notify();
+    try {
+      if (this.adapters.saveDismissedVersion) {
+        await this.adapters.saveDismissedVersion(ver);
+      } else {
+        await setUiPreference('dismissed_update_version', ver);
+      }
+    } catch (err) {
+      console.warn('[updateService] Gagal menyimpan dismissed_update_version:', err);
+    }
+  }
+
+  /**
+   * Menghapus status abaikan versi tertentu agar pill kembali aktif.
+   */
+  public async clearDismissedUpdate(): Promise<void> {
+    this.state.dismissedVersion = null;
+    this.notify();
+    try {
+      if (this.adapters.saveDismissedVersion) {
+        await this.adapters.saveDismissedVersion(null);
+      } else {
+        await removeUiPreference('dismissed_update_version');
+      }
+    } catch {
+      // Abaikan
+    }
+  }
+
+  /**
+   * Memeriksa rilis terbaru dari repositori GitHub resmi trawangan.
    */
   public async checkForUpdates(silent = false): Promise<UpdateState> {
-    await this.initCurrentVersion();
+    await this.init();
+    this.syncDismissedVersionFromPersistence();
+
+    if (isUpdateFlowActive(this.state.status)) {
+      return this.getSnapshot();
+    }
 
     if (!silent) {
       this.state.status = 'checking';
       this.state.errorMessage = null;
+      this.state.statusMessage = null;
       this.notify();
     }
 
     try {
-      const res = await fetch('https://api.github.com/repos/KaleksananBarqi/trawangan/releases/latest', {
+      const fetchImpl = this.adapters.fetchFn ?? fetch;
+      const res = await fetchImpl(RELEASE_API_URL, {
         headers: { Accept: 'application/vnd.github.v3+json' },
       });
 
@@ -148,34 +253,25 @@ class UpdateService {
       const latestTag = data.tag_name || 'v0.0.0';
       const latestVersion = latestTag.replace(/^v/, '');
       const currentVersion = this.state.currentVersion;
-
       const isUpdateAvailable = compareSemver(latestVersion, currentVersion) > 0;
 
-      // Parsing daftar aset rilis
-      const os = detectPlatform();
       const rawAssets = Array.isArray(data.assets) ? data.assets : [];
-      const assets: ReleaseAsset[] = rawAssets.map((a: any) => {
-        const name: string = a.name || '';
-        let kind: ReleaseAsset['kind'] = 'other';
-        if (name.endsWith('.exe') || name.endsWith('.msi')) kind = 'windows';
-        else if (name.endsWith('.dmg') || name.endsWith('.app.tar.gz')) kind = 'macos';
-        else if (name.endsWith('.AppImage') || name.endsWith('.deb')) kind = 'linux';
+      const assets: ReleaseAsset[] = rawAssets
+        .filter((a: any) => {
+          const name: string = a?.name || '';
+          return !name.endsWith('.sig') && name !== 'latest.json' && name !== 'SHA256SUMS.txt';
+        })
+        .map((a: any) => {
+          const name: string = a.name || '';
+          return {
+            name,
+            browserDownloadUrl: a.browser_download_url,
+            size: a.size || 0,
+            kind: classifyAssetKind(name),
+          };
+        });
 
-        return {
-          name,
-          browserDownloadUrl: a.browser_download_url,
-          size: a.size || 0,
-          kind,
-        };
-      });
-
-      // Cari aset yang paling cocok untuk OS pengguna
-      let matchedAsset = assets.find((a) => {
-        if (os === 'windows') return a.name.endsWith('.exe');
-        if (os === 'macos') return a.name.endsWith('.dmg');
-        if (os === 'linux') return a.name.endsWith('.AppImage');
-        return false;
-      }) || assets.find((a) => a.kind === os);
+      const matchedAsset = selectMatchedAsset(assets, this.state.installEnvironment, detectPlatform());
 
       const updateInfo: UpdateInfo = {
         currentVersion,
@@ -184,11 +280,13 @@ class UpdateService {
         releaseName: data.name || latestTag,
         releaseNotes: data.body || 'Tidak ada catatan rilis.',
         releaseUrl: data.html_url || 'https://github.com/KaleksananBarqi/trawangan/releases/latest',
-        publishedAt: data.published_at ? new Date(data.published_at).toLocaleDateString('id-ID', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        }) : '',
+        publishedAt: data.published_at
+          ? new Date(data.published_at).toLocaleDateString('id-ID', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })
+          : '',
         isUpdateAvailable,
         assets,
         matchedAsset,
@@ -198,6 +296,7 @@ class UpdateService {
       this.state.lastChecked = new Date();
       this.state.status = isUpdateAvailable ? 'available' : 'latest';
       this.state.errorMessage = null;
+      this.state.statusMessage = null;
     } catch (err: any) {
       console.warn('[updateService] Gagal memeriksa pembaruan:', err);
       this.state.lastChecked = new Date();
@@ -211,6 +310,201 @@ class UpdateService {
 
     this.notify();
     return this.getSnapshot();
+  }
+
+  /**
+   * Mengunduh pembaruan di dalam aplikasi sesuai strategi OS / format instalasi.
+   */
+  public async downloadUpdate(): Promise<void> {
+    if (isUpdateFlowActive(this.state.status) || !this.state.updateInfo?.isUpdateAvailable) {
+      return;
+    }
+
+    this.state.status = 'downloading';
+    this.state.errorMessage = null;
+    this.state.statusMessage = null;
+    this.state.canRetryFallbackGui = false;
+    this.state.downloadProgress = { downloadedBytes: 0, totalBytes: null, percent: 0 };
+    this.notify();
+
+    try {
+      if (this.state.updateStrategy === 'tauri-updater') {
+        await this.downloadViaTauriUpdater();
+      } else if (this.state.updateStrategy === 'linux-package') {
+        await this.downloadViaLinuxPackage();
+      } else {
+        throw new Error('Pembaruan in-app tidak tersedia untuk lingkungan ini. Silakan unduh manual.');
+      }
+
+      this.state.status = 'ready_to_install';
+      this.state.statusMessage = 'Berkas pembaruan terunduh dan terverifikasi. Siap dipasang & restart.';
+      this.notify();
+    } catch (err: any) {
+      console.error('[updateService] Gagal mengunduh pembaruan:', err);
+      this.state.status = 'error';
+      this.state.downloadProgress = null;
+      this.state.errorMessage = err?.message || 'Gagal mengunduh berkas pembaruan.';
+      this.notify();
+    }
+  }
+
+  private async downloadViaTauriUpdater(): Promise<void> {
+    const update = this.adapters.checkTauriUpdater
+      ? await this.adapters.checkTauriUpdater()
+      : await (await import('@tauri-apps/plugin-updater')).check();
+
+    if (!update) {
+      throw new Error(
+        'Manifest rilis bertanda tangan (latest.json) belum tersedia untuk versi ini. Gunakan tombol Unduh Manual di bawah.'
+      );
+    }
+
+    let downloadedBytes = 0;
+    let totalBytes: number | null = null;
+
+    await update.download((event: any) => {
+      if (event.event === 'Started') {
+        totalBytes = event.data.contentLength ?? null;
+        this.state.downloadProgress = { downloadedBytes: 0, totalBytes, percent: 0 };
+        this.notify();
+      } else if (event.event === 'Progress') {
+        downloadedBytes += event.data.chunkLength;
+        const percent = totalBytes && totalBytes > 0 ? Math.min(100, (downloadedBytes / totalBytes) * 100) : 0;
+        this.state.downloadProgress = { downloadedBytes, totalBytes, percent };
+        this.notify();
+      } else if (event.event === 'Finished') {
+        this.state.downloadProgress = {
+          downloadedBytes,
+          totalBytes: totalBytes ?? downloadedBytes,
+          percent: 100,
+        };
+        this.notify();
+      }
+    });
+
+    this.pendingTauriUpdate = update;
+  }
+
+  private async downloadViaLinuxPackage(): Promise<void> {
+    const asset = this.state.updateInfo?.matchedAsset;
+    const tag = this.state.updateInfo?.latestTag;
+    if (!asset || !tag || !(asset.name.endsWith('.rpm') || asset.name.endsWith('.deb'))) {
+      throw new Error('Aset paket .rpm / .deb yang cocok tidak ditemukan pada rilis ini.');
+    }
+
+    const checksumUrl = `${RELEASE_DOWNLOAD_BASE}/${tag}/SHA256SUMS.txt`;
+
+    if (this.adapters.downloadLinuxPackage) {
+      const result = await this.adapters.downloadLinuxPackage(
+        { assetName: asset.name, assetUrl: asset.browserDownloadUrl, checksumUrl },
+        (progress) => {
+          this.state.downloadProgress = progress;
+          this.notify();
+        }
+      );
+      this.state.stagedPackagePath = result.filePath;
+      return;
+    }
+
+    const { invoke } = await import('@tauri-apps/api/core');
+    const { listen } = await import('@tauri-apps/api/event');
+
+    const unlisten = await listen<DownloadProgress>('updater://download-progress', (event) => {
+      this.state.downloadProgress = event.payload;
+      this.notify();
+    });
+
+    try {
+      const result = await invoke<{ filePath: string; sha256: string; fileSize: number }>(
+        'download_and_verify_linux_package',
+        {
+          assetName: asset.name,
+          assetUrl: asset.browserDownloadUrl,
+          checksumUrl,
+        }
+      );
+      this.state.stagedPackagePath = result.filePath;
+    } finally {
+      unlisten();
+    }
+  }
+
+  /**
+   * Memasang pembaruan yang sudah terunduh & terverifikasi lalu membuka ulang aplikasi.
+   */
+  public async installAndRelaunch(): Promise<void> {
+    if (this.state.status !== 'ready_to_install') return;
+
+    this.state.status = 'installing';
+    this.state.errorMessage = null;
+    this.state.statusMessage =
+      this.state.updateStrategy === 'linux-package'
+        ? 'Menunggu otorisasi sistem dan memasang paket...'
+        : 'Memasang pembaruan dan menyiapkan restart...';
+    this.notify();
+
+    try {
+      if (this.state.updateStrategy === 'tauri-updater' && this.pendingTauriUpdate) {
+        await this.pendingTauriUpdate.install();
+        if (this.adapters.relaunchApp) {
+          await this.adapters.relaunchApp();
+        } else {
+          const { relaunch } = await import('@tauri-apps/plugin-process');
+          await relaunch();
+        }
+        return;
+      }
+
+      if (this.state.updateStrategy === 'linux-package' && this.state.stagedPackagePath) {
+        const res = this.adapters.installLinuxPackage
+          ? await this.adapters.installLinuxPackage(this.state.stagedPackagePath)
+          : await (
+              await import('@tauri-apps/api/core')
+            ).invoke<{ status: string; message: string }>('install_linux_package_and_relaunch', {
+              filePath: this.state.stagedPackagePath,
+            });
+
+        if (res.status === 'cancelled' || res.status === 'fallback_opened') {
+          this.state.status = 'ready_to_install';
+          this.state.statusMessage = res.message;
+          this.state.canRetryFallbackGui = res.status === 'cancelled';
+          this.notify();
+          return;
+        }
+
+        this.state.statusMessage = res.message;
+        this.notify();
+        return;
+      }
+
+      throw new Error('Paket pembaruan belum siap dipasang.');
+    } catch (err: any) {
+      console.error('[updateService] Gagal memasang pembaruan:', err);
+      this.state.status = 'ready_to_install';
+      this.state.errorMessage = err?.message || 'Gagal memasang pembaruan.';
+      this.state.canRetryFallbackGui = this.state.updateStrategy === 'linux-package' && !!this.state.stagedPackagePath;
+      this.notify();
+    }
+  }
+
+  /**
+   * Membuka berkas .rpm/.deb yang sudah diunduh menggunakan Software Center sistem (fallback GUI).
+   */
+  public async openStagedPackageWithSystemGui(): Promise<void> {
+    if (!this.state.stagedPackagePath) return;
+    try {
+      if (this.adapters.openLinuxFallbackGui) {
+        await this.adapters.openLinuxFallbackGui(this.state.stagedPackagePath);
+      } else {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('open_local_installer_fallback', { filePath: this.state.stagedPackagePath });
+      }
+      this.state.statusMessage = 'Berkas installer dibuka di Software Center sistem.';
+      this.notify();
+    } catch (err: any) {
+      this.state.errorMessage = err?.message || 'Gagal membuka installer di Software Center.';
+      this.notify();
+    }
   }
 }
 
