@@ -511,4 +511,124 @@ test.describe('TimelineMarksController & Event Markers Suite (#198)', () => {
 
     session.destroy();
   });
+
+  test('11. Preservasi Event Kalender Makroekonomi Global Lintas Simbol (Market-Wide)', () => {
+    const controller = new TimelineMarksController();
+    const mockChart = createMockChart();
+    controller.attach(mockChart);
+
+    // Muat katalog event standar makroekonomi
+    controller.loadMacroEvents([
+      {
+        id: 'cpi_nov',
+        title: 'US CPI YoY',
+        timestamp: 1794490200000,
+        impact: 'high',
+        country: 'US'
+        // Tanpa relevantSymbols -> berlaku market-wide untuk seluruh simbol
+      },
+      {
+        id: 'powell_speech',
+        title: 'Fed Chair Powell Speech',
+        timestamp: 1794621600000,
+        impact: 'high',
+        country: 'US',
+        relevantSymbols: ['*'] // Eksplisit wildcard
+      },
+      {
+        id: 'eth_upgrade',
+        title: 'Ethereum Network Upgrade',
+        timestamp: 1794630000000,
+        impact: 'medium',
+        relevantSymbols: ['ETHUSDT'] // Khusus Ethereum
+      }
+    ]);
+
+    // Uji 1: Simbol BTCUSDT
+    controller.syncForMarket('BTCUSDT');
+    const btcMarks = controller.getActiveMarks();
+    const btcIds = btcMarks.map((m) => m.id);
+    assert.ok(btcIds.includes('macro_cpi_nov'), 'CPI global harus tampil di BTCUSDT');
+    assert.ok(btcIds.includes('macro_powell_speech'), 'Powell Speech wildcard harus tampil di BTCUSDT');
+    assert.ok(!btcIds.includes('macro_eth_upgrade'), 'Upgrade ETH TIDAK boleh tampil di BTCUSDT');
+
+    // Uji 2: Simbol ETHUSDT
+    controller.syncForMarket('ETHUSDT');
+    const ethMarks = controller.getActiveMarks();
+    const ethIds = ethMarks.map((m) => m.id);
+    assert.ok(ethIds.includes('macro_cpi_nov'), 'CPI global harus tetap tampil di ETHUSDT');
+    assert.ok(ethIds.includes('macro_powell_speech'), 'Powell Speech wildcard harus tetap tampil di ETHUSDT');
+    assert.ok(ethIds.includes('macro_eth_upgrade'), 'Upgrade ETH harus tampil di ETHUSDT');
+
+    // Uji 3: Simbol SOLUSDT
+    controller.syncForMarket('SOLUSDT');
+    const solMarks = controller.getActiveMarks();
+    const solIds = solMarks.map((m) => m.id);
+    assert.ok(solIds.includes('macro_cpi_nov'), 'CPI global harus tetap tampil di SOLUSDT');
+    assert.ok(solIds.includes('macro_powell_speech'), 'Powell Speech wildcard harus tetap tampil di SOLUSDT');
+    assert.ok(!solIds.includes('macro_eth_upgrade'), 'Upgrade ETH TIDAK boleh tampil di SOLUSDT');
+
+    // Uji 4: Pasangan Rupiah BTCIDR
+    controller.syncForMarket('BTCIDR');
+    const idrMarks = controller.getActiveMarks();
+    const idrIds = idrMarks.map((m) => m.id);
+    assert.ok(idrIds.includes('macro_cpi_nov'), 'CPI global harus tetap tampil di BTCIDR');
+    assert.ok(idrIds.includes('macro_powell_speech'), 'Powell Speech wildcard harus tetap tampil di BTCIDR');
+  });
+
+  test('12. Preservasi Trading Plans saat Pergantian Pasar (syncForMarket)', () => {
+    const controller = new TimelineMarksController();
+    const mockChart = createMockChart();
+    controller.attach(mockChart);
+
+    const btcPlan: ParsedTradingPlan = {
+      bias: 'bullish',
+      entry: 65000,
+      stopLoss: 63000,
+      targets: [],
+      riskAmount: 100,
+      reasons: {},
+      contextZones: [],
+      rawText: 'BTC plan',
+      validation: { valid: true, errors: [], warnings: [] },
+      symbol: 'BTCUSDT'
+    };
+
+    const ethPlan: ParsedTradingPlan = {
+      bias: 'bearish',
+      entry: 3500,
+      stopLoss: 3700,
+      targets: [],
+      riskAmount: 100,
+      reasons: {},
+      contextZones: [],
+      rawText: 'ETH plan',
+      validation: { valid: true, errors: [], warnings: [] },
+      symbol: 'ETHUSDT'
+    };
+
+    // Muat rencana trading untuk BTC dan ETH
+    controller.loadTradePlans([
+      { ...btcPlan, id: 'plan_btc_1' },
+      { ...ethPlan, id: 'plan_eth_1' }
+    ]);
+
+    // Saat di BTCUSDT: hanya plan BTC yang aktif
+    controller.syncForMarket('BTCUSDT');
+    let marks = controller.getActiveMarks();
+    assert.ok(marks.some((m) => m.id.includes('plan_btc_1')), 'Plan BTC harus aktif di BTCUSDT');
+    assert.ok(!marks.some((m) => m.id.includes('plan_eth_1')), 'Plan ETH tidak boleh aktif di BTCUSDT');
+
+    // Saat beralih ke ETHUSDT: plan BTC dibersihkan, plan ETH muncul
+    controller.syncForMarket('ETHUSDT');
+    marks = controller.getActiveMarks();
+    assert.ok(!marks.some((m) => m.id.includes('plan_btc_1')), 'Plan BTC harus bersih saat di ETHUSDT');
+    assert.ok(marks.some((m) => m.id.includes('plan_eth_1')), 'Plan ETH harus aktif di ETHUSDT');
+
+    // Kembali ke BTCUSDT: plan BTC langsung pulih secara deterministik
+    controller.syncForMarket('BTCUSDT');
+    marks = controller.getActiveMarks();
+    assert.ok(marks.some((m) => m.id.includes('plan_btc_1')), 'Plan BTC harus pulih saat kembali ke BTCUSDT');
+    assert.ok(!marks.some((m) => m.id.includes('plan_eth_1')), 'Plan ETH tidak boleh aktif di BTCUSDT');
+  });
 });

@@ -399,6 +399,10 @@ export class TimelineMarksController {
   private macroEvents: MacroCalendarEvent[] = [...STANDARD_MACRO_CALENDAR_EVENTS];
   private tradeExecutions: TradeExecutionMarkerData[] = [];
   private journalNotes: JournalMarkNote[] = [];
+  private loadedPlans = new Map<
+    string,
+    { plan: ParsedTradingPlan & { id?: string; symbol?: string; createdAt?: number }; alerts: PriceAlert[] }
+  >();
   private activeMarks: TimelineMark[] = [];
 
   private currentSymbol: string = 'BTCUSDT';
@@ -691,15 +695,22 @@ export class TimelineMarksController {
     alerts: PriceAlert[] = []
   ): void {
     if (!plan) return;
-    const planMarks = formatPlanLevelTimelineMarks(plan, alerts);
+    const planId = plan.id || `${plan.symbol || 'plan'}_${plan.entry || Date.now()}`;
+    this.loadedPlans.set(planId, { plan, alerts });
+
     // Hapus marks lama dari plan yang sama
     const planPrefix = `trade_entry_${plan.id || ''}`;
     this.activeMarks = this.activeMarks.filter((m) => !m.id.startsWith(planPrefix));
-    for (const m of planMarks) {
-      this.activeMarks.push(m);
+
+    const planMarks = formatPlanLevelTimelineMarks(plan, alerts);
+    const planSymbol = plan.symbol || 'BTCUSDT';
+    if (isSameSymbol(planSymbol, this.currentSymbol)) {
+      for (const m of planMarks) {
+        this.activeMarks.push(m);
+      }
+      this.syncMarksToChart();
+      this.notifySubscribers();
     }
-    this.syncMarksToChart();
-    this.notifySubscribers();
   }
 
   /**
@@ -711,8 +722,10 @@ export class TimelineMarksController {
   ): void {
     if (!Array.isArray(plans)) return;
     for (const plan of plans) {
-      this.loadTradePlan(plan, alerts);
+      const planId = plan.id || `${plan.symbol || 'plan'}_${plan.entry || Date.now()}`;
+      this.loadedPlans.set(planId, { plan, alerts });
     }
+    this.syncForMarket(this.currentSymbol, this.currentProviderId);
   }
 
   /**
@@ -735,11 +748,13 @@ export class TimelineMarksController {
 
     const matchedMarks: TimelineMark[] = [];
 
-    // 1. Filter Acara Makroekonomi
+    // 1. Filter Acara Makroekonomi (Mendukung Wildcard * / ALL atau array kosong untuk peristiwa menyeluruh)
     for (const evt of this.macroEvents) {
       if (
         !evt.relevantSymbols ||
         evt.relevantSymbols.length === 0 ||
+        evt.relevantSymbols.includes('*') ||
+        evt.relevantSymbols.includes('ALL') ||
         evt.relevantSymbols.some((sym) => isSameSymbol(sym, symbol))
       ) {
         matchedMarks.push(formatMacroTimelineMark(evt));
@@ -753,7 +768,15 @@ export class TimelineMarksController {
       }
     }
 
-    // 3. Filter Catatan Jurnal
+    // 3. Filter Level Trading Plans Aktif
+    for (const { plan, alerts } of this.loadedPlans.values()) {
+      const planSymbol = plan.symbol || 'BTCUSDT';
+      if (isSameSymbol(planSymbol, symbol)) {
+        matchedMarks.push(...formatPlanLevelTimelineMarks(plan, alerts));
+      }
+    }
+
+    // 4. Filter Catatan Jurnal
     for (const note of this.journalNotes) {
       if (isSameSymbol(note.symbol, symbol)) {
         matchedMarks.push(formatJournalTimelineMark(note));
@@ -792,6 +815,7 @@ export class TimelineMarksController {
     this.macroEvents = [];
     this.tradeExecutions = [];
     this.journalNotes = [];
+    this.loadedPlans.clear();
     this.activeMarks = [];
   }
 

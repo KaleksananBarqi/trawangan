@@ -1507,6 +1507,8 @@ export class ChartSessionController {
           this.enforceCurrentPriceLine(cell);
           this.syncNativeVolumeColors(cell, false);
           this.syncCellMacroState(cell);
+          const { symbol: cellSym, providerId: cellProv } = getCellMarketIdentity(cell);
+          this.timelineMarksController.syncForMarket(cellSym || this.symbol, cellProv || this.providerId);
         });
         chart.on('indicator:added', () => {
           this.syncNativeVolumeColors(cell, false);
@@ -1515,6 +1517,8 @@ export class ChartSessionController {
         chart.on('history:complete', () => {
           this.syncNativeVolumeColors(cell, false);
           this.syncCellMacroState(cell);
+          const { symbol: cellSym, providerId: cellProv } = getCellMarketIdentity(cell);
+          this.timelineMarksController.syncForMarket(cellSym || this.symbol, cellProv || this.providerId);
         });
         chart.on('indicator:removed', (ev: any) => {
           this.handleIndicatorRemoved(ev?.id);
@@ -4412,6 +4416,7 @@ export class ChartSessionController {
 
       this.notifyActiveIndicators();
       this.onPriceStyleChange?.(this.getPriceStyle());
+      this.timelineMarksController.syncForMarket(this.symbol, this.providerId);
       this.notify();
     } finally {
       this.isRestoringWorkspace = wasRestoring;
