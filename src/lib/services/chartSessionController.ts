@@ -642,22 +642,24 @@ export class ChartSessionController {
     const renderer = resolveNativeRenderer(cell);
     if (!renderer) return;
 
-    if (typeof renderer.applyConfig === 'function') {
-      renderer.applyConfig({
-        sessions: buildSessionShadeConfig(),
-      });
-    }
+    this.withSuppressedPersistEvents(() => {
+      if (typeof renderer.applyConfig === 'function') {
+        renderer.applyConfig({
+          sessions: buildSessionShadeConfig(),
+        });
+      }
 
-    if (!this.isSessionAvailable() && typeof renderer.set === 'function') {
-      renderer.set('sessionZones', null);
-    }
+      if (!this.isSessionAvailable() && typeof renderer.set === 'function') {
+        renderer.set('sessionZones', null);
+      }
+    });
   }
 
   /**
    * Mengubah mode sesi pasar (regular vs extended) dan menyinkronkan ke seluruh sel Vela WebGL2
    */
   public setSession(session: MarketSession): void {
-    if (this.session === session && !this.workspace) return;
+    if (this.session === session) return;
     this.session = session;
     marketSessionService.setSession(session);
 
@@ -997,6 +999,7 @@ export class ChartSessionController {
       symbol: velaSym,
       timeframe: toVelaTimeframe(this.timeframe),
       drawingToolbar: false,
+      bottombar: false,
       topbar: { left: [], right: [] },
       live: true,
       currentPriceLine: this.showCurrentPriceLine,
@@ -1961,10 +1964,12 @@ export class ChartSessionController {
    */
   public enforcePriceScaleCountdown(cell?: any): void {
     const cells = cell ? [cell] : this.getAllCells();
-    for (const c of cells) {
-      const enabled = this.isPriceScaleCountdownEnabled(c);
-      this.syncCountdownRenderer(c, enabled);
-    }
+    this.withSuppressedPersistEvents(() => {
+      for (const c of cells) {
+        const enabled = this.isPriceScaleCountdownEnabled(c);
+        this.syncCountdownRenderer(c, enabled);
+      }
+    });
   }
 
   /**

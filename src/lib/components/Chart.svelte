@@ -175,41 +175,46 @@
     return p !== null ? priceScaleOverlayController.getPriceY(p) : null;
   }
 
-  // Explicit prop read guarantees Svelte 5 dependency registration on initial run
-  $effect(() => { const s = symbol, p = providerId; if (isMounted) controller.setSymbol(s, undefined, p); });
-  $effect(() => { const tf = timeframe; if (isMounted) controller.setTimeframe(tf); });
-  $effect(() => { const l = layout; if (isMounted && l) controller.setLayout(l); });
-  $effect(() => { const sc = syncConfig; if (isMounted && sc) controller.syncLayout(sc); });
+  // Explicit prop read guarantees Svelte 5 dependency registration on initial run;
+  // untrack pemanggilan controller agar callback persistensi tidak melacak state eksternal (anti-loop effect)
+  $effect(() => { const s = symbol, p = providerId; if (isMounted) untrack(() => controller.setSymbol(s, undefined, p)); });
+  $effect(() => { const tf = timeframe; if (isMounted) untrack(() => controller.setTimeframe(tf)); });
+  $effect(() => { const l = layout; if (isMounted && l) untrack(() => controller.setLayout(l)); });
+  $effect(() => { const sc = syncConfig; if (isMounted && sc) untrack(() => controller.syncLayout(sc)); });
   $effect(() => {
     const wsId = workspaceId || 'default_workspace';
-    chartDrawingController.setWorkspaceId(wsId);
-    if (isMounted && lastLoadedWorkspaceId !== null && lastLoadedWorkspaceId !== wsId && !controller.isRestoring()) {
-      chartDrawingController.restoreDrawings(symbol, timeframe, providerId, wsId).catch(() => {});
-    }
-    lastLoadedWorkspaceId = wsId;
+    untrack(() => {
+      chartDrawingController.setWorkspaceId(wsId);
+      if (isMounted && lastLoadedWorkspaceId !== null && lastLoadedWorkspaceId !== wsId && !controller.isRestoring()) {
+        chartDrawingController.restoreDrawings(symbol, timeframe, providerId, wsId).catch(() => {});
+      }
+      lastLoadedWorkspaceId = wsId;
+    });
   });
   $effect(() => {
     const gm = gridMode;
-    if (isMounted) controller.setGridMode(gm);
+    if (isMounted) untrack(() => controller.setGridMode(gm));
   });
   $effect(() => {
     const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor, cp = customPalette;
-    if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp !== undefined ? cp : null);
+    if (isMounted) untrack(() => controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp !== undefined ? cp : null));
   });
-  $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
-  $effect(() => { const ms = marketSession; if (isMounted && ms) controller.setSession(ms); });
+  $effect(() => { const tz = timezone; if (isMounted && tz) untrack(() => controller.setTimezone(tz)); });
+  $effect(() => { const ms = marketSession; if (isMounted && ms) untrack(() => controller.setSession(ms)); });
   $effect(() => {
     const bg = customChartBackground;
-    if (isMounted) controller.setCustomChartBackground(bg);
+    if (isMounted) untrack(() => controller.setCustomChartBackground(bg));
   });
   $effect(() => {
     const show = showDrawingPriceLabels;
     if (isMounted) {
-      priceScaleOverlayController.updateDrawings(chartDrawingController.getSnapshot().activeDrawings || [], show);
+      untrack(() => {
+        priceScaleOverlayController.updateDrawings(chartDrawingController.getSnapshot().activeDrawings || [], show);
+      });
     }
   });
-  $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
-  $effect(() => { const cd = showPriceScaleCountdown; if (isMounted && cd !== undefined) controller.setPriceScaleCountdown(cd); });
+  $effect(() => { const pl = showCurrentPriceLine; if (isMounted) untrack(() => controller.setShowCurrentPriceLine(pl)); });
+  $effect(() => { const cd = showPriceScaleCountdown; if (isMounted && cd !== undefined) untrack(() => controller.setPriceScaleCountdown(cd)); });
   $effect(() => {
     const s = symbol, a = allAlerts;
     if (isMounted) {

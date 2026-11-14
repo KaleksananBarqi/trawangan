@@ -393,5 +393,57 @@ describe('Tiket #205: Session Zones & Extended Hours Shading Suite', () => {
       assert.strictEqual(controller.isSessionAvailable(), false);
       assert.strictEqual(lastRendererSessionZones, null, 'Kripto 24/7 wajib membersihkan sessionZones menjadi null');
     });
+
+    test('setSession(same) dan enforcePriceScaleCountdown tidak memicu onPersistableStateChange berulang (anti-loop $effect)', async () => {
+      const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+      const configListeners: Array<() => void> = [];
+      const mockCell = {
+        id: 'cell-guard',
+        chart: {
+          renderer: {
+            applyConfig: () => {
+              for (const fn of configListeners) fn();
+            },
+            set: () => {},
+            onConfigChanged: (cb: () => void) => {
+              configListeners.push(cb);
+              return () => {};
+            },
+          },
+          on: () => () => {},
+        },
+        setMarket: () => {},
+      };
+
+      const mockWorkspace = {
+        active: mockCell,
+        cells: () => [mockCell],
+        on: () => () => {},
+        off: () => {},
+      };
+
+      let persistReasons: string[] = [];
+      const controller = new ChartSessionController({
+        symbol: 'BTCUSDT',
+        timeframe: '15m',
+        providerId: 'binance',
+        layout: 'single',
+        session: 'regular',
+        workspaceFactory: () => mockWorkspace,
+        onPersistableStateChange: (reason) => {
+          persistReasons.push(reason);
+        },
+      });
+
+      controller.attach(createMockContainer());
+      persistReasons = [];
+
+      // Memanggil setSession dengan nilai yang sama saat workspace terpasang tidak boleh memicu persist event
+      controller.setSession('regular');
+      // Memanggil enforcePriceScaleCountdown tidak boleh memicu onConfigChanged -> emitPersistableChange
+      controller.enforcePriceScaleCountdown(mockCell);
+
+      assert.deepStrictEqual(persistReasons, [], 'Sinkronisasi state yang tidak berubah/internal tidak boleh memicu onPersistableStateChange');
+    });
   });
 });
