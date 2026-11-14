@@ -6,6 +6,7 @@
   import { chartDrawingController, isSameSymbol, type GestureCreationState } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { alertService } from '../services/alertService';
+  import { dataWindowService } from '../services/dataWindowService';
   import { marketFeed } from '../services/market';
   import { replaySession } from '../services/replay';
   import { findNearestOhlcPoint } from '../services/priceSnapService';
@@ -128,6 +129,7 @@
   let unsubDrawingDraft: (() => void) | null = null;
   let unsubAttachWorkspace: (() => void) | null = null;
   let unsubAttachOverlay: (() => void) | null = null;
+  let unsubAttachDataWindow: (() => void) | null = null;
   let unsubOverlay: (() => void) | null = null;
   let unsubFeedConnection: (() => void) | null = null;
   let dblClickPaneCaptureTimer: ReturnType<typeof setTimeout> | null = null;
@@ -247,6 +249,7 @@
           () => workspaceId
         );
         unsubAttachOverlay = priceScaleOverlayController.attachChart(chartContainer, ws);
+        unsubAttachDataWindow = dataWindowService.attachWorkspace(ws, chartContainer);
       }
     }
     replaySession.bindDriver({
@@ -334,7 +337,7 @@
       dblClickPaneCaptureTimer = null;
     }
     unsubAlerts?.(); unsubDrawingDraft?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
-    unsubAttachWorkspace?.(); unsubAttachOverlay?.();
+    unsubAttachWorkspace?.(); unsubAttachOverlay?.(); unsubAttachDataWindow?.();
     window.removeEventListener('paste', handleCanvasPaste);
     replaySession.bindDriver(null); controller.destroy();
   });
