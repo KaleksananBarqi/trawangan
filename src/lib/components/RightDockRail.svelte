@@ -3,6 +3,7 @@
     Flame,
     Bell,
     Layers,
+    TableProperties,
     Sparkles,
     Code,
     ChevronRight,
@@ -75,7 +76,17 @@
       {/if}
     </button>
 
-    <!-- 4. Trade Plan (Form, Teks & Riwayat) -->
+    <!-- 4. Data Window Inspector -->
+    <button
+      type="button"
+      class="dock-btn {isOpen && activeTab === 'datawindow' && workspaceMode !== 'pine' ? 'active' : ''}"
+      title="Data Window Inspector"
+      onclick={() => onToggleTab('datawindow')}
+    >
+      <TableProperties size={16} class="dock-icon" />
+    </button>
+
+    <!-- 5. Trade Plan (Form, Teks & Riwayat) -->
     <button
       type="button"
       class="dock-btn {isOpen && activeTab === 'plan' && workspaceMode !== 'pine' ? 'active' : ''}"
