@@ -1,5 +1,5 @@
 /**
- * Layanan DataWindow Inspector untuk Trawangan
+ * Layanan DataWindow Inspector untuk trawangan
  *
  * Mengelola subscription snapshot DataWindowReadout dari chart Vela (chart.renderer.dataWindowReadout())
  * saat kursor crosshair bergerak di atas grafik historis maupun real-time.
@@ -55,7 +55,7 @@ export function formatDataWindowSections(readout: DataWindowReadout | null): Dat
   if (!readout) return [];
   const sections: DataWindowSection[] = [];
 
-  // 1. Time Section
+  // 1. Bagian Waktu
   if (readout.date || readout.time) {
     sections.push({
       title: 'Time',
@@ -66,7 +66,7 @@ export function formatDataWindowSections(readout: DataWindowReadout | null): Dat
     });
   }
 
-  // 2. Price / OHLCV Section
+  // 2. Bagian Harga / OHLCV
   if (readout.ohlc) {
     const ohlc = readout.ohlc;
     const color = ohlc.up ? 'var(--bull-color, #089981)' : 'var(--bear-color, #f23645)';
@@ -82,7 +82,7 @@ export function formatDataWindowSections(readout: DataWindowReadout | null): Dat
     sections.push({ title: 'Price', lines });
   }
 
-  // 3. Indicator Groups
+  // 3. Grup Indikator
   if (readout.groups && readout.groups.length > 0) {
     for (const group of readout.groups) {
       if (group.rows && group.rows.length > 0) {
@@ -268,7 +268,7 @@ export class DataWindowService {
     // 3. Pasang listener mouseleave / pointerleave pada kontainer jika tersedia
     if (containerElement && typeof containerElement.addEventListener === 'function') {
       const onLeave = () => {
-        // Vela's dataWindowReadout automatically points to the latest bar when cursor leaves
+        // dataWindowReadout Vela otomatis mengarah ke bar terbaru saat kursor keluar dari kanvas
         this.updateFromChart(chart);
         this.handleMouseLeave();
       };

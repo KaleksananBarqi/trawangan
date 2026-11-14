@@ -217,6 +217,28 @@ function getChartCoords(chart: any): any {
 }
 
 /**
+ * Helper untuk mengekstrak instans renderer native dari sebuah cell Vela
+ */
+function resolveNativeRenderer(cell: any): any {
+  const chart = cell?.chart || cell?.inner;
+  const renderer = chart?.renderer;
+  return renderer?.renderer || renderer || null;
+}
+
+/**
+ * Membuat konfigurasi warna shading sesi WebGL2 Vela.
+ * Catatan: SessionShadeStyle pada @luxalgo/vela hanya mendukung premarketColor,
+ * postmarketColor, dan extendedColor (tidak mendukung properti offColor/closedColor).
+ */
+function buildSessionShadeConfig() {
+  return {
+    premarketColor: withAlpha(SESSION_PRE, 0.08),
+    postmarketColor: withAlpha(SESSION_POST, 0.08),
+    extendedColor: withAlpha(SESSION_POST, 0.08),
+  };
+}
+
+/**
  * Validasi batas kesetaraan bursa untuk sinkronisasi drawing antar cell
  * Wajib berbagi simbol yang sama DAN bursa (providerId) yang sama persis
  */
@@ -617,16 +639,12 @@ export class ChartSessionController {
    * secara otomatis pada pasar continuous 24/7 (seperti kripto).
    */
   private applySessionRendererState(cell: any): void {
-    const renderer = cell?.chart?.renderer?.renderer || cell?.chart?.renderer || cell?.inner?.renderer;
+    const renderer = resolveNativeRenderer(cell);
     if (!renderer) return;
 
     if (typeof renderer.applyConfig === 'function') {
       renderer.applyConfig({
-        sessions: {
-          premarketColor: withAlpha(SESSION_PRE, 0.08),
-          postmarketColor: withAlpha(SESSION_POST, 0.08),
-          extendedColor: withAlpha(SESSION_POST, 0.08),
-        },
+        sessions: buildSessionShadeConfig(),
       });
     }
 
@@ -1643,11 +1661,7 @@ export class ChartSessionController {
               vertLines: { visible: this.gridMode !== 'hidden', color: gridCol },
               horzLines: { visible: this.gridMode !== 'hidden', color: gridCol }
             },
-            sessions: {
-              premarketColor: withAlpha(SESSION_PRE, 0.08),
-              postmarketColor: withAlpha(SESSION_POST, 0.08),
-              extendedColor: withAlpha(SESSION_POST, 0.08),
-            }
+            sessions: buildSessionShadeConfig(),
           });
         });
       } catch (_) {}
@@ -1900,41 +1914,56 @@ export class ChartSessionController {
   }
 
   /**
+   * Menerapkan instance wall-clock ke renderer native atau wrapper chart pada satu cell
+   */
+  private applyWallClockToCell(cell: any, clock: any): void {
+    const chart = cell?.chart || cell?.inner;
+    const renderer = chart?.renderer;
+    const native = resolveNativeRenderer(cell);
+    if (typeof native?.setWallClock === 'function') {
+      native.setWallClock(clock);
+    } else if (typeof renderer?.setWallClock === 'function') {
+      renderer.setWallClock(clock);
+    } else if (typeof chart?.setWallClock === 'function') {
+      chart.setWallClock(clock);
+    }
+  }
+
+  /**
+   * Menyelaraskan state countdown dan wall-clock pada renderer native satu cell
+   */
+  private syncCountdownRenderer(cell: any, enabled: boolean): void {
+    const native = resolveNativeRenderer(cell);
+    if (!native) return;
+
+    if (this.wallClock) {
+      this.applyWallClockToCell(cell, this.wallClock);
+    }
+    if (typeof native.applyConfig === 'function') {
+      native.applyConfig({ priceScale: { countdown: enabled } });
+    }
+    if (typeof native.set === 'function') {
+      native.set('countdown', enabled);
+    }
+    if (native.scene) {
+      native.scene.showCountdown = enabled;
+    }
+    if (typeof native.syncCountdownTimer === 'function') {
+      native.syncCountdownTimer();
+    }
+    if (native.scheduler?.invalidate) {
+      native.scheduler.invalidate(4);
+    }
+  }
+
+  /**
    * Menegakkan status countdown pada cell target atau semua cell aktif
    */
   public enforcePriceScaleCountdown(cell?: any): void {
     const cells = cell ? [cell] : this.getAllCells();
     for (const c of cells) {
       const enabled = this.isPriceScaleCountdownEnabled(c);
-      const chart = c?.chart || c?.inner;
-      const renderer = chart?.renderer;
-      const native = renderer?.renderer || renderer;
-      if (native) {
-        if (this.wallClock) {
-          if (typeof native.setWallClock === 'function') {
-            native.setWallClock(this.wallClock);
-          } else if (typeof renderer?.setWallClock === 'function') {
-            renderer.setWallClock(this.wallClock);
-          } else if (typeof chart?.setWallClock === 'function') {
-            chart.setWallClock(this.wallClock);
-          }
-        }
-        if (typeof native.applyConfig === 'function') {
-          native.applyConfig({ priceScale: { countdown: enabled } });
-        }
-        if (typeof native.set === 'function') {
-          native.set('countdown', enabled);
-        }
-        if (native.scene) {
-          native.scene.showCountdown = enabled;
-        }
-        if (typeof native.syncCountdownTimer === 'function') {
-          native.syncCountdownTimer();
-        }
-        if (native.scheduler?.invalidate) {
-          native.scheduler.invalidate(4);
-        }
-      }
+      this.syncCountdownRenderer(c, enabled);
     }
   }
 
@@ -1948,8 +1977,7 @@ export class ChartSessionController {
       if (targetCell && this.priceScaleCountdownByCell.has(targetCell)) {
         return Boolean(this.priceScaleCountdownByCell.get(targetCell));
       }
-      const chart = targetCell?.chart || targetCell?.inner;
-      const native = chart?.renderer?.renderer || chart?.renderer;
+      const native = resolveNativeRenderer(targetCell);
       if (typeof native?.scene?.showCountdown === 'boolean') {
         return native.scene.showCountdown;
       }
@@ -1981,38 +2009,9 @@ export class ChartSessionController {
         if (current !== boolVal) {
           anyChanged = true;
         }
-        const chart = targetCell?.chart || targetCell?.inner;
-        const renderer = chart?.renderer;
-        const native = renderer?.renderer || renderer;
-
-        if (native) {
-          this.withSuppressedPersistEvents(() => {
-            if (this.wallClock) {
-              if (typeof native.setWallClock === 'function') {
-                native.setWallClock(this.wallClock);
-              } else if (typeof renderer?.setWallClock === 'function') {
-                renderer.setWallClock(this.wallClock);
-              } else if (typeof chart?.setWallClock === 'function') {
-                chart.setWallClock(this.wallClock);
-              }
-            }
-            if (typeof native.applyConfig === 'function') {
-              native.applyConfig({ priceScale: { countdown: boolVal } });
-            }
-            if (typeof native.set === 'function') {
-              native.set('countdown', boolVal);
-            }
-            if (native.scene) {
-              native.scene.showCountdown = boolVal;
-            }
-            if (typeof native.syncCountdownTimer === 'function') {
-              native.syncCountdownTimer();
-            }
-            if (native.scheduler?.invalidate) {
-              native.scheduler.invalidate(4);
-            }
-          });
-        }
+        this.withSuppressedPersistEvents(() => {
+          this.syncCountdownRenderer(targetCell, boolVal);
+        });
       }
 
       if (anyChanged) {
@@ -2032,16 +2031,7 @@ export class ChartSessionController {
     this.wallClock = clock;
     const cells = this.getAllCells();
     for (const cell of cells) {
-      const chart = cell?.chart || cell?.inner;
-      const renderer = chart?.renderer;
-      const native = renderer?.renderer || renderer;
-      if (typeof native?.setWallClock === 'function') {
-        native.setWallClock(clock);
-      } else if (typeof renderer?.setWallClock === 'function') {
-        renderer.setWallClock(clock);
-      } else if (typeof chart?.setWallClock === 'function') {
-        chart.setWallClock(clock);
-      }
+      this.applyWallClockToCell(cell, clock);
     }
   }
 

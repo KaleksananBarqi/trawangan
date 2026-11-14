@@ -2,7 +2,7 @@
  * Pine Script Alert & Warning Telemetry Bridge (Ticket #202)
  *
  * Menjembatani event runtime 'alert' dan 'warning' dari Pine Script worker engine
- * ke sistem alert Trawangan (in-app toast, audio cue), notifikasi desktop sistem
+ * ke sistem alert trawangan (in-app toast, audio cue), notifikasi desktop sistem
  * (@tauri-apps/plugin-notification), dan konsol output Pine Editor.
  */
 
@@ -78,6 +78,7 @@ export class PineAlertBridge {
   private warningHistory: PineWarningRecord[] = [];
   private alertSubscribers = new Set<(alert: PineAlertRecord) => void>();
   private warningSubscribers = new Set<(warning: PineWarningRecord) => void>();
+  private mutedIndicatorIds = new Set<string>();
   private readonly options: PineAlertBridgeOptions;
 
   constructor(options: PineAlertBridgeOptions = {}) {
@@ -158,9 +159,34 @@ export class PineAlertBridge {
   }
 
   /**
+   * Mengatur status mute alert untuk indikator tertentu
+   */
+  public setIndicatorAlertMuted(indicatorId: string, muted: boolean): void {
+    if (!indicatorId) return;
+    if (muted) {
+      this.mutedIndicatorIds.add(indicatorId);
+    } else {
+      this.mutedIndicatorIds.delete(indicatorId);
+    }
+  }
+
+  /**
+   * Memeriksa apakah alert untuk indikator tertentu sedang di-mute
+   */
+  public isIndicatorAlertMuted(indicatorId: string): boolean {
+    if (!indicatorId) return false;
+    return this.mutedIndicatorIds.has(indicatorId);
+  }
+
+  /**
    * Memproses payload event 'alert' yang dipancarkan oleh worker engine Pine Script
    */
-  public handleAlert(payload: PineAlertPayload, context: { symbol?: string; cellId?: string } = {}): PineAlertRecord {
+  public handleAlert(payload: PineAlertPayload, context: { symbol?: string; cellId?: string } = {}): PineAlertRecord | null {
+    // Abaikan alert jika indikator sumber sedang di-mute
+    if (payload.indicatorId && this.isIndicatorAlertMuted(payload.indicatorId)) {
+      return null;
+    }
+
     const timestamp = payload.time || Date.now();
     const id = payload.id || `alt_pine_${timestamp}_${Math.random().toString(36).slice(2, 7)}`;
     const indicatorTitle = payload.title || payload.indicator || 'Pine Script Alert';
@@ -276,6 +302,7 @@ export class PineAlertBridge {
     if (!indicatorId) return;
     this.alertHistory = this.alertHistory.filter((a) => a.indicatorId !== indicatorId);
     this.warningHistory = this.warningHistory.filter((w) => w.indicatorId !== indicatorId);
+    this.mutedIndicatorIds.delete(indicatorId);
   }
 
   /**

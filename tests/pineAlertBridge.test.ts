@@ -322,6 +322,62 @@ describe('Pine Script Alert & Warning Telemetry Bridge Suite (#202)', () => {
       assert.strictEqual(bridge.getAlertHistory().length, 0);
       assert.strictEqual(bridge.getWarningHistory().length, 0);
     });
+
+    test('setIndicatorAlertMuted() menahan alert indikator yang di-mute dan memulihkannya saat di-unmute', async () => {
+      bridge.attach(mockChart, { symbol: 'BTCUSDT' });
+
+      const receivedAlerts: PineAlertRecord[] = [];
+      bridge.onAlert((alert) => {
+        receivedAlerts.push(alert);
+      });
+
+      assert.strictEqual(bridge.isIndicatorAlertMuted('ind_muted'), false);
+      bridge.setIndicatorAlertMuted('ind_muted', true);
+      assert.strictEqual(bridge.isIndicatorAlertMuted('ind_muted'), true);
+
+      // Alert dari indikator yang di-mute harus diabaikan total
+      mockChart.emit('alert', {
+        id: 'alt_muted_1',
+        indicatorId: 'ind_muted',
+        title: 'Muted Indicator',
+        message: 'Should not trigger',
+      });
+
+      // Alert dari indikator lain tetap diteruskan
+      mockChart.emit('alert', {
+        id: 'alt_active_1',
+        indicatorId: 'ind_active',
+        title: 'Active Indicator',
+        message: 'Should trigger',
+      });
+
+      await new Promise((r) => setTimeout(r, 10));
+
+      assert.strictEqual(receivedAlerts.length, 1);
+      assert.strictEqual(receivedAlerts[0].id, 'alt_active_1');
+      assert.strictEqual(bridge.getAlertHistory().length, 1);
+      assert.strictEqual(dispatchedPineAlerts.length, 1);
+      assert.strictEqual(dispatchedDesktopNotifications.length, 1);
+
+      // Unmute kembali dan pastikan alert diproses lagi
+      bridge.setIndicatorAlertMuted('ind_muted', false);
+      assert.strictEqual(bridge.isIndicatorAlertMuted('ind_muted'), false);
+
+      mockChart.emit('alert', {
+        id: 'alt_muted_2',
+        indicatorId: 'ind_muted',
+        title: 'Muted Indicator',
+        message: 'Now unmuted',
+      });
+
+      assert.strictEqual(receivedAlerts.length, 2);
+      assert.strictEqual(receivedAlerts[1].id, 'alt_muted_2');
+
+      // handleIndicatorRemoved ikut membersihkan status mute
+      bridge.setIndicatorAlertMuted('ind_muted', true);
+      bridge.handleIndicatorRemoved('ind_muted');
+      assert.strictEqual(bridge.isIndicatorAlertMuted('ind_muted'), false);
+    });
   });
 
   describe('5. Integrasi Lifecycle ChartSessionController', () => {

@@ -243,7 +243,10 @@
       <button
         type="button"
         class="mode-chip {currentMarketSession === 'regular' ? 'active' : ''}"
-        onclick={() => onUpdateSettings({ marketSession: 'regular' })}
+        onclick={() => {
+          onUpdateSettings({ marketSession: 'regular' });
+          marketSessionService.setSession('regular');
+        }}
         title="Regular Trading Hours (RTH): Hanya menampilkan jam bursa reguler"
       >
         <span>RTH</span>
@@ -251,7 +254,10 @@
       <button
         type="button"
         class="mode-chip {currentMarketSession === 'extended' ? 'active' : ''}"
-        onclick={() => onUpdateSettings({ marketSession: 'extended' })}
+        onclick={() => {
+          onUpdateSettings({ marketSession: 'extended' });
+          marketSessionService.setSession('extended');
+        }}
         title="Extended Trading Hours (ETH): Menampilkan Pre-Market (amber) dan Post-Market (biru)"
       >
         <span>ETH</span>
@@ -325,36 +331,6 @@
     >
       {settings.showDrawingPriceLabels !== false ? 'Aktif' : 'Nonaktif'}
     </button>
-  </div>
-
-  <!-- Sesi Jam Perdagangan Ekuitas (RTH / ETH) -->
-  <div class="setting-row">
-    <div class="setting-info">
-      <span class="setting-label">Sesi Jam Perdagangan Ekuitas (RTH / ETH)</span>
-      <span class="setting-desc">Tampilkan sesi reguler saja (RTH) atau sertakan pre-market & post-market dengan shading warna WebGL2 (ETH)</span>
-    </div>
-    <div class="session-segmented-control">
-      <button
-        type="button"
-        class="segment-btn {(!settings.marketSession || settings.marketSession === 'regular') ? 'active' : ''}"
-        onclick={() => {
-          onUpdateSettings({ marketSession: 'regular' });
-          marketSessionService.setSession('regular');
-        }}
-      >
-        RTH (Reguler)
-      </button>
-      <button
-        type="button"
-        class="segment-btn {settings.marketSession === 'extended' ? 'active' : ''}"
-        onclick={() => {
-          onUpdateSettings({ marketSession: 'extended' });
-          marketSessionService.setSession('extended');
-        }}
-      >
-        ETH (Extended)
-      </button>
-    </div>
   </div>
 </div>
 

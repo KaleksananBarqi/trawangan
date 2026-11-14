@@ -388,35 +388,6 @@
     border: 1px solid color-mix(in srgb, var(--brand-cyan, #38bdf8) 32%, transparent);
   }
 
-  .session-toggle-btn {
-    cursor: pointer;
-    font-weight: 700;
-    font-size: 9.5px;
-    padding: 1px 5px;
-    border-radius: var(--radius-xs, 3px);
-    transition: all 0.15s ease;
-    user-select: none;
-    line-height: 1.2;
-  }
-
-  .session-toggle-btn:hover {
-    opacity: 0.85;
-    transform: scale(1.05);
-  }
-
-  .badge-rth {
-    color: var(--text-dim, #9ca3af);
-    background-color: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.18));
-  }
-
-  .badge-eth {
-    color: #0ea5e9;
-    background-color: rgba(14, 165, 233, 0.14);
-    border: 1px solid rgba(14, 165, 233, 0.4);
-    box-shadow: 0 0 6px rgba(14, 165, 233, 0.2);
-  }
-
   .badge-bear {
     color: var(--bear-color);
     background-color: rgba(255, 68, 88, 0.1);
