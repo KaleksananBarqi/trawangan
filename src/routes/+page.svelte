@@ -2123,6 +2123,9 @@
       nativeType={configuringIndicator.nativeType}
       schema={configuringIndicator.schema}
       inputs={configuringIndicator.inputs}
+      themePreset={effectiveChartThemePreset as any}
+      customPalette={appSettings.syncChartWithAppTheme !== false ? appSettings.customPalette : undefined}
+      customCandleColors={{ bullColor: appSettings.customBullColor, bearColor: appSettings.customBearColor }}
       onClose={() => {
         isIndicatorSettingsOpen = false;
         configuringIndicator = null;

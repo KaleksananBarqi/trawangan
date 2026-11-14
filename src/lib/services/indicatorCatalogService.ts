@@ -4,6 +4,7 @@ import {
   type NativeIndicatorDescriptor,
 } from '@luxalgo/vela';
 import { INDICATOR_PRESETS, type IndicatorPreset } from '../data/indicatorPresets';
+import { resolveEffectiveVolumeColors } from '../constants/themes';
 import type { PineScriptRecord } from '../types/market';
 
 export type IndicatorCategory =
@@ -317,6 +318,18 @@ export class IndicatorCatalogService {
           pocColor: '#eab308',
           vaOpacity: 62,
           outsideOpacity: 28,
+        };
+      } else if (d.type === 'volume') {
+        const { upColor: defaultUp, downColor: defaultDown } = resolveEffectiveVolumeColors();
+        inputsSchema = [
+          { key: 'upColor', title: 'Warna Naik (Bullish)', type: 'color', defval: defaultUp },
+          { key: 'downColor', title: 'Warna Turun (Bearish)', type: 'color', defval: defaultDown },
+          { key: 'heightPct', title: 'Tinggi Relatif (%)', type: 'int', defval: 15, min: 5, max: 50, step: 1, tooltip: 'Persentase tinggi grafik maksimum yang ditempati batang volume terbesar' },
+        ];
+        defaultInputs = {
+          upColor: defaultUp,
+          downColor: defaultDown,
+          heightPct: 15,
         };
       }
 

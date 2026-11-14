@@ -1591,7 +1591,7 @@ export class ChartSessionController {
         let activeHeightPct: number | undefined;
         if (typeof chart.indicators === 'function') {
           for (const ind of Array.from(chart.indicators() || []) as any[]) {
-            const isNativeVol = ind?.nativeType === 'volume';
+            const isNativeVol = ind?.nativeType === 'volume' || ind?.source === 'volume' || ind?.id === 'native:volume';
             const isPineVol = isVolumeIndicator(ind?.title);
 
             if (isNativeVol && typeof ind.inputValues === 'function') {
@@ -1610,7 +1610,7 @@ export class ChartSessionController {
                     ind.setInputs({
                       upColor: effectiveUp,
                       downColor: effectiveDown,
-                      maColor: effectiveMA,
+                      ...(isPineVol ? { maColor: effectiveMA } : {}),
                     });
                   });
                 } catch (err) {
@@ -1644,17 +1644,24 @@ export class ChartSessionController {
     }
 
     // Selaraskan juga entri tersimpan di indicatorRegistry saat pergantian tema global
-    if (syncPineIndicators && this.indicatorRegistry) {
+    if (this.indicatorRegistry) {
+      let hasRegistryUpdate = false;
       for (const item of this.indicatorRegistry.getActiveIndicators()) {
-        if (isVolumeIndicator(item.title)) {
+        const isNativeVol = item.source === 'volume' || item.id === 'native:volume' || (item as any).nativeType === 'volume';
+        const isPineVol = syncPineIndicators && isVolumeIndicator(item.title);
+        if (isNativeVol || isPineVol) {
           this.withSuppressedPersistEvents(() => {
             this.indicatorRegistry.updateInputs(item.id, {
               upColor: effectiveUp,
               downColor: effectiveDown,
-              maColor: effectiveMA,
+              ...(isPineVol ? { maColor: effectiveMA } : {}),
             });
           });
+          hasRegistryUpdate = true;
         }
+      }
+      if (hasRegistryUpdate) {
+        this.notifyActiveIndicators();
       }
     }
   }
@@ -2032,12 +2039,28 @@ export class ChartSessionController {
       const cleanType = (type || '').trim().replace(/^native:/, '');
       const cleanTitle = (customTitle || cleanType).trim();
 
-      // Normalisasi opsi khusus untuk Visible Range Volume Profile (VPVR)
+      // Normalisasi opsi khusus untuk Visible Range Volume Profile (VPVR) dan Volume
       let resolvedOptions = options || {};
       if (cleanType === 'vpvr' && resolvedOptions.inputs) {
         resolvedOptions = {
           ...resolvedOptions,
           inputs: normalizeVpvrInputs(resolvedOptions.inputs),
+        };
+      } else if (cleanType === 'volume') {
+        const { upColor: effectiveUp, downColor: effectiveDown } =
+          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
+        const currentInputs = (resolvedOptions.inputs || {}) as Record<string, any>;
+        const upStr = typeof currentInputs.upColor === 'string' ? currentInputs.upColor.toLowerCase() : '';
+        const downStr = typeof currentInputs.downColor === 'string' ? currentInputs.downColor.toLowerCase() : '';
+        const isVelaDefaultUp = !upStr || upStr === '#26a69a';
+        const isVelaDefaultDown = !downStr || downStr === '#ef5350';
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: {
+            ...currentInputs,
+            upColor: isVelaDefaultUp ? effectiveUp : currentInputs.upColor,
+            downColor: isVelaDefaultDown ? effectiveDown : currentInputs.downColor,
+          },
         };
       }
 
@@ -2065,6 +2088,10 @@ export class ChartSessionController {
       }
 
       if (firstHandle) {
+        if (cleanType === 'volume') {
+          this.syncNativeVolumeColors();
+        }
+
         this.indicatorRegistry.register({
           id: firstHandle.id,
           handle: firstHandle,
@@ -2110,12 +2137,31 @@ export class ChartSessionController {
           ...resolvedOptions,
           inputs: normalizeVpvrInputs(resolvedOptions.inputs),
         };
+      } else if (cleanType === 'volume') {
+        const { upColor: effectiveUp, downColor: effectiveDown } =
+          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
+        const currentInputs = (resolvedOptions.inputs || {}) as Record<string, any>;
+        const upStr = typeof currentInputs.upColor === 'string' ? currentInputs.upColor.toLowerCase() : '';
+        const downStr = typeof currentInputs.downColor === 'string' ? currentInputs.downColor.toLowerCase() : '';
+        const isVelaDefaultUp = !upStr || upStr === '#26a69a';
+        const isVelaDefaultDown = !downStr || downStr === '#ef5350';
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: {
+            ...currentInputs,
+            upColor: isVelaDefaultUp ? effectiveUp : currentInputs.upColor,
+            downColor: isVelaDefaultDown ? effectiveDown : currentInputs.downColor,
+          },
+        };
       }
 
       const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
       if (!handle) return false;
 
       this.enrichNativeHandle(handle, type);
+      if (cleanType === 'volume') {
+        this.syncNativeVolumeColors(cell);
+      }
 
       this.indicatorRegistry.register({
         id: handle.id || `${cell.id || 'cell'}:${cleanTitle}`,
@@ -3376,8 +3422,25 @@ export class ChartSessionController {
       return (handle as any)?.paneId && (handle as any).paneId !== 'price' ? 'own-pane' : 'overlay';
     };
 
+    let hasVolumeEntry = false;
     for (const entry of entries) {
       if (!entry?.type) continue;
+      const cleanType = (entry.type || '').trim().replace(/^native:/, '');
+      if (cleanType === 'volume') {
+        hasVolumeEntry = true;
+        const { upColor: effectiveUp, downColor: effectiveDown } =
+          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
+        const currentInputs = (entry.inputs || {}) as Record<string, any>;
+        const upStr = typeof currentInputs.upColor === 'string' ? currentInputs.upColor.toLowerCase() : '';
+        const downStr = typeof currentInputs.downColor === 'string' ? currentInputs.downColor.toLowerCase() : '';
+        const isVelaDefaultUp = !upStr || upStr === '#26a69a';
+        const isVelaDefaultDown = !downStr || downStr === '#ef5350';
+        entry.inputs = {
+          ...currentInputs,
+          upColor: isVelaDefaultUp ? effectiveUp : currentInputs.upColor,
+          downColor: isVelaDefaultDown ? effectiveDown : currentInputs.downColor,
+        };
+      }
 
       let handle = findNativeHandle(entry.type);
       if (!handle && typeof chart.addNativeIndicator === 'function') {
@@ -3432,6 +3495,27 @@ export class ChartSessionController {
 
           if (handle.id) {
             this.indicatorRegistry.updateInputs(handle.id, entry.inputs as Record<string, any>);
+          }
+
+          if (cleanType === 'volume') {
+            const renderer = chart.renderer?.renderer || chart.renderer;
+            if (renderer) {
+              const up = (entry.inputs as any).upColor;
+              const down = (entry.inputs as any).downColor;
+              const heightPct = (entry.inputs as any).heightPct;
+              const frac = typeof heightPct === 'number' ? Math.min(0.5, Math.max(0.05, heightPct / 100)) : 0.15;
+              if (typeof renderer.setNativeData === 'function') {
+                renderer.setNativeData('volume', {
+                  upColor: up,
+                  downColor: down,
+                  heightFrac: frac,
+                });
+              } else if (renderer.scene?.volumeLayer) {
+                if (up) renderer.scene.volumeLayer.upColor = up;
+                if (down) renderer.scene.volumeLayer.downColor = down;
+                renderer.scheduler?.invalidate?.(3);
+              }
+            }
           }
         }
 

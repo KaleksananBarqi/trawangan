@@ -10,6 +10,8 @@
     Minus,
   } from '@lucide/svelte';
   import { getNativeIndicator } from '@luxalgo/vela';
+  import { resolveEffectiveVolumeColors } from '../constants/themes';
+  import type { ThemePresetId, CustomThemePalette } from '../types/market';
 
   export interface InputSchemaItem {
     key: string;
@@ -33,6 +35,9 @@
     schema?: InputSchemaItem[];
     inputs?: Record<string, any>;
     handle?: any;
+    themePreset?: ThemePresetId | string;
+    customPalette?: CustomThemePalette | null;
+    customCandleColors?: { bullColor?: string; bearColor?: string };
     onClose: () => void;
     onApply?: (newInputs: Record<string, any>) => void;
     onRevert?: (previousInputs: Record<string, any>) => void;
@@ -47,6 +52,9 @@
     schema = [],
     inputs = {},
     handle = null,
+    themePreset = 'signature',
+    customPalette = null,
+    customCandleColors = undefined,
     onClose,
     onApply,
     onRevert,
@@ -62,25 +70,46 @@
 
   // Skema input yang diselesaikan
   const resolvedSchema = $derived.by<InputSchemaItem[]>(() => {
-    if (schema && schema.length > 0) return schema;
-    if (handle?.inputs && Array.isArray(handle.inputs) && handle.inputs.length > 0) {
-      return handle.inputs;
-    }
-    if (handle?.descriptor?.inputs && Array.isArray(handle.descriptor.inputs)) {
-      return handle.descriptor.inputs;
-    }
-    const type = nativeType || indicatorId?.replace(/^native:/, '');
-    if (type) {
-      try {
-        const desc = getNativeIndicator(type);
-        if (desc && typeof desc.inputsSchema === 'function') {
-          return desc.inputsSchema();
+    let schemaList: InputSchemaItem[] = [];
+    if (schema && schema.length > 0) {
+      schemaList = [...schema];
+    } else if (handle?.inputs && Array.isArray(handle.inputs) && handle.inputs.length > 0) {
+      schemaList = [...handle.inputs];
+    } else if (handle?.descriptor?.inputs && Array.isArray(handle.descriptor.inputs)) {
+      schemaList = [...handle.descriptor.inputs];
+    } else {
+      const type = nativeType || indicatorId?.replace(/^native:/, '');
+      if (type) {
+        try {
+          const desc = getNativeIndicator(type);
+          if (desc && typeof desc.inputsSchema === 'function') {
+            schemaList = [...desc.inputsSchema()];
+          }
+        } catch (err) {
+          console.warn(`[IndicatorSettingsModal] Gagal mengambil skema input untuk tipe "${type}":`, err);
         }
-      } catch (err) {
-        console.warn(`[IndicatorSettingsModal] Gagal mengambil skema input untuk tipe "${type}":`, err);
       }
     }
-    return [];
+
+    const type = nativeType || indicatorId?.replace(/^native:/, '');
+    if (type === 'volume') {
+      const { upColor: effectiveUp, downColor: effectiveDown } = resolveEffectiveVolumeColors(
+        themePreset || 'signature',
+        customPalette || undefined,
+        customCandleColors || undefined
+      );
+      schemaList = schemaList.map((item) => {
+        if (item.key === 'upColor') {
+          return { ...item, title: 'Warna Naik (Bullish)', defval: effectiveUp };
+        }
+        if (item.key === 'downColor') {
+          return { ...item, title: 'Warna Turun (Bearish)', defval: effectiveDown };
+        }
+        return item;
+      });
+    }
+
+    return schemaList;
   });
 
   // Nilai bawaan (default inputs) dari skema atau descriptor
@@ -97,6 +126,17 @@
         console.warn(`[IndicatorSettingsModal] Gagal mengambil default inputs untuk tipe "${type}":`, err);
       }
     }
+
+    if (type === 'volume') {
+      const { upColor: effectiveUp, downColor: effectiveDown } = resolveEffectiveVolumeColors(
+        themePreset || 'signature',
+        customPalette || undefined,
+        customCandleColors || undefined
+      );
+      res.upColor = effectiveUp;
+      res.downColor = effectiveDown;
+    }
+
     for (const item of resolvedSchema) {
       if (res[item.key] === undefined && item.defval !== undefined) {
         res[item.key] = item.defval;
@@ -125,6 +165,18 @@
     if (isOpen) {
       const liveVals = handle && typeof handle.inputValues === 'function' ? handle.inputValues() : {};
       const merged = { ...defaultValues, ...(inputs || {}), ...(liveVals || {}) };
+      const type = nativeType || indicatorId?.replace(/^native:/, '');
+      if (type === 'volume') {
+        const { upColor: effectiveUp, downColor: effectiveDown } = resolveEffectiveVolumeColors(
+          themePreset || 'signature',
+          customPalette || undefined,
+          customCandleColors || undefined
+        );
+        const isVelaDefaultUp = !merged.upColor || merged.upColor.toLowerCase() === '#26a69a';
+        const isVelaDefaultDown = !merged.downColor || merged.downColor.toLowerCase() === '#ef5350';
+        if (isVelaDefaultUp) merged.upColor = effectiveUp;
+        if (isVelaDefaultDown) merged.downColor = effectiveDown;
+      }
       initialSnapshot = { ...merged };
       draftInputs = { ...merged };
       activeTab = 'settings';
