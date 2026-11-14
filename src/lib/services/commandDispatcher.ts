@@ -89,6 +89,13 @@ export class CommandDispatcher {
   }
 
   /**
+   * Mengambil definisi perintah berdasarkan ID
+   */
+  get(id: string): CommandDefinition | undefined {
+    return this.commands.get(id);
+  }
+
+  /**
    * Daftarkan handler dinamis untuk perintah tertentu
    */
   bindHandler(id: string, handler: CommandHandler): () => void {
@@ -690,6 +697,19 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
         ctrlOrMeta: false,
         key: ['y', 's'],
         code: ['KeyY', 'KeyS'],
+      },
+    },
+    {
+      id: 'cycle-range-preset',
+      category: 'Skala & Tampilan Grafik',
+      keys: ['Alt', 'R'],
+      desc: 'Siklus rentang waktu terlihat grafik (1D -> 5D -> 1M -> 3M -> 6M -> YTD -> 1Y -> ALL)',
+      allowInInput: false,
+      match: {
+        alt: true,
+        ctrlOrMeta: false,
+        key: ['r', 'R'],
+        code: ['KeyR'],
       },
     },
 

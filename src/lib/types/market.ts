@@ -623,3 +623,6 @@ export interface MultiWatchlistRegistry {
   watchlists: WatchlistRecord[];
 }
 
+export type { VisibleRangePreset, RangePresetConfig } from '../services/rangePresetService';
+
+

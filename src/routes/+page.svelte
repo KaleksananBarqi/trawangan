@@ -828,6 +828,15 @@
           addSystemLog(`Siklus gaya lilin grafik: ${next.toUpperCase()} (Alt+Y)`, 'info');
         }
       }),
+      commandDispatcher.bindHandler('cycle-range-preset', () => {
+        if (chartComponent && typeof chartComponent.cycleRangePreset === 'function') {
+          void chartComponent.cycleRangePreset('next').then((nextPreset: string | null) => {
+            if (nextPreset) {
+              addSystemLog(`Siklus rentang waktu grafik: ${nextPreset} (Alt+R)`, 'info');
+            }
+          });
+        }
+      }),
       commandDispatcher.bindHandler('draw-undo', () => {
         handleUndo();
       }),
