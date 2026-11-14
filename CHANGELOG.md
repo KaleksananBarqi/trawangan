@@ -5,6 +5,50 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.48.0] - 2026-11-14
+
+### 🚀 Ditambahkan (Added)
+- **Pemilih Gaya Harga pada Header (`#193`, `PriceStylePicker.svelte`, `Header.svelte`, `ChartSessionController`):**
+  - Menambahkan dropdown pemilih gaya visual harga di bilah header untuk beralih instan antara **Candles**, **Heikin-Ashi**, **Bars**, **Line**, **Area**, dan **Baseline**, lengkap dengan persistensi workspace SQLite serta sinkronisasi *multi-chart*.
+- **Katalog Terpadu & 76 Indikator Bawaan Vela (`#194`, `indicatorCatalogService.ts`, `IndicatorModal.svelte`):**
+  - Menghadirkan 76 indikator native berkinerja tinggi di modal indikator yang terorganisasi berdasarkan kategori (*Trend*, *Momentum*, *Volatility*, *Volume*, *Profile*) berdampingan dengan preset Pine Script.
+- **Dialog Pengaturan & Persistensi Indikator Native (`#195`, `IndicatorSettingsModal.svelte`, `indicatorRegistry.ts`):**
+  - Menambahkan dialog pengaturan dinamis dari skema input masing-masing indikator native (panjang periode, sumber harga, pengali, warna garis, dan gaya isian) dengan pembaruan *real-time* serta penyimpanan parameter ke SQLite.
+- **Studi Visible Range Volume Profile / VPVR (`#196`, `vpvrProfile.ts`, `IndicatorModal.svelte`):**
+  - Mengintegrasikan studi VPVR native pada kanvas WebGL2 untuk merender histogram volume per level harga dalam rentang *viewport* aktif lengkap dengan **VAH**, **VAL**, dan **POC** yang dihitung ulang dinamis saat *pan/zoom*.
+- **Resolusi Lintas-Simbol Pine Script `request.security` (`#197`, `pineSeriesAdapter.ts`, `ChartSessionController`):**
+  - Menyuntikkan adaptor `fetchSeries` ke `PineWorkerEngine` sehingga skrip Pine dapat mengambil seri simbol eksternal, indeks dominasi (`BTC.D`), atau *spread* lintas-pasar dengan prioritas baca cache SQLite sebelum fallback ke *market feed* aktif.
+- **Subsistem Timeline Marks & Penanda Kalender Makro (`#198`, `timelineMarksController.ts`, `macroCalendarCatalog.ts`, `ChartTab.svelte`):**
+  - Merender penanda acara interaktif di sepanjang sumbu waktu untuk event kalender makroekonomi, milestone eksekusi *trade plan*, dan catatan jurnal lengkap dengan pengelompokan otomatis (*clustering*) saat *zoom-out* serta opsi tampilan di **Pengaturan → Kanvas & Grafik**.
+- **Penanda Eksekusi Strategi Pine & Telemetri Performa (`#199`, `pineStrategyTelemetry.ts`, `ChartSessionController`):**
+  - Merender panah dan label eksekusi *buy/sell* (`TradeExecution`) langsung di atas lilin grafik saat menjalankan skrip `strategy(...)`, serta mengekspos metrik simulasi *backtesting* (`StrategyState`: *Net PnL*, *Win Rate*, *Max Drawdown*, *Profit Factor*).
+- **Hitung Mundur Penutupan Lilin (`#201`, `ChartSessionController`, `ChartTab.svelte`):**
+  - Menghubungkan *wall-clock* terpusat (`SecondClock`) ke seluruh *cell* grafik WebGL2 agar hitung mundur penutupan *candle* pada sumbu harga kanan tetap sinkron tanpa *drift* di tata letak *multi-chart*.
+  - Menambahkan opsi **Hitung Mundur Penutupan Lilin** pada modal **Pengaturan → Kanvas & Grafik**.
+- **Jembatan Alert & Warning Pine Script (`#202`, `pineAlertBridge.ts`, `PineEditor.svelte`, `AlertNotificationToast.svelte`):**
+  - Menyalurkan panggilan `alert(...)` dari skrip Pine ke sistem alert terminal (*toast* & notifikasi desktop) serta menampilkan peringatan kompilasi/eksekusi di konsol `PineEditor`.
+  - Menyediakan dukungan *mute/unmute* alert per-indikator.
+- **Panel Inspektor DataWindow (`#203`, `dataWindowService.ts`, `DataWindow.svelte`, `RightDockRail.svelte`):**
+  - Menambahkan tab **Data Window Inspector** pada **Right Dock Rail** untuk membaca waktu, harga OHLCV, dan nilai grup indikator di posisi *crosshair* (otomatis kembali ke *bar* terakhir saat kursor keluar dari kanvas).
+- **Toolbar Preset Rentang Waktu Terlihat (`#204`, `rangePresetService.ts`, `RangePresetBar.svelte`):**
+  - Menghadirkan bilah tombol cepat (`1D`, `5D`, `1M`, `3M`, `6M`, `YTD`, `1Y`, `ALL`) serta pintasan `Alt+R` untuk membingkai rentang waktu grafik dalam satu lintasan (*single-pass*).
+- **Zona Sesi Pasar & Shading Jam Perdagangan RTH/ETH (`#205`, `marketSessionService.ts`, `yahooFinanceProvider.ts`, `StatusBar.svelte`):**
+  - Mendukung peralihan sesi **RTH** (jam bursa reguler) dan **ETH** (*Pre-Market* & *Post-Market*) dengan *shading* zona sesi untuk ekuitas/indeks Yahoo Finance, sementara instrumen kripto 24/7 otomatis diisolasi.
+- **Clipboard & Pengaturan Cepat Objek Gambar (`#206`, `chartDrawingController.ts`, `commandDispatcher.ts`):**
+  - Menambahkan dukungan salin dan tempel objek gambar (`Ctrl+C` / `Ctrl+V`), duplikasi cepat (`Ctrl+D`), serta akses cepat pengaturan objek gambar melalui klik ganda (*double-click*) lengkap dengan perlindungan batas instrumen/bursa.
+
+### 🔄 Diubah (Changed)
+- **Konsistensi Antarmuka Pengaturan & Penghilangan Bilah Preset Ganda (`#192`, `#200`):**
+  - Menonaktifkan bilah bawah bawaan Vela (`bottombar: false`) agar tidak bertumpuk dengan `RangePresetBar` milik terminal.
+  - Menyeragamkan label pengaturan hitung mundur ke Bahasa Indonesia pada tab **Kanvas & Grafik**.
+  - Menyelaraskan warna overlay volume native agar otomatis mengikuti palet tema aktif (`#192`).
+
+### 🐛 Diperbaiki (Fixed)
+- **Perbaikan Chart Hitam Saat Startup (`effect_update_depth_exceeded`):**
+  - Membungkus pemanggilan metode `ChartSessionController` di dalam `$effect` `Chart.svelte` dengan `untrack(...)`, menekan event `onConfigChanged` saat sinkronisasi internal (`withSuppressedPersistEvents`), dan menambahkan *early return* pada `setSession` agar tidak memicu *infinite `$effect` loop* saat aplikasi dibuka.
+- **Persistensi Penanda Timeline Lintas Simbol & Riwayat (`#198`):**
+  - Memastikan *timeline marks* tetap bertahan saat perpindahan simbol, pembaruan *viewport*, dan pemuatan data historis tambahan.
+
 ## [0.47.0] - 2026-11-14
 
 ### 🚀 Ditambahkan (Added)
