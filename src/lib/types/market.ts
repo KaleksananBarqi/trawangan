@@ -429,6 +429,7 @@ export interface AppSettings {
   autoLoadLastWorkspace?: boolean;
   showWorldClocks?: boolean;
   worldClockCities?: string[];
+  marketSession?: 'regular' | 'extended';
   // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting, #132 Side-by-Side Thesis Layout)
   snapshotIncludeFrame?: boolean;
   snapshotIncludePrice?: boolean;

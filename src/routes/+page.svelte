@@ -1901,6 +1901,7 @@
           customChartBackground={appSettings.customChartBackground}
           fontSize={appSettings.fontSize || 12}
           timezone={appSettings.timezone || 'Asia/Jakarta'}
+          marketSession={appSettings.marketSession ?? 'regular'}
           {syncConfig}
           showWatermark={appSettings.showWatermark}
           showCurrentPriceLine={appSettings.showCurrentPriceLine ?? true}
@@ -2072,6 +2073,10 @@
     isConsoleOpen={isConsoleDrawerOpen}
     settings={appSettings}
     onSelectTimezone={(tz) => handleUpdateSettings({ timezone: tz })}
+    onToggleSession={() => {
+      const next = (appSettings.marketSession ?? 'regular') === 'regular' ? 'extended' : 'regular';
+      handleUpdateSettings({ marketSession: next });
+    }}
     onToggleConsole={() => (isConsoleDrawerOpen = !isConsoleDrawerOpen)}
     onOpenAbout={() => {
       settingsInitialTab = 'about';

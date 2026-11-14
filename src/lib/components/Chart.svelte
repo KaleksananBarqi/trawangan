@@ -52,6 +52,7 @@
     onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
     onPersistableStateChange?: (reason: string) => void;
     themePreset?: ThemePresetId | string; fontSize?: number; timezone?: string;
+    marketSession?: 'regular' | 'extended';
     workspaceId?: string | null;
     gridMode?: GridMode;
     customPalette?: CustomThemePalette | null;
@@ -64,6 +65,7 @@
   let {
     symbol, timeframe, defaultTimeframe = '15m', layout, providerId = 'binance',
     themePreset = 'signature', fontSize = 12, timezone = 'Asia/Jakarta',
+    marketSession = 'regular',
     workspaceId = 'default_workspace', gridMode = 'normal',
     customPalette, customBullColor, customBearColor, customChartBackground,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
@@ -79,7 +81,7 @@
 
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
-    fontSize, timezone, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
+    fontSize, timezone, session: marketSession, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showPriceScaleCountdown, showVolume, syncConfig, onActiveCellChange,
     onPriceStyleChange,
     onActiveIndicatorsChange: (indicators) => {
@@ -195,6 +197,7 @@
     if (isMounted) controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp !== undefined ? cp : null);
   });
   $effect(() => { const tz = timezone; if (isMounted && tz) controller.setTimezone(tz); });
+  $effect(() => { const ms = marketSession; if (isMounted && ms) controller.setSession(ms); });
   $effect(() => {
     const bg = customChartBackground;
     if (isMounted) controller.setCustomChartBackground(bg);

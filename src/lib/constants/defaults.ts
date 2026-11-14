@@ -50,6 +50,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   autoLoadLastWorkspace: true,
   showWorldClocks: true,
   worldClockCities: [...DEFAULT_WORLD_CLOCK_CITIES],
+  marketSession: 'regular',
   // Snapshot Preferences (#95, #125 Multi-Scale & Save Directory Setting)
   snapshotIncludeFrame: true,
   snapshotIncludePrice: true,
@@ -186,6 +187,10 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
     autoSaveWorkspace: saved.autoSaveWorkspace ?? DEFAULT_APP_SETTINGS.autoSaveWorkspace ?? true,
     autoLoadLastWorkspace: saved.autoLoadLastWorkspace ?? DEFAULT_APP_SETTINGS.autoLoadLastWorkspace ?? true,
     showWorldClocks: saved.showWorldClocks ?? DEFAULT_APP_SETTINGS.showWorldClocks ?? true,
+    marketSession:
+      saved.marketSession === 'regular' || saved.marketSession === 'extended'
+        ? saved.marketSession
+        : (DEFAULT_APP_SETTINGS.marketSession ?? 'regular'),
     worldClockCities: saved.worldClockCities ?? DEFAULT_APP_SETTINGS.worldClockCities ?? [
       ...DEFAULT_WORLD_CLOCK_CITIES,
     ],
