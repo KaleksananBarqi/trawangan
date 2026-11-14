@@ -2594,6 +2594,7 @@ export class ChartSessionController {
     if (!symbol) return;
     this.symbol = symbol;
     if (providerId) this.providerId = providerId;
+    this.resetActiveRangePreset();
 
     if (this.workspace) {
       try {
@@ -2653,6 +2654,7 @@ export class ChartSessionController {
   public setTimeframe(timeframe: Timeframe): void {
     if (!timeframe) return;
     this.timeframe = timeframe;
+    this.resetActiveRangePreset();
 
     if (this.workspace) {
       try {
@@ -4096,19 +4098,14 @@ export class ChartSessionController {
     const targetTf = config.timeframe;
     const targetVelaTf = config.velaTimeframe;
     const requiredBars = config.bars;
+    const prevTimeframe = this.timeframe;
 
-    // Ambil candle bar riwayat yang ada di memori chart jika ada
-    const rawBars =
-      chart?.orchestrator?.rawBars ??
-      chart?.orchestrator?.bars ??
-      chart?.bars ??
-      chart?.rawBars ??
-      (typeof chart?.getBars === 'function' ? chart.getBars() : undefined);
-
-    const span = calculateRangePresetSpan(preset, rawBars);
+    // Hitung span awal tanpa clamping ke bar timeframe lama agar setMarket memuat kedalaman penuh
+    const initialSpan = calculateRangePresetSpan(preset);
     this.activeRangePreset = preset;
-    this.activeRangePresetSpan = span;
+    this.activeRangePresetSpan = initialSpan;
     this.timeframe = targetTf;
+    this.activeCellInfo = { symbol: this.symbol, timeframe: targetTf };
 
     try {
       this.withSuppressedPersistEvents(() => {
@@ -4122,7 +4119,7 @@ export class ChartSessionController {
         await chart.setMarket({
           timeframe: targetVelaTf,
           bars: Math.max(requiredBars, targetCell?.state?.bars ?? 500),
-          visibleRange: span,
+          visibleRange: initialSpan,
         });
       } else if (typeof targetCell.applyRange === 'function') {
         targetCell.applyRange({
@@ -4133,11 +4130,29 @@ export class ChartSessionController {
         });
       }
 
+      // Setelah setMarket selesai, ambil bar terbaru untuk framing final yang akurat (termasuk preset 'ALL')
+      const updatedBars =
+        chart?.orchestrator?.rawBars ??
+        chart?.orchestrator?.bars ??
+        chart?.bars ??
+        chart?.rawBars ??
+        (typeof chart?.getBars === 'function' ? chart.getBars() : undefined);
+      const finalSpan = calculateRangePresetSpan(preset, updatedBars);
+      this.activeRangePresetSpan = finalSpan;
+
       // Pastikan framing diterapkan pada renderer jika belum sinkron
       if (typeof chart.setVisibleRange === 'function') {
-        chart.setVisibleRange(span);
+        chart.setVisibleRange(finalSpan);
       } else if (typeof chart.setVisibleRangePreset === 'function') {
         chart.setVisibleRangePreset(preset);
+      }
+
+      if (prevTimeframe !== targetTf) {
+        this.onActiveCellChange?.({
+          symbol: this.symbol,
+          timeframe: targetTf,
+          providerId: this.providerId,
+        });
       }
 
       this.onRangePresetChange?.(preset);
@@ -4147,6 +4162,17 @@ export class ChartSessionController {
     } catch (err) {
       console.warn('[ChartSessionController] Gagal menyetel visible range preset:', err);
       return false;
+    }
+  }
+
+  /**
+   * Mereset state preset rentang aktif saat pengguna mengganti simbol/timeframe secara manual
+   */
+  private resetActiveRangePreset(): void {
+    if (this.activeRangePreset !== null || this.activeRangePresetSpan !== null) {
+      this.activeRangePreset = null;
+      this.activeRangePresetSpan = null;
+      this.onRangePresetChange?.(null);
     }
   }
 

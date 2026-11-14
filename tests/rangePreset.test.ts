@@ -376,6 +376,92 @@ describe('Visible Range Presets Suite (#204)', () => {
       // controller harus mendeteksi pergeseran dan mereset preset
       assert.strictEqual(controller.getActiveRangePreset(), null);
     });
+
+    test('setVisibleRangePreset("1Y") tidak ter-clamp oleh bar timeframe lama dan memicu onActiveCellChange', async () => {
+      const mock = createMockVelaCell('cell-1y-switch');
+      const cellChanges: Array<{ symbol: string; timeframe: string }> = [];
+
+      // Simulasikan setMarket mengganti bars menjadi 400 bar harian
+      const originalSetMarket = mock.chart.setMarket.bind(mock.chart);
+      mock.chart.setMarket = async (opts: any) => {
+        if (opts.timeframe === 'D') {
+          const now = Date.now();
+          const dayMs = 86_400_000;
+          const dailyBars = Array.from({ length: 400 }, (_, i) => ({
+            time: now - (400 - i) * dayMs,
+            open: 50000,
+            high: 51000,
+            low: 49000,
+            close: 50500,
+            volume: 1000,
+          }));
+          mock.chart.bars = dailyBars;
+          mock.chart.rawBars = dailyBars;
+        }
+        return originalSetMarket(opts);
+      };
+
+      const mockWorkspace: any = {
+        active: mock.cell,
+        cells: () => [mock.cell],
+        cellsById: new Map([[mock.cell.id, mock.cell]]),
+        cell: () => mock.cell,
+        on: () => () => {},
+      };
+
+      const controller = new ChartSessionController({
+        symbol: 'BTCUSDT',
+        timeframe: '15m',
+        workspaceFactory: () => mockWorkspace,
+        onActiveCellChange: (info) => {
+          cellChanges.push({ symbol: info.symbol, timeframe: info.timeframe });
+        },
+      });
+      controller.attach({} as HTMLElement);
+
+      await controller.setVisibleRangePreset('1Y');
+
+      const calls = mock.getMarketCalls();
+      const lastCall = calls[calls.length - 1];
+      const spanMs = lastCall.visibleRange.to - lastCall.visibleRange.from;
+      // 1Y harus sekitar 365 hari, bukan ~25 jam dari bar 15m lama
+      assert.ok(spanMs >= 360 * 86_400_000, `Expected ~365 days span, got ${spanMs / 86_400_000} days`);
+      assert.ok(
+        cellChanges.some((c) => c.timeframe === '1D'),
+        'onActiveCellChange harus dipanggil dengan timeframe 1D'
+      );
+    });
+
+    test('setTimeframe dan setSymbol manual mereset activeRangePreset ke null', async () => {
+      const mock = createMockVelaCell('cell-manual-reset');
+      const presetEvents: Array<VisibleRangePreset | null> = [];
+      const mockWorkspace: any = {
+        active: mock.cell,
+        cells: () => [mock.cell],
+        cellsById: new Map([[mock.cell.id, mock.cell]]),
+        cell: () => mock.cell,
+        on: () => () => {},
+      };
+
+      const controller = new ChartSessionController({
+        workspaceFactory: () => mockWorkspace,
+        onRangePresetChange: (preset) => presetEvents.push(preset),
+      });
+      controller.attach({} as HTMLElement);
+
+      await controller.setVisibleRangePreset('1M');
+      assert.strictEqual(controller.getActiveRangePreset(), '1M');
+
+      controller.setTimeframe('4h');
+      assert.strictEqual(controller.getActiveRangePreset(), null);
+      assert.strictEqual(presetEvents[presetEvents.length - 1], null);
+
+      await controller.setVisibleRangePreset('3M');
+      assert.strictEqual(controller.getActiveRangePreset(), '3M');
+
+      await controller.setSymbol('ETHUSDT');
+      assert.strictEqual(controller.getActiveRangePreset(), null);
+    });
   });
 
   describe('3. Pendaftaran Perintah Keyboard (Keyboard Shortcut Integration)', () => {

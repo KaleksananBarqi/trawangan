@@ -819,7 +819,7 @@
       }),
       commandDispatcher.bindHandler('cycle-range-preset', () => {
         if (chartComponent && typeof chartComponent.cycleRangePreset === 'function') {
-          void chartComponent.cycleRangePreset('next').then((nextPreset) => {
+          void chartComponent.cycleRangePreset('next').then((nextPreset: string | null) => {
             if (nextPreset) {
               addSystemLog(`Siklus rentang waktu grafik: ${nextPreset} (Alt+R)`, 'info');
             }
