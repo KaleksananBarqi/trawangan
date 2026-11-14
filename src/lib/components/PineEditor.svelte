@@ -35,6 +35,7 @@
   import { saveScript } from '../services/persistence';
   import { Indicator } from 'pinets';
   import { runPineStrategyBacktest } from '../services/strategyEngine';
+  import { pineAlertBridge, type PineWarningRecord } from '../services/pineAlertBridge';
   import type {
     PineScriptRecord,
     StrategyPerformanceSummary,
@@ -108,9 +109,10 @@
     return list;
   });
 
-  let consoleLog = $state<{ msg: string; type: 'info' | 'success' | 'error'; time: string }[]>([
+  let consoleLog = $state<{ msg: string; type: 'info' | 'success' | 'warn' | 'error'; time: string }[]>([
     { msg: 'PineTS Runtime Web Worker siap.', type: 'info', time: '12:00:00' },
   ]);
+  let unsubPineWarning: (() => void) | null = null;
 
   const DEFAULT_BOILERPLATE = `//@version=6
 strategy("Trawangan_Alpha_v6", overlay=true, margin_long=100, margin_short=100)
@@ -222,11 +224,25 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
     }
   });
 
+  function appendWarningToConsole(warning: PineWarningRecord) {
+    const time = new Date(warning.timestamp || Date.now()).toLocaleTimeString('id-ID', { hour12: false });
+    const formatted = pineAlertBridge.formatWarningMessage(warning);
+    consoleLog = [...consoleLog.slice(-50), { msg: formatted, type: 'warn', time }];
+  }
+
   onMount(() => {
     initEditor(initialCode || DEFAULT_BOILERPLATE);
+    for (const existingWarning of pineAlertBridge.getWarningHistory()) {
+      appendWarningToConsole(existingWarning);
+    }
+    unsubPineWarning = pineAlertBridge.onWarning((warning) => {
+      appendWarningToConsole(warning);
+    });
   });
 
   onDestroy(() => {
+    unsubPineWarning?.();
+    unsubPineWarning = null;
     if (editorView) {
       editorView.destroy();
       editorView = null;
@@ -307,7 +323,7 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
     return editorView ? editorView.state.doc.toString() : '';
   }
 
-  function addLog(msg: string, type: 'info' | 'success' | 'error') {
+  function addLog(msg: string, type: 'info' | 'success' | 'warn' | 'error') {
     const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
     consoleLog = [...consoleLog.slice(-50), { msg, type, time }];
   }
@@ -1176,6 +1192,10 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
 
   .console-row.success .log-msg {
     color: var(--bull-color, #00F090);
+  }
+
+  .console-row.warn .log-msg {
+    color: #F59E0B;
   }
 
   .console-row.error .log-msg {

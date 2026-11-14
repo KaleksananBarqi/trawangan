@@ -6,6 +6,7 @@
   import { chartDrawingController, isSameSymbol, type GestureCreationState } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { alertService } from '../services/alertService';
+  import { dataWindowService } from '../services/dataWindowService';
   import { marketFeed } from '../services/market';
   import { replaySession } from '../services/replay';
   import { findNearestOhlcPoint } from '../services/priceSnapService';
@@ -18,6 +19,8 @@
   import { THEME_PRESETS, resolveThemeConfig } from '../constants/themes';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
+  import RangePresetBar from './RangePresetBar.svelte';
+  import type { VisibleRangePreset } from '../services/rangePresetService';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
     Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
@@ -35,7 +38,7 @@
   interface Props {
     symbol: string; timeframe: Timeframe; defaultTimeframe?: Timeframe; layout: string;
     providerId?: string; syncConfig?: MultiChartSyncConfig; showWatermark?: boolean;
-    showCurrentPriceLine?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
+    showCurrentPriceLine?: boolean; showPriceScaleCountdown?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
     onPriceStyleChange?: (style: string) => void;
@@ -66,7 +69,7 @@
     workspaceId = 'default_workspace', gridMode = 'normal',
     customPalette, customBullColor, customBearColor, customChartBackground,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
-    showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
+    showWatermark = true, showCurrentPriceLine = true, showPriceScaleCountdown = false, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onPriceStyleChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
@@ -79,7 +82,7 @@
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, session: marketSession, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
-    showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange,
+    showCurrentPriceLine, showPriceScaleCountdown, showVolume, syncConfig, onActiveCellChange,
     onPriceStyleChange,
     onActiveIndicatorsChange: (indicators) => {
       priceScaleOverlayController.updateIndicators(indicators, showIndicatorPriceLabels);
@@ -128,6 +131,7 @@
   let unsubDrawingDraft: (() => void) | null = null;
   let unsubAttachWorkspace: (() => void) | null = null;
   let unsubAttachOverlay: (() => void) | null = null;
+  let unsubAttachDataWindow: (() => void) | null = null;
   let unsubOverlay: (() => void) | null = null;
   let unsubFeedConnection: (() => void) | null = null;
   let dblClickPaneCaptureTimer: ReturnType<typeof setTimeout> | null = null;
@@ -205,6 +209,7 @@
     }
   });
   $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
+  $effect(() => { const cd = showPriceScaleCountdown; if (isMounted && cd !== undefined) controller.setPriceScaleCountdown(cd); });
   $effect(() => {
     const s = symbol, a = allAlerts;
     if (isMounted) {
@@ -247,6 +252,7 @@
           () => workspaceId
         );
         unsubAttachOverlay = priceScaleOverlayController.attachChart(chartContainer, ws);
+        unsubAttachDataWindow = dataWindowService.attachWorkspace(ws, chartContainer);
       }
     }
     replaySession.bindDriver({
@@ -334,7 +340,7 @@
       dblClickPaneCaptureTimer = null;
     }
     unsubAlerts?.(); unsubDrawingDraft?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
-    unsubAttachWorkspace?.(); unsubAttachOverlay?.();
+    unsubAttachWorkspace?.(); unsubAttachOverlay?.(); unsubAttachDataWindow?.();
     window.removeEventListener('paste', handleCanvasPaste);
     replaySession.bindDriver(null); controller.destroy();
   });
@@ -508,6 +514,8 @@
 
     if (isAxis) {
       fitChart();
+    } else {
+      chartDrawingController.handleDrawingDblClick();
     }
     // Deteksi reset tinggi pane setelah double-click separator
     controller.capturePaneLayoutIfChanged();
@@ -862,6 +870,15 @@
   }
 
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
+  export function setVisibleRangePreset(preset: VisibleRangePreset): Promise<boolean> {
+    return controller.setVisibleRangePreset(preset);
+  }
+  export function getActiveRangePreset(): VisibleRangePreset | null {
+    return controller.getActiveRangePreset();
+  }
+  export function cycleRangePreset(direction: 'next' | 'prev' = 'next'): Promise<VisibleRangePreset | null> {
+    return controller.cycleRangePreset(direction);
+  }
 
   const chartBackgroundStyle = $derived.by(() => {
     const cfg = resolveThemeConfig(themePreset);
@@ -1098,4 +1115,9 @@
     onResetChartScale={fitChart}
     onClose={() => (isContextMenuOpen = false)}
   />
+
+  <!-- Bilah Toolbar Preset Rentang Waktu (1D, 5D, 1M, 3M, 6M, YTD, 1Y, ALL) -->
+  <div class="chart-viewport-footer-presets">
+    <RangePresetBar {controller} />
+  </div>
 </div>

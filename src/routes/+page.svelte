@@ -561,15 +561,19 @@
         updateService.checkForUpdates(true);
       }, 3000);
 
-      // Dengarkan event saat Price Alert terpicu secara real-time
+      // Dengarkan event saat Price Alert / Pine Script Alert terpicu secara real-time
       unsubAlertTrigger = alertService.onTrigger((alert, actualPrice) => {
         triggeredAlertsToasts = [alert, ...triggeredAlertsToasts.slice(0, 3)];
-        const triggerPriceStr = formatPriceWithQuoteSymbol(
-          actualPrice,
-          parseAdaptiveSymbol(alert.symbol).quoteAsset,
-          alert.symbol
-        );
-        addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di ${triggerPriceStr}`, 'warn');
+        if (alert.planRole === 'pine_alert') {
+          addSystemLog(`🔔 Pine Alert Terpicu: ${alert.symbol} — ${alert.label || 'Script Alert'}`, 'warn');
+        } else {
+          const triggerPriceStr = formatPriceWithQuoteSymbol(
+            actualPrice,
+            parseAdaptiveSymbol(alert.symbol).quoteAsset,
+            alert.symbol
+          );
+          addSystemLog(`🔔 Price Alert Terpicu: ${alert.symbol} di ${triggerPriceStr}`, 'warn');
+        }
         schedulePageTimeout(() => {
           if (!isPageActive) return;
           handleDismissAlertToast(alert.id);
@@ -768,6 +772,17 @@
           addSystemLog(`Objek gambar dihapus: ${deletedIds.join(', ')}`, 'info');
         }
       }),
+      commandDispatcher.bindHandler('copy-selected-drawing', () => {
+        if (chartDrawingController.copySelectedDrawing()) {
+          addSystemLog('Shortcut: Objek gambar disalin ke clipboard (Ctrl+C)', 'info');
+        }
+      }),
+      commandDispatcher.bindHandler('paste-drawing', () => {
+        const newId = chartDrawingController.pasteDrawing();
+        if (newId) {
+          addSystemLog(`Shortcut: Objek gambar ditempel (${newId}) (Ctrl+V)`, 'info');
+        }
+      }),
       commandDispatcher.bindHandler('duplicate-selected-drawing', () => {
         const newId = chartDrawingController.duplicateSelectedDrawing();
         if (newId) {
@@ -815,6 +830,15 @@
           chartComponent.setPriceStyle(next);
           activePriceStyle = next;
           addSystemLog(`Siklus gaya lilin grafik: ${next.toUpperCase()} (Alt+Y)`, 'info');
+        }
+      }),
+      commandDispatcher.bindHandler('cycle-range-preset', () => {
+        if (chartComponent && typeof chartComponent.cycleRangePreset === 'function') {
+          void chartComponent.cycleRangePreset('next').then((nextPreset: string | null) => {
+            if (nextPreset) {
+              addSystemLog(`Siklus rentang waktu grafik: ${nextPreset} (Alt+R)`, 'info');
+            }
+          });
         }
       }),
       commandDispatcher.bindHandler('draw-undo', () => {
@@ -1881,6 +1905,7 @@
           {syncConfig}
           showWatermark={appSettings.showWatermark}
           showCurrentPriceLine={appSettings.showCurrentPriceLine ?? true}
+          showPriceScaleCountdown={appSettings.showPriceScaleCountdown ?? false}
           showVolume={appSettings.showVolume ?? true}
           showIndicatorPriceLabels={appSettings.showIndicatorPriceLabels ?? true}
           showDrawingPriceLabels={appSettings.showDrawingPriceLabels ?? true}

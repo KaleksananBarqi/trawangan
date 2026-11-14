@@ -5,6 +5,7 @@
   import WatchlistTab from './right-dock/WatchlistTab.svelte';
   import AlertsTab from './right-dock/AlertsTab.svelte';
   import LayersTab from './right-dock/LayersTab.svelte';
+  import DataWindow from './DataWindow.svelte';
   import { watchlistRegistry } from '../services/watchlistRegistryService';
   import {
     adjustPanelWidthByKeyboard,
@@ -371,6 +372,8 @@
         {onEditPlan}
         {onOpenPlanTab}
       />
+    {:else if activeTab === 'datawindow'}
+      <DataWindow {activeSymbol} />
     {/if}
 
     <!-- Trade Plan tetap ter-mount agar draft form dan teks tidak hilang saat pindah tab -->

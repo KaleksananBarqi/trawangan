@@ -398,6 +398,7 @@ export interface AppSettings {
   gridMode?: GridMode;
   showReplayBar: boolean;
   showCurrentPriceLine?: boolean;
+  showPriceScaleCountdown?: boolean;
   showVolume?: boolean;
   showIndicatorPriceLabels?: boolean;
   showDrawingPriceLabels?: boolean;
@@ -540,6 +541,7 @@ export interface CellSnapshot {
   timeframe: string;
   providerId: string;
   priceStyle?: string;
+  priceScaleCountdown?: boolean;
   barSpacing?: number;
   priceScaleState?: PriceScaleState | null;
   paneLayout?: PaneLayoutEntry[];
@@ -571,6 +573,7 @@ export interface SavedWorkspace {
   paneLayout?: PaneLayoutEntry[];
   priceScaleState?: PriceScaleState | null;
   priceStyle?: string;
+  priceScaleCountdown?: boolean;
   barSpacing?: number;
   showVolume?: boolean;
   nativeIndicators?: NativeIndicatorSnapshot[];
@@ -623,4 +626,7 @@ export interface MultiWatchlistRegistry {
   activeWatchlistId: string;
   watchlists: WatchlistRecord[];
 }
+
+export type { VisibleRangePreset, RangePresetConfig } from '../services/rangePresetService';
+
 
