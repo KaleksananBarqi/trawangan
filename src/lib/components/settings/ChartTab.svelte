@@ -243,6 +243,21 @@
     </button>
   </div>
 
+  <!-- Hitung Mundur Penutupan Lilin (Countdown to Bar Close) -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Countdown to Bar Close</span>
+      <span class="setting-desc">Tampilkan hitung mundur waktu penutupan lilin aktif pada sumbu harga kanan</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.showPriceScaleCountdown ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ showPriceScaleCountdown: !settings.showPriceScaleCountdown })}
+    >
+      {settings.showPriceScaleCountdown ? 'Aktif' : 'Nonaktif'}
+    </button>
+  </div>
+
   <!-- Label Nilai Indikator di Skala Harga -->
   <div class="setting-row">
     <div class="setting-info">

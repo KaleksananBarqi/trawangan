@@ -18,6 +18,8 @@
   import { THEME_PRESETS, resolveThemeConfig } from '../constants/themes';
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
+  import RangePresetBar from './RangePresetBar.svelte';
+  import type { VisibleRangePreset } from '../services/rangePresetService';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
     Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
@@ -35,7 +37,7 @@
   interface Props {
     symbol: string; timeframe: Timeframe; defaultTimeframe?: Timeframe; layout: string;
     providerId?: string; syncConfig?: MultiChartSyncConfig; showWatermark?: boolean;
-    showCurrentPriceLine?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
+    showCurrentPriceLine?: boolean; showPriceScaleCountdown?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
     onPriceStyleChange?: (style: string) => void;
@@ -64,7 +66,7 @@
     workspaceId = 'default_workspace', gridMode = 'normal',
     customPalette, customBullColor, customBearColor, customChartBackground,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
-    showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
+    showWatermark = true, showCurrentPriceLine = true, showPriceScaleCountdown = false, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onPriceStyleChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
@@ -77,7 +79,7 @@
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
-    showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange,
+    showCurrentPriceLine, showPriceScaleCountdown, showVolume, syncConfig, onActiveCellChange,
     onPriceStyleChange,
     onActiveIndicatorsChange: (indicators) => {
       priceScaleOverlayController.updateIndicators(indicators, showIndicatorPriceLabels);
@@ -202,6 +204,7 @@
     }
   });
   $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
+  $effect(() => { const cd = showPriceScaleCountdown; if (isMounted && cd !== undefined) controller.setPriceScaleCountdown(cd); });
   $effect(() => {
     const s = symbol, a = allAlerts;
     if (isMounted) {
@@ -505,6 +508,8 @@
 
     if (isAxis) {
       fitChart();
+    } else {
+      chartDrawingController.handleDrawingDblClick();
     }
     // Deteksi reset tinggi pane setelah double-click separator
     controller.capturePaneLayoutIfChanged();
@@ -859,6 +864,15 @@
   }
 
   export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
+  export function setVisibleRangePreset(preset: VisibleRangePreset): Promise<boolean> {
+    return controller.setVisibleRangePreset(preset);
+  }
+  export function getActiveRangePreset(): VisibleRangePreset | null {
+    return controller.getActiveRangePreset();
+  }
+  export function cycleRangePreset(direction: 'next' | 'prev' = 'next'): Promise<VisibleRangePreset | null> {
+    return controller.cycleRangePreset(direction);
+  }
 
   const chartBackgroundStyle = $derived.by(() => {
     const cfg = resolveThemeConfig(themePreset);
@@ -1095,4 +1109,9 @@
     onResetChartScale={fitChart}
     onClose={() => (isContextMenuOpen = false)}
   />
+
+  <!-- Bilah Toolbar Preset Rentang Waktu (1D, 5D, 1M, 3M, 6M, YTD, 1Y, ALL) -->
+  <div class="chart-viewport-footer-presets">
+    <RangePresetBar {controller} />
+  </div>
 </div>

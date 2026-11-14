@@ -89,6 +89,13 @@ export class CommandDispatcher {
   }
 
   /**
+   * Mengambil definisi perintah berdasarkan ID
+   */
+  get(id: string): CommandDefinition | undefined {
+    return this.commands.get(id);
+  }
+
+  /**
    * Daftarkan handler dinamis untuk perintah tertentu
    */
   bindHandler(id: string, handler: CommandHandler): () => void {
@@ -121,6 +128,17 @@ export class CommandDispatcher {
       // 1. Cek suppress input element jika allowInInput bernilai false (default)
       if (isInput && !cmd.allowInInput) {
         continue;
+      }
+
+      // Jika perintah adalah copy-selected-drawing dan pengguna sedang menyeleksi teks pada dokumen,
+      // jangan cegat agar penyalinan teks normal tetap berfungsi.
+      if (cmd.id === 'copy-selected-drawing') {
+        if (typeof window !== 'undefined' && typeof window.getSelection === 'function') {
+          const sel = window.getSelection();
+          if (sel && sel.toString().trim().length > 0) {
+            continue;
+          }
+        }
       }
 
       const match = cmd.match;
@@ -540,6 +558,22 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       },
     },
     {
+      id: 'copy-selected-drawing',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Ctrl', 'C'],
+      desc: 'Salin objek gambar yang sedang dipilih ke clipboard (Copy)',
+      allowInInput: false,
+      match: { ctrlOrMeta: true, alt: false, shift: false, key: 'c', code: 'KeyC' },
+    },
+    {
+      id: 'paste-drawing',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Ctrl', 'V'],
+      desc: 'Tempel objek gambar dari clipboard ke grafik (Paste)',
+      allowInInput: false,
+      match: { ctrlOrMeta: true, alt: false, shift: false, key: 'v', code: 'KeyV' },
+    },
+    {
       id: 'duplicate-selected-drawing',
       category: 'Alat Gambar (Drawing Tools)',
       keys: ['Ctrl', 'D'],
@@ -663,6 +697,19 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
         ctrlOrMeta: false,
         key: ['y', 's'],
         code: ['KeyY', 'KeyS'],
+      },
+    },
+    {
+      id: 'cycle-range-preset',
+      category: 'Skala & Tampilan Grafik',
+      keys: ['Alt', 'R'],
+      desc: 'Siklus rentang waktu terlihat grafik (1D -> 5D -> 1M -> 3M -> 6M -> YTD -> 1Y -> ALL)',
+      allowInInput: false,
+      match: {
+        alt: true,
+        ctrlOrMeta: false,
+        key: ['r', 'R'],
+        code: ['KeyR'],
       },
     },
 
