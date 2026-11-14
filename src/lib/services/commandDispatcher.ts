@@ -123,6 +123,17 @@ export class CommandDispatcher {
         continue;
       }
 
+      // Jika perintah adalah copy-selected-drawing dan pengguna sedang menyeleksi teks pada dokumen,
+      // jangan cegat agar penyalinan teks normal tetap berfungsi.
+      if (cmd.id === 'copy-selected-drawing') {
+        if (typeof window !== 'undefined' && typeof window.getSelection === 'function') {
+          const sel = window.getSelection();
+          if (sel && sel.toString().trim().length > 0) {
+            continue;
+          }
+        }
+      }
+
       const match = cmd.match;
       if (!match) continue;
 
@@ -538,6 +549,22 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
           !e.altKey &&
           (e.key === 'Delete' || e.key === 'Backspace' || e.code === 'Delete' || e.code === 'Backspace'),
       },
+    },
+    {
+      id: 'copy-selected-drawing',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Ctrl', 'C'],
+      desc: 'Salin objek gambar yang sedang dipilih ke clipboard (Copy)',
+      allowInInput: false,
+      match: { ctrlOrMeta: true, alt: false, shift: false, key: 'c', code: 'KeyC' },
+    },
+    {
+      id: 'paste-drawing',
+      category: 'Alat Gambar (Drawing Tools)',
+      keys: ['Ctrl', 'V'],
+      desc: 'Tempel objek gambar dari clipboard ke grafik (Paste)',
+      allowInInput: false,
+      match: { ctrlOrMeta: true, alt: false, shift: false, key: 'v', code: 'KeyV' },
     },
     {
       id: 'duplicate-selected-drawing',
