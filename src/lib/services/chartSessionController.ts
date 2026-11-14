@@ -20,7 +20,16 @@ import {
   wrapProviderWithStreamGuard,
   type StreamHealthSink,
 } from './streamHealthGuard';
-import { registerDefaultEngine, getNativeIndicator } from '@luxalgo/vela';
+import { registerDefaultEngine, getNativeIndicator, SecondClock, type WallClock } from '@luxalgo/vela';
+
+// Singleton central terminal WallClock agar seluruh cell multi-chart berdetak sinkron pada batas detik
+let sharedTerminalWallClock: WallClock | null = null;
+function getSharedTerminalWallClock(): WallClock {
+  if (!sharedTerminalWallClock) {
+    sharedTerminalWallClock = new SecondClock();
+  }
+  return sharedTerminalWallClock;
+}
 import {
   createPineFetchSeriesAdapter,
   TrawanganPineWorkerEngine,
@@ -480,9 +489,7 @@ export class ChartSessionController {
     this.timezone = options.timezone || 'Asia/Jakarta';
     this.showCurrentPriceLine = options.showCurrentPriceLine ?? true;
     this.priceScaleCountdown = options.priceScaleCountdown ?? options.showPriceScaleCountdown ?? false;
-    if (options.wallClock) {
-      this.wallClock = options.wallClock;
-    }
+    this.wallClock = options.wallClock ?? getSharedTerminalWallClock();
     this.showVolume = options.showVolume ?? true;
     this.gridMode = options.gridMode || 'normal';
     this.customChartBackground = options.customChartBackground;
@@ -2920,6 +2927,7 @@ export class ChartSessionController {
       priceScale: {
         borderColor: effectiveBorder,
         currentPriceLine: this.showCurrentPriceLine !== false,
+        countdown: this.isPriceScaleCountdownEnabled(),
       },
       timeScale: {
         timezone: this.timezone,
@@ -4107,10 +4115,12 @@ export class ChartSessionController {
             patch.priceScale.invert = state.invert;
           }
           patch.priceScale.currentPriceLine = this.showCurrentPriceLine !== false;
+          patch.priceScale.countdown = this.isPriceScaleCountdownEnabled(targetCell);
 
           native.applyConfig?.(patch);
           if (native.scene) {
             native.scene.showPriceLine = this.showCurrentPriceLine !== false;
+            native.scene.showCountdown = this.isPriceScaleCountdownEnabled(targetCell);
           }
         }
 

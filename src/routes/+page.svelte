@@ -1880,6 +1880,7 @@
           {syncConfig}
           showWatermark={appSettings.showWatermark}
           showCurrentPriceLine={appSettings.showCurrentPriceLine ?? true}
+          showPriceScaleCountdown={appSettings.showPriceScaleCountdown ?? false}
           showVolume={appSettings.showVolume ?? true}
           showIndicatorPriceLabels={appSettings.showIndicatorPriceLabels ?? true}
           showDrawingPriceLabels={appSettings.showDrawingPriceLabels ?? true}

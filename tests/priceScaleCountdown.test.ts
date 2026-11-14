@@ -378,4 +378,69 @@ describe('Price Axis Countdown Bar Timer & WallClock Synchronization Suite (#201
     controller.setPriceScaleCountdown(true);
     assert.strictEqual(controller.getSnapshot().priceScaleCountdown, true);
   });
+
+  test('11. Central WallClock default: tanpa opsi wallClock, semua cell lintas controller berbagi satu instance SecondClock sentral', () => {
+    const mock1 = createMockVelaCell('cell_wc_1', false);
+    const mock2 = createMockVelaCell('cell_wc_2', false);
+    const mockWs1 = {
+      cells: () => [mock1.cell],
+      active: mock1.cell,
+      sync: { set: () => {} },
+      setLayout: () => {},
+      destroy: () => {}
+    };
+    const mockWs2 = {
+      cells: () => [mock2.cell],
+      active: mock2.cell,
+      sync: { set: () => {} },
+      setLayout: () => {},
+      destroy: () => {}
+    };
+
+    const controller1 = new ChartSessionController({ workspaceFactory: () => mockWs1 });
+    const controller2 = new ChartSessionController({ workspaceFactory: () => mockWs2 });
+    controller1.attach({ nodeType: 1 } as any);
+    controller2.attach({ nodeType: 1 } as any);
+
+    const wc1 = mock1.getWallClock();
+    const wc2 = mock2.getWallClock();
+
+    assert.ok(wc1, 'Cell 1 wajib otomatis terhubung ke central WallClock saat attach');
+    assert.strictEqual(typeof wc1.onTick, 'function', 'Central WallClock wajib mengimplementasikan onTick()');
+    assert.strictEqual(
+      wc1,
+      wc2,
+      'Seluruh cell lintas controller wajib berbagi satu instance central WallClock yang sama'
+    );
+  });
+
+  test('12. applyPriceScaleState menjaga status countdown tetap aktif saat mode skala berubah', () => {
+    const mock = createMockVelaCell('cell_ps', false);
+    const mockWs = {
+      cells: () => [mock.cell],
+      active: mock.cell,
+      sync: { set: () => {} },
+      setLayout: () => {},
+      destroy: () => {}
+    };
+
+    const controller = new ChartSessionController({
+      workspaceFactory: () => mockWs,
+    });
+    controller.attach({ nodeType: 1 } as any);
+    controller.setPriceScaleCountdown(true);
+
+    controller.applyPriceScaleState({ mode: 'log', auto: true });
+
+    assert.strictEqual(
+      mock.native.scene.showCountdown,
+      true,
+      'applyPriceScaleState tidak boleh menghapus status showCountdown'
+    );
+    assert.strictEqual(
+      mock.getCountdown(),
+      true,
+      'priceScale.countdown di config wajib tetap true setelah applyPriceScaleState'
+    );
+  });
 });
