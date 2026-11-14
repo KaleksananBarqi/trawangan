@@ -96,6 +96,9 @@ export interface ChartSessionOptions {
   customBearColor?: string;
   customChartBackground?: CustomChartBackgroundConfig;
   showCurrentPriceLine?: boolean;
+  priceScaleCountdown?: boolean;
+  showPriceScaleCountdown?: boolean;
+  wallClock?: any;
   showVolume?: boolean;
   gridMode?: GridMode;
   syncConfig?: MultiChartSyncConfig;
@@ -129,6 +132,7 @@ export interface ChartSessionSnapshot {
   customBullColor?: string;
   customBearColor?: string;
   showCurrentPriceLine: boolean;
+  priceScaleCountdown: boolean;
   showVolume: boolean;
   gridMode: GridMode;
   priceStyle: PriceStyle | string;
@@ -401,6 +405,9 @@ export class ChartSessionController {
   private fontSize: number;
   private timezone: string;
   private showCurrentPriceLine: boolean;
+  private priceScaleCountdown: boolean;
+  private wallClock: any = null;
+  private priceScaleCountdownByCell = new WeakMap<any, boolean>();
   private showVolume: boolean;
   private syncConfig: MultiChartSyncConfig;
   private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
@@ -472,6 +479,10 @@ export class ChartSessionController {
     this.fontSize = options.fontSize || 12;
     this.timezone = options.timezone || 'Asia/Jakarta';
     this.showCurrentPriceLine = options.showCurrentPriceLine ?? true;
+    this.priceScaleCountdown = options.priceScaleCountdown ?? options.showPriceScaleCountdown ?? false;
+    if (options.wallClock) {
+      this.wallClock = options.wallClock;
+    }
     this.showVolume = options.showVolume ?? true;
     this.gridMode = options.gridMode || 'normal';
     this.customChartBackground = options.customChartBackground;
@@ -524,6 +535,7 @@ export class ChartSessionController {
       customBullColor: this.customCandleColors?.bullColor,
       customBearColor: this.customCandleColors?.bearColor,
       showCurrentPriceLine: this.showCurrentPriceLine,
+      priceScaleCountdown: this.isPriceScaleCountdownEnabled(),
       showVolume: this.showVolume,
       gridMode: this.gridMode,
       priceStyle: this.getPriceStyle(),
@@ -1461,6 +1473,10 @@ export class ChartSessionController {
     this.installEnsurePaneGuard(cell);
     this.interceptApplyConfig(cell);
     this.enforceCurrentPriceLine(cell);
+    if (!this.priceScaleCountdownByCell.has(cell)) {
+      this.priceScaleCountdownByCell.set(cell, this.priceScaleCountdown);
+    }
+    this.enforcePriceScaleCountdown(cell);
     this.syncNativeVolumeColors(cell);
     this.syncCellMacroState(cell);
     attachPriceScaleInputGuard(cell);
@@ -1712,10 +1728,14 @@ export class ChartSessionController {
         if (patch.priceScale.currentPriceLine === undefined) {
           patch.priceScale.currentPriceLine = self.showCurrentPriceLine !== false;
         }
+        if (patch.priceScale.countdown === undefined) {
+          patch.priceScale.countdown = self.isPriceScaleCountdownEnabled(cell);
+        }
       }
       const res = originalApplyConfig(patch);
       if (this.scene) {
         this.scene.showPriceLine = self.showCurrentPriceLine !== false;
+        this.scene.showCountdown = self.isPriceScaleCountdownEnabled(cell);
       }
       return res;
     };
@@ -1729,6 +1749,152 @@ export class ChartSessionController {
     this.showCurrentPriceLine = show;
     this.enforceCurrentPriceLine();
     this.notify();
+  }
+
+  /**
+   * Menegakkan status countdown pada cell target atau semua cell aktif
+   */
+  public enforcePriceScaleCountdown(cell?: any): void {
+    const cells = cell ? [cell] : this.getAllCells();
+    for (const c of cells) {
+      const enabled = this.isPriceScaleCountdownEnabled(c);
+      const chart = c?.chart || c?.inner;
+      const renderer = chart?.renderer;
+      const native = renderer?.renderer || renderer;
+      if (native) {
+        if (this.wallClock) {
+          if (typeof native.setWallClock === 'function') {
+            native.setWallClock(this.wallClock);
+          } else if (typeof renderer?.setWallClock === 'function') {
+            renderer.setWallClock(this.wallClock);
+          } else if (typeof chart?.setWallClock === 'function') {
+            chart.setWallClock(this.wallClock);
+          }
+        }
+        if (typeof native.applyConfig === 'function') {
+          native.applyConfig({ priceScale: { countdown: enabled } });
+        }
+        if (typeof native.set === 'function') {
+          native.set('countdown', enabled);
+        }
+        if (native.scene) {
+          native.scene.showCountdown = enabled;
+        }
+        if (typeof native.syncCountdownTimer === 'function') {
+          native.syncCountdownTimer();
+        }
+        if (native.scheduler?.invalidate) {
+          native.scheduler.invalidate(4);
+        }
+      }
+    }
+  }
+
+  /**
+   * Memeriksa apakah tampilan hitung mundur penutupan lilin (countdown to bar close) aktif
+   * pada sumbu skala harga (price scale).
+   */
+  public isPriceScaleCountdownEnabled(cell?: any): boolean {
+    try {
+      const targetCell = this.resolveTargetCell(cell);
+      if (targetCell && this.priceScaleCountdownByCell.has(targetCell)) {
+        return Boolean(this.priceScaleCountdownByCell.get(targetCell));
+      }
+      const chart = targetCell?.chart || targetCell?.inner;
+      const native = chart?.renderer?.renderer || chart?.renderer;
+      if (typeof native?.scene?.showCountdown === 'boolean') {
+        return native.scene.showCountdown;
+      }
+      const cfgCountdown = native?.getConfig?.()?.priceScale?.countdown;
+      if (typeof cfgCountdown === 'boolean') {
+        return cfgCountdown;
+      }
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal membaca status countdown:', err);
+    }
+    return this.priceScaleCountdown;
+  }
+
+  /**
+   * Menyetel status hitung mundur (countdown to bar close) pada skala harga.
+   * Mendukung pembaruan multi-cell dan sinkronisasi otomatis.
+   */
+  public setPriceScaleCountdown(enabled: boolean, cell?: any): void {
+    const boolVal = Boolean(enabled);
+    try {
+      this.priceScaleCountdown = boolVal;
+      const targetCells = cell ? [this.resolveTargetCell(cell)] : this.getAllCells();
+
+      let anyChanged = false;
+      for (const targetCell of targetCells) {
+        if (!targetCell) continue;
+        const current = this.isPriceScaleCountdownEnabled(targetCell);
+        this.priceScaleCountdownByCell.set(targetCell, boolVal);
+        if (current !== boolVal) {
+          anyChanged = true;
+        }
+        const chart = targetCell?.chart || targetCell?.inner;
+        const renderer = chart?.renderer;
+        const native = renderer?.renderer || renderer;
+
+        if (native) {
+          this.withSuppressedPersistEvents(() => {
+            if (this.wallClock) {
+              if (typeof native.setWallClock === 'function') {
+                native.setWallClock(this.wallClock);
+              } else if (typeof renderer?.setWallClock === 'function') {
+                renderer.setWallClock(this.wallClock);
+              } else if (typeof chart?.setWallClock === 'function') {
+                chart.setWallClock(this.wallClock);
+              }
+            }
+            if (typeof native.applyConfig === 'function') {
+              native.applyConfig({ priceScale: { countdown: boolVal } });
+            }
+            if (typeof native.set === 'function') {
+              native.set('countdown', boolVal);
+            }
+            if (native.scene) {
+              native.scene.showCountdown = boolVal;
+            }
+            if (typeof native.syncCountdownTimer === 'function') {
+              native.syncCountdownTimer();
+            }
+            if (native.scheduler?.invalidate) {
+              native.scheduler.invalidate(4);
+            }
+          });
+        }
+      }
+
+      if (anyChanged) {
+        this.emitPersistableChange('priceScaleCountdown');
+        this.notify();
+      }
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal menyetel status countdown:', err);
+    }
+  }
+
+  /**
+   * Menghubungkan wall-clock pulse sentral ke renderer chart pada semua cell
+   * agar hitung mundur detik tersinkronisasi presisi dan tidak drift.
+   */
+  public setWallClock(clock: any): void {
+    this.wallClock = clock;
+    const cells = this.getAllCells();
+    for (const cell of cells) {
+      const chart = cell?.chart || cell?.inner;
+      const renderer = chart?.renderer;
+      const native = renderer?.renderer || renderer;
+      if (typeof native?.setWallClock === 'function') {
+        native.setWallClock(clock);
+      } else if (typeof renderer?.setWallClock === 'function') {
+        renderer.setWallClock(clock);
+      } else if (typeof chart?.setWallClock === 'function') {
+        chart.setWallClock(clock);
+      }
+    }
   }
 
   private syncCellVolumeHiddenState(cell: any, hidden: boolean): void {
@@ -4186,6 +4352,7 @@ export class ChartSessionController {
         timeframe: tf,
         providerId: providerId || this.providerId,
         priceStyle: this.getPriceStyle(cell),
+        priceScaleCountdown: this.isPriceScaleCountdownEnabled(cell),
         barSpacing: this.getBarSpacing(cell),
         priceScaleState: this.getPriceScaleState(cell),
         paneLayout: this.getPaneLayout(cell),
@@ -4313,6 +4480,9 @@ export class ChartSessionController {
         }
         if (snap.priceStyle) {
           this.setPriceStyle(snap.priceStyle, cell);
+        }
+        if (snap.priceScaleCountdown !== undefined) {
+          this.setPriceScaleCountdown(snap.priceScaleCountdown, cell);
         }
 
         // Langkah 2b: Pulihkan indikator Pine per sel (atau fallback ke sharedIndicators saat syncConfig.indicators aktif)
