@@ -768,6 +768,17 @@
           addSystemLog(`Objek gambar dihapus: ${deletedIds.join(', ')}`, 'info');
         }
       }),
+      commandDispatcher.bindHandler('copy-selected-drawing', () => {
+        if (chartDrawingController.copySelectedDrawing()) {
+          addSystemLog('Shortcut: Objek gambar disalin ke clipboard (Ctrl+C)', 'info');
+        }
+      }),
+      commandDispatcher.bindHandler('paste-drawing', () => {
+        const newId = chartDrawingController.pasteDrawing();
+        if (newId) {
+          addSystemLog(`Shortcut: Objek gambar ditempel (${newId}) (Ctrl+V)`, 'info');
+        }
+      }),
       commandDispatcher.bindHandler('duplicate-selected-drawing', () => {
         const newId = chartDrawingController.duplicateSelectedDrawing();
         if (newId) {
