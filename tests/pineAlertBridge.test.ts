@@ -7,6 +7,7 @@ import {
   type PineAlertRecord,
   type PineWarningRecord,
 } from '../src/lib/services/pineAlertBridge';
+import { ChartSessionController } from '../src/lib/services/chartSessionController';
 
 // Mock EventEmitter sederhana untuk mengemulasi Vela Chart
 class MockVelaChart {
@@ -27,7 +28,7 @@ class MockVelaChart {
     this.listeners[event] = this.listeners[event].filter((cb) => cb !== callback);
   }
 
-  public emit(event: string, payload: any): void {
+  public emit(event: string, payload?: any): void {
     const list = this.listeners[event];
     if (list) {
       for (const cb of [...list]) {
@@ -83,9 +84,9 @@ describe('Pine Script Alert & Warning Telemetry Bridge Suite (#202)', () => {
     test('menangkap event alert dari Pine Script worker engine melalui chart.on("alert")', () => {
       bridge.attach(mockChart, { symbol: 'BTCUSDT' });
 
-      let receivedAlert: PineAlertRecord | null = null;
+      const receivedAlerts: PineAlertRecord[] = [];
       bridge.onAlert((alert) => {
-        receivedAlert = alert;
+        receivedAlerts.push(alert);
       });
 
       const payload: PineAlertPayload = {
@@ -101,6 +102,7 @@ describe('Pine Script Alert & Warning Telemetry Bridge Suite (#202)', () => {
 
       mockChart.emit('alert', payload);
 
+      const receivedAlert = receivedAlerts[0];
       assert.ok(receivedAlert, 'Alert harus diterima oleh subscriber bridge');
       assert.strictEqual(receivedAlert.id, 'alt_123');
       assert.strictEqual(receivedAlert.indicatorTitle, 'RSI Alert');
@@ -113,9 +115,9 @@ describe('Pine Script Alert & Warning Telemetry Bridge Suite (#202)', () => {
     test('melakukan fallback cerdas jika id, title, atau timestamp tidak disediakan dalam payload', () => {
       bridge.attach(mockChart, { symbol: 'ETHUSDT' });
 
-      let receivedAlert: PineAlertRecord | null = null;
+      const receivedAlerts: PineAlertRecord[] = [];
       bridge.onAlert((alert) => {
-        receivedAlert = alert;
+        receivedAlerts.push(alert);
       });
 
       const payload: PineAlertPayload = {
@@ -127,6 +129,7 @@ describe('Pine Script Alert & Warning Telemetry Bridge Suite (#202)', () => {
       mockChart.emit('alert', payload);
       const after = Date.now();
 
+      const receivedAlert = receivedAlerts[0];
       assert.ok(receivedAlert);
       assert.ok(receivedAlert.id.startsWith('alt_pine_'), 'ID fallback harus diawali alt_pine_');
       assert.strictEqual(receivedAlert.indicatorTitle, 'Custom Moving Average');
@@ -152,9 +155,9 @@ describe('Pine Script Alert & Warning Telemetry Bridge Suite (#202)', () => {
     test('menangkap runtime script warning melalui chart.on("warning") dan memformat pesan untuk konsol Pine', () => {
       bridge.attach(mockChart, { symbol: 'BTCUSDT' });
 
-      let receivedWarning: PineWarningRecord | null = null;
+      const receivedWarnings: PineWarningRecord[] = [];
       bridge.onWarning((warning) => {
-        receivedWarning = warning;
+        receivedWarnings.push(warning);
       });
 
       const payload: PineWarningPayload = {
@@ -167,6 +170,7 @@ describe('Pine Script Alert & Warning Telemetry Bridge Suite (#202)', () => {
 
       mockChart.emit('warning', payload);
 
+      const receivedWarning = receivedWarnings[0];
       assert.ok(receivedWarning, 'Warning harus diterima oleh subscriber bridge');
       assert.strictEqual(receivedWarning.message, 'Penyebut nol pada pembagian (division by zero)');
       assert.strictEqual(receivedWarning.method, 'ta.rsi');
@@ -317,6 +321,71 @@ describe('Pine Script Alert & Warning Telemetry Bridge Suite (#202)', () => {
 
       assert.strictEqual(bridge.getAlertHistory().length, 0);
       assert.strictEqual(bridge.getWarningHistory().length, 0);
+    });
+  });
+
+  describe('5. Integrasi Lifecycle ChartSessionController', () => {
+    test('attachCellListeners mengaitkan bridge, memperbarui simbol saat market:changed, membersihkan saat indicator:removed, dan melepas saat destroy()', () => {
+      const controller = new ChartSessionController({
+        symbol: 'BTCUSDT',
+        pineAlertBridge: bridge,
+      });
+
+      const mockCell: any = {
+        id: 'cell_1',
+        symbol: 'BTCUSDT',
+        chart: mockChart,
+      };
+
+      controller.attachCellListeners(mockCell);
+
+      // 1. Event alert & warning tertangkap dengan simbol awal
+      mockChart.emit('alert', {
+        id: 'alt_ctrl_1',
+        indicatorId: 'ind_1',
+        title: 'EMA Cross',
+        message: 'Golden Cross',
+      });
+      mockChart.emit('warning', {
+        indicatorId: 'ind_1',
+        message: 'Division by zero',
+        bar: 10,
+      });
+
+      assert.strictEqual(bridge.getAlertHistory().length, 1);
+      assert.strictEqual(bridge.getAlertHistory()[0].symbol, 'BTCUSDT');
+      assert.strictEqual(bridge.getWarningHistory().length, 1);
+
+      // 2. Perubahan simbol sel via market:changed memperbarui konteks simbol
+      mockCell.symbol = 'ETHUSDT';
+      mockChart.emit('market:changed');
+      mockChart.emit('alert', {
+        id: 'alt_ctrl_2',
+        indicatorId: 'ind_2',
+        title: 'MACD',
+        message: 'Bullish',
+      });
+      assert.strictEqual(bridge.getAlertHistory().length, 2);
+      assert.strictEqual(bridge.getAlertHistory()[1].symbol, 'ETHUSDT');
+
+      // 3. Penghapusan indikator membersihkan riwayat indikator terkait
+      mockChart.emit('indicator:removed', { id: 'ind_1' });
+      assert.strictEqual(bridge.getAlertHistory().length, 1);
+      assert.strictEqual(bridge.getAlertHistory()[0].indicatorId, 'ind_2');
+      assert.strictEqual(bridge.getWarningHistory().length, 0);
+
+      // 4. destroy() melepas listener dari chart tanpa memory leak
+      (controller as any).workspace = {
+        cells: () => [mockCell],
+        destroy: () => {},
+      };
+      controller.destroy();
+
+      mockChart.emit('alert', {
+        id: 'alt_after_destroy',
+        message: 'Should be ignored',
+      });
+      assert.strictEqual(bridge.getAlertHistory().length, 1);
     });
   });
 });
