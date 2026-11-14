@@ -20,7 +20,16 @@ import {
   wrapProviderWithStreamGuard,
   type StreamHealthSink,
 } from './streamHealthGuard';
-import { registerDefaultEngine, getNativeIndicator } from '@luxalgo/vela';
+import { registerDefaultEngine, getNativeIndicator, SecondClock, type WallClock } from '@luxalgo/vela';
+
+// Singleton central terminal WallClock agar seluruh cell multi-chart berdetak sinkron pada batas detik
+let sharedTerminalWallClock: WallClock | null = null;
+function getSharedTerminalWallClock(): WallClock {
+  if (!sharedTerminalWallClock) {
+    sharedTerminalWallClock = new SecondClock();
+  }
+  return sharedTerminalWallClock;
+}
 import {
   createPineFetchSeriesAdapter,
   TrawanganPineWorkerEngine,
@@ -42,6 +51,10 @@ import {
   type TradeExecution,
   type StrategyTelemetryPayload,
 } from './pineStrategyTelemetry';
+import {
+  PineAlertBridge,
+  pineAlertBridge,
+} from './pineAlertBridge';
 import {
   type Timeframe,
   type MultiChartSyncConfig,
@@ -81,6 +94,21 @@ import {
   type ActiveThemeCandleColors,
 } from './persistence/rendererConfigSanitizer';
 import { deriveBorderColor, generateVelaThemeTokens, isDarkColor, withAlpha } from '../utils/colorUtils';
+import {
+  marketSessionService,
+  type MarketSession,
+  isSessionSupported,
+  SESSION_PRE,
+  SESSION_POST,
+} from './marketSessionService';
+import {
+  type VisibleRangePreset,
+  isValidRangePreset,
+  getRangePresetConfig,
+  calculateRangePresetSpan,
+  getNextRangePreset,
+} from './rangePresetService';
+export type { VisibleRangePreset };
 
 export interface ChartSessionOptions {
   symbol: string;
@@ -91,19 +119,25 @@ export interface ChartSessionOptions {
   themePreset?: ThemePresetId | string;
   fontSize?: number;
   timezone?: string;
+  session?: MarketSession;
   customPalette?: CustomThemePalette;
   customBullColor?: string;
   customBearColor?: string;
   customChartBackground?: CustomChartBackgroundConfig;
   showCurrentPriceLine?: boolean;
+  priceScaleCountdown?: boolean;
+  showPriceScaleCountdown?: boolean;
+  wallClock?: any;
   showVolume?: boolean;
   gridMode?: GridMode;
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
   onPriceStyleChange?: (style: PriceStyle | string) => void;
+  onRangePresetChange?: (preset: VisibleRangePreset | null) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   onStrategyTelemetry?: (payload: StrategyTelemetryPayload) => void;
   strategyTelemetry?: PineStrategyTelemetryService;
+  pineAlertBridge?: PineAlertBridge;
   onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
   onPersistableStateChange?: (reason: string) => void;
   viewportPersistDebounceMs?: number;
@@ -125,16 +159,20 @@ export interface ChartSessionSnapshot {
   timezone: string;
   themePreset: ThemePresetId | string;
   fontSize: number;
+  session?: MarketSession;
+  sessionAvailable?: boolean;
   customPalette?: CustomThemePalette;
   customBullColor?: string;
   customBearColor?: string;
   showCurrentPriceLine: boolean;
+  priceScaleCountdown: boolean;
   showVolume: boolean;
   gridMode: GridMode;
   priceStyle: PriceStyle | string;
   activeCell: { symbol: string; timeframe: Timeframe } | null;
   activeIndicators: ActiveIndicatorInfo[];
   syncConfig: MultiChartSyncConfig;
+  activeRangePreset: VisibleRangePreset | null;
 }
 
 type SessionSubscriber = (snapshot: ChartSessionSnapshot) => void;
@@ -176,6 +214,28 @@ export {
 function getChartCoords(chart: any): any {
   if (!chart) return null;
   return chart.renderer?.renderer?.coords || chart.renderer?.coords || chart.coords || null;
+}
+
+/**
+ * Helper untuk mengekstrak instans renderer native dari sebuah cell Vela
+ */
+function resolveNativeRenderer(cell: any): any {
+  const chart = cell?.chart || cell?.inner;
+  const renderer = chart?.renderer;
+  return renderer?.renderer || renderer || null;
+}
+
+/**
+ * Membuat konfigurasi warna shading sesi WebGL2 Vela.
+ * Catatan: SessionShadeStyle pada @luxalgo/vela hanya mendukung premarketColor,
+ * postmarketColor, dan extendedColor (tidak mendukung properti offColor/closedColor).
+ */
+function buildSessionShadeConfig() {
+  return {
+    premarketColor: withAlpha(SESSION_PRE, 0.08),
+    postmarketColor: withAlpha(SESSION_POST, 0.08),
+    extendedColor: withAlpha(SESSION_POST, 0.08),
+  };
 }
 
 /**
@@ -401,13 +461,20 @@ export class ChartSessionController {
   private fontSize: number;
   private timezone: string;
   private showCurrentPriceLine: boolean;
+  private priceScaleCountdown: boolean;
+  private wallClock: any = null;
+  private priceScaleCountdownByCell = new WeakMap<any, boolean>();
   private showVolume: boolean;
   private syncConfig: MultiChartSyncConfig;
   private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
   private onPriceStyleChange?: (style: PriceStyle | string) => void;
+  private onRangePresetChange?: (preset: VisibleRangePreset | null) => void;
+  private activeRangePreset: VisibleRangePreset | null = null;
+  private activeRangePresetSpan: { from: number; to: number } | null = null;
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   private onStrategyTelemetryHandler?: (payload: StrategyTelemetryPayload) => void;
   public readonly strategyTelemetry: PineStrategyTelemetryService;
+  public readonly pineAlertBridge: PineAlertBridge;
   private workspaceFactory?: (container: HTMLElement, config: any) => any;
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
   private activeChartDefaultConfig: any = null;
@@ -453,6 +520,7 @@ export class ChartSessionController {
   private customHydrationEpoch = 0;
   private timelineMarksController: TimelineMarksController = timelineMarksController;
   private fetchSeriesAdapter: FetchSeriesHandler = createPineFetchSeriesAdapter();
+  private session: MarketSession = 'regular';
 
   public getTimelineMarksController(): TimelineMarksController {
     return this.timelineMarksController;
@@ -471,7 +539,10 @@ export class ChartSessionController {
     this.themePreset = options.themePreset || 'signature';
     this.fontSize = options.fontSize || 12;
     this.timezone = options.timezone || 'Asia/Jakarta';
+    this.session = options.session || 'regular';
     this.showCurrentPriceLine = options.showCurrentPriceLine ?? true;
+    this.priceScaleCountdown = options.priceScaleCountdown ?? options.showPriceScaleCountdown ?? false;
+    this.wallClock = options.wallClock ?? getSharedTerminalWallClock();
     this.showVolume = options.showVolume ?? true;
     this.gridMode = options.gridMode || 'normal';
     this.customChartBackground = options.customChartBackground;
@@ -494,9 +565,11 @@ export class ChartSessionController {
     };
     this.onActiveCellChange = options.onActiveCellChange;
     this.onPriceStyleChange = options.onPriceStyleChange;
+    this.onRangePresetChange = options.onRangePresetChange;
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
     this.onStrategyTelemetryHandler = options.onStrategyTelemetry;
     this.strategyTelemetry = options.strategyTelemetry ?? new PineStrategyTelemetryService();
+    this.pineAlertBridge = options.pineAlertBridge ?? pineAlertBridge;
     this.workspaceFactory = options.workspaceFactory;
     this.hasCustomPersistence = Boolean(options.persistence);
     this.persistence = options.persistence ?? storage;
@@ -505,6 +578,9 @@ export class ChartSessionController {
     this.providerFactories = options.providerFactories;
     this.streamWatchdogMs = options.streamWatchdogMs;
     this.streamStaleMs = options.streamStaleMs;
+
+    marketSessionService.updateContext(this.symbol, this.providerId);
+    marketSessionService.setSession(this.session);
   }
 
   /**
@@ -520,10 +596,13 @@ export class ChartSessionController {
       timezone: this.timezone,
       themePreset: this.themePreset,
       fontSize: this.fontSize,
+      session: this.session,
+      sessionAvailable: this.isSessionAvailable(),
       customPalette: this.customPalette || undefined,
       customBullColor: this.customCandleColors?.bullColor,
       customBearColor: this.customCandleColors?.bearColor,
       showCurrentPriceLine: this.showCurrentPriceLine,
+      priceScaleCountdown: this.isPriceScaleCountdownEnabled(),
       showVolume: this.showVolume,
       gridMode: this.gridMode,
       priceStyle: this.getPriceStyle(),
@@ -531,8 +610,93 @@ export class ChartSessionController {
         ? { ...this.activeCellInfo }
         : { symbol: this.symbol, timeframe: this.timeframe },
       activeIndicators: this.getActiveIndicators(),
-      syncConfig: { ...this.syncConfig }
+      syncConfig: { ...this.syncConfig },
+      activeRangePreset: this.activeRangePreset
     };
+  }
+
+  /**
+   * Mengambil sesi pasar aktif saat ini ('regular' vs 'extended')
+   */
+  public getSession(): MarketSession {
+    return this.session;
+  }
+
+  /**
+   * Memeriksa apakah simbol atau bursa aktif mendukung sesi perdagangan (RTH/ETH)
+   */
+  public isSessionAvailable(): boolean {
+    if (this.workspace?.active) {
+      if (typeof this.workspace.active.sessionAvailable === 'boolean') {
+        return this.workspace.active.sessionAvailable;
+      }
+    }
+    return isSessionSupported(this.symbol, this.providerId);
+  }
+
+  /**
+   * Menerapkan konfigurasi warna shading sesi translucent dan membersihkan sessionZones
+   * secara otomatis pada pasar continuous 24/7 (seperti kripto).
+   */
+  private applySessionRendererState(cell: any): void {
+    const renderer = resolveNativeRenderer(cell);
+    if (!renderer) return;
+
+    this.withSuppressedPersistEvents(() => {
+      if (typeof renderer.applyConfig === 'function') {
+        renderer.applyConfig({
+          sessions: buildSessionShadeConfig(),
+        });
+      }
+
+      if (!this.isSessionAvailable() && typeof renderer.set === 'function') {
+        renderer.set('sessionZones', null);
+      }
+    });
+  }
+
+  /**
+   * Mengubah mode sesi pasar (regular vs extended) dan menyinkronkan ke seluruh sel Vela WebGL2
+   */
+  public setSession(session: MarketSession): void {
+    if (this.session === session) return;
+    this.session = session;
+    marketSessionService.setSession(session);
+
+    if (this.workspace) {
+      try {
+        const yahooProv =
+          typeof this.workspace.feed?.providerInstance === 'function'
+            ? this.workspace.feed.providerInstance('yahoo')
+            : null;
+        if (yahooProv && typeof yahooProv.setSession === 'function') {
+          yahooProv.setSession(session);
+        }
+
+        for (const cell of this.getAllCells()) {
+          if (typeof cell.setSession === 'function') {
+            cell.setSession(session);
+          } else if (typeof cell.setMarket === 'function') {
+            cell.setMarket({ session });
+          }
+          this.applySessionRendererState(cell);
+        }
+      } catch (err) {
+        console.warn('[ChartSessionController] setSession error:', err);
+      }
+    }
+
+    this.notify();
+    this.emitPersistableChange('session');
+  }
+
+  /**
+   * Membalik status sesi pasar antara 'regular' dan 'extended'
+   */
+  public toggleSession(): MarketSession {
+    const next: MarketSession = this.session === 'regular' ? 'extended' : 'regular';
+    this.setSession(next);
+    return next;
   }
 
   public setGridMode(mode?: GridMode): void {
@@ -744,6 +908,7 @@ export class ChartSessionController {
     if (options.layout) this.layout = options.layout;
     if (options.providerId) this.providerId = options.providerId;
     if (options.timezone) this.timezone = options.timezone;
+    if (options.session) this.session = options.session;
     if (options.themePreset) this.themePreset = options.themePreset;
     if (options.fontSize) this.fontSize = options.fontSize;
     if (options.syncConfig) this.syncConfig = options.syncConfig;
@@ -757,6 +922,8 @@ export class ChartSessionController {
 
     this.container = container;
     this.isDestroyed = false;
+    marketSessionService.updateContext(this.symbol, this.providerId);
+    marketSessionService.setSession(this.session);
     this.clearWorkspaceEventUnsubs();
     this.applyBackground();
     ensurePineEngine();
@@ -784,7 +951,7 @@ export class ChartSessionController {
       hyperliquid: () => new HyperliquidProvider(),
       coinbase: () => new CoinbaseProvider(),
       bitunix: () => new BitunixProvider({ healthSink: this.feedHealthSink }),
-      yahoo: () => new YahooFinanceProvider({ healthSink: this.feedHealthSink }),
+      yahoo: () => new YahooFinanceProvider({ healthSink: this.feedHealthSink, session: this.session }),
       macro: () => new MacroIndexProvider({ healthSink: this.feedHealthSink }),
     };
 
@@ -832,12 +999,14 @@ export class ChartSessionController {
       symbol: velaSym,
       timeframe: toVelaTimeframe(this.timeframe),
       drawingToolbar: false,
+      bottombar: false,
       topbar: { left: [], right: [] },
       live: true,
       currentPriceLine: this.showCurrentPriceLine,
       volume: this.showVolume,
       theme: velaTheme,
       timezone: this.timezone,
+      session: this.session,
       providers: guardedProviders,
       engines: {
         pine: () => new TrawanganPineWorkerEngine({ fetchSeries: this.getFetchSeriesAdapter() }),
@@ -1461,6 +1630,10 @@ export class ChartSessionController {
     this.installEnsurePaneGuard(cell);
     this.interceptApplyConfig(cell);
     this.enforceCurrentPriceLine(cell);
+    if (!this.priceScaleCountdownByCell.has(cell)) {
+      this.priceScaleCountdownByCell.set(cell, this.priceScaleCountdown);
+    }
+    this.enforcePriceScaleCountdown(cell);
     this.syncNativeVolumeColors(cell);
     this.syncCellMacroState(cell);
     attachPriceScaleInputGuard(cell);
@@ -1468,6 +1641,8 @@ export class ChartSessionController {
     const chart = cell.chart || cell.inner;
     if (chart) {
       this.timelineMarksController.attachSingleCellOrChart(chart);
+      const { symbol: cellSym } = getCellMarketIdentity(cell);
+      this.pineAlertBridge.attach(chart, { symbol: cellSym || this.symbol, cellId: cell?.id });
     }
     // Otoritas Tunggal Tema Trawangan: Sembunyikan 'canvas.theme' dari dialog Vela
     if (chart && typeof chart.setSettingsVisibility === 'function') {
@@ -1488,7 +1663,8 @@ export class ChartSessionController {
             grid: {
               vertLines: { visible: this.gridMode !== 'hidden', color: gridCol },
               horzLines: { visible: this.gridMode !== 'hidden', color: gridCol }
-            }
+            },
+            sessions: buildSessionShadeConfig(),
           });
         });
       } catch (_) {}
@@ -1509,6 +1685,7 @@ export class ChartSessionController {
           this.syncCellMacroState(cell);
           const { symbol: cellSym, providerId: cellProv } = getCellMarketIdentity(cell);
           this.timelineMarksController.syncForMarket(cellSym || this.symbol, cellProv || this.providerId);
+          this.pineAlertBridge.attach(chart, { symbol: cellSym || this.symbol, cellId: cell?.id });
         });
         chart.on('indicator:added', () => {
           this.syncNativeVolumeColors(cell, false);
@@ -1522,6 +1699,9 @@ export class ChartSessionController {
         });
         chart.on('indicator:removed', (ev: any) => {
           this.handleIndicatorRemoved(ev?.id);
+          if (ev?.id) {
+            this.pineAlertBridge.handleIndicatorRemoved(ev.id);
+          }
           this.emitPersistableChange('indicator:removed');
         });
         chart.on('priceStyle:change', () => {
@@ -1553,6 +1733,7 @@ export class ChartSessionController {
           }
         });
         chart.on('viewport:changed', () => {
+          this.checkRangePresetViewportDrift(cell);
           this.scheduleViewportPersistChange();
         });
         chart.__trawanganChartEventsAttached = true;
@@ -1712,10 +1893,14 @@ export class ChartSessionController {
         if (patch.priceScale.currentPriceLine === undefined) {
           patch.priceScale.currentPriceLine = self.showCurrentPriceLine !== false;
         }
+        if (patch.priceScale.countdown === undefined) {
+          patch.priceScale.countdown = self.isPriceScaleCountdownEnabled(cell);
+        }
       }
       const res = originalApplyConfig(patch);
       if (this.scene) {
         this.scene.showPriceLine = self.showCurrentPriceLine !== false;
+        this.scene.showCountdown = self.isPriceScaleCountdownEnabled(cell);
       }
       return res;
     };
@@ -1729,6 +1914,130 @@ export class ChartSessionController {
     this.showCurrentPriceLine = show;
     this.enforceCurrentPriceLine();
     this.notify();
+  }
+
+  /**
+   * Menerapkan instance wall-clock ke renderer native atau wrapper chart pada satu cell
+   */
+  private applyWallClockToCell(cell: any, clock: any): void {
+    const chart = cell?.chart || cell?.inner;
+    const renderer = chart?.renderer;
+    const native = resolveNativeRenderer(cell);
+    if (typeof native?.setWallClock === 'function') {
+      native.setWallClock(clock);
+    } else if (typeof renderer?.setWallClock === 'function') {
+      renderer.setWallClock(clock);
+    } else if (typeof chart?.setWallClock === 'function') {
+      chart.setWallClock(clock);
+    }
+  }
+
+  /**
+   * Menyelaraskan state countdown dan wall-clock pada renderer native satu cell
+   */
+  private syncCountdownRenderer(cell: any, enabled: boolean): void {
+    const native = resolveNativeRenderer(cell);
+    if (!native) return;
+
+    if (this.wallClock) {
+      this.applyWallClockToCell(cell, this.wallClock);
+    }
+    if (typeof native.applyConfig === 'function') {
+      native.applyConfig({ priceScale: { countdown: enabled } });
+    }
+    if (typeof native.set === 'function') {
+      native.set('countdown', enabled);
+    }
+    if (native.scene) {
+      native.scene.showCountdown = enabled;
+    }
+    if (typeof native.syncCountdownTimer === 'function') {
+      native.syncCountdownTimer();
+    }
+    if (native.scheduler?.invalidate) {
+      native.scheduler.invalidate(4);
+    }
+  }
+
+  /**
+   * Menegakkan status countdown pada cell target atau semua cell aktif
+   */
+  public enforcePriceScaleCountdown(cell?: any): void {
+    const cells = cell ? [cell] : this.getAllCells();
+    this.withSuppressedPersistEvents(() => {
+      for (const c of cells) {
+        const enabled = this.isPriceScaleCountdownEnabled(c);
+        this.syncCountdownRenderer(c, enabled);
+      }
+    });
+  }
+
+  /**
+   * Memeriksa apakah tampilan hitung mundur penutupan lilin (countdown to bar close) aktif
+   * pada sumbu skala harga (price scale).
+   */
+  public isPriceScaleCountdownEnabled(cell?: any): boolean {
+    try {
+      const targetCell = this.resolveTargetCell(cell);
+      if (targetCell && this.priceScaleCountdownByCell.has(targetCell)) {
+        return Boolean(this.priceScaleCountdownByCell.get(targetCell));
+      }
+      const native = resolveNativeRenderer(targetCell);
+      if (typeof native?.scene?.showCountdown === 'boolean') {
+        return native.scene.showCountdown;
+      }
+      const cfgCountdown = native?.getConfig?.()?.priceScale?.countdown;
+      if (typeof cfgCountdown === 'boolean') {
+        return cfgCountdown;
+      }
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal membaca status countdown:', err);
+    }
+    return this.priceScaleCountdown;
+  }
+
+  /**
+   * Menyetel status hitung mundur (countdown to bar close) pada skala harga.
+   * Mendukung pembaruan multi-cell dan sinkronisasi otomatis.
+   */
+  public setPriceScaleCountdown(enabled: boolean, cell?: any): void {
+    const boolVal = Boolean(enabled);
+    try {
+      this.priceScaleCountdown = boolVal;
+      const targetCells = cell ? [this.resolveTargetCell(cell)] : this.getAllCells();
+
+      let anyChanged = false;
+      for (const targetCell of targetCells) {
+        if (!targetCell) continue;
+        const current = this.isPriceScaleCountdownEnabled(targetCell);
+        this.priceScaleCountdownByCell.set(targetCell, boolVal);
+        if (current !== boolVal) {
+          anyChanged = true;
+        }
+        this.withSuppressedPersistEvents(() => {
+          this.syncCountdownRenderer(targetCell, boolVal);
+        });
+      }
+
+      if (anyChanged) {
+        this.emitPersistableChange('priceScaleCountdown');
+        this.notify();
+      }
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal menyetel status countdown:', err);
+    }
+  }
+
+  /**
+   * Menghubungkan wall-clock pulse sentral ke renderer chart pada semua cell
+   * agar hitung mundur detik tersinkronisasi presisi dan tidak drift.
+   */
+  public setWallClock(clock: any): void {
+    this.wallClock = clock;
+    const cells = this.getAllCells();
+    for (const cell of cells) {
+      this.applyWallClockToCell(cell, clock);
+    }
   }
 
   private syncCellVolumeHiddenState(cell: any, hidden: boolean): void {
@@ -2238,6 +2547,7 @@ export class ChartSessionController {
   public removeIndicator(id: string): void {
     if (id) {
       this.strategyTelemetry.clearTelemetry(id);
+      this.pineAlertBridge.handleIndicatorRemoved(id);
       for (const cell of this.getAllCells()) {
         const chart = cell?.chart || cell?.inner;
         const scene = chart?.renderer?.scene || chart?.scene;
@@ -2578,6 +2888,9 @@ export class ChartSessionController {
     if (!symbol) return;
     this.symbol = symbol;
     if (providerId) this.providerId = providerId;
+    marketSessionService.updateContext(this.symbol, this.providerId);
+    marketSessionService.setSessionAvailable(this.isSessionAvailable());
+    this.resetActiveRangePreset();
 
     if (this.workspace) {
       try {
@@ -2594,6 +2907,7 @@ export class ChartSessionController {
               cell.setSymbol(targetSym);
             }
             this.syncCellMacroState(cell);
+            this.applySessionRendererState(cell);
           }
         } else if (
           this.workspace.active &&
@@ -2602,8 +2916,10 @@ export class ChartSessionController {
         ) {
           this.workspace.active.setSymbol(targetSym);
           this.syncCellMacroState(this.workspace.active);
+          this.applySessionRendererState(this.workspace.active);
         } else if (this.workspace.active) {
           this.syncCellMacroState(this.workspace.active);
+          this.applySessionRendererState(this.workspace.active);
         }
 
         // Pulihkan gambar spesifik untuk simbol dan provider target secara terisolasi (kecuali saat restorasi atau baru diganti oleh activeCell)
@@ -2637,6 +2953,7 @@ export class ChartSessionController {
   public setTimeframe(timeframe: Timeframe): void {
     if (!timeframe) return;
     this.timeframe = timeframe;
+    this.resetActiveRangePreset();
 
     if (this.workspace) {
       try {
@@ -2754,6 +3071,7 @@ export class ChartSessionController {
       priceScale: {
         borderColor: effectiveBorder,
         currentPriceLine: this.showCurrentPriceLine !== false,
+        countdown: this.isPriceScaleCountdownEnabled(),
       },
       timeScale: {
         timezone: this.timezone,
@@ -3941,10 +4259,12 @@ export class ChartSessionController {
             patch.priceScale.invert = state.invert;
           }
           patch.priceScale.currentPriceLine = this.showCurrentPriceLine !== false;
+          patch.priceScale.countdown = this.isPriceScaleCountdownEnabled(targetCell);
 
           native.applyConfig?.(patch);
           if (native.scene) {
             native.scene.showPriceLine = this.showCurrentPriceLine !== false;
+            native.scene.showCountdown = this.isPriceScaleCountdownEnabled(targetCell);
           }
         }
 
@@ -4053,6 +4373,155 @@ export class ChartSessionController {
     const nextStyle = styles[nextIndex];
     this.setPriceStyle(nextStyle, cell);
     return nextStyle;
+  }
+
+  /**
+   * Mengatur preset rentang waktu terlihat (Visible Range Preset) secara single-pass.
+   * Mendukung '1D', '5D', '1M', '3M', '6M', 'YTD', '1Y', 'ALL'.
+   * Secara otomatis memetakan ke resolusi timeframe candle optimal, menghitung bar budget,
+   * dan membingkai viewport tanpa kedipan (visual snapping).
+   */
+  public async setVisibleRangePreset(preset: VisibleRangePreset, cell?: any): Promise<boolean> {
+    if (!isValidRangePreset(preset)) {
+      return false;
+    }
+
+    const targetCell = this.resolveTargetCell(cell);
+    if (!targetCell) {
+      return false;
+    }
+
+    const chart = targetCell.chart || targetCell.inner;
+    if (!chart) {
+      return false;
+    }
+
+    const config = getRangePresetConfig(preset);
+    const targetTf = config.timeframe;
+    const targetVelaTf = config.velaTimeframe;
+    const requiredBars = config.bars;
+    const prevTimeframe = this.timeframe;
+
+    // Hitung span awal tanpa clamping ke bar timeframe lama agar setMarket memuat kedalaman penuh
+    const initialSpan = calculateRangePresetSpan(preset);
+    this.activeRangePreset = preset;
+    this.activeRangePresetSpan = initialSpan;
+    this.timeframe = targetTf;
+    this.activeCellInfo = { symbol: this.symbol, timeframe: targetTf };
+
+    try {
+      this.withSuppressedPersistEvents(() => {
+        if (typeof targetCell.setTimeframe === 'function' && targetCell.timeframe !== targetVelaTf) {
+          targetCell.setTimeframe(targetVelaTf);
+        }
+      });
+
+      // Panggil setMarket dengan timeframe, bars, dan visibleRange secara single-pass
+      if (typeof chart.setMarket === 'function') {
+        await chart.setMarket({
+          timeframe: targetVelaTf,
+          bars: Math.max(requiredBars, targetCell?.state?.bars ?? 500),
+          visibleRange: initialSpan,
+        });
+      } else if (typeof targetCell.applyRange === 'function') {
+        targetCell.applyRange({
+          id: preset,
+          tf: targetVelaTf,
+          preset,
+          bars: requiredBars,
+        });
+      }
+
+      // Setelah setMarket selesai, ambil bar terbaru untuk framing final yang akurat (termasuk preset 'ALL')
+      const updatedBars =
+        chart?.orchestrator?.rawBars ??
+        chart?.orchestrator?.bars ??
+        chart?.bars ??
+        chart?.rawBars ??
+        (typeof chart?.getBars === 'function' ? chart.getBars() : undefined);
+      const finalSpan = calculateRangePresetSpan(preset, updatedBars);
+      this.activeRangePresetSpan = finalSpan;
+
+      // Pastikan framing diterapkan pada renderer jika belum sinkron
+      if (typeof chart.setVisibleRange === 'function') {
+        chart.setVisibleRange(finalSpan);
+      } else if (typeof chart.setVisibleRangePreset === 'function') {
+        chart.setVisibleRangePreset(preset);
+      }
+
+      if (prevTimeframe !== targetTf) {
+        this.onActiveCellChange?.({
+          symbol: this.symbol,
+          timeframe: targetTf,
+          providerId: this.providerId,
+        });
+      }
+
+      this.onRangePresetChange?.(preset);
+      this.emitPersistableChange('visibleRangePreset');
+      this.notify();
+      return true;
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal menyetel visible range preset:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Mereset state preset rentang aktif saat pengguna mengganti simbol/timeframe secara manual
+   */
+  private resetActiveRangePreset(): void {
+    if (this.activeRangePreset !== null || this.activeRangePresetSpan !== null) {
+      this.activeRangePreset = null;
+      this.activeRangePresetSpan = null;
+      this.onRangePresetChange?.(null);
+    }
+  }
+
+  /**
+   * Mengambil preset rentang waktu yang sedang aktif
+   */
+  public getActiveRangePreset(cell?: any): VisibleRangePreset | null {
+    return this.activeRangePreset;
+  }
+
+  /**
+   * Merotasi preset rentang waktu ke pilihan berikutnya atau sebelumnya secara siklik
+   */
+  public async cycleRangePreset(
+    direction: 'next' | 'prev' = 'next',
+    cell?: any
+  ): Promise<VisibleRangePreset | null> {
+    const current = this.activeRangePreset;
+    const next = getNextRangePreset(current, direction);
+    const success = await this.setVisibleRangePreset(next, cell);
+    return success ? next : null;
+  }
+
+  /**
+   * Mengecek apakah posisi viewport pengguna telah menyimpang jauh dari rentang preset yang dibingkai
+   */
+  private checkRangePresetViewportDrift(cell: any): void {
+    if (!this.activeRangePreset || !this.activeRangePresetSpan) return;
+    const vr = this.getVisibleRangeSnapshot(cell);
+    if (!vr || typeof vr.from !== 'number' || typeof vr.to !== 'number') return;
+
+    const currentSpan = Math.abs(vr.to - vr.from);
+    const targetSpan = Math.abs(this.activeRangePresetSpan.to - this.activeRangePresetSpan.from);
+    if (targetSpan <= 0) return;
+
+    const ratio = currentSpan / targetSpan;
+    const timeDrift = Math.abs(vr.to - this.activeRangePresetSpan.to);
+
+    // Jika rasio lebar span mengecil < 0.65x atau membesar > 1.35x,
+    // atau pergeseran tepi waktu kanan > 35% dari rentang target,
+    // maka pengguna telah melakukan panning/zooming manual di luar cakupan preset.
+    if (ratio < 0.65 || ratio > 1.35 || timeDrift > targetSpan * 0.35) {
+      this.activeRangePreset = null;
+      this.activeRangePresetSpan = null;
+      this.onRangePresetChange?.(null);
+      this.notify();
+    }
   }
 
   /**
@@ -4186,6 +4655,7 @@ export class ChartSessionController {
         timeframe: tf,
         providerId: providerId || this.providerId,
         priceStyle: this.getPriceStyle(cell),
+        priceScaleCountdown: this.isPriceScaleCountdownEnabled(cell),
         barSpacing: this.getBarSpacing(cell),
         priceScaleState: this.getPriceScaleState(cell),
         paneLayout: this.getPaneLayout(cell),
@@ -4313,6 +4783,9 @@ export class ChartSessionController {
         }
         if (snap.priceStyle) {
           this.setPriceStyle(snap.priceStyle, cell);
+        }
+        if (snap.priceScaleCountdown !== undefined) {
+          this.setPriceScaleCountdown(snap.priceScaleCountdown, cell);
         }
 
         // Langkah 2b: Pulihkan indikator Pine per sel (atau fallback ke sharedIndicators saat syncConfig.indicators aktif)
@@ -4825,6 +5298,12 @@ export class ChartSessionController {
     this.streamCoordinator.clear();
     this.registeredCustomSignatures.clear();
     this.timelineMarksController.detach();
+    for (const cell of this.getAllCells()) {
+      const chart = cell?.chart || cell?.inner;
+      if (chart) {
+        this.pineAlertBridge.detach(chart);
+      }
+    }
     this.strategyTelemetry.clearTelemetry();
 
     if (this.resizeObserver) {

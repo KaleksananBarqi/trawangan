@@ -452,6 +452,8 @@ export class ChartDrawingController {
 
   private undoHistory: DrawingUndoAction[] = [];
   private redoHistory: DrawingUndoAction[] = [];
+  private drawingClipboard: any | null = null;
+  private clipboardPasteCount = 0;
   private lastGestureCreation: GestureCreationState | null = null;
   private gestureHudTimeout: any = null;
 
@@ -2064,6 +2066,190 @@ export class ChartDrawingController {
   }
 
   /**
+   * Membuat salinan objek gambar dengan offset spasial adaptif
+   */
+  private cloneDrawingWithOffset(source: any, activeChart: any, offsetMultiplier: number): any {
+    const firstPrice = source.anchors?.[0]?.price ?? 100;
+    const tick = getAdaptiveTickSize(firstPrice, undefined, this.getSymbol());
+    const priceOffset = tick * 5 * offsetMultiplier;
+    const { deltaT } = resolveCandleMetrics(activeChart, this.getTimeframe());
+    const timeOffset = (deltaT > 0 ? deltaT : 60000) * offsetMultiplier;
+    const pixelOffset = 20 * offsetMultiplier;
+
+    const clonedAnchors = Array.isArray(source.anchors)
+      ? source.anchors.map((a: any) => ({
+          ...a,
+          time: typeof a.time === 'number' ? a.time + timeOffset : a.time,
+          price: typeof a.price === 'number' ? a.price - priceOffset : a.price
+        }))
+      : [];
+
+    const clonedPoints = Array.isArray(source.points)
+      ? source.points.map((p: any) => ({
+          ...p,
+          x: typeof p.x === 'number' ? p.x + pixelOffset : p.x,
+          y: typeof p.y === 'number' ? p.y + pixelOffset : p.y
+        }))
+      : undefined;
+
+    const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+    const newId = `draw_${uuid}`;
+
+    const clonedItem: any = {
+      ...source,
+      id: newId,
+      anchors: clonedAnchors,
+      ...(clonedPoints ? { points: clonedPoints } : {}),
+      style: source.style ? JSON.parse(JSON.stringify(source.style)) : undefined,
+      text: source.text ? JSON.parse(JSON.stringify(source.text)) : undefined,
+      metadata: source.metadata ? { ...JSON.parse(JSON.stringify(source.metadata)), planId: undefined } : undefined,
+    };
+    if (typeof source.x1 === 'number') clonedItem.x1 = source.x1 + pixelOffset;
+    if (typeof source.y1 === 'number') clonedItem.y1 = source.y1 + pixelOffset;
+    if (typeof source.x2 === 'number') clonedItem.x2 = source.x2 + pixelOffset;
+    if (typeof source.y2 === 'number') clonedItem.y2 = source.y2 + pixelOffset;
+    if (typeof source.x === 'number') clonedItem.x = source.x + pixelOffset;
+    if (typeof source.y === 'number') clonedItem.y = source.y + pixelOffset;
+    return clonedItem;
+  }
+
+  /**
+   * Menyimpan drawing hasil kloning ke chart, undo history, dan memperbarui seleksi
+   */
+  private commitClonedDrawing(activeChart: any, clonedItem: any): string | null {
+    let created: any = null;
+    try {
+      if (typeof activeChart.drawings.create === 'function') {
+        created = activeChart.drawings.create(clonedItem);
+      } else if (typeof activeChart.drawings.add === 'function') {
+        created = activeChart.drawings.add(clonedItem.type || 'trendline', clonedItem);
+      } else if (typeof activeChart.drawings.all === 'function') {
+        const currentAll = activeChart.drawings.all();
+        if (Array.isArray(currentAll)) {
+          currentAll.push(clonedItem);
+          created = clonedItem;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal menambahkan drawing hasil kloning:', e);
+      return null;
+    }
+
+    const finalId = created?.id || clonedItem.id;
+    this.pushUndoAction({
+      action: 'create',
+      drawings: [{ ...clonedItem, id: finalId }]
+    });
+
+    this.selectedDrawingId = finalId;
+    this.selectDrawing(finalId);
+    this.notify();
+    this.handleDrawingMutated();
+    return finalId;
+  }
+
+  /**
+   * Menyelaraskan drawing baru yang ditambahkan langsung oleh API native Vela (paste/duplicate)
+   */
+  private syncNativeInsertedDrawing(beforeIds: Set<string>, afterList: any[]): string | null {
+    if (!Array.isArray(afterList)) return null;
+    const insertedItems = afterList.filter((d: any) => d?.id && !beforeIds.has(d.id));
+    if (insertedItems.length === 0) return null;
+
+    const inserted = insertedItems[insertedItems.length - 1];
+    this.pushUndoAction({
+      action: 'create',
+      drawings: [JSON.parse(JSON.stringify(inserted))]
+    });
+
+    this.selectedDrawingId = inserted.id;
+    this.selectDrawing(inserted.id);
+    this.notify();
+    this.handleDrawingMutated();
+    return inserted.id;
+  }
+
+  /**
+   * Menyalin objek gambar yang sedang dipilih ke clipboard internal (Ctrl+C)
+   */
+  copySelectedDrawing(): boolean {
+    const selectedId = this.getSelectedDrawingId();
+    if (!selectedId) return false;
+
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return false;
+
+    const all = typeof activeChart.drawings.all === 'function'
+      ? activeChart.drawings.all()
+      : this.activeDrawings;
+    const source = Array.isArray(all) ? all.find((d: any) => d && d.id === selectedId) : null;
+    if (!source) return false;
+
+    this.drawingClipboard = JSON.parse(JSON.stringify(source));
+    this.clipboardPasteCount = 0;
+
+    if (typeof activeChart.drawings.copyToClipboard === 'function') {
+      activeChart.drawings.copyToClipboard([selectedId]);
+    }
+    return true;
+  }
+
+  /**
+   * Mengambil data serialisasi objek gambar yang tersimpan di clipboard internal
+   */
+  getDrawingClipboard(): any | null {
+    return this.drawingClipboard ? JSON.parse(JSON.stringify(this.drawingClipboard)) : null;
+  }
+
+  /**
+   * Menempelkan objek gambar dari clipboard ke chart aktif dengan offset spasial (Ctrl+V)
+   */
+  pasteDrawing(): string | null {
+    if (!this.drawingClipboard) return null;
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings) return null;
+
+    this.clipboardPasteCount += 1;
+    const beforeList = typeof activeChart.drawings.all === 'function' ? activeChart.drawings.all() : [];
+    const beforeIds = new Set<string>(Array.isArray(beforeList) ? beforeList.map((d: any) => d?.id).filter(Boolean) : []);
+
+    if (typeof activeChart.drawings.paste === 'function') {
+      activeChart.drawings.paste();
+      const afterList = typeof activeChart.drawings.all === 'function' ? activeChart.drawings.all() : [];
+      const nativeId = this.syncNativeInsertedDrawing(beforeIds, afterList);
+      if (nativeId) return nativeId;
+    }
+
+    const clonedItem = this.cloneDrawingWithOffset(this.drawingClipboard, activeChart, this.clipboardPasteCount);
+    return this.commitClonedDrawing(activeChart, clonedItem);
+  }
+
+  /**
+   * Membuka dialog pengaturan & koordinat native untuk drawing tertentu atau yang sedang dipilih
+   */
+  openDrawingSettings(id?: string): boolean {
+    const targetId = id || this.getSelectedDrawingId();
+    if (!targetId) return false;
+
+    const activeChart = this.getActiveChart();
+    if (!activeChart?.drawings || typeof activeChart.drawings.openSettings !== 'function') {
+      return false;
+    }
+
+    activeChart.drawings.openSettings(targetId);
+    return true;
+  }
+
+  /**
+   * Menangani interaksi double-click pada drawing di kanvas untuk membuka dialog pengaturan
+   */
+  handleDrawingDblClick(id?: string): boolean {
+    return this.openDrawingSettings(id);
+  }
+
+  /**
    * Duplikasi objek gambar yang sedang dipilih (Ctrl+D) dengan pergeseran spasial lembut
    */
   duplicateSelectedDrawing(): string | null {
@@ -2082,85 +2268,19 @@ export class ChartDrawingController {
     const all = typeof activeChart.drawings.all === 'function'
       ? activeChart.drawings.all()
       : this.activeDrawings;
-    const source = all.find((d: any) => d && d.id === id);
+    const source = Array.isArray(all) ? all.find((d: any) => d && d.id === id) : null;
     if (!source) return null;
 
-    // Hitung offset spasial harga dan waktu adaptif
-    const firstPrice = source.anchors?.[0]?.price ?? 100;
-    const tick = getAdaptiveTickSize(firstPrice, undefined, this.getSymbol());
-    const priceOffset = tick * 5;
-    const { deltaT } = resolveCandleMetrics(activeChart, this.getTimeframe());
-    const timeOffset = deltaT > 0 ? deltaT : 60000;
-
-    const clonedAnchors = Array.isArray(source.anchors)
-      ? source.anchors.map((a: any) => ({
-          ...a,
-          time: typeof a.time === 'number' ? a.time + timeOffset : a.time,
-          price: typeof a.price === 'number' ? a.price - priceOffset : a.price
-        }))
-      : [];
-
-    const clonedPoints = Array.isArray(source.points)
-      ? source.points.map((p: any) => ({
-          ...p,
-          x: typeof p.x === 'number' ? p.x + 20 : p.x,
-          y: typeof p.y === 'number' ? p.y + 20 : p.y
-        }))
-      : undefined;
-
-    const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : Math.random().toString(36).substring(2, 9) + '_' + Date.now();
-    const newId = `draw_${uuid}`;
-
-    const clonedItem: any = {
-      ...source,
-      id: newId,
-      anchors: clonedAnchors,
-      ...(clonedPoints ? { points: clonedPoints } : {}),
-      style: source.style ? JSON.parse(JSON.stringify(source.style)) : undefined,
-      text: source.text ? JSON.parse(JSON.stringify(source.text)) : undefined,
-      metadata: source.metadata ? { ...JSON.parse(JSON.stringify(source.metadata)), planId: undefined } : undefined,
-    };
-    if (typeof source.x1 === 'number') clonedItem.x1 = source.x1 + 20;
-    if (typeof source.y1 === 'number') clonedItem.y1 = source.y1 + 20;
-    if (typeof source.x2 === 'number') clonedItem.x2 = source.x2 + 20;
-    if (typeof source.y2 === 'number') clonedItem.y2 = source.y2 + 20;
-    if (typeof source.x === 'number') clonedItem.x = source.x + 20;
-    if (typeof source.y === 'number') clonedItem.y = source.y + 20;
-
-    let created: any = null;
-    try {
-      if (typeof activeChart.drawings.create === 'function') {
-        created = activeChart.drawings.create(clonedItem);
-      } else if (typeof activeChart.drawings.add === 'function') {
-        created = activeChart.drawings.add(clonedItem.type || 'trendline', clonedItem);
-      } else if (typeof activeChart.drawings.all === 'function') {
-        const currentAll = activeChart.drawings.all();
-        if (Array.isArray(currentAll)) {
-          currentAll.push(clonedItem);
-          created = clonedItem;
-        }
-      }
-    } catch (e) {
-      console.warn('Gagal menduplikasi drawing:', e);
-      return null;
+    const beforeIds = new Set<string>(Array.isArray(all) ? all.map((d: any) => d?.id).filter(Boolean) : []);
+    if (typeof activeChart.drawings.duplicate === 'function') {
+      activeChart.drawings.duplicate([id]);
+      const afterList = typeof activeChart.drawings.all === 'function' ? activeChart.drawings.all() : [];
+      const nativeId = this.syncNativeInsertedDrawing(beforeIds, afterList);
+      if (nativeId) return nativeId;
     }
 
-    const finalId = created?.id || newId;
-
-    // Tambahkan aksi ke undo timeline (pushUndoAction)
-    this.pushUndoAction({
-      action: 'create',
-      drawings: [{ ...clonedItem, id: finalId }]
-    });
-
-    // Set ID gambar baru sebagai this.selectedDrawingId
-    this.selectedDrawingId = finalId;
-    this.selectDrawing(finalId);
-    this.notify();
-    this.handleDrawingMutated();
-    return finalId;
+    const clonedItem = this.cloneDrawingWithOffset(source, activeChart, 1);
+    return this.commitClonedDrawing(activeChart, clonedItem);
   }
 
   /**
@@ -2777,6 +2897,20 @@ export class ChartDrawingController {
     unbinders.push(
       dispatcher.bindHandler('draw-redo', () => {
         this.redo();
+      })
+    );
+
+    // Salin Objek Gambar (Ctrl+C)
+    unbinders.push(
+      dispatcher.bindHandler('copy-selected-drawing', () => {
+        this.copySelectedDrawing();
+      })
+    );
+
+    // Tempel Objek Gambar (Ctrl+V)
+    unbinders.push(
+      dispatcher.bindHandler('paste-drawing', () => {
+        this.pasteDrawing();
       })
     );
 

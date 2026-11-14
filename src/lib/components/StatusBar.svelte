@@ -16,6 +16,7 @@
   import { updateService, type UpdateState } from '../services/updateService';
   import { openExternalUrl } from '../services/urlService';
   import { marketFeed } from '../services/market';
+  import { marketSessionService, type MarketSessionState } from '../services/marketSessionService';
   import type { FeedConnectionStatus } from '../services/market/types';
   import type { AppSettings } from '../types/market';
   import {
@@ -31,6 +32,7 @@
     onOpenAbout?: () => void;
     settings?: AppSettings;
     onSelectTimezone?: (tz: string) => void;
+    onToggleSession?: () => void;
   }
 
   let {
@@ -38,7 +40,8 @@
     onToggleConsole,
     onOpenAbout,
     settings,
-    onSelectTimezone
+    onSelectTimezone,
+    onToggleSession
   }: Props = $props();
 
   let localClock = $state(formatLocalClockTime(new Date()));
@@ -51,6 +54,16 @@
   let unsubUpdate: (() => void) | null = null;
   let feedStatus = $state<FeedConnectionStatus>(marketFeed.getConnectionStatus());
   let unsubFeed: (() => void) | null = null;
+  let sessionState = $state<MarketSessionState>(marketSessionService.getSnapshot());
+  let unsubSession: (() => void) | null = null;
+
+  function handleSessionToggleClick() {
+    if (onToggleSession) {
+      onToggleSession();
+    } else {
+      marketSessionService.toggleSession();
+    }
+  }
 
   function updateClock() {
     const now = new Date();
@@ -78,6 +91,9 @@
     unsubFeed = marketFeed.onConnectionChange((st) => {
       feedStatus = st;
     });
+    unsubSession = marketSessionService.subscribe((st) => {
+      sessionState = st;
+    });
   });
 
   onDestroy(() => {
@@ -85,6 +101,7 @@
     if (unsubTelemetry) unsubTelemetry();
     if (unsubUpdate) unsubUpdate();
     if (unsubFeed) unsubFeed();
+    if (unsubSession) unsubSession();
   });
 </script>
 
@@ -153,7 +170,7 @@
     </div>
   </div>
 
-  <!-- Kluster Kanan: Jam Lokal, Jam Bursa Dunia, Dukungan & Terminal Logs -->
+  <!-- Kluster Kanan: Jam Lokal, Jam Bursa Dunia, Toggle Sesi RTH/ETH, Dukungan & Terminal Logs -->
   <div class="right-cluster">
     <!-- Kluster Jam: Jam Lokal + Jam Bursa Dunia -->
     <div class="clocks-cluster">
@@ -241,6 +258,22 @@
         </div>
       {/if}
     </div>
+
+    {#if sessionState.sessionAvailable}
+      {@const effectiveSession = settings?.marketSession ?? sessionState.session}
+      <div class="divider"></div>
+      <button
+        type="button"
+        class="telemetry-pill session-toggle-pill interactive mono-nums {effectiveSession === 'extended' ? 'eth-active' : 'rth-active'}"
+        title={effectiveSession === 'extended'
+          ? 'Extended Trading Hours (ETH): Menampilkan Pre-Market & Post-Market dengan shading sesi. Klik untuk beralih ke RTH.'
+          : 'Regular Trading Hours (RTH): Hanya jam bursa reguler. Klik untuk mengaktifkan Extended Hours (ETH).'}
+        onclick={handleSessionToggleClick}
+      >
+        <span class="session-mode-dot {effectiveSession === 'extended' ? 'dot-eth' : 'dot-rth'}"></span>
+        <span class="session-mode-label">{effectiveSession === 'extended' ? 'ETH' : 'RTH'}</span>
+      </button>
+    {/if}
 
     <!-- Buy Me Coffee Button -->
     <button
@@ -479,6 +512,48 @@
     font-family: var(--font-mono);
     color: var(--text-dim);
     transition: all 0.15s ease;
+  }
+
+  .session-toggle-pill {
+    background: var(--bg-tertiary, rgba(30, 41, 59, 0.55));
+    border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.16));
+    border-radius: var(--radius-xs, 4px);
+    padding: 1px 7px;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    transition: all 0.15s ease;
+  }
+
+  .session-toggle-pill.eth-active {
+    color: #38bdf8;
+    background: rgba(14, 165, 233, 0.12);
+    border-color: rgba(14, 165, 233, 0.35);
+  }
+
+  .session-toggle-pill.rth-active {
+    color: var(--text-secondary, #cbd5e1);
+  }
+
+  .session-toggle-pill:hover {
+    border-color: rgba(56, 189, 248, 0.5);
+  }
+
+  .session-mode-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    display: inline-block;
+  }
+
+  .session-mode-dot.dot-eth {
+    background-color: #f97316;
+    box-shadow: 0 0 6px rgba(249, 115, 22, 0.65);
+  }
+
+  .session-mode-dot.dot-rth {
+    background-color: #9ca3af;
   }
 
   .world-clock-pill:hover {

@@ -46,6 +46,8 @@ export interface WorkspaceChartPort {
   toggleIndicatorVisibility(idOrTitle: string): void;
   setPriceStyle(style: string, cell?: any): void;
   getPriceStyle?(cell?: any): string;
+  setPriceScaleCountdown?(enabled: boolean, cell?: any): void;
+  isPriceScaleCountdownEnabled?(cell?: any): boolean;
   setBarSpacing(spacing: number, cell?: any): void;
   getBarSpacing?(cell?: any): number;
   applyPriceScaleState(state: any, cell?: any): void | boolean;
@@ -173,6 +175,10 @@ export async function restoreWorkspaceChartAndPlans(
 
     if (w.priceStyle) {
       chart.setPriceStyle(w.priceStyle);
+    }
+
+    if (typeof w.priceScaleCountdown === 'boolean' && typeof chart.setPriceScaleCountdown === 'function') {
+      chart.setPriceScaleCountdown(w.priceScaleCountdown);
     }
 
     // Muat indikator Pine secara deterministik beserta inputs, props, dan status visible
@@ -348,6 +354,7 @@ export async function executeWorkspaceLoadPipeline(
       getNativeIndicators: () => (typeof chart.getNativeIndicators === 'function' ? chart.getNativeIndicators() : (w.nativeIndicators ?? [])),
       getPriceScaleState: () => (typeof chart.getPriceScaleState === 'function' ? chart.getPriceScaleState() : (w.priceScaleState ?? null)),
       getPriceStyle: () => (typeof chart.getPriceStyle === 'function' ? chart.getPriceStyle() : (w.priceStyle ?? 'candles')),
+      isPriceScaleCountdownEnabled: () => (typeof chart.isPriceScaleCountdownEnabled === 'function' ? chart.isPriceScaleCountdownEnabled() : (w.priceScaleCountdown ?? false)),
       getBarSpacing: () => (typeof chart.getBarSpacing === 'function' ? chart.getBarSpacing() : (w.barSpacing ?? 8)),
       getCellsSnapshot: () => {
         const liveCells = typeof chart.getCellsSnapshot === 'function' ? chart.getCellsSnapshot() : undefined;
@@ -669,6 +676,7 @@ export function buildWorkspaceSnapshotPayload(
     nativeIndicators: chart?.getNativeIndicators?.() ?? [],
     priceScaleState: chart?.getPriceScaleState?.() ?? null,
     priceStyle: chart?.getPriceStyle?.() ?? 'candles',
+    priceScaleCountdown: chart?.isPriceScaleCountdownEnabled?.() ?? false,
     barSpacing: chart?.getBarSpacing?.() ?? 8,
     ...(visibleRange !== undefined && visibleRange !== null ? { visibleRange } : {}),
     showVolume: showVolume ?? true,

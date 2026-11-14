@@ -7,6 +7,7 @@ import { isMonthlyTimeframe } from '../utils/timeframeAdapter';
 import { universalFetch } from './httpClient';
 import { isYahooSymbol } from './instrumentIdentity';
 import { isMarketSessionOpen } from './worldClockService';
+import type { MarketSession } from './marketSessionService';
 import {
   createPollingSubscription,
   type ManagedStreamHandle,
@@ -20,6 +21,7 @@ export interface YahooFinanceProviderOptions {
   timeoutMs?: number;
   respectMarketHours?: boolean;
   isMarketOpen?: (symbol: string, now: Date) => boolean;
+  session?: MarketSession;
 }
 
 function getZonedWeekdayAndMinutes(
@@ -51,8 +53,13 @@ function getZonedWeekdayAndMinutes(
 /**
  * Memeriksa apakah instrumen Yahoo Finance sedang berada di jam perdagangan aktif
  * sesuai ADR-0021 §6 (IDX .JK / ^JKSE, COMEX Futures =F, serta indeks & ekuitas AS).
+ * Mendukung pembacaan jam sesi reguler (RTH) vs jam sesi extended (ETH).
  */
-export function isYahooMarketActive(symbol: string, now: Date = new Date()): boolean {
+export function isYahooMarketActive(
+  symbol: string,
+  now: Date = new Date(),
+  session: MarketSession = 'regular'
+): boolean {
   const upper = symbol.replace(/^yahoo:/i, '').trim().toUpperCase();
   if (!upper) return false;
 
@@ -76,7 +83,18 @@ export function isYahooMarketActive(symbol: string, now: Date = new Date()): boo
     return et.totalMinutes < 17 * 60 || et.totalMinutes >= 18 * 60;
   }
 
-  // Indeks & ekuitas AS (^IXIC, ^NDX, ^GSPC, QQQ, dll.): Senin-Jumat 09:30-16:00 ET
+  // Indeks & ekuitas AS (^IXIC, ^NDX, ^GSPC, QQQ, AAPL, TSLA, dll.)
+  // Jika session === 'extended', jam buka mencakup pre-market (04:00) s/d post-market (20:00) ET
+  if (session === 'extended') {
+    return isMarketSessionOpen(now, 'America/New_York', {
+      openHour: 4,
+      openMinute: 0,
+      closeHour: 20,
+      closeMinute: 0,
+    });
+  }
+
+  // Regular Trading Hours (RTH): Senin-Jumat 09:30-16:00 ET
   return isMarketSessionOpen(now, 'America/New_York', {
     openHour: 9,
     openMinute: 30,
@@ -101,6 +119,7 @@ export interface SymbolInfo {
   description?: string;
   type?: string;
   session?: string;
+  session_extended?: string;
   exchange?: string;
   listed_exchange?: string;
   timezone?: string;
@@ -159,9 +178,20 @@ export function resampleCandles(candles: OHLCV[], targetIntervalSeconds: number)
 export class YahooFinanceProvider {
   private activeSubscriptions = new Map<string, ManagedStreamHandle>();
   private options: YahooFinanceProviderOptions;
+  private session: MarketSession;
 
   constructor(options: YahooFinanceProviderOptions = {}) {
     this.options = options;
+    this.session = options.session ?? 'regular';
+  }
+
+  public getSession(): MarketSession {
+    return this.session;
+  }
+
+  public setSession(session: MarketSession): void {
+    this.session = session;
+    this.options.session = session;
   }
 
   public setHealthSink(sink?: StreamHealthSink): void {
@@ -274,9 +304,11 @@ export class YahooFinanceProvider {
     const { interval, resampleTargetSec } = this.mapTimeframe(timeframe);
     const countBack = range?.countBack || range?.limit || 300;
     const rangeParam = this.determineRange(interval, countBack);
+    const effectiveSession = range?.session || this.session || 'regular';
+    const includePrePost = effectiveSession === 'extended';
 
     const encodedSymbol = encodeURIComponent(symbol);
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedSymbol}?interval=${interval}&range=${rangeParam}`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedSymbol}?interval=${interval}&range=${rangeParam}&includePrePost=${includePrePost}`;
     const timeoutMs = this.options.timeoutMs ?? 8000;
 
     const res = await universalFetch(url, { timeoutMs });
@@ -362,11 +394,18 @@ export class YahooFinanceProvider {
   /**
    * Polling berkala untuk live feed update lilin aktif dengan anti-overlap guard, backoff, dan health reporting
    */
-  subscribe(ticker: string, timeframe: string, onBar: (b: OHLCV) => void): () => void {
+  subscribe(
+    ticker: string,
+    timeframe: string,
+    onBar: (b: OHLCV) => void,
+    subOptions?: { session?: MarketSession }
+  ): () => void {
     const symbol = this.cleanYahooTicker(ticker);
+    const effectiveSession = subOptions?.session || this.session || 'regular';
     const subKey = `yahoo:${symbol}:${timeframe}:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`;
     const respectMarketHours = this.options.respectMarketHours ?? true;
-    const checkMarketOpen = this.options.isMarketOpen ?? isYahooMarketActive;
+    const checkMarketOpen =
+      this.options.isMarketOpen ?? ((s: string, d: Date) => isYahooMarketActive(s, d, effectiveSession));
 
     return createPollingSubscription<OHLCV>({
       sourceKey: subKey,
@@ -379,7 +418,7 @@ export class YahooFinanceProvider {
         if (respectMarketHours && !checkMarketOpen(symbol, new Date())) {
           return null;
         }
-        const bars = await this.fetchBarsStrict(ticker, timeframe, { countBack: 2 });
+        const bars = await this.fetchBarsStrict(ticker, timeframe, { countBack: 2, session: effectiveSession });
         return bars.length > 0 ? bars[bars.length - 1] : null;
       },
       onBar,
@@ -394,17 +433,49 @@ export class YahooFinanceProvider {
 
   async getSymbolInfo(ticker: string): Promise<SymbolInfo> {
     const clean = this.cleanYahooTicker(ticker);
-    const isIdr = clean.toUpperCase().endsWith('.JK');
-    const isGoldOrMetal = clean.includes('=F');
+    const upper = clean.toUpperCase();
+    const isIdr = upper.endsWith('.JK') || upper === '^JKSE';
+    const isGoldOrMetal = upper.includes('=F');
+    const isCrypto =
+      upper.includes('-USD') ||
+      upper.endsWith('BTC') ||
+      upper.endsWith('ETH') ||
+      upper.endsWith('USDT') ||
+      upper.endsWith('USDC');
+
+    let session = '0930-1600';
+    let session_extended: string | undefined = '0400-2000';
+    let timezone = 'America/New_York';
+    let type = 'stock';
+
+    if (isCrypto) {
+      session = '24x7';
+      session_extended = undefined;
+      timezone = 'Etc/UTC';
+      type = 'crypto';
+    } else if (isIdr) {
+      session = '0900-1615';
+      session_extended = '0900-1615';
+      timezone = 'Asia/Jakarta';
+      type = 'stock';
+    } else if (isGoldOrMetal) {
+      session = '1800-1700';
+      session_extended = '1800-1700';
+      timezone = 'America/New_York';
+      type = 'commodity';
+    } else if (upper.startsWith('^')) {
+      type = 'index';
+    }
 
     return {
       ticker: clean,
       name: clean,
       tickerid: `yahoo:${clean}`,
       description: clean,
-      type: isIdr ? 'stock' : isGoldOrMetal ? 'commodity' : 'index',
-      session: '24x7',
-      timezone: isIdr ? 'Asia/Jakarta' : 'America/New_York',
+      type,
+      session,
+      ...(session_extended ? { session_extended } : {}),
+      timezone,
       minmov: 1,
       pricescale: isIdr ? 1 : isGoldOrMetal ? 100 : 100,
       has_intraday: true,

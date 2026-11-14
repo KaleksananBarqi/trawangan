@@ -70,6 +70,43 @@ export interface WindowsAlertOptions {
   label?: string;
 }
 
+export interface DesktopNotificationPayload {
+  title: string;
+  body: string;
+  icon?: string;
+}
+
+/**
+ * Kirim notifikasi push desktop generik melalui plugin Tauri atau Web Notification API
+ */
+export async function sendDesktopNotification(payload: DesktopNotificationPayload): Promise<boolean> {
+  const hasPermission = await ensureNotificationPermission();
+  if (!hasPermission) {
+    return false;
+  }
+
+  try {
+    sendNotification({
+      title: payload.title,
+      body: payload.body,
+      icon: payload.icon,
+    });
+    return true;
+  } catch (err) {
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification(payload.title, {
+          body: payload.body,
+          icon: payload.icon || '/icons/128x128.png',
+        });
+        return true;
+      }
+    } catch (_) {}
+    console.warn('Gagal mengirim notifikasi desktop:', err);
+    return false;
+  }
+}
+
 /**
  * Kirim notifikasi toast native ke sistem Windows
  */
@@ -84,29 +121,7 @@ export async function sendWindowsAlertNotification(opts: WindowsAlertOptions): P
     ? `Target $${targetFormatted} tercapai! (${opts.label})\nHarga: $${actualFormatted} • ${condText}`
     : `Target $${targetFormatted} tercapai! (Harga: $${actualFormatted})\nKondisi: ${condText}`;
 
-  try {
-    const hasPermission = await ensureNotificationPermission();
-    if (hasPermission) {
-      sendNotification({
-        title,
-        body,
-      });
-      return true;
-    }
-  } catch (err) {
-    // Fallback Web Notification API
-    try {
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, {
-          body,
-          icon: '/icons/128x128.png',
-        });
-        return true;
-      }
-    } catch (_) {}
-    console.warn('Gagal mengirim notifikasi toast Windows:', err);
-  }
-  return false;
+  return sendDesktopNotification({ title, body, icon: '/icons/128x128.png' });
 }
 
 /**
