@@ -74,7 +74,7 @@
       </div>
     {:else}
       <div class="sections-scroll">
-        {#each sections as section (section.title)}
+        {#each sections as section, sIdx (`${sIdx}-${section.title}`)}
           <div class="dw-group">
             <div class="dw-group-header">
               <span class="group-icon">
@@ -90,7 +90,7 @@
             </div>
 
             <div class="dw-group-body">
-              {#each section.lines as line (line.label)}
+              {#each section.lines as line, lIdx (`${lIdx}-${line.label}`)}
                 <div class="dw-row">
                   <span class="dw-label" title={line.label}>{line.label}</span>
                   <div class="dw-value-wrap">

@@ -133,7 +133,7 @@ describe('DataWindow Inspector Suite (#203)', () => {
 
       const sections = formatDataWindowSections(bearishReadout);
       assert.strictEqual(sections.length, 2);
-      assert.ok(sections[1].lines[0].color.includes('--bear-color'), 'Lilin bearish memakai warna bear');
+      assert.ok(sections[1]?.lines[0]?.color?.includes('--bear-color'), 'Lilin bearish memakai warna bear');
     });
 
     it('mengembalikan array kosong jika readout null', () => {
@@ -220,8 +220,9 @@ describe('DataWindow Inspector Suite (#203)', () => {
       assert.strictEqual(snap.readout?.groups[0].name, 'EMA 20');
 
       // Simulasi gerakan crosshair
-      assert.ok(crosshairCallback, 'Crosshair callback harus terpasang');
-      crosshairCallback!();
+      const triggerCrosshair = crosshairCallback as (() => void) | null;
+      assert.ok(triggerCrosshair, 'Crosshair callback harus terpasang');
+      triggerCrosshair();
 
       snap = service.getSnapshot();
       assert.strictEqual(snap.hasData, true);
@@ -262,8 +263,9 @@ describe('DataWindow Inspector Suite (#203)', () => {
       assert.strictEqual(service.getSnapshot().hasData, true);
 
       // Simulasikan kursor keluar dari kanvas
-      assert.ok(pointerLeaveCallback, 'Listener pointerleave harus terpasang pada kontainer chart');
-      pointerLeaveCallback!();
+      const triggerLeave = pointerLeaveCallback as (() => void) | null;
+      assert.ok(triggerLeave, 'Listener pointerleave harus terpasang pada kontainer chart');
+      triggerLeave();
 
       const snapAfterLeave = service.getSnapshot();
       // Data tetap hadir (tidak menjadi null/blank)
@@ -348,8 +350,9 @@ describe('DataWindow Inspector Suite (#203)', () => {
 
       // Ganti sel aktif ke Chart B
       mockWorkspace.active = { chart: chartB };
-      assert.ok(cellActiveCallback);
-      cellActiveCallback!();
+      const triggerCellActive = cellActiveCallback as (() => void) | null;
+      assert.ok(triggerCellActive);
+      triggerCellActive();
 
       assert.strictEqual(service.getSnapshot().readout?.groups[0].name, 'Chart B Indicator');
       assert.strictEqual(service.getSnapshot().readout?.time, '15:15');
