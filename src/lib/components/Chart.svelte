@@ -37,7 +37,7 @@
   interface Props {
     symbol: string; timeframe: Timeframe; defaultTimeframe?: Timeframe; layout: string;
     providerId?: string; syncConfig?: MultiChartSyncConfig; showWatermark?: boolean;
-    showCurrentPriceLine?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
+    showCurrentPriceLine?: boolean; showPriceScaleCountdown?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
     onPriceStyleChange?: (style: string) => void;
@@ -66,7 +66,7 @@
     workspaceId = 'default_workspace', gridMode = 'normal',
     customPalette, customBullColor, customBearColor, customChartBackground,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
-    showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
+    showWatermark = true, showCurrentPriceLine = true, showPriceScaleCountdown = false, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onPriceStyleChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
@@ -79,7 +79,7 @@
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
-    showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange,
+    showCurrentPriceLine, showPriceScaleCountdown, showVolume, syncConfig, onActiveCellChange,
     onPriceStyleChange,
     onActiveIndicatorsChange: (indicators) => {
       priceScaleOverlayController.updateIndicators(indicators, showIndicatorPriceLabels);
@@ -204,6 +204,7 @@
     }
   });
   $effect(() => { const pl = showCurrentPriceLine; if (isMounted) controller.setShowCurrentPriceLine(pl); });
+  $effect(() => { const cd = showPriceScaleCountdown; if (isMounted && cd !== undefined) controller.setPriceScaleCountdown(cd); });
   $effect(() => {
     const s = symbol, a = allAlerts;
     if (isMounted) {
