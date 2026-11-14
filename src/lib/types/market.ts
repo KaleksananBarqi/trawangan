@@ -180,7 +180,41 @@ export interface MultiChartSyncConfig {
   drawings: boolean;
   indicators?: boolean;
   timeframe?: boolean;
+  style?: boolean;
 }
+
+/**
+ * Tipe gaya tampilan harga (chart type) institusional yang didukung oleh engine WebGL2 Vela
+ */
+export type PriceStyle = 'candles' | 'heikinashi' | 'bars' | 'line' | 'area' | 'baseline';
+
+export const VALID_PRICE_STYLES: readonly PriceStyle[] = [
+  'candles',
+  'heikinashi',
+  'bars',
+  'line',
+  'area',
+  'baseline'
+] as const;
+
+export function isValidPriceStyle(val: unknown): val is PriceStyle {
+  return typeof val === 'string' && (VALID_PRICE_STYLES as readonly string[]).includes(val);
+}
+
+export interface PriceStyleOption {
+  id: PriceStyle;
+  label: string;
+  description: string;
+}
+
+export const PRICE_STYLE_OPTIONS: readonly PriceStyleOption[] = [
+  { id: 'candles', label: 'Candlesticks', description: 'Lilin Jepang standar (OHLC visual penuh)' },
+  { id: 'heikinashi', label: 'Heikin-Ashi', description: 'Lilin rata-rata untuk menyaring noise & tren' },
+  { id: 'bars', label: 'Bars', description: 'Bilah harga tradisional OHLC' },
+  { id: 'line', label: 'Line', description: 'Garis kontinu berbasis harga penutupan' },
+  { id: 'area', label: 'Area', description: 'Area gradien berbasis harga penutupan' },
+  { id: 'baseline', label: 'Baseline', description: 'Grafik deviasi relatif terhadap nilai acuan dasar' }
+] as const;
 
 export type WorkspaceMode = 'terminal' | 'pine';
 

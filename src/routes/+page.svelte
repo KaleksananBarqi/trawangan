@@ -10,6 +10,7 @@
   import StatusBar from '../lib/components/StatusBar.svelte';
   import SettingsModal from '../lib/components/SettingsModal.svelte';
   import IndicatorModal from '../lib/components/IndicatorModal.svelte';
+  import IndicatorSettingsModal from '../lib/components/IndicatorSettingsModal.svelte';
   import SymbolSearchModal from '../lib/components/SymbolSearchModal.svelte';
   import TimeframeQuickBar from '../lib/components/TimeframeQuickBar.svelte';
   import CreateAlertModal from '../lib/components/CreateAlertModal.svelte';
@@ -133,6 +134,7 @@
   let currentLayout = $state('1');
   let ticker = $state<TickerInfo | null>(null);
   let activeProviderId = $state('binance');
+  let activePriceStyle = $state<string>('candles');
 
   // Dual Workspace Mode: 'terminal' vs 'pine'
   let workspaceMode = $state<WorkspaceMode>('terminal');
@@ -800,6 +802,21 @@
           addSystemLog(`Invert skala harga: ${nextInvert ? 'AKTIF' : 'NONAKTIF'} (Alt+I)`, 'info');
         }
       }),
+      commandDispatcher.bindHandler('cycle-price-style', () => {
+        if (chartComponent && typeof chartComponent.cyclePriceStyle === 'function') {
+          const nextStyle = chartComponent.cyclePriceStyle();
+          activePriceStyle = nextStyle;
+          addSystemLog(`Siklus gaya lilin grafik: ${nextStyle.toUpperCase()} (Alt+Y)`, 'info');
+        } else if (chartComponent?.getPriceStyle && chartComponent?.setPriceStyle) {
+          const current = chartComponent.getPriceStyle();
+          const styles = ['candles', 'heikinashi', 'bars', 'line', 'area', 'baseline'];
+          const idx = styles.indexOf(current);
+          const next = styles[(idx + 1) % styles.length];
+          chartComponent.setPriceStyle(next);
+          activePriceStyle = next;
+          addSystemLog(`Siklus gaya lilin grafik: ${next.toUpperCase()} (Alt+Y)`, 'info');
+        }
+      }),
       commandDispatcher.bindHandler('draw-undo', () => {
         handleUndo();
       }),
@@ -997,6 +1014,24 @@
     if (syncConfig.indicators && chartComponent && typeof chartComponent.syncIndicatorsFromActiveCell === 'function') {
       chartComponent.syncIndicatorsFromActiveCell();
     }
+  }
+
+  function handleToggleSyncStyle() {
+    syncConfig.style = !syncConfig.style;
+    appSettings.syncConfig = { ...syncConfig };
+    persistAppSettings();
+    addSystemLog(`Sinkronisasi gaya lilin multi-chart: ${syncConfig.style ? 'AKTIF' : 'NONAKTIF'}`, 'info');
+    if (syncConfig.style && chartComponent && typeof chartComponent.syncLayout === 'function') {
+      chartComponent.syncLayout({ style: syncConfig.style });
+    }
+  }
+
+  function handlePriceStyleChange(newStyle: string) {
+    activePriceStyle = newStyle;
+    if (chartComponent && typeof chartComponent.setPriceStyle === 'function') {
+      chartComponent.setPriceStyle(newStyle);
+    }
+    addSystemLog(`Gaya tampilan harga diubah ke: ${newStyle}`, 'info');
   }
 
 
@@ -1221,6 +1256,7 @@
     chartDrawingController.setWorkspaceId('default_workspace');
     chartDrawingController.clearCanvasVisuals();
     chartDrawingController.clearAllPlans();
+    activePriceStyle = 'candles';
     addSystemLog('Workspace aktif dilepas. Siap menyetel tata letak atau indikator untuk workspace baru.', 'info');
   }
 
@@ -1230,6 +1266,9 @@
     isLoadingWorkspace = true;
     try {
       activeWorkspace = w;
+      if (w?.priceStyle) {
+        activePriceStyle = w.priceStyle;
+      }
       if (w && w.id) {
         await setLastActiveWorkspaceId(w.id);
         clearPendingWorkspaceBackup(w.id);
@@ -1397,6 +1436,30 @@
     return false;
   }
 
+  async function handleAddNativeIndicator(type: string, title?: string): Promise<boolean> {
+    if (chartComponent) {
+      const ok = await chartComponent.addNativeIndicator(type, undefined, title);
+      if (ok) {
+        syncActiveIndicators();
+        addSystemLog(`Indikator native "${title || type}" berhasil diterapkan ke grafik.`, 'success');
+      }
+      return ok;
+    }
+    return false;
+  }
+
+  async function handleApplyIndicator(descriptor: any): Promise<boolean> {
+    if (chartComponent) {
+      const ok = await chartComponent.addIndicator(descriptor);
+      if (ok) {
+        syncActiveIndicators();
+        addSystemLog(`Indikator "${descriptor?.title || 'Indicator'}" berhasil diterapkan ke grafik.`, 'success');
+      }
+      return ok;
+    }
+    return false;
+  }
+
   function syncActiveIndicators() {
     if (chartComponent && typeof chartComponent.getActiveIndicators === 'function') {
       activeIndicators = chartComponent.getActiveIndicators();
@@ -1435,6 +1498,44 @@
     const code = source || found?.source || '// Kode indikator tidak tersedia';
     const title = found?.title || 'Indicator.pine';
     handleOpenInEditor(code, title, id);
+  }
+
+  // Dynamic Typed Settings Modal State
+  let isIndicatorSettingsOpen = $state(false);
+  let configuringIndicator = $state<{
+    id: string;
+    title: string;
+    nativeType?: string;
+    schema?: any[];
+    inputs?: Record<string, any>;
+  } | null>(null);
+
+  function handleConfigureIndicator(id: string) {
+    if (!id) return;
+    const found = activeIndicators.find((i) => i.id === id);
+    const title = found?.title || id;
+    const nativeType = id.startsWith('native:') ? id.replace(/^native:/, '') : (found?.source || id);
+
+    let schema: any[] = [];
+    let currentInputs: Record<string, any> = {};
+
+    if (chartComponent) {
+      if (typeof chartComponent.getIndicatorInputSchema === 'function') {
+        schema = chartComponent.getIndicatorInputSchema(id);
+      }
+      if (typeof chartComponent.getIndicatorInputs === 'function') {
+        currentInputs = chartComponent.getIndicatorInputs(id);
+      }
+    }
+
+    configuringIndicator = {
+      id,
+      title,
+      nativeType,
+      schema,
+      inputs: { ...(found?.inputs || {}), ...currentInputs },
+    };
+    isIndicatorSettingsOpen = true;
   }
 
   function addSystemLog(msg: string, level: 'info' | 'success' | 'warn' | 'error') {
@@ -1655,6 +1756,7 @@
     onToggleSyncSymbol={handleToggleSyncSymbol}
     onToggleSyncDrawings={handleToggleSyncDrawings}
     onToggleSyncIndicators={handleToggleSyncIndicators}
+    onToggleSyncStyle={handleToggleSyncStyle}
     onToggleDrawingToolbar={() => workspaceShellService.toggleLeftRail()}
     onToggleReplay={handleToggleReplay}
     onOpenIndicatorModal={() => (isIndicatorModalOpen = true)}
@@ -1680,6 +1782,8 @@
     colorModePreference={appSettings.colorModePreference ?? 'system'}
     {systemIsDark}
     onCycleColorMode={handleCycleColorMode}
+    {activePriceStyle}
+    onPriceStyleChange={handlePriceStyleChange}
   />
 
   <!-- Main Viewport Area -->
@@ -1783,6 +1887,7 @@
           userProfile={appSettings.userProfile}
           onActiveIndicatorsChange={(list) => (activeIndicators = list)}
           onActiveCellChange={handleActiveCellChange}
+          onPriceStyleChange={(style) => (activePriceStyle = style)}
           onStrategyUpdate={handleStrategyUpdate}
           onRequestCreateAlert={handleRequestCreateAlert}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
@@ -1849,7 +1954,7 @@
           onWatchlistChange={handleWatchlistChange}
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}
           onRemoveIndicator={handleRemoveIndicator}
-          onConfigureIndicator={() => (isIndicatorModalOpen = true)}
+          onConfigureIndicator={handleConfigureIndicator}
           onOpenIndicatorInPine={handleOpenIndicatorInPine}
           onToggleDrawingVisibility={(id) => chartDrawingController.toggleDrawingVisibility(id)}
           onToggleDrawingLock={(id) => chartDrawingController.toggleDrawingLock(id)}
@@ -2004,8 +2109,45 @@
     isOpen={isIndicatorModalOpen}
     onClose={() => (isIndicatorModalOpen = false)}
     onSelectIndicator={handleAddIndicator}
+    onSelectNativeIndicator={handleAddNativeIndicator}
+    onApplyIndicator={handleApplyIndicator}
     onOpenInEditor={handleOpenInEditor}
   />
+
+  <!-- Dynamic Native & Pine Indicator Settings Dialog -->
+  {#if isIndicatorSettingsOpen && configuringIndicator}
+    <IndicatorSettingsModal
+      isOpen={isIndicatorSettingsOpen}
+      indicatorId={configuringIndicator.id}
+      indicatorTitle={configuringIndicator.title}
+      nativeType={configuringIndicator.nativeType}
+      schema={configuringIndicator.schema}
+      inputs={configuringIndicator.inputs}
+      themePreset={effectiveChartThemePreset as any}
+      customPalette={appSettings.syncChartWithAppTheme !== false ? appSettings.customPalette : undefined}
+      customCandleColors={{ bullColor: appSettings.customBullColor, bearColor: appSettings.customBearColor }}
+      onClose={() => {
+        isIndicatorSettingsOpen = false;
+        configuringIndicator = null;
+      }}
+      onChange={(draft) => {
+        if (chartComponent && configuringIndicator) {
+          chartComponent.updateIndicatorInputs(configuringIndicator.id, draft);
+        }
+      }}
+      onRevert={(prev) => {
+        if (chartComponent && configuringIndicator) {
+          chartComponent.updateIndicatorInputs(configuringIndicator.id, prev);
+        }
+      }}
+      onApply={(finalInputs) => {
+        if (chartComponent && configuringIndicator) {
+          chartComponent.updateIndicatorInputs(configuringIndicator.id, finalInputs);
+        }
+        addSystemLog(`Pengaturan parameter indikator "${configuringIndicator?.title}" diperbarui.`, 'info');
+      }}
+    />
+  {/if}
 
   <!-- Replay Jump to Date Modal -->
   <ReplayDatePickerModal

@@ -20,26 +20,47 @@ import {
   wrapProviderWithStreamGuard,
   type StreamHealthSink,
 } from './streamHealthGuard';
-import { registerDefaultEngine } from '@luxalgo/vela';
-import { PineWorkerEngine } from '@luxalgo/vela-pinets';
+import { registerDefaultEngine, getNativeIndicator } from '@luxalgo/vela';
+import {
+  createPineFetchSeriesAdapter,
+  TrawanganPineWorkerEngine,
+  type FetchSeriesHandler,
+} from './pineSeriesAdapter';
 import { IndicatorRegistry } from './indicatorRegistry';
+import { normalizeVpvrInputs } from './vpvrProfile';
 import { chartDrawingController } from './chartDrawingController';
-import type {
-  Timeframe,
-  MultiChartSyncConfig,
-  ThemePresetId,
-  ActiveIndicatorInfo,
-  SavedWorkspace,
-  CustomChartBackgroundConfig,
-  CustomThemePalette,
-  GridMode,
-  ProviderConfig,
-  PaneLayoutEntry,
-  NativeIndicatorSnapshot,
-  CellSnapshot,
-  SavedWorkspaceIndicator,
-  VisibleRangeSnapshot,
-  WorkspaceTrackSizes,
+import {
+  TimelineMarksController,
+  timelineMarksController
+} from './timelineMarksController';
+import {
+  PineStrategyTelemetryService,
+  pineStrategyTelemetry,
+  tradesToTradeExecutions,
+  type StrategyState,
+  type StrategyTrade,
+  type TradeExecution,
+  type StrategyTelemetryPayload,
+} from './pineStrategyTelemetry';
+import {
+  type Timeframe,
+  type MultiChartSyncConfig,
+  type ThemePresetId,
+  type ActiveIndicatorInfo,
+  type SavedWorkspace,
+  type CustomChartBackgroundConfig,
+  type CustomThemePalette,
+  type GridMode,
+  type ProviderConfig,
+  type PaneLayoutEntry,
+  type NativeIndicatorSnapshot,
+  type CellSnapshot,
+  type SavedWorkspaceIndicator,
+  type VisibleRangeSnapshot,
+  type WorkspaceTrackSizes,
+  type PriceStyle,
+  isValidPriceStyle,
+  VALID_PRICE_STYLES,
 } from '../types/market';
 import { WORKSPACE_SCHEMA_VERSION, computePaneSignature } from './persistence/workspaceSchema';
 import {
@@ -48,6 +69,7 @@ import {
 } from './workspaceLifecycle';
 import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors, resolveThemeConfig } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
+import type { UnifiedIndicatorDescriptor } from './indicatorCatalogService';
 import { toVelaTimeframe, fromVelaTimeframe } from '../utils/timeframeAdapter';
 import { applyLayoutTimeframePolicy } from '../constants/defaults';
 import { storage } from './persistence';
@@ -78,7 +100,10 @@ export interface ChartSessionOptions {
   gridMode?: GridMode;
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
+  onPriceStyleChange?: (style: PriceStyle | string) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
+  onStrategyTelemetry?: (payload: StrategyTelemetryPayload) => void;
+  strategyTelemetry?: PineStrategyTelemetryService;
   onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
   onPersistableStateChange?: (reason: string) => void;
   viewportPersistDebounceMs?: number;
@@ -106,6 +131,7 @@ export interface ChartSessionSnapshot {
   showCurrentPriceLine: boolean;
   showVolume: boolean;
   gridMode: GridMode;
+  priceStyle: PriceStyle | string;
   activeCell: { symbol: string; timeframe: Timeframe } | null;
   activeIndicators: ActiveIndicatorInfo[];
   syncConfig: MultiChartSyncConfig;
@@ -116,12 +142,13 @@ type SessionSubscriber = (snapshot: ChartSessionSnapshot) => void;
 let staticEngineRegistered = false;
 
 /**
- * Daftarkan worker engine PineTS satu kali secara global
+ * Daftarkan worker engine PineTS satu kali secara global dengan adapter fetchSeries
  */
 export function ensurePineEngine(): void {
   if (!staticEngineRegistered) {
     try {
-      registerDefaultEngine('pine', () => new PineWorkerEngine());
+      const globalFetchSeries = createPineFetchSeriesAdapter();
+      registerDefaultEngine('pine', () => new TrawanganPineWorkerEngine({ fetchSeries: globalFetchSeries }));
       staticEngineRegistered = true;
     } catch (_) {
       // Abaikan jika sudah terdaftar
@@ -377,7 +404,10 @@ export class ChartSessionController {
   private showVolume: boolean;
   private syncConfig: MultiChartSyncConfig;
   private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
+  private onPriceStyleChange?: (style: PriceStyle | string) => void;
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
+  private onStrategyTelemetryHandler?: (payload: StrategyTelemetryPayload) => void;
+  public readonly strategyTelemetry: PineStrategyTelemetryService;
   private workspaceFactory?: (container: HTMLElement, config: any) => any;
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
   private activeChartDefaultConfig: any = null;
@@ -421,6 +451,16 @@ export class ChartSessionController {
   private onlineListener: (() => void) | null = null;
   private registeredCustomSignatures = new Map<string, string>();
   private customHydrationEpoch = 0;
+  private timelineMarksController: TimelineMarksController = timelineMarksController;
+  private fetchSeriesAdapter: FetchSeriesHandler = createPineFetchSeriesAdapter();
+
+  public getTimelineMarksController(): TimelineMarksController {
+    return this.timelineMarksController;
+  }
+
+  public getFetchSeriesAdapter(): FetchSeriesHandler {
+    return this.fetchSeriesAdapter;
+  }
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
     this.symbol = options.symbol || 'BTCUSDT';
@@ -453,7 +493,10 @@ export class ChartSessionController {
       indicators: true
     };
     this.onActiveCellChange = options.onActiveCellChange;
+    this.onPriceStyleChange = options.onPriceStyleChange;
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
+    this.onStrategyTelemetryHandler = options.onStrategyTelemetry;
+    this.strategyTelemetry = options.strategyTelemetry ?? new PineStrategyTelemetryService();
     this.workspaceFactory = options.workspaceFactory;
     this.hasCustomPersistence = Boolean(options.persistence);
     this.persistence = options.persistence ?? storage;
@@ -483,6 +526,7 @@ export class ChartSessionController {
       showCurrentPriceLine: this.showCurrentPriceLine,
       showVolume: this.showVolume,
       gridMode: this.gridMode,
+      priceStyle: this.getPriceStyle(),
       activeCell: this.activeCellInfo
         ? { ...this.activeCellInfo }
         : { symbol: this.symbol, timeframe: this.timeframe },
@@ -796,7 +840,7 @@ export class ChartSessionController {
       timezone: this.timezone,
       providers: guardedProviders,
       engines: {
-        pine: () => new PineWorkerEngine(),
+        pine: () => new TrawanganPineWorkerEngine({ fetchSeries: this.getFetchSeriesAdapter() }),
       },
       maxWebglCells: 8,
       sync: {
@@ -832,6 +876,10 @@ export class ChartSessionController {
     for (const cell of this.getAllCells()) {
       this.attachCellListeners(cell);
     }
+
+    // Inisialisasi TimelineMarksController pada workspace dan sinkronkan penanda pasar aktif
+    this.timelineMarksController.attach(this.workspace);
+    this.timelineMarksController.syncForMarket(this.symbol, this.providerId);
 
     // Muat & terapkan konfigurasi chart default tersimpan milik pengguna (sinkron dari cache PersistenceService + hidrasi asinkron adapter)
     const attachEpoch = ++this.chartDefaultHydrationEpoch;
@@ -890,6 +938,7 @@ export class ChartSessionController {
                 providerId: this.providerId,
               });
             }
+            this.onPriceStyleChange?.(this.getPriceStyle(cur));
             this.attachCellListeners(cur);
             this.emitPersistableChange('activeCell');
           }
@@ -914,6 +963,26 @@ export class ChartSessionController {
             ? uState
             : () => {
                 if (stateChangedHandler) wsRef.off?.('state:changed', stateChangedHandler);
+              }
+        );
+
+        let scriptRunHandler: ((run: any) => void) | null = null;
+        const uScriptRun = this.workspace.on('script:run', (scriptRunHandler = async (run: any) => {
+          if (run?.kind === 'strategy' || Boolean(run?.strategy) || typeof run?.trades === 'function') {
+            const cellId = run?.cell || this.workspace?.active?.id;
+            const targetCell = (cellId && this.workspace?.cell?.(cellId)) || this.workspace?.active;
+            const payload = await this.strategyTelemetry.extractFromScriptRun(run, cellId);
+            if (payload && targetCell) {
+              this.strategyTelemetry.routeTradeMarkersToCell(targetCell, payload.indicatorId, payload.tradeExecutions);
+              this.onStrategyTelemetryHandler?.(payload);
+            }
+          }
+        }));
+        this.workspaceEventUnsubs.push(
+          typeof uScriptRun === 'function'
+            ? uScriptRun
+            : () => {
+                if (scriptRunHandler) wsRef.off?.('script:run', scriptRunHandler);
               }
         );
       } catch (_) {}
@@ -1397,6 +1466,9 @@ export class ChartSessionController {
     attachPriceScaleInputGuard(cell);
 
     const chart = cell.chart || cell.inner;
+    if (chart) {
+      this.timelineMarksController.attachSingleCellOrChart(chart);
+    }
     // Otoritas Tunggal Tema Trawangan: Sembunyikan 'canvas.theme' dari dialog Vela
     if (chart && typeof chart.setSettingsVisibility === 'function') {
       try {
@@ -1435,6 +1507,8 @@ export class ChartSessionController {
           this.enforceCurrentPriceLine(cell);
           this.syncNativeVolumeColors(cell, false);
           this.syncCellMacroState(cell);
+          const { symbol: cellSym, providerId: cellProv } = getCellMarketIdentity(cell);
+          this.timelineMarksController.syncForMarket(cellSym || this.symbol, cellProv || this.providerId);
         });
         chart.on('indicator:added', () => {
           this.syncNativeVolumeColors(cell, false);
@@ -1443,6 +1517,8 @@ export class ChartSessionController {
         chart.on('history:complete', () => {
           this.syncNativeVolumeColors(cell, false);
           this.syncCellMacroState(cell);
+          const { symbol: cellSym, providerId: cellProv } = getCellMarketIdentity(cell);
+          this.timelineMarksController.syncForMarket(cellSym || this.symbol, cellProv || this.providerId);
         });
         chart.on('indicator:removed', (ev: any) => {
           this.handleIndicatorRemoved(ev?.id);
@@ -1466,6 +1542,15 @@ export class ChartSessionController {
         chart.on('pane:changed', () => {
           this.capturePaneLayoutIfChanged(cell, { silent: true });
           this.emitPersistableChange('pane:changed');
+        });
+        chart.on('script:run', async (run: any) => {
+          if (run?.kind === 'strategy' || Boolean(run?.strategy) || typeof run?.trades === 'function') {
+            const payload = await this.strategyTelemetry.extractFromScriptRun(run, cell?.id);
+            if (payload) {
+              this.strategyTelemetry.routeTradeMarkersToCell(cell, payload.indicatorId, payload.tradeExecutions);
+              this.onStrategyTelemetryHandler?.(payload);
+            }
+          }
         });
         chart.on('viewport:changed', () => {
           this.scheduleViewportPersistChange();
@@ -1510,7 +1595,7 @@ export class ChartSessionController {
         let activeHeightPct: number | undefined;
         if (typeof chart.indicators === 'function') {
           for (const ind of Array.from(chart.indicators() || []) as any[]) {
-            const isNativeVol = ind?.nativeType === 'volume';
+            const isNativeVol = ind?.nativeType === 'volume' || ind?.source === 'volume' || ind?.id === 'native:volume';
             const isPineVol = isVolumeIndicator(ind?.title);
 
             if (isNativeVol && typeof ind.inputValues === 'function') {
@@ -1529,7 +1614,7 @@ export class ChartSessionController {
                     ind.setInputs({
                       upColor: effectiveUp,
                       downColor: effectiveDown,
-                      maColor: effectiveMA,
+                      ...(isPineVol ? { maColor: effectiveMA } : {}),
                     });
                   });
                 } catch (err) {
@@ -1563,17 +1648,24 @@ export class ChartSessionController {
     }
 
     // Selaraskan juga entri tersimpan di indicatorRegistry saat pergantian tema global
-    if (syncPineIndicators && this.indicatorRegistry) {
+    if (this.indicatorRegistry) {
+      let hasRegistryUpdate = false;
       for (const item of this.indicatorRegistry.getActiveIndicators()) {
-        if (isVolumeIndicator(item.title)) {
+        const isNativeVol = item.source === 'volume' || item.id === 'native:volume' || (item as any).nativeType === 'volume';
+        const isPineVol = syncPineIndicators && isVolumeIndicator(item.title);
+        if (isNativeVol || isPineVol) {
           this.withSuppressedPersistEvents(() => {
             this.indicatorRegistry.updateInputs(item.id, {
               upColor: effectiveUp,
               downColor: effectiveDown,
-              maColor: effectiveMA,
+              ...(isPineVol ? { maColor: effectiveMA } : {}),
             });
           });
+          hasRegistryUpdate = true;
         }
+      }
+      if (hasRegistryUpdate) {
+        this.notifyActiveIndicators();
       }
     }
   }
@@ -1770,6 +1862,13 @@ export class ChartSessionController {
       }
 
       // 3. Tambahkan indikator ke cell target
+      const isStrategy = /\bstrategy\s*\(/.test(source);
+      if (isStrategy) {
+        for (const cell of targetCells as any[]) {
+          this.enableChartTradeVisibility(cell);
+        }
+      }
+
       const isVolumeScript = isVolumeIndicator(cleanTitle);
       let effectiveInputs = savedInputs ? { ...savedInputs } : undefined;
       if (isVolumeScript) {
@@ -1790,6 +1889,10 @@ export class ChartSessionController {
       for (const cell of targetCells as any[]) {
         const chart = cell?.chart || cell?.inner;
         if (!chart || typeof chart.addIndicator !== 'function') continue;
+        if (isStrategy) {
+          this.enableChartTradeVisibility(cell);
+        }
+
         const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
         const addOptions: any = {
           language: 'pine',
@@ -1805,11 +1908,32 @@ export class ChartSessionController {
 
         const handle = chart.addIndicator(source, addOptions);
         if (handle) {
+          if (isStrategy && typeof handle.context === 'function') {
+            void handle.context().then((ctx: any) => {
+              if (ctx) {
+                const payload = this.strategyTelemetry.extractFromContext(handle.id, ctx, cleanTitle, cell?.id);
+                if (payload) {
+                  this.strategyTelemetry.routeTradeMarkersToCell(cell, handle.id, payload.tradeExecutions);
+                  this.onStrategyTelemetryHandler?.(payload);
+                }
+              }
+            }).catch((err: unknown) => {
+              console.warn('[ChartSessionController] Gagal mengambil context strategi Pine:', err);
+            });
+          }
           if (effectiveInputs && typeof handle.setInputs === 'function') {
-            try { handle.setInputs(effectiveInputs); } catch (_) {}
+            try {
+              handle.setInputs(effectiveInputs);
+            } catch (err) {
+              console.warn('[ChartSessionController] Gagal memanggil handle.setInputs:', err);
+            }
           }
           if (savedProps && typeof handle.setProps === 'function') {
-            try { handle.setProps(savedProps); } catch (_) {}
+            try {
+              handle.setProps(savedProps);
+            } catch (err) {
+              console.warn('[ChartSessionController] Gagal memanggil handle.setProps:', err);
+            }
           }
           createdHandles.push(handle);
           if (!firstHandle) firstHandle = handle;
@@ -1854,9 +1978,277 @@ export class ChartSessionController {
   }
 
   /**
+   * Mengaktifkan visibilitas trade markers pada konfigurasi chart atau renderer
+   */
+  private enableChartTradeVisibility(chartOrCell: any): void {
+    if (!chartOrCell) return;
+    const chart = chartOrCell.chart || chartOrCell.inner || chartOrCell;
+    const renderer = chart?.renderer;
+
+    if (typeof chart?.applyConfig === 'function') {
+      try {
+        chart.applyConfig({ trades: { visible: true, labels: true, qty: true } });
+      } catch (err) {
+        console.warn('[ChartSessionController] Gagal mengaktifkan visibilitas trades pada chart:', err);
+      }
+    } else if (typeof renderer?.applyConfig === 'function') {
+      try {
+        renderer.applyConfig({ trades: { visible: true, labels: true, qty: true } });
+      } catch (err) {
+        console.warn('[ChartSessionController] Gagal mengaktifkan visibilitas trades pada renderer:', err);
+      }
+    }
+  }
+
+  /**
+   * Menambahkan kemampuan reaktif handle native Vela (handle.update & handle.descriptor)
+   */
+  private enrichNativeHandle(handle: any, type: string): void {
+    if (!handle) return;
+    if (typeof handle.update !== 'function') {
+      handle.update = (newInputs: Record<string, any>) => {
+        if (typeof handle.setInputs === 'function') {
+          handle.setInputs(newInputs);
+        }
+      };
+    }
+    try {
+      const descriptor = getNativeIndicator(type);
+      if (descriptor) {
+        handle.descriptor = descriptor;
+        if (!(descriptor as any).inputs && typeof descriptor.inputsSchema === 'function') {
+          try {
+            (descriptor as any).inputs = descriptor.inputsSchema();
+          } catch (err) {
+            console.warn(`[ChartSessionController] Gagal mengekstrak inputsSchema untuk tipe "${type}":`, err);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[ChartSessionController] Gagal memperkaya native handle untuk tipe "${type}":`, err);
+    }
+  }
+
+  /**
+   * Menambahkan indikator native Vela ke seluruh sel aktif dengan sinkronisasi bersih
+   */
+  public async addNativeIndicator(
+    type: string,
+    options?: any,
+    customTitle?: string
+  ): Promise<boolean> {
+    if (!this.workspace) return false;
+
+    try {
+      const cleanType = (type || '').trim().replace(/^native:/, '');
+      const cleanTitle = (customTitle || cleanType).trim();
+
+      // Normalisasi opsi khusus untuk Visible Range Volume Profile (VPVR) dan Volume
+      let resolvedOptions = options || {};
+      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
+        };
+      } else if (cleanType === 'volume') {
+        const { upColor: effectiveUp, downColor: effectiveDown } =
+          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
+        const currentInputs = (resolvedOptions.inputs || {}) as Record<string, any>;
+        const upStr = typeof currentInputs.upColor === 'string' ? currentInputs.upColor.toLowerCase() : '';
+        const downStr = typeof currentInputs.downColor === 'string' ? currentInputs.downColor.toLowerCase() : '';
+        const isVelaDefaultUp = !upStr || upStr === '#26a69a';
+        const isVelaDefaultDown = !downStr || downStr === '#ef5350';
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: {
+            ...currentInputs,
+            upColor: isVelaDefaultUp ? effectiveUp : currentInputs.upColor,
+            downColor: isVelaDefaultDown ? effectiveDown : currentInputs.downColor,
+          },
+        };
+      }
+
+      const targetCells = (this.syncConfig.indicators !== false)
+        ? this.getAllCells()
+        : (this.workspace.active ? [this.workspace.active] : this.getAllCells());
+
+      const createdHandles: any[] = [];
+      let firstHandle: any = null;
+
+      for (const cell of targetCells as any[]) {
+        const chart = cell?.chart || cell?.inner;
+        if (!chart || typeof chart.addNativeIndicator !== 'function') continue;
+
+        try {
+          const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
+          if (handle) {
+            this.enrichNativeHandle(handle, type);
+            createdHandles.push(handle);
+            if (!firstHandle) firstHandle = handle;
+          }
+        } catch (err) {
+          console.warn(`[ChartSessionController] addNativeIndicator("${cleanType}") error:`, err);
+        }
+      }
+
+      if (firstHandle) {
+        if (cleanType === 'volume') {
+          this.syncNativeVolumeColors();
+        }
+
+        this.indicatorRegistry.register({
+          id: firstHandle.id,
+          handle: firstHandle,
+          handles: createdHandles,
+          title: cleanTitle || firstHandle.title || cleanType,
+          source: cleanType,
+          visible: firstHandle.visible ?? true,
+          inputs: resolvedOptions.inputs,
+          props: resolvedOptions.props,
+        });
+
+        this.notifyActiveIndicators();
+        this.emitPersistableChange('indicator:add_native');
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      console.error('[ChartSessionController] addNativeIndicator error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Menambahkan indikator native Vela ke satu sel tertentu
+   */
+  public async addNativeIndicatorToCell(
+    cell: any,
+    type: string,
+    options?: any,
+    customTitle?: string
+  ): Promise<boolean> {
+    const chart = cell?.chart || cell?.inner;
+    if (!cell || !chart || typeof chart.addNativeIndicator !== 'function') return false;
+
+    try {
+      const cleanType = (type || '').trim().replace(/^native:/, '');
+      const cleanTitle = (customTitle || cleanType).trim();
+
+      let resolvedOptions = options || {};
+      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
+        };
+      } else if (cleanType === 'volume') {
+        const { upColor: effectiveUp, downColor: effectiveDown } =
+          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
+        const currentInputs = (resolvedOptions.inputs || {}) as Record<string, any>;
+        const upStr = typeof currentInputs.upColor === 'string' ? currentInputs.upColor.toLowerCase() : '';
+        const downStr = typeof currentInputs.downColor === 'string' ? currentInputs.downColor.toLowerCase() : '';
+        const isVelaDefaultUp = !upStr || upStr === '#26a69a';
+        const isVelaDefaultDown = !downStr || downStr === '#ef5350';
+        resolvedOptions = {
+          ...resolvedOptions,
+          inputs: {
+            ...currentInputs,
+            upColor: isVelaDefaultUp ? effectiveUp : currentInputs.upColor,
+            downColor: isVelaDefaultDown ? effectiveDown : currentInputs.downColor,
+          },
+        };
+      }
+
+      const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
+      if (!handle) return false;
+
+      this.enrichNativeHandle(handle, type);
+      if (cleanType === 'volume') {
+        this.syncNativeVolumeColors(cell);
+      }
+
+      this.indicatorRegistry.register({
+        id: handle.id || `${cell.id || 'cell'}:${cleanTitle}`,
+        handle,
+        handles: [handle],
+        title: cleanTitle || handle.title || cleanType,
+        source: cleanType,
+        visible: handle.visible ?? true,
+        inputs: resolvedOptions.inputs,
+        props: resolvedOptions.props,
+      });
+
+      this.notifyActiveIndicators();
+      this.emitPersistableChange('indicator:add_native_cell');
+      return true;
+    } catch (err) {
+      console.error('[ChartSessionController] addNativeIndicatorToCell error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Menambahkan indikator secara polimorfik (baik native study maupun Pine script)
+   */
+  public async addIndicator(
+    descriptor: UnifiedIndicatorDescriptor | { kind: 'native' | 'pine'; [key: string]: any },
+    options?: any
+  ): Promise<boolean> {
+    if (!descriptor) return false;
+    if (descriptor.kind === 'native') {
+      const type = descriptor.nativeType || descriptor.id.replace(/^native:/, '');
+      return this.addNativeIndicator(type, options, descriptor.title);
+    } else {
+      const source = descriptor.sourceCode || '';
+      return this.addPineIndicator(source, descriptor.title, options?.inputs, options?.props);
+    }
+  }
+
+  /**
+   * Menambahkan indikator secara polimorfik ke satu sel tertentu
+   */
+  public async addIndicatorToCell(
+    descriptor: UnifiedIndicatorDescriptor | { kind: 'native' | 'pine'; [key: string]: any },
+    cell?: any,
+    options?: any
+  ): Promise<boolean> {
+    if (!descriptor) return false;
+    const targetCell = this.resolveTargetCell(cell);
+    if (!targetCell) return false;
+
+    if (descriptor.kind === 'native') {
+      const type = descriptor.nativeType || descriptor.id.replace(/^native:/, '');
+      return this.addNativeIndicatorToCell(targetCell, type, options, descriptor.title);
+    } else {
+      const source = descriptor.sourceCode || '';
+      return this.addPineIndicatorToCell(
+        targetCell,
+        source,
+        descriptor.title,
+        options?.inputs,
+        options?.props,
+        descriptor.visible ?? true
+      );
+    }
+  }
+
+  /**
    * Menghapus indikator secara tuntas di seluruh sel (mencegah zombie indicator)
    */
   public removeIndicator(id: string): void {
+    if (id) {
+      this.strategyTelemetry.clearTelemetry(id);
+      for (const cell of this.getAllCells()) {
+        const chart = cell?.chart || cell?.inner;
+        const scene = chart?.renderer?.scene || chart?.scene;
+        if (scene?.indicators && typeof scene.indicators.get === 'function') {
+          const model = scene.indicators.get(id);
+          if (model && model.trades) {
+            model.trades = [];
+          }
+        }
+      }
+    }
     this.indicatorRegistry.removeIndicator(
       id,
       this.syncConfig.indicators !== false,
@@ -1869,6 +2261,7 @@ export class ChartSessionController {
    * Membersihkan seluruh indikator aktif di workspace
    */
   public clearAllIndicators(): void {
+    this.strategyTelemetry.clearTelemetry();
     this.desiredPaneWeightsByCell = new WeakMap();
     this.lastCapturedPaneLayoutByCell = new WeakMap();
     this.userTouchedPaneLayoutByCell = new WeakSet<any>();
@@ -1888,16 +2281,55 @@ export class ChartSessionController {
   /**
    * Memperbarui input parameter indikator
    */
-  public updateIndicatorInputs(id: string, inputs: Record<string, any>): void {
-    this.indicatorRegistry.updateInputs(id, inputs);
+  public updateIndicatorInputs(id: string, inputs: Record<string, any>): boolean {
+    let resolvedInputs = inputs;
+    const entry = this.indicatorRegistry.findEntry(id)?.entry;
+    const isVpvr = entry?.source === 'vpvr' || id.toLowerCase().includes('vpvr');
+    if (isVpvr && inputs) {
+      resolvedInputs = normalizeVpvrInputs(inputs);
+    }
+
+    const ok = this.indicatorRegistry.updateInputs(id, resolvedInputs);
     this.notifyActiveIndicators();
     this.emitPersistableChange('indicator:inputs');
+    return ok;
+  }
+
+  /**
+   * Mengambil skema input untuk indikator tertentu
+   */
+  public getIndicatorInputSchema(idOrType: string): any[] {
+    return this.indicatorRegistry.getSchema(idOrType);
+  }
+
+  /**
+   * Mengambil input tersimpan atau live untuk indikator tertentu
+   */
+  public getIndicatorInputs(idOrType: string): Record<string, any> {
+    return this.indicatorRegistry.getInputs(idOrType);
+  }
+
+  /**
+   * Membuka dialog pengaturan indikator (programmatic twin dari ikon gear legend)
+   */
+  public openIndicatorSettings(id: string, cell?: any): boolean {
+    const targetCell = this.resolveTargetCell(cell);
+    const chart = targetCell?.chart || targetCell?.inner;
+    if (chart && typeof chart.openIndicatorSettings === 'function') {
+      try {
+        chart.openIndicatorSettings(id);
+        return true;
+      } catch (err) {
+        console.warn(`[ChartSessionController] openIndicatorSettings(${id}) error:`, err);
+      }
+    }
+    return false;
   }
 
   /**
    * Mengekstrak daftar indikator Pine/custom yang benar-benar terpasang pada satu cell spesifik tanpa melakukan pruning registry global.
    */
-  private extractCellIndicators(cell: any): ActiveIndicatorInfo[] {
+  private extractCellIndicators(cell: any, includeNative: boolean = false): ActiveIndicatorInfo[] {
     const chart = cell?.chart || cell?.inner;
     if (!chart || typeof chart.indicators !== 'function') {
       return [];
@@ -1905,7 +2337,9 @@ export class ChartSessionController {
 
     const result: ActiveIndicatorInfo[] = [];
     for (const ind of Array.from(chart.indicators() || []) as any[]) {
-      if (!ind || ind.nativeType) continue;
+      if (!ind) continue;
+      if (!includeNative && ind.nativeType) continue;
+      if (includeNative && ind.nativeType === 'volume' && !this.indicatorRegistry.findEntry(ind.id || ind.title)) continue;
       const matched = this.indicatorRegistry.findEntry(ind.id || ind.title);
       const reg = matched?.entry;
 
@@ -1917,7 +2351,9 @@ export class ChartSessionController {
         } else if (ind.inputs && typeof ind.inputs === 'object' && Object.keys(ind.inputs).length > 0) {
           liveInputs = { ...ind.inputs };
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn(`[ChartSessionController] Gagal membaca liveInputs indikator ${ind.id || ind.title}:`, err);
+      }
 
       let liveProps: Record<string, any> | undefined;
       try {
@@ -1927,7 +2363,9 @@ export class ChartSessionController {
         } else if (ind.props && typeof ind.props === 'object' && Object.keys(ind.props).length > 0) {
           liveProps = { ...ind.props };
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn(`[ChartSessionController] Gagal membaca liveProps indikator ${ind.id || ind.title}:`, err);
+      }
 
       const mergedInputs =
         liveInputs || reg?.inputs ? { ...(reg?.inputs || {}), ...(liveInputs || {}) } : undefined;
@@ -1951,7 +2389,7 @@ export class ChartSessionController {
    */
   public getCellIndicators(cell?: any): SavedWorkspaceIndicator[] {
     const targetCell = this.resolveTargetCell(cell);
-    return this.extractCellIndicators(targetCell).map((i) => ({
+    return this.extractCellIndicators(targetCell, false).map((i) => ({
       title: i.title,
       source: i.source,
       visible: i.visible,
@@ -1999,6 +2437,11 @@ export class ChartSessionController {
         };
       }
 
+      const isStrategy = /\bstrategy\s*\(/.test(source);
+      if (isStrategy) {
+        this.enableChartTradeVisibility(cell);
+      }
+
       const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
       const addOptions: any = {
         language: 'pine',
@@ -2015,14 +2458,40 @@ export class ChartSessionController {
       const handle = chart.addIndicator(source, addOptions);
       if (!handle) return false;
 
+      if (isStrategy && typeof handle.context === 'function') {
+        void handle.context().then((ctx: any) => {
+          if (ctx) {
+            const payload = this.strategyTelemetry.extractFromContext(handle.id, ctx, cleanTitle, cell?.id);
+            if (payload) {
+              this.strategyTelemetry.routeTradeMarkersToCell(cell, handle.id, payload.tradeExecutions);
+              this.onStrategyTelemetryHandler?.(payload);
+            }
+          }
+        }).catch((err: unknown) => {
+          console.warn('[ChartSessionController] Gagal mengekstrak konteks strategi Pine pada cell:', err);
+        });
+      }
+
       if (effectiveInputs && typeof handle.setInputs === 'function') {
-        try { handle.setInputs(effectiveInputs); } catch (_) {}
+        try {
+          handle.setInputs(effectiveInputs);
+        } catch (err) {
+          console.warn('[ChartSessionController] Gagal menerapkan effectiveInputs pada handle indikator cell:', err);
+        }
       }
       if (savedProps && typeof handle.setProps === 'function') {
-        try { handle.setProps(savedProps); } catch (_) {}
+        try {
+          handle.setProps(savedProps);
+        } catch (err) {
+          console.warn('[ChartSessionController] Gagal menerapkan savedProps pada handle indikator cell:', err);
+        }
       }
       if (visible === false && typeof handle.setVisible === 'function') {
-        try { handle.setVisible(false); } catch (_) {}
+        try {
+          handle.setVisible(false);
+        } catch (err) {
+          console.warn('[ChartSessionController] Gagal menyembunyikan handle indikator cell:', err);
+        }
       }
 
       this.indicatorRegistry.register({
@@ -2048,7 +2517,7 @@ export class ChartSessionController {
    */
   public getActiveIndicators(): ActiveIndicatorInfo[] {
     if (this.syncConfig.indicators === false && this.workspace?.active) {
-      return this.extractCellIndicators(this.workspace.active);
+      return this.extractCellIndicators(this.workspace.active, true);
     }
     return this.indicatorRegistry.getActiveIndicators(
       this.workspace?.active?.chart,
@@ -2067,6 +2536,19 @@ export class ChartSessionController {
    * Menangani event penghapusan dari engine Vela native
    */
   public handleIndicatorRemoved(removedId?: string): void {
+    if (removedId) {
+      this.strategyTelemetry.clearTelemetry(removedId);
+      for (const cell of this.getAllCells()) {
+        const chart = cell?.chart || cell?.inner;
+        const scene = chart?.renderer?.scene || chart?.scene;
+        if (scene?.indicators && typeof scene.indicators.get === 'function') {
+          const model = scene.indicators.get(removedId);
+          if (model && model.trades) {
+            model.trades = [];
+          }
+        }
+      }
+    }
     this.indicatorRegistry.handleRemovedEvent(
       removedId,
       this.syncConfig.indicators !== false,
@@ -2134,6 +2616,9 @@ export class ChartSessionController {
             chartDrawingController.restoreDrawings(this.symbol, this.timeframe, this.providerId).catch(() => {});
           }
         }
+
+        // Segarkan penanda waktu timeline marks untuk simbol dan provider baru
+        this.timelineMarksController.syncForMarket(this.symbol, this.providerId);
       } catch (err) {
         console.warn('[ChartSessionController] setSymbol error:', err);
       }
@@ -2582,6 +3067,7 @@ export class ChartSessionController {
           this.workspace.sync.set('viewport', Boolean(this.syncConfig.viewport ?? true));
           this.workspace.sync.set('drawings', Boolean(this.syncConfig.drawings));
           this.workspace.sync.set('symbol', Boolean(this.syncConfig.symbol));
+          this.workspace.sync.set('style', Boolean(this.syncConfig.style));
         }
 
         for (const cell of this.getAllCells()) {
@@ -2624,6 +3110,7 @@ export class ChartSessionController {
         this.workspace.sync.set('viewport', Boolean(this.syncConfig.viewport ?? true));
         this.workspace.sync.set('drawings', Boolean(this.syncConfig.drawings));
         this.workspace.sync.set('symbol', Boolean(this.syncConfig.symbol));
+        this.workspace.sync.set('style', Boolean(this.syncConfig.style));
 
         const activeCell = this.workspace.active;
 
@@ -2632,6 +3119,15 @@ export class ChartSessionController {
           for (const cell of this.getAllCells()) {
             if (cell !== activeCell && cell.symbol !== targetSym && typeof cell.setSymbol === 'function') {
               cell.setSymbol(targetSym);
+            }
+          }
+        }
+
+        if (this.syncConfig.style) {
+          const activeStyle = this.getPriceStyle(activeCell);
+          for (const cell of this.getAllCells()) {
+            if (cell !== activeCell && this.getPriceStyle(cell) !== activeStyle) {
+              this.setPriceStyle(activeStyle, cell);
             }
           }
         }
@@ -2816,7 +3312,16 @@ export class ChartSessionController {
     try {
       const targetCell = this.resolveTargetCell(cell);
       const chart = targetCell?.chart || targetCell?.inner;
-      if (!chart || typeof chart.indicators !== 'function') return [];
+
+      if (!chart || typeof chart.indicators !== 'function') {
+        const regEntries = this.indicatorRegistry.getNativeEntries();
+        return regEntries.map((reg) => ({
+          type: reg.source || reg.title,
+          ...(reg.inputs ? { inputs: reg.inputs } : {}),
+          visible: reg.visible ?? true,
+          placement: 'overlay' as const,
+        }));
+      }
 
       const placementById = new Map<string, 'overlay' | 'own-pane'>();
       if (chart.panes && typeof chart.panes.list === 'function') {
@@ -2844,6 +3349,12 @@ export class ChartSessionController {
             }
           } catch (_) {}
         }
+        const regEntry = this.indicatorRegistry.findEntry(ind.id)?.entry;
+        const mergedInputs = {
+          ...(regEntry?.inputs || {}),
+          ...(inputs || {}),
+        };
+
         const visible = ind.visible !== undefined ? Boolean(ind.visible) : true;
         const placement: 'overlay' | 'own-pane' =
           placementById.get(ind.id) ??
@@ -2851,11 +3362,24 @@ export class ChartSessionController {
 
         list.push({
           type: ind.nativeType,
-          ...(inputs ? { inputs } : {}),
+          ...(Object.keys(mergedInputs).length > 0 ? { inputs: mergedInputs } : {}),
           visible,
           placement,
         });
       }
+
+      if (list.length === 0) {
+        const regEntries = this.indicatorRegistry.getNativeEntries();
+        for (const reg of regEntries) {
+          list.push({
+            type: reg.source || reg.title,
+            ...(reg.inputs ? { inputs: reg.inputs } : {}),
+            visible: reg.visible ?? true,
+            placement: 'overlay',
+          });
+        }
+      }
+
       return list;
     } catch (err) {
       console.warn('[ChartSessionController] Gagal membaca nativeIndicators:', err);
@@ -2902,14 +3426,37 @@ export class ChartSessionController {
       return (handle as any)?.paneId && (handle as any).paneId !== 'price' ? 'own-pane' : 'overlay';
     };
 
+    let hasVolumeEntry = false;
     for (const entry of entries) {
       if (!entry?.type) continue;
+      const cleanType = (entry.type || '').trim().replace(/^native:/, '');
+      if (cleanType === 'volume') {
+        hasVolumeEntry = true;
+        const { upColor: effectiveUp, downColor: effectiveDown } =
+          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
+        const currentInputs = (entry.inputs || {}) as Record<string, any>;
+        const upStr = typeof currentInputs.upColor === 'string' ? currentInputs.upColor.toLowerCase() : '';
+        const downStr = typeof currentInputs.downColor === 'string' ? currentInputs.downColor.toLowerCase() : '';
+        const isVelaDefaultUp = !upStr || upStr === '#26a69a';
+        const isVelaDefaultDown = !downStr || downStr === '#ef5350';
+        entry.inputs = {
+          ...currentInputs,
+          upColor: isVelaDefaultUp ? effectiveUp : currentInputs.upColor,
+          downColor: isVelaDefaultDown ? effectiveDown : currentInputs.downColor,
+        };
+      }
 
       let handle = findNativeHandle(entry.type);
       if (!handle && typeof chart.addNativeIndicator === 'function') {
         try {
           handle = chart.addNativeIndicator(entry.type, entry.inputs ? { inputs: entry.inputs } : {});
-        } catch (_) {}
+        } catch (err) {
+          console.warn(`[ChartSessionController] Gagal memanggil chart.addNativeIndicator("${entry.type}"):`, err);
+        }
+      }
+
+      if (handle) {
+        this.enrichNativeHandle(handle, entry.type);
       }
 
       // Tunggu model siap di panes.list apabila indikator baru saja dimount secara asinkron
@@ -2921,6 +3468,7 @@ export class ChartSessionController {
           ['indicator:added', 'pane:changed'],
           () => {
             handle = findNativeHandle(entry.type) || handle;
+            if (handle) this.enrichNativeHandle(handle, entry.type);
             return Boolean(
               handle &&
                 (!entry.placement || entry.placement !== 'own-pane' || !handle.id || isHandleInPaneList(handle.id))
@@ -2934,11 +3482,44 @@ export class ChartSessionController {
       if (!handle) continue;
 
       this.withSuppressedPersistEvents(() => {
-        if (entry.inputs && typeof handle.setInputs === 'function') {
-          try {
-            handle.setInputs(entry.inputs);
-          } catch (err) {
-            console.warn(`[ChartSessionController] applyNativeIndicators setInputs(${entry.type}) error:`, err);
+        if (entry.inputs) {
+          if (typeof handle.update === 'function') {
+            try {
+              handle.update(entry.inputs);
+            } catch (err) {
+              console.warn(`[ChartSessionController] Gagal memanggil handle.update("${entry.type}"):`, err);
+            }
+          } else if (typeof handle.setInputs === 'function') {
+            try {
+              handle.setInputs(entry.inputs);
+            } catch (err) {
+              console.warn(`[ChartSessionController] applyNativeIndicators setInputs(${entry.type}) error:`, err);
+            }
+          }
+
+          if (handle.id) {
+            this.indicatorRegistry.updateInputs(handle.id, entry.inputs as Record<string, any>);
+          }
+
+          if (cleanType === 'volume') {
+            const renderer = chart.renderer?.renderer || chart.renderer;
+            if (renderer) {
+              const up = (entry.inputs as any).upColor;
+              const down = (entry.inputs as any).downColor;
+              const heightPct = (entry.inputs as any).heightPct;
+              const frac = typeof heightPct === 'number' ? Math.min(0.5, Math.max(0.05, heightPct / 100)) : 0.15;
+              if (typeof renderer.setNativeData === 'function') {
+                renderer.setNativeData('volume', {
+                  upColor: up,
+                  downColor: down,
+                  heightFrac: frac,
+                });
+              } else if (renderer.scene?.volumeLayer) {
+                if (up) renderer.scene.volumeLayer.upColor = up;
+                if (down) renderer.scene.volumeLayer.downColor = down;
+                renderer.scheduler?.invalidate?.(3);
+              }
+            }
           }
         }
 
@@ -3396,39 +3977,82 @@ export class ChartSessionController {
 
   /**
    * Mengambil gaya visual lilin pada sel target atau sel aktif.
+   * Fallback otomatis ke 'candles' jika input atau nilai tersimpan tidak valid.
    */
-  public getPriceStyle(cell?: any): string {
+  public getPriceStyle(cell?: any): PriceStyle | string {
     try {
       const targetCell = this.resolveTargetCell(cell) as any;
       const chart = targetCell?.chart || targetCell?.inner;
       const native = chart?.renderer?.renderer || chart?.renderer;
-      return native?.getConfig?.()?.series?.style || targetCell?.priceStyle || 'candles';
-    } catch (_) {}
+      const raw = native?.getConfig?.()?.series?.style || targetCell?.priceStyle;
+      if (isValidPriceStyle(raw)) {
+        return raw;
+      }
+      return 'candles';
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal membaca priceStyle:', err);
+    }
     return 'candles';
   }
 
   /**
    * Menyetel gaya visual lilin pada sel target atau sel aktif.
+   * Mendukung propagasi multi-cell otomatis jika syncConfig.style aktif.
+   * Fallback otomatis ke 'candles' jika style yang diberikan tidak valid.
    */
   public setPriceStyle(style: string, cell?: any): void {
-    if (!style) return;
+    const validStyle: PriceStyle = isValidPriceStyle(style) ? style : 'candles';
     try {
-      const targetCell = this.resolveTargetCell(cell) as any;
-      if (this.getPriceStyle(targetCell) === style) {
-        return;
+      const isSyncActive = Boolean(this.syncConfig.style);
+      const isTargetActiveOrUnspecified = !cell || cell === this.workspace?.active;
+      const targetCells = (isSyncActive && isTargetActiveOrUnspecified)
+        ? this.getAllCells()
+        : [this.resolveTargetCell(cell)];
+
+      let anyChanged = false;
+      for (const targetCell of targetCells) {
+        if (!targetCell) continue;
+        const currentStyle = this.getPriceStyle(targetCell);
+        if (currentStyle === validStyle) {
+          continue;
+        }
+        anyChanged = true;
+        const chart = targetCell?.chart || targetCell?.inner;
+        const native = chart?.renderer?.renderer || chart?.renderer;
+        this.withSuppressedPersistEvents(() => {
+          if (native?.applyConfig) {
+            native.applyConfig({ series: { style: validStyle } });
+          }
+          if (typeof targetCell?.setPriceStyle === 'function') {
+            targetCell.setPriceStyle(validStyle);
+          } else {
+            targetCell.priceStyle = validStyle;
+          }
+        });
       }
-      const chart = targetCell?.chart || targetCell?.inner;
-      const native = chart?.renderer?.renderer || chart?.renderer;
-      this.withSuppressedPersistEvents(() => {
-        if (native?.applyConfig) {
-          native.applyConfig({ series: { style } });
-        }
-        if (typeof targetCell?.setPriceStyle === 'function') {
-          targetCell.setPriceStyle(style);
-        }
-      });
-      this.emitPersistableChange('priceStyle');
-    } catch (_) {}
+
+      if (anyChanged) {
+        this.emitPersistableChange('priceStyle');
+        this.notify();
+      }
+      this.onPriceStyleChange?.(validStyle);
+    } catch (err) {
+      console.warn('[ChartSessionController] Gagal menyetel priceStyle:', err);
+    }
+  }
+
+  /**
+   * Mengganti gaya lilin ke gaya berikutnya secara berurutan:
+   * candles -> heikinashi -> bars -> line -> area -> baseline -> candles.
+   */
+  public cyclePriceStyle(cell?: any): PriceStyle {
+    const current = this.getPriceStyle(cell);
+    const styles = VALID_PRICE_STYLES;
+    const currentIndex = styles.indexOf(current as PriceStyle);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % styles.length : 0;
+    const nextStyle = styles[nextIndex];
+    this.setPriceStyle(nextStyle, cell);
+    return nextStyle;
   }
 
   /**
@@ -3650,7 +4274,7 @@ export class ChartSessionController {
             drawings: Boolean(this.syncConfig.drawings),
             symbol: Boolean(this.syncConfig.symbol),
             timeframe: Boolean(this.syncConfig.timeframe),
-            style: true,
+            style: Boolean(this.syncConfig.style),
           },
           charts: chartsDoc,
           ...(options?.trackSizes && (options.trackSizes.cols || options.trackSizes.rows)
@@ -3791,6 +4415,8 @@ export class ChartSessionController {
       }
 
       this.notifyActiveIndicators();
+      this.onPriceStyleChange?.(this.getPriceStyle());
+      this.timelineMarksController.syncForMarket(this.symbol, this.providerId);
       this.notify();
     } finally {
       this.isRestoringWorkspace = wasRestoring;
@@ -4124,6 +4750,52 @@ export class ChartSessionController {
   }
 
   /**
+   * Mengambil rekam telemetri performa strategi Pine Script aktif
+   */
+  public getStrategyTelemetry(indicatorId?: string): StrategyTelemetryPayload | null {
+    return this.strategyTelemetry.getTelemetry(indicatorId);
+  }
+
+  /**
+   * Mengambil seluruh rekam telemetri strategi aktif di workspace
+   */
+  public getAllStrategyTelemetry(): StrategyTelemetryPayload[] {
+    return this.strategyTelemetry.getAllTelemetry();
+  }
+
+  /**
+   * Mengambil daftar marker eksekusi order (on-chart TradeExecution[])
+   */
+  public getStrategyTradeExecutions(indicatorId?: string): TradeExecution[] {
+    return this.strategyTelemetry.getTradeExecutions(indicatorId);
+  }
+
+  /**
+   * Menghapus data telemetri strategi secara bersih
+   */
+  public clearStrategyTelemetry(indicatorId?: string): void {
+    this.strategyTelemetry.clearTelemetry(indicatorId);
+  }
+
+  /**
+   * Mendaftarkan pendengar pembaruan telemetri strategi
+   */
+  public onStrategyTelemetry(handler: (payload: StrategyTelemetryPayload) => void): () => void {
+    return this.strategyTelemetry.subscribe(handler);
+  }
+
+  /**
+   * Mengalirkan marker eksekusi transaksi ke renderer chart tertentu
+   */
+  public routeStrategyTradeMarkers(
+    cellOrChart: any,
+    indicatorId: string,
+    executions: TradeExecution[]
+  ): boolean {
+    return this.strategyTelemetry.routeTradeMarkersToCell(cellOrChart, indicatorId, executions);
+  }
+
+  /**
    * Menghancurkan sesi, melepaskan observer, timer, listener, dan membebaskan alokasi WebGL Context
    */
   public destroy(): void {
@@ -4152,6 +4824,8 @@ export class ChartSessionController {
 
     this.streamCoordinator.clear();
     this.registeredCustomSignatures.clear();
+    this.timelineMarksController.detach();
+    this.strategyTelemetry.clearTelemetry();
 
     if (this.resizeObserver) {
       try {
@@ -4176,3 +4850,24 @@ export class ChartSessionController {
     this.notify();
   }
 }
+
+export {
+  createPineFetchSeriesAdapter,
+  TrawanganPineWorkerEngine,
+  type FetchSeriesHandler,
+  type FetchSeriesRange,
+  type OHLCVBar,
+} from './pineSeriesAdapter';
+
+export {
+  PineStrategyTelemetryService,
+  pineStrategyTelemetry,
+  parseStrategyState,
+  parseStrategyTrades,
+  tradesToTradeExecutions,
+  type StrategyState,
+  type StrategyFill,
+  type StrategyTrade,
+  type TradeExecution,
+  type StrategyTelemetryPayload,
+} from './pineStrategyTelemetry';

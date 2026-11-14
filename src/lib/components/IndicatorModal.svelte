@@ -13,10 +13,19 @@
     FilePlus,
     Clock,
     Tag,
-    FolderKanban,
-    Compass
+    Compass,
+    TrendingUp,
+    Activity,
+    SlidersHorizontal,
+    BarChart3,
+    Zap,
+    Cpu
   } from '@lucide/svelte';
-  import { INDICATOR_PRESETS, type IndicatorPreset } from '../data/indicatorPresets';
+  import {
+    indicatorCatalogService,
+    type UnifiedIndicatorDescriptor,
+    type IndicatorCategory
+  } from '../services/indicatorCatalogService';
   import { loadScripts, deleteScript } from '../services/persistence';
   import {
     loadFavoriteIndicatorIds,
@@ -27,21 +36,28 @@
   interface Props {
     isOpen: boolean;
     onClose: () => void;
-    onSelectIndicator: (code: string, title: string) => void;
+    onSelectIndicator?: (code: string, title: string) => void;
+    onSelectNativeIndicator?: (type: string, title?: string) => void;
+    onApplyIndicator?: (descriptor: UnifiedIndicatorDescriptor) => void;
     onOpenInEditor: (code: string, title: string, id?: string) => void;
   }
 
-  let { isOpen, onClose, onSelectIndicator, onOpenInEditor }: Props = $props();
+  let {
+    isOpen,
+    onClose,
+    onSelectIndicator,
+    onSelectNativeIndicator,
+    onApplyIndicator,
+    onOpenInEditor
+  }: Props = $props();
 
   // Search & Navigation States
   let searchQuery = $state('');
-  let activeNavTab = $state<'all' | 'official' | 'custom' | 'favorites'>('all');
-  let selectedCategoryFilter = $state<string>('All');
+  let activeCategory = $state<'All' | 'Trend' | 'Momentum' | 'Volatility' | 'Volume' | 'Profile' | 'Signals' | 'Custom Scripts' | 'Favorites'>('All');
+  let kindFilter = $state<'all' | 'native' | 'pine'>('all');
   let savedScripts = $state<PineScriptRecord[]>([]);
   let favoriteIds = $state<string[]>([]);
   let addedFeedbackMap = $state<Record<string, boolean>>({});
-
-  const officialCategories = ['All', 'Volume', 'Trend', 'Momentum', 'Volatility', 'Signals'];
 
   // Muat data skrip tersimpan dan daftar favorit saat modal dibuka
   $effect(() => {
@@ -67,20 +83,24 @@
       if (isOpen) {
         favoriteIds = loaded;
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('Gagal memuat daftar indikator favorit:', err);
+    }
   }
 
   async function toggleFavorite(e: MouseEvent, id: string) {
     e.stopPropagation();
     try {
       favoriteIds = await toggleFavoriteIndicatorId(id, favoriteIds);
-    } catch (_) {}
+    } catch (err) {
+      console.warn(`Gagal mengubah status favorit indikator ${id}:`, err);
+    }
   }
 
-  async function handleDeleteScript(e: MouseEvent, script: PineScriptRecord) {
+  async function handleDeleteScript(e: MouseEvent, scriptId: string, title: string) {
     e.stopPropagation();
-    if (confirm(`Hapus skrip "${script.title}" dari penyimpanan lokal?`)) {
-      await deleteScript(script.id);
+    if (confirm(`Hapus skrip "${title}" dari penyimpanan lokal?`)) {
+      await deleteScript(scriptId);
       await loadSavedScripts();
     }
   }
@@ -90,46 +110,60 @@
     onClose();
   }
 
-  function handleApplyIndicator(code: string, title: string, keyId: string) {
-    onSelectIndicator(code, title);
-    addedFeedbackMap[keyId] = true;
+  function handleApply(indicator: UnifiedIndicatorDescriptor) {
+    if (onApplyIndicator) {
+      onApplyIndicator(indicator);
+    } else if (indicator.kind === 'native') {
+      if (onSelectNativeIndicator) {
+        onSelectNativeIndicator(indicator.nativeType || indicator.id.replace(/^native:/, ''), indicator.title);
+      } else if (onSelectIndicator) {
+        onSelectIndicator(indicator.nativeType || indicator.id, indicator.title);
+      }
+    } else {
+      if (onSelectIndicator) {
+        onSelectIndicator(indicator.sourceCode || '', indicator.title);
+      }
+    }
+
+    addedFeedbackMap[indicator.id] = true;
     setTimeout(() => {
-      addedFeedbackMap[keyId] = false;
+      addedFeedbackMap[indicator.id] = false;
     }, 2000);
   }
 
-  // Filter Presets Resmi
-  const filteredPresets = $derived(
-    INDICATOR_PRESETS.filter((p) => {
-      const matchCat = selectedCategoryFilter === 'All' || p.category === selectedCategoryFilter;
-      const matchSearch =
-        searchQuery.trim() === '' ||
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchFav = activeNavTab !== 'favorites' || favoriteIds.includes(p.id);
-      return matchCat && matchSearch && matchFav;
-    })
+  // Agregasi seluruh indikator dari service
+  let allIndicators = $derived(indicatorCatalogService.getAllIndicators(savedScripts));
+
+  // Perhitungan badge counter untuk setiap tab kategori
+  let countAll = $derived(allIndicators.length);
+  let countTrend = $derived(allIndicators.filter((i) => i.category === 'Trend').length);
+  let countMomentum = $derived(allIndicators.filter((i) => i.category === 'Momentum').length);
+  let countVolatility = $derived(allIndicators.filter((i) => i.category === 'Volatility').length);
+  let countVolume = $derived(
+    allIndicators.filter((i) => i.category === 'Volume' || i.categories?.includes('Volume')).length
+  );
+  let countProfile = $derived(
+    allIndicators.filter((i) => i.category === 'Profile' || i.categories?.includes('Profile')).length
+  );
+  let countSignals = $derived(
+    allIndicators.filter((i) => i.category === 'Signals' || i.categories?.includes('Signals')).length
+  );
+  let countNative = $derived(allIndicators.filter((i) => i.kind === 'native').length);
+  let countPine = $derived(allIndicators.filter((i) => i.kind === 'pine').length);
+  let countCustom = $derived(savedScripts.length);
+  let countFavorites = $derived(
+    allIndicators.filter((i) => indicatorCatalogService.isFavorited(i, favoriteIds)).length
   );
 
-  // Filter Skrip Kustom Pengguna
-  const filteredSavedScripts = $derived(
-    savedScripts.filter((s) => {
-      const matchSearch =
-        searchQuery.trim() === '' ||
-        s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.code && s.code.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchFav = activeNavTab !== 'favorites' || favoriteIds.includes(s.id);
-      return matchSearch && matchFav;
+  // Filter daftar indikator secara real-time
+  let filteredIndicators = $derived(
+    indicatorCatalogService.filterIndicators(allIndicators, {
+      searchQuery,
+      category: activeCategory,
+      kind: kindFilter,
+      favoritesOnly: activeCategory === 'Favorites',
+      favoriteIds,
     })
-  );
-
-  // Total count
-  let totalSavedCount = $derived(savedScripts.length);
-  let totalPresetsCount = $derived(INDICATOR_PRESETS.length);
-  let totalFavoritesCount = $derived(
-    favoriteIds.filter(
-      (id) => INDICATOR_PRESETS.some((p) => p.id === id) || savedScripts.some((s) => s.id === id)
-    ).length
   );
 </script>
 
@@ -146,7 +180,7 @@
       onclick={(e) => e.stopPropagation()}
       role="dialog"
       aria-modal="true"
-      aria-label="Indikator & Scripting Library"
+      aria-label="Katalog Terpadu Indikator & Studi WebGL"
     >
       <!-- Top Titlebar -->
       <header class="modal-header">
@@ -155,8 +189,8 @@
             <Layers size={16} class="text-bull" />
           </div>
           <div class="header-text">
-            <h3>Indikator & Scripting Library</h3>
-            <span class="sub-text">Pustaka algoritma teknikal bawaan & skrip kustom Pine Script v6</span>
+            <h3>Katalog Terpadu Indikator & Scripting Library</h3>
+            <span class="sub-text">76 Studi Native WebGL2 Instan & Pustaka Algoritma Pine Script v6</span>
           </div>
         </div>
         <button class="btn-close" title="Tutup Modal (Esc)" onclick={onClose}>
@@ -164,13 +198,13 @@
         </button>
       </header>
 
-      <!-- Search Toolbar Bar -->
+      <!-- Search & Quick Filter Toolbar -->
       <div class="search-toolbar">
         <div class="search-input-wrapper">
           <Search size={14} class="search-icon" />
           <input
             type="text"
-            placeholder="Cari indikator atau skrip saya (e.g. RSI, EMA, SuperTrend, MACD, Volume)..."
+            placeholder="Cari indikator berdasarkan nama, singkatan (e.g. RSI, VRVP, ATR, SMA, MACD, VPVR)..."
             bind:value={searchQuery}
             class="search-input mono-nums"
           />
@@ -180,74 +214,119 @@
             </button>
           {/if}
         </div>
+
+        <!-- Kind Filter Chips (Semua, Native, Pine) -->
+        <div class="kind-filter-row">
+          <button
+            class="kind-chip {kindFilter === 'all' ? 'active' : ''}"
+            onclick={() => (kindFilter = 'all')}
+          >
+            Semua Studi ({countAll})
+          </button>
+          <button
+            class="kind-chip {kindFilter === 'native' ? 'active' : ''}"
+            onclick={() => (kindFilter = 'native')}
+          >
+            <Cpu size={11} />
+            <span>Native ({countNative})</span>
+          </button>
+          <button
+            class="kind-chip {kindFilter === 'pine' ? 'active' : ''}"
+            onclick={() => (kindFilter = 'pine')}
+          >
+            <Code size={11} />
+            <span>Pine Script ({allIndicators.filter((i) => i.kind === 'pine').length})</span>
+          </button>
+        </div>
       </div>
 
       <!-- Main Layout Body: Dual-Navigation (Sidebar + Content View) -->
       <div class="modal-body-layout">
         <!-- Left Sidebar Navigation Rail -->
         <aside class="sidebar-nav">
-          <div class="nav-section-title">SUMBER INDIKATOR</div>
+          <div class="nav-section-title">KATEGORI INDIKATOR</div>
 
           <button
-            class="nav-tab-btn {activeNavTab === 'all' ? 'active' : ''}"
-            onclick={() => {
-              activeNavTab = 'all';
-              selectedCategoryFilter = 'All';
-            }}
+            class="nav-tab-btn {activeCategory === 'All' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'All')}
           >
             <Compass size={14} />
             <span class="tab-label">Semua Indikator</span>
-            <span class="count-pill">{totalPresetsCount + totalSavedCount}</span>
+            <span class="count-pill">{countAll}</span>
           </button>
 
           <button
-            class="nav-tab-btn {activeNavTab === 'official' ? 'active' : ''}"
-            onclick={() => {
-              activeNavTab = 'official';
-              selectedCategoryFilter = 'All';
-            }}
+            class="nav-tab-btn {activeCategory === 'Trend' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'Trend')}
           >
-            <FolderKanban size={14} />
-            <span class="tab-label">Bawaan Resmi</span>
-            <span class="count-pill">{totalPresetsCount}</span>
+            <TrendingUp size={14} />
+            <span class="tab-label">Trend</span>
+            <span class="count-pill">{countTrend}</span>
           </button>
 
-          <!-- Sub-kategori chips jika tab official aktif -->
-          {#if activeNavTab === 'official'}
-            <div class="sub-filter-group">
-              {#each officialCategories as cat}
-                <button
-                  class="sub-chip {selectedCategoryFilter === cat ? 'active' : ''}"
-                  onclick={() => (selectedCategoryFilter = cat)}
-                >
-                  {cat}
-                </button>
-              {/each}
-            </div>
-          {/if}
+          <button
+            class="nav-tab-btn {activeCategory === 'Momentum' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'Momentum')}
+          >
+            <Activity size={14} />
+            <span class="tab-label">Momentum</span>
+            <span class="count-pill">{countMomentum}</span>
+          </button>
 
           <button
-            class="nav-tab-btn {activeNavTab === 'custom' ? 'active' : ''}"
-            onclick={() => {
-              activeNavTab = 'custom';
-              selectedCategoryFilter = 'All';
-            }}
+            class="nav-tab-btn {activeCategory === 'Volatility' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'Volatility')}
+          >
+            <SlidersHorizontal size={14} />
+            <span class="tab-label">Volatilitas</span>
+            <span class="count-pill">{countVolatility}</span>
+          </button>
+
+          <button
+            class="nav-tab-btn {activeCategory === 'Volume' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'Volume')}
+          >
+            <BarChart3 size={14} />
+            <span class="tab-label">Volume</span>
+            <span class="count-pill">{countVolume}</span>
+          </button>
+
+          <button
+            class="nav-tab-btn {activeCategory === 'Profile' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'Profile')}
+          >
+            <Layers size={14} />
+            <span class="tab-label">Profil Volume</span>
+            <span class="count-pill">{countProfile}</span>
+          </button>
+
+          <button
+            class="nav-tab-btn {activeCategory === 'Signals' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'Signals')}
+          >
+            <Zap size={14} />
+            <span class="tab-label">Signals</span>
+            <span class="count-pill">{countSignals}</span>
+          </button>
+
+          <div class="nav-section-title mt-2">SKRIP SAYA & PERSONALISASI</div>
+
+          <button
+            class="nav-tab-btn {activeCategory === 'Custom Scripts' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'Custom Scripts')}
           >
             <Code size={14} />
             <span class="tab-label">Skrip Saya</span>
-            <span class="count-pill custom-count">{totalSavedCount}</span>
+            <span class="count-pill custom-count">{countCustom}</span>
           </button>
 
           <button
-            class="nav-tab-btn {activeNavTab === 'favorites' ? 'active' : ''}"
-            onclick={() => {
-              activeNavTab = 'favorites';
-              selectedCategoryFilter = 'All';
-            }}
+            class="nav-tab-btn {activeCategory === 'Favorites' ? 'active' : ''}"
+            onclick={() => (activeCategory = 'Favorites')}
           >
             <Star size={14} class="text-gold" />
             <span class="tab-label">Favorit</span>
-            <span class="count-pill">{totalFavoritesCount}</span>
+            <span class="count-pill">{countFavorites}</span>
           </button>
 
           <div class="sidebar-spacer"></div>
@@ -267,156 +346,112 @@
 
         <!-- Right Content List Area -->
         <main class="content-list-pane">
-          <!-- SECTION 1: SKRIP SAYA (Tampil jika tab 'all', 'custom', atau 'favorites') -->
-          {#if (activeNavTab === 'all' || activeNavTab === 'custom' || activeNavTab === 'favorites') && filteredSavedScripts.length > 0}
-            <div class="list-group-header">
-              <span class="group-title">SKRIP SAYA (KUSTOM)</span>
-              <span class="group-count">{filteredSavedScripts.length} Tersimpan</span>
-            </div>
+          <div class="list-group-header">
+            <span class="group-title">
+              {activeCategory === 'All' ? 'SELURUH INDIKATOR TERSEDIA' : activeCategory.toUpperCase()}
+            </span>
+            <span class="group-count">{filteredIndicators.length} Hasil Ditampilkan</span>
+          </div>
 
-            <div class="cards-grid">
-              {#each filteredSavedScripts as script (script.id)}
-                {@const isFav = favoriteIds.includes(script.id)}
-                {@const isAdded = Boolean(addedFeedbackMap[script.id])}
+          <div class="cards-grid">
+            {#each filteredIndicators as indicator (indicator.id)}
+              {@const isFav = indicatorCatalogService.isFavorited(indicator, favoriteIds)}
+              {@const isAdded = Boolean(addedFeedbackMap[indicator.id])}
 
-                <div class="indicator-card custom-card obsidian-panel">
-                  <div class="card-top-row">
-                    <button
-                      class="btn-star {isFav ? 'starred' : ''}"
-                      title={isFav ? 'Hapus dari favorit' : 'Tambah ke favorit'}
-                      onclick={(e) => toggleFavorite(e, script.id)}
-                    >
-                      <Star size={13} fill={isFav ? 'currentColor' : 'none'} />
-                    </button>
+              <div class="indicator-card {indicator.kind === 'native' ? 'native-card' : 'pine-card'} {indicator.prominent ? 'prominent-card' : ''} obsidian-panel">
+                <div class="card-top-row">
+                  <button
+                    class="btn-star {isFav ? 'starred' : ''}"
+                    title={isFav ? 'Hapus dari favorit' : 'Tambah ke favorit'}
+                    onclick={(e) => toggleFavorite(e, indicator.id)}
+                  >
+                    <Star size={13} fill={isFav ? 'currentColor' : 'none'} />
+                  </button>
 
-                    <div class="card-titles">
-                      <span class="card-name mono-nums">{script.title}</span>
-                      <div class="badges-row">
+                  <div class="card-titles">
+                    <div class="title-with-short">
+                      <span class="card-name mono-nums">{indicator.title}</span>
+                      {#if indicator.shortTitle}
+                        <span class="short-title-tag mono-nums">({indicator.shortTitle})</span>
+                      {/if}
+                    </div>
+
+                    <div class="badges-row">
+                      {#if indicator.prominent}
+                        <span class="badge-source badge-prominent" title="Studi Profil Unggulan">Unggulan</span>
+                      {/if}
+
+                      <!-- Badge Native vs Pine vs Skrip Saya -->
+                      {#if indicator.kind === 'native'}
+                        <span class="badge-source badge-native">Native</span>
+                      {:else if indicator.category === 'Custom'}
                         <span class="badge-source badge-custom">Skrip Saya</span>
-                        <span class="badge-type {script.is_overlay ? 'overlay' : 'sub'}">
-                          {script.is_overlay ? 'Chart Overlay' : 'Separate Pane'}
-                        </span>
-                      </div>
+                      {:else}
+                        <span class="badge-source badge-pine">Pine</span>
+                      {/if}
+
+                      <span class="badge-cat">{indicator.category}</span>
+
+                      <span class="badge-type {indicator.overlay ? 'overlay' : 'sub'}">
+                        {indicator.overlay ? 'Overlay' : 'Sub-Pane'}
+                      </span>
+
+                      {#if indicator.multiInstance}
+                        <span class="badge-multi" title="Dapat dipasang lebih dari 1 instance dengan parameter berbeda">Multi</span>
+                      {/if}
                     </div>
                   </div>
+                </div>
 
-                  <div class="card-meta mono-nums">
-                    <Clock size={11} class="meta-icon" />
-                    <span>Diperbarui: {new Date(script.updated_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                  </div>
+                <p class="card-description">{indicator.description}</p>
 
-                  <div class="card-actions">
+                <div class="card-actions">
+                  {#if indicator.sourceCode}
                     <button
                       class="btn-action-edit"
                       title="Buka dan modifikasi kode di Pine Script IDE"
                       onclick={() => {
-                        onOpenInEditor(script.code, script.title, script.id);
+                        onOpenInEditor(indicator.sourceCode!, indicator.title, indicator.category === 'Custom' ? indicator.id : undefined);
                         onClose();
                       }}
                     >
                       <Code size={13} />
                       <span>Edit di IDE</span>
                     </button>
+                  {/if}
 
+                  {#if indicator.category === 'Custom'}
                     <button
                       class="btn-action-delete"
                       title="Hapus skrip dari database lokal"
-                      onclick={(e) => handleDeleteScript(e, script)}
+                      onclick={(e) => handleDeleteScript(e, indicator.id, indicator.title)}
                     >
                       <Trash2 size={13} />
                     </button>
+                  {/if}
 
-                    <button
-                      class="btn-action-apply {isAdded ? 'applied' : ''}"
-                      title="Terapkan indikator ini ke grafik WebGL aktif"
-                      onclick={() => handleApplyIndicator(script.code, script.title, script.id)}
-                    >
-                      {#if isAdded}
-                        <Check size={13} />
-                        <span>✓ Terpasang</span>
-                      {:else}
-                        <Plus size={13} />
-                        <span>Pasang</span>
-                      {/if}
-                    </button>
-                  </div>
+                  <button
+                    class="btn-action-apply {isAdded ? 'applied' : ''}"
+                    title="Terapkan indikator ini ke grafik WebGL aktif"
+                    onclick={() => handleApply(indicator)}
+                  >
+                    {#if isAdded}
+                      <Check size={13} />
+                      <span>✓ Terpasang</span>
+                    {:else}
+                      <Plus size={13} />
+                      <span>Pasang</span>
+                    {/if}
+                  </button>
                 </div>
-              {/each}
-            </div>
-          {/if}
-
-          <!-- SECTION 2: PRESET RESMI (Tampil jika tab 'all', 'official', atau 'favorites') -->
-          {#if (activeNavTab === 'all' || activeNavTab === 'official' || activeNavTab === 'favorites') && filteredPresets.length > 0}
-            <div class="list-group-header">
-              <span class="group-title">KATALOG RESMI (BUILT-IN)</span>
-              <span class="group-count">{filteredPresets.length} Indikator</span>
-            </div>
-
-            <div class="cards-grid">
-              {#each filteredPresets as preset (preset.id)}
-                {@const isFav = favoriteIds.includes(preset.id)}
-                {@const isAdded = Boolean(addedFeedbackMap[preset.id])}
-
-                <div class="indicator-card official-card obsidian-panel">
-                  <div class="card-top-row">
-                    <button
-                      class="btn-star {isFav ? 'starred' : ''}"
-                      title={isFav ? 'Hapus dari favorit' : 'Tambah ke favorit'}
-                      onclick={(e) => toggleFavorite(e, preset.id)}
-                    >
-                      <Star size={13} fill={isFav ? 'currentColor' : 'none'} />
-                    </button>
-
-                    <div class="card-titles">
-                      <span class="card-name mono-nums">{preset.name}</span>
-                      <div class="badges-row">
-                        <span class="badge-source badge-official">Resmi</span>
-                        <span class="badge-cat">{preset.category}</span>
-                        <span class="badge-type {preset.overlay ? 'overlay' : 'sub'}">
-                          {preset.overlay ? 'Overlay' : 'Sub-Pane'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <p class="card-description">{preset.description}</p>
-
-                  <div class="card-actions">
-                    <button
-                      class="btn-action-edit"
-                      title="Salin dan buka kode preset ini di Pine Script Editor"
-                      onclick={() => {
-                        onOpenInEditor(preset.sourceCode, preset.name);
-                        onClose();
-                      }}
-                    >
-                      <Code size={13} />
-                      <span>Edit di IDE</span>
-                    </button>
-
-                    <button
-                      class="btn-action-apply {isAdded ? 'applied' : ''}"
-                      title="Terapkan preset ini ke grafik WebGL aktif"
-                      onclick={() => handleApplyIndicator(preset.sourceCode, preset.name, preset.id)}
-                    >
-                      {#if isAdded}
-                        <Check size={13} />
-                        <span>✓ Terpasang</span>
-                      {:else}
-                        <Plus size={13} />
-                        <span>Pasang</span>
-                      {/if}
-                    </button>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
+              </div>
+            {/each}
+          </div>
 
           <!-- EMPTY STATES -->
-          {#if filteredSavedScripts.length === 0 && filteredPresets.length === 0}
+          {#if filteredIndicators.length === 0}
             <div class="empty-results-box">
-              {#if activeNavTab === 'custom'}
+              {#if activeCategory === 'Custom Scripts'}
                 <Code size={36} class="empty-icon text-bull" />
                 <h4>Belum ada skrip kustom tersimpan</h4>
                 <p>Buat dan kustomisasi strategi trading Anda sendiri menggunakan Pine Script v6 di editor bawaan.</p>
@@ -424,14 +459,14 @@
                   <FilePlus size={14} />
                   <span>+ Buat Skrip Pertama Sekarang</span>
                 </button>
-              {:else if activeNavTab === 'favorites'}
+              {:else if activeCategory === 'Favorites'}
                 <Star size={36} class="empty-icon text-gold" />
                 <h4>Belum ada indikator favorit</h4>
-                <p>Klik ikon bintang (⭐) pada kartu indikator mana pun untuk menambahkannya ke daftar favorit ini.</p>
+                <p>Klik ikon bintang (⭐) pada kartu indikator mana pun untuk menyematkannya di bagian teratas dan tab favorit ini.</p>
               {:else}
                 <Search size={36} class="empty-icon text-muted" />
                 <h4>Tidak ada indikator yang cocok</h4>
-                <p>Tidak ditemukan indikator atau skrip dengan kata kunci "<b>{searchQuery}</b>".</p>
+                <p>Tidak ditemukan indikator dengan kata kunci pencarian "<b>{searchQuery}</b>".</p>
                 <button class="btn-reset-search" onclick={() => (searchQuery = '')}>
                   Reset Pencarian
                 </button>
@@ -444,7 +479,7 @@
       <!-- Footer Bar -->
       <footer class="modal-footer">
         <div class="footer-hint mono-nums">
-          <span>Tip: Gunakan shortcut <code>Ctrl+S</code> di Pine Editor untuk kompilasi langsung ke chart</span>
+          <span>Studi Native dihitung instan tanpa beban Web Worker · Gunakan <code>Ctrl+S</code> di Pine Editor untuk kompilasi skrip</span>
         </div>
         <div class="footer-buttons">
           <button class="btn-footer-close" onclick={onClose}>
@@ -472,10 +507,10 @@
   }
 
   .modal-window {
-    width: 820px;
-    max-width: 94vw;
-    height: 600px;
-    max-height: 88vh;
+    width: 860px;
+    max-width: 95vw;
+    height: 640px;
+    max-height: 90vh;
     background-color: var(--bg-panel, #0E121A);
     border: 1px solid var(--border-hairline, #1E293B);
     border-radius: var(--radius-md, 8px);
@@ -540,12 +575,15 @@
     background-color: var(--bg-hover, rgba(255, 255, 255, 0.05));
   }
 
-  /* Search Toolbar */
+  /* Search & Quick Filter Toolbar */
   .search-toolbar {
     padding: 10px 16px;
     background-color: var(--bg-panel, #0E121A);
     border-bottom: 1px solid var(--border-hairline, #1E293B);
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .search-input-wrapper {
@@ -589,6 +627,39 @@
     display: flex;
   }
 
+  .kind-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .kind-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    background-color: var(--bg-container, #131722);
+    border: 1px solid var(--border-hairline, #1E293B);
+    border-radius: var(--radius-xs, 4px);
+    color: var(--text-muted, #94A3B8);
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .kind-chip:hover {
+    color: var(--text-main, #F8FAFC);
+    border-color: var(--border-bright, #334155);
+  }
+
+  .kind-chip.active {
+    background-color: rgba(0, 240, 144, 0.1);
+    color: var(--brand-primary, #00F090);
+    border-color: var(--brand-primary, #00F090);
+    font-weight: 600;
+  }
+
   /* Main Body Layout */
   .modal-body-layout {
     flex: 1;
@@ -599,14 +670,15 @@
 
   /* Left Sidebar Navigation */
   .sidebar-nav {
-    width: 210px;
+    width: 220px;
     background-color: var(--bg-panel, #0E121A);
     border-right: 1px solid var(--border-hairline, #1E293B);
     display: flex;
     flex-direction: column;
     padding: 12px 10px;
-    gap: 4px;
+    gap: 3px;
     flex-shrink: 0;
+    overflow-y: auto;
   }
 
   .nav-section-title {
@@ -615,6 +687,10 @@
     color: var(--text-dim, #64748B);
     padding: 4px 8px;
     letter-spacing: 0.5px;
+  }
+
+  .nav-section-title.mt-2 {
+    margin-top: 8px;
   }
 
   .nav-tab-btn {
@@ -660,36 +736,9 @@
     color: var(--brand-primary, #00F090);
   }
 
-  .sub-filter-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding: 4px 4px 8px 18px;
-  }
-
-  .sub-chip {
-    background-color: var(--bg-darkest, #07090E);
-    border: 1px solid var(--border-hairline, #1E293B);
-    color: var(--text-dim, #64748B);
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: var(--radius-xs, 4px);
-    cursor: pointer;
-  }
-
-  .sub-chip:hover {
-    color: var(--text-main, #F8FAFC);
-    border-color: var(--border-bright, #334155);
-  }
-
-  .sub-chip.active {
-    background-color: rgba(59, 130, 246, 0.15);
-    color: #38BDF8;
-    border-color: #38BDF8;
-  }
-
   .sidebar-spacer {
     flex: 1;
+    min-height: 10px;
   }
 
   .create-script-box {
@@ -726,7 +775,7 @@
     padding: 14px 16px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
     background-color: var(--bg-darkest, #07090E);
   }
 
@@ -801,11 +850,23 @@
     gap: 4px;
   }
 
+  .title-with-short {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
   .card-name {
     font-size: 12px;
     font-weight: 700;
     color: var(--text-main, #F8FAFC);
     line-height: 1.3;
+  }
+
+  .short-title-tag {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--brand-primary, #00F090);
   }
 
   .badges-row {
@@ -818,18 +879,42 @@
   .badge-source {
     font-size: 9px;
     font-weight: 700;
-    padding: 1px 5px;
+    padding: 1px 6px;
     border-radius: 2px;
   }
 
-  .badge-official {
+  .badge-prominent {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.15));
+    color: #FBBF24;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.2);
+  }
+
+  .prominent-card {
+    border-color: rgba(245, 158, 11, 0.3) !important;
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.04) 0%, rgba(15, 23, 42, 0.6) 100%) !important;
+  }
+
+  .prominent-card:hover {
+    border-color: rgba(245, 158, 11, 0.55) !important;
+  }
+
+  .badge-native {
+    background-color: rgba(0, 240, 144, 0.12);
+    color: var(--brand-primary, #00F090);
+    border: 1px solid rgba(0, 240, 144, 0.3);
+  }
+
+  .badge-pine {
     background-color: rgba(56, 189, 248, 0.12);
     color: #38BDF8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
   }
 
   .badge-custom {
-    background-color: rgba(0, 240, 144, 0.12);
-    color: var(--brand-primary, #00F090);
+    background-color: rgba(168, 85, 247, 0.12);
+    color: #C084FC;
+    border: 1px solid rgba(168, 85, 247, 0.3);
   }
 
   .badge-cat {
@@ -856,19 +941,19 @@
     color: #FBBF24;
   }
 
+  .badge-multi {
+    font-size: 9px;
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--text-dim, #64748B);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+
   .card-description {
     margin: 0;
     font-size: 11px;
     line-height: 1.4;
     color: var(--text-muted, #94A3B8);
-  }
-
-  .card-meta {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    color: var(--text-dim, #64748B);
   }
 
   .card-actions {
@@ -949,48 +1034,55 @@
     justify-content: center;
     padding: 40px 20px;
     text-align: center;
-    gap: 8px;
+    background-color: var(--bg-panel, #0E121A);
+    border: 1px dashed var(--border-hairline, #1E293B);
+    border-radius: var(--radius-md, 8px);
+    margin-top: 10px;
+  }
+
+  .empty-icon {
+    margin-bottom: 12px;
   }
 
   .empty-results-box h4 {
-    margin: 4px 0 0 0;
+    margin: 0 0 6px 0;
     font-size: 13px;
-    font-weight: 600;
     color: var(--text-main, #F8FAFC);
   }
 
   .empty-results-box p {
-    margin: 0;
+    margin: 0 0 16px 0;
     font-size: 11px;
     color: var(--text-dim, #64748B);
     max-width: 320px;
-    line-height: 1.4;
+    line-height: 1.5;
   }
 
   .btn-create-first,
   .btn-reset-search {
-    margin-top: 12px;
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    background-color: var(--bg-container, #131722);
-    border: 1px solid var(--border-bright, #334155);
+    background-color: rgba(0, 240, 144, 0.1);
+    border: 1px solid var(--brand-primary, #00F090);
     color: var(--brand-primary, #00F090);
     border-radius: var(--radius-xs, 4px);
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
+    transition: all 0.15s ease;
   }
 
   .btn-create-first:hover,
   .btn-reset-search:hover {
-    border-color: var(--brand-primary, #00F090);
+    background-color: var(--brand-primary, #00F090);
+    color: var(--on-brand-primary, #000000);
   }
 
   /* Footer */
   .modal-footer {
-    height: 40px;
+    height: 44px;
     background-color: var(--bg-container, #131722);
     border-top: 1px solid var(--border-hairline, #1E293B);
     display: flex;
@@ -1009,30 +1101,24 @@
     background-color: var(--bg-darkest, #07090E);
     border: 1px solid var(--border-hairline, #1E293B);
     padding: 1px 4px;
-    border-radius: 2px;
-    color: var(--brand-primary, #00F090);
+    border-radius: 3px;
+    color: var(--text-muted, #94A3B8);
   }
 
   .btn-footer-close {
-    padding: 4px 12px;
+    padding: 5px 14px;
     background-color: var(--bg-panel, #0E121A);
     border: 1px solid var(--border-hairline, #1E293B);
-    color: var(--text-muted, #94A3B8);
+    color: var(--text-main, #F8FAFC);
     border-radius: var(--radius-xs, 4px);
     font-size: 11px;
+    font-weight: 600;
     cursor: pointer;
+    transition: all 0.15s ease;
   }
 
   .btn-footer-close:hover {
-    color: var(--text-main, #F8FAFC);
+    background-color: var(--bg-hover, rgba(255, 255, 255, 0.05));
     border-color: var(--border-bright, #334155);
-  }
-
-  .text-bull {
-    color: var(--brand-primary, #00F090);
-  }
-
-  .text-gold {
-    color: #F59E0B;
   }
 </style>

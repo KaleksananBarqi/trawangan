@@ -652,6 +652,19 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       allowInInput: false,
       match: { alt: true, ctrlOrMeta: false, key: 'i', code: 'KeyI' },
     },
+    {
+      id: 'cycle-price-style',
+      category: 'Skala & Tampilan Grafik',
+      keys: ['Alt', 'Y'],
+      desc: 'Siklus gaya lilin grafik (Candles -> Heikin-Ashi -> Bars -> Line -> Area -> Baseline)',
+      allowInInput: false,
+      match: {
+        alt: true,
+        ctrlOrMeta: false,
+        key: ['y', 's'],
+        code: ['KeyY', 'KeyS'],
+      },
+    },
 
     // --- Timeframe Cepat ---
     {

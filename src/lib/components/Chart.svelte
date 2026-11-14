@@ -38,6 +38,7 @@
     showCurrentPriceLine?: boolean; showVolume?: boolean; showIndicatorPriceLabels?: boolean; showDrawingPriceLabels?: boolean;
     onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
     onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
+    onPriceStyleChange?: (style: string) => void;
     onReplayStateChange?: (state: ReplayStateInfo) => void;
     onCutoffSelected?: (timestamp: number) => void; onCutoffCancelled?: () => void;
     onStrategyUpdate?: (summary: StrategyPerformanceSummary) => void;
@@ -65,6 +66,7 @@
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showVolume = true, showIndicatorPriceLabels = true,
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
+    onPriceStyleChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
     onEditPlan, onVelaThemeSelect, onPersistableStateChange, securityWatermark, userProfile,
   }: Props = $props();
@@ -76,6 +78,7 @@
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
     showCurrentPriceLine, showVolume, syncConfig, onActiveCellChange,
+    onPriceStyleChange,
     onActiveIndicatorsChange: (indicators) => {
       priceScaleOverlayController.updateIndicators(indicators, showIndicatorPriceLabels);
       onActiveIndicatorsChange?.(indicators);
@@ -218,6 +221,13 @@
     untrack(() => {
       priceScaleOverlayController.updateIndicators(controller.getActiveIndicators(), lbl);
     });
+  });
+  $effect(() => {
+    const plans = scopedActivePlans;
+    const alerts = allAlerts;
+    if (isMounted && plans) {
+      controller.getTimelineMarksController().loadTradePlans(plans, alerts);
+    }
   });
 
   onMount(() => {
@@ -527,6 +537,7 @@
   export function applyPriceScaleState(state: any, cell?: any): boolean { return controller.applyPriceScaleState(state, cell); }
   export function getPriceStyle(cell?: any): string { return controller.getPriceStyle(cell); }
   export function setPriceStyle(style: string, cell?: any): void { controller.setPriceStyle(style, cell); }
+  export function cyclePriceStyle(cell?: any): string { return controller.cyclePriceStyle(cell); }
   export function setTimeframe(tf: Timeframe): void { controller.setTimeframe(tf); }
   export function getBarSpacing(cell?: any): number { return controller.getBarSpacing(cell); }
   export function setBarSpacing(spacing: number, cell?: any): void { controller.setBarSpacing(spacing, cell); }
@@ -562,6 +573,18 @@
   }
   export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
     return controller.addPineIndicator(src, t, i, p);
+  }
+  export function addNativeIndicator(type: string, options?: any, title?: string) {
+    return controller.addNativeIndicator(type, options, title);
+  }
+  export function addNativeIndicatorToCell(cell: any, type: string, options?: any, title?: string) {
+    return controller.addNativeIndicatorToCell(cell, type, options, title);
+  }
+  export function addIndicator(descriptor: any, options?: any) {
+    return controller.addIndicator(descriptor, options);
+  }
+  export function addIndicatorToCell(descriptor: any, cell?: any, options?: any) {
+    return controller.addIndicatorToCell(descriptor, cell, options);
   }
   export function removeIndicator(id: string): void { controller.removeIndicator(id); }
   export function clearAllIndicators(): void { controller.clearAllIndicators(); }
@@ -610,6 +633,18 @@
     const r = cell?.chart?.renderer?.renderer || cell?.chart?.renderer;
     if (r?.openSettings) r.openSettings(section);
     else if (r?.openSettingsDialog) r.openSettingsDialog(section);
+  }
+  export function openIndicatorSettings(id: string): boolean {
+    return controller.openIndicatorSettings(id);
+  }
+  export function updateIndicatorInputs(id: string, inputs: Record<string, any>): boolean {
+    return controller.updateIndicatorInputs(id, inputs);
+  }
+  export function getIndicatorInputSchema(idOrType: string): any[] {
+    return controller.getIndicatorInputSchema(idOrType);
+  }
+  export function getIndicatorInputs(idOrType: string): Record<string, any> {
+    return controller.getIndicatorInputs(idOrType);
   }
 
   // Delegasi Drawing ke ChartDrawingController
