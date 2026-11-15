@@ -480,7 +480,10 @@ plot(slowEMA, "EMA Slow", color=#3B82F6, linewidth=2)
         return null;
       }
 
-      const res = await runPineStrategyBacktest(code, candles);
+      const res = await runPineStrategyBacktest(code, candles, {
+        symbol: activeSymbol,
+        timeframe: activeTimeframe,
+      });
       if (res.success && res.summary) {
         perf = res.summary;
         onStrategyUpdate?.(res.summary);
