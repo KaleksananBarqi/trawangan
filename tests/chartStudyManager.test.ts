@@ -319,17 +319,20 @@ describe('ChartStudyManager Deep Cell-Aware Lifecycle (#215)', () => {
   });
 
   it('6. Integrasi ChartSessionController.cloneIndicatorsToCells mempertahankan studi Pine dan Native (VPVR)', async () => {
-    const controller = new ChartSessionController();
     const cell1 = createFakeCell('c1');
     const cell2 = createFakeCell('c2');
 
     // Simulasikan workspace 2 sel dengan syncConfig.indicators nonaktif saat penambahan awal
-    (controller as any).workspace = {
-      active: cell1,
-      cells: () => [cell1, cell2],
-      layout: '2h',
-    };
-    controller.syncLayout({ indicators: false });
+    const controller = new ChartSessionController({
+      workspaceFactory: () => ({
+        active: cell1,
+        cells: () => [cell1, cell2],
+        layout: '2h',
+        destroy: () => {},
+      }),
+      syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: false },
+    });
+    controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
     await controller.addPineIndicatorToCell(
       cell1,

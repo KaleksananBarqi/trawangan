@@ -70,7 +70,6 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
     });
 
     test('memverifikasi ketersediaan handle.descriptor.inputs dan handle.inputs pada native handle', async () => {
-      const controller = new ChartSessionController();
       let capturedHandle: any = null;
 
       const mockChart = {
@@ -97,10 +96,14 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
         id: 'cell-0',
       };
 
-      (controller as any).workspace = {
-        active: mockCell,
-      };
-      (controller as any).getAllCells = () => [mockCell];
+      const controller = new ChartSessionController({
+        workspaceFactory: () => ({
+          active: mockCell,
+          cells: () => [mockCell],
+          destroy: () => {},
+        }),
+      });
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       const ok = await controller.addNativeIndicator('rsi', { inputs: { length: 21 } });
       assert.ok(ok, 'Berhasil menambahkan native RSI');
@@ -121,8 +124,8 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
 
   describe('2. Update Dispatching & Reactive Execution (handle.update)', () => {
     test('memanggil handle.update(newInputs) memperbarui parameter dan memicu recompute', async () => {
-      const controller = new ChartSessionController();
       let lastAppliedInputs: any = null;
+      let persistEmitted = false;
 
       const mockHandle: any = {
         id: 'rsi-study-1',
@@ -144,8 +147,15 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
       };
 
       const mockCell = { chart: mockChart, id: 'cell-0' };
-      (controller as any).workspace = { active: mockCell };
-      (controller as any).getAllCells = () => [mockCell];
+      const controller = new ChartSessionController({
+        workspaceFactory: () => ({
+          active: mockCell,
+          cells: () => [mockCell],
+          destroy: () => {},
+        }),
+        onPersistableStateChange: () => { persistEmitted = true; },
+      });
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       await controller.addNativeIndicator('rsi');
 
@@ -157,9 +167,7 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
       assert.strictEqual(mockHandle.inputValues().length, 25);
 
       // 2. Panggil via controller.updateIndicatorInputs
-      let persistEmitted = false;
-      (controller as any).onPersistableStateChange = () => { persistEmitted = true; };
-
+      persistEmitted = false;
       const updateOk = controller.updateIndicatorInputs('rsi-study-1', { length: 30 });
       assert.ok(updateOk, 'Pembaruan input via controller berhasil');
       assert.strictEqual(mockHandle.inputValues().length, 30);
@@ -167,8 +175,6 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
     });
 
     test('propagasi pembaruan input ke seluruh sel multi-chart jika sinkronisasi aktif', async () => {
-      const controller = new ChartSessionController();
-
       const cell0Handle: any = {
         id: 'sma-c0',
         title: 'SMA',
@@ -205,9 +211,15 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
         },
       };
 
-      (controller as any).workspace = { active: cell0 };
-      (controller as any).getAllCells = () => [cell0, cell1];
-      controller.syncLayout({ indicators: true });
+      const controller = new ChartSessionController({
+        workspaceFactory: () => ({
+          active: cell0,
+          cells: () => [cell0, cell1],
+          destroy: () => {},
+        }),
+        syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
+      });
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       await controller.addNativeIndicator('sma');
 
@@ -222,8 +234,6 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
 
   describe('3. Dialog Revert on Cancel Semantics', () => {
     test('membatalkan dialog pengaturan mengembalikan parameter ke snapshot awal', async () => {
-      const controller = new ChartSessionController();
-
       const initialInputs = { length: 14, overbought: 70, oversold: 30 };
       let currentLiveInputs = { ...initialInputs };
 
@@ -243,8 +253,14 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
         },
       };
 
-      (controller as any).workspace = { active: mockCell };
-      (controller as any).getAllCells = () => [mockCell];
+      const controller = new ChartSessionController({
+        workspaceFactory: () => ({
+          active: mockCell,
+          cells: () => [mockCell],
+          destroy: () => {},
+        }),
+      });
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       await controller.addNativeIndicator('rsi');
 
@@ -272,8 +288,6 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
 
   describe('4. Workspace Persistence Serialization & Deserialization', () => {
     test('customized input values tertangkap di snapshot workspace dan dikembalikan saat restore', async () => {
-      const controller = new ChartSessionController();
-
       let liveInputs = {
         length: 50,
         source: 'High',
@@ -307,8 +321,14 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
         chart: mockChart,
       };
 
-      (controller as any).workspace = { active: mockCell };
-      (controller as any).getAllCells = () => [mockCell];
+      const controller = new ChartSessionController({
+        workspaceFactory: () => ({
+          active: mockCell,
+          cells: () => [mockCell],
+          destroy: () => {},
+        }),
+      });
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       await controller.addNativeIndicator('sma', { inputs: liveInputs });
 
@@ -353,8 +373,6 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
     });
 
     test('applyNativeIndicators memperbarui handle yang sudah ada di chart', async () => {
-      const controller = new ChartSessionController();
-
       let volumeInputs = { heightPct: 20, upColor: '#089981' };
 
       const existingVolumeHandle = {
@@ -375,8 +393,14 @@ describe('Native Indicator Settings Dialog & Persistence Suite (#195)', () => {
         chart: mockChart,
       };
 
-      (controller as any).workspace = { active: mockCell };
-      (controller as any).getAllCells = () => [mockCell];
+      const controller = new ChartSessionController({
+        workspaceFactory: () => ({
+          active: mockCell,
+          cells: () => [mockCell],
+          destroy: () => {},
+        }),
+      });
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       const snapshotToRestore: NativeIndicatorSnapshot[] = [
         {
