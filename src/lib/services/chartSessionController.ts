@@ -89,7 +89,6 @@ import {
 } from './persistence/rendererConfigSanitizer';
 import { deriveBorderColor, generateVelaThemeTokens, isDarkColor, withAlpha } from '../utils/colorUtils';
 import {
-  marketSessionService,
   type MarketSession,
   isSessionSupported,
   SESSION_PRE,
@@ -189,8 +188,8 @@ export interface ChartSessionSnapshot {
   timezone: string;
   themePreset: ThemePresetId | string;
   fontSize: number;
-  session?: MarketSession;
-  sessionAvailable?: boolean;
+  session: MarketSession;
+  sessionAvailable: boolean;
   customPalette?: CustomThemePalette;
   customBullColor?: string;
   customBearColor?: string;
@@ -648,9 +647,6 @@ export class ChartSessionController {
     this.providerFactories = options.providerFactories;
     this.streamWatchdogMs = options.streamWatchdogMs;
     this.streamStaleMs = options.streamStaleMs;
-
-    marketSessionService.updateContext(this.symbol, this.providerId);
-    marketSessionService.setSession(this.session);
   }
 
   /**
@@ -731,7 +727,6 @@ export class ChartSessionController {
   public setSession(session: MarketSession): void {
     if (this.session === session) return;
     this.session = session;
-    marketSessionService.setSession(session);
 
     if (this.workspace) {
       try {
@@ -1121,8 +1116,6 @@ export class ChartSessionController {
 
     this.container = container;
     this.isDestroyed = false;
-    marketSessionService.updateContext(this.symbol, this.providerId);
-    marketSessionService.setSession(this.session);
     this.clearWorkspaceEventUnsubs();
     this.applyBackground();
     ensurePineEngine();
@@ -1309,6 +1302,7 @@ export class ChartSessionController {
             this.onPriceStyleChange?.(this.getPriceStyle(cur));
             this.attachCellListeners(cur);
             this.emitPersistableChange('activeCell');
+            this.notify();
           }
           if (this.syncConfig.indicators === false) {
             this.notifyActiveIndicators();
@@ -2661,8 +2655,6 @@ export class ChartSessionController {
     this.symbol = symbol;
     if (timeframe) this.timeframe = timeframe;
     if (providerId) this.providerId = providerId;
-    marketSessionService.updateContext(this.symbol, this.providerId);
-    marketSessionService.setSessionAvailable(this.isSessionAvailable());
     this.resetActiveRangePreset();
 
     if (this.workspace) {
