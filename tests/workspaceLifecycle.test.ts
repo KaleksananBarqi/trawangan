@@ -217,31 +217,23 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
 
   describe('3. executeWorkspaceLoadPipeline', () => {
     test('menjalankan pipeline restorasi lengkap secara deterministik', async () => {
-      const indicatorCallHistory: string[] = [];
-      const appliedScales: any[] = [];
+      let capturedAppliedSnapshot: any = null;
+      let capturedCleanSlate: boolean | undefined;
       let restoredPlans: any[] = [];
       let restoredThesisCards = false;
 
       const mockChart: WorkspaceChartPort = {
-        clearAllIndicators: () => {
-          indicatorCallHistory.push('clearAll');
-        },
-        addPineIndicator: async (source, title) => {
-          indicatorCallHistory.push(`add:${title}`);
-        },
-        getActiveIndicators: () => [{ title: 'MACD', source: 'plot(macd)', visible: true }],
-        toggleIndicatorVisibility: () => {},
-        setPriceStyle: (style) => {
-          appliedScales.push(`style:${style}`);
-        },
-        setBarSpacing: (bs) => {
-          appliedScales.push(`bs:${bs}`);
-        },
-        applyPriceScaleState: (st) => {
-          appliedScales.push(`scale:${st.mode}`);
-        },
-        applyPaneWeights: (pw) => {
-          appliedScales.push(`pane:${pw.join(',')}`);
+        captureWorkspaceSnapshot: () => ({
+          indicators: [{ title: 'MACD', source: 'plot(macd)', visible: true }],
+          paneWeights: capturedAppliedSnapshot?.paneWeights ?? [2, 1],
+          priceScaleState: capturedAppliedSnapshot?.priceScaleState ?? { mode: 'log' },
+          priceStyle: capturedAppliedSnapshot?.priceStyle ?? 'bars',
+          barSpacing: capturedAppliedSnapshot?.barSpacing ?? 12,
+        }),
+        applyWorkspaceSnapshot: async (snapshot, options) => {
+          capturedAppliedSnapshot = snapshot;
+          capturedCleanSlate = options?.cleanSlate;
+          options?.onSyncIndicators?.();
         },
       };
 
@@ -304,11 +296,12 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
       assert.strictEqual(res.indicatorCount, 2);
       assert.ok(res.fingerprint.length > 0);
 
-      // Verifikasi urutan eksekusi: double barrier clean-slate
-      assert.strictEqual(indicatorCallHistory[0], 'clearAll', 'Clean-slate tahap 1');
-      assert.strictEqual(indicatorCallHistory[1], 'clearAll', 'Clean-slate tahap 2 (Double-barrier)');
-      assert.ok(indicatorCallHistory.includes('add:MACD'));
-      assert.ok(indicatorCallHistory.includes('add:EMA 200'));
+      // Verifikasi snapshot deklaratif yang dikirim ke WorkspaceChartPort
+      assert.strictEqual(capturedCleanSlate, true);
+      assert.ok(capturedAppliedSnapshot);
+      assert.strictEqual(capturedAppliedSnapshot.indicators.length, 2);
+      assert.strictEqual(capturedAppliedSnapshot.indicators[0].title, 'MACD');
+      assert.strictEqual(capturedAppliedSnapshot.indicators[1].title, 'EMA 200');
 
       // Verifikasi event perubahan navigasi
       assert.ok(changedEvents.includes('provider:bitunix'));
@@ -317,10 +310,10 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
       assert.ok(changedEvents.includes('syncIndicators'));
 
       // Verifikasi restorasi skala dan plan
-      assert.ok(appliedScales.includes('style:bars'));
-      assert.ok(appliedScales.includes('bs:12'));
-      assert.ok(appliedScales.includes('scale:log'));
-      assert.ok(appliedScales.includes('pane:2,1'));
+      assert.strictEqual(capturedAppliedSnapshot.priceStyle, 'bars');
+      assert.strictEqual(capturedAppliedSnapshot.barSpacing, 12);
+      assert.deepStrictEqual(capturedAppliedSnapshot.priceScaleState, { mode: 'log' });
+      assert.deepStrictEqual(capturedAppliedSnapshot.paneWeights, [2, 1]);
       assert.strictEqual(restoredPlans.length, 1);
       assert.strictEqual(restoredPlans[0].id, 'plan-xyz');
       assert.strictEqual(restoredThesisCards, true);
@@ -464,14 +457,8 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
 
     test('restoreWorkspaceChartAndPlans melarang w.activePlans basi menimpa kanvas jika _trawangan_meta otoritatif dan tetap menerapkan showThesisCards', async () => {
       const mockChart: WorkspaceChartPort = {
-        clearAllIndicators: () => {},
-        addPineIndicator: async () => {},
-        getActiveIndicators: () => [],
-        toggleIndicatorVisibility: () => {},
-        setPriceStyle: () => {},
-        setBarSpacing: () => {},
-        applyPriceScaleState: () => {},
-        applyPaneWeights: () => {},
+        captureWorkspaceSnapshot: () => ({ indicators: [] }),
+        applyWorkspaceSnapshot: async () => {},
       };
 
       let restorePlansCalled = 0;
@@ -541,14 +528,8 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
 
     test('restoreWorkspaceChartAndPlans tetap fallback ke w.activePlans pada workspace warisan tanpa _trawangan_meta, dan reset memori saat kosong', async () => {
       const mockChart: WorkspaceChartPort = {
-        clearAllIndicators: () => {},
-        addPineIndicator: async () => {},
-        getActiveIndicators: () => [],
-        toggleIndicatorVisibility: () => {},
-        setPriceStyle: () => {},
-        setBarSpacing: () => {},
-        applyPriceScaleState: () => {},
-        applyPaneWeights: () => {},
+        captureWorkspaceSnapshot: () => ({ indicators: [] }),
+        applyWorkspaceSnapshot: async () => {},
       };
 
       const restoredCalls: Array<{ plans: any[]; showThesisCards?: boolean }> = [];

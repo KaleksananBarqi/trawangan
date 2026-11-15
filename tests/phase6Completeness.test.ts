@@ -409,14 +409,8 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.deepEqual((chartDrawingController as any).getThesisCardGeometries(), {});
 
     const mockChart: WorkspaceChartPort = {
-      clearAllIndicators: () => {},
-      addPineIndicator: async () => {},
-      getActiveIndicators: () => [],
-      toggleIndicatorVisibility: () => {},
-      setPriceStyle: () => {},
-      setBarSpacing: () => {},
-      applyPriceScaleState: () => {},
-      applyPaneWeights: () => {},
+      captureWorkspaceSnapshot: () => ({ indicators: [] }),
+      applyWorkspaceSnapshot: async () => {},
     };
 
     const fullWorkspace: SavedWorkspace = {
@@ -509,14 +503,8 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     chartDrawingController.setStayMode(false);
 
     const mockChart: WorkspaceChartPort = {
-      clearAllIndicators: () => {},
-      addPineIndicator: async () => {},
-      getActiveIndicators: () => [],
-      toggleIndicatorVisibility: () => {},
-      setPriceStyle: () => {},
-      setBarSpacing: () => {},
-      applyPriceScaleState: () => {},
-      applyPaneWeights: () => {},
+      captureWorkspaceSnapshot: () => ({ indicators: [] }),
+      applyWorkspaceSnapshot: async () => {},
     };
 
     const res = await executeWorkspaceLoadPipeline({
@@ -705,14 +693,8 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     );
 
     const mockChart: WorkspaceChartPort = {
-      clearAllIndicators: () => {},
-      addPineIndicator: async () => {},
-      getActiveIndicators: () => [],
-      toggleIndicatorVisibility: () => {},
-      setPriceStyle: () => {},
-      setBarSpacing: () => {},
-      applyPriceScaleState: () => {},
-      applyPaneWeights: () => {},
+      captureWorkspaceSnapshot: () => ({ indicators: [] }),
+      applyWorkspaceSnapshot: async () => {},
     };
 
     const staleWorkspacePlan = {

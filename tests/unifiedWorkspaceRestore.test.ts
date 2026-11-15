@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
 import { sanitizeRendererConfigForApply } from '../src/lib/services/persistence/rendererConfigSanitizer';
 import {
+  restoreCellThroughPipeline,
   restoreWorkspaceChartAndPlans,
   type WorkspaceChartPort,
 } from '../src/lib/services/workspaceLifecycle';
@@ -57,39 +58,62 @@ describe('Ticket #213: Unified 5-Step Cell & Workspace Restoration Pipeline', ()
       let receivedRendererConfig: any = null;
 
       const mockChart: WorkspaceChartPort = {
-        clearAllIndicators: () => events.push('clearAll'),
-        addPineIndicator: async (_src, title) => {
-          await new Promise((r) => setTimeout(r, 5));
-          events.push(`pine:${title}`);
-        },
-        getActiveIndicators: () => [],
-        toggleIndicatorVisibility: () => {},
-        applyRendererConfig: (cfg) => {
-          receivedRendererConfig = cfg;
-          events.push('step2:rendererConfig');
-        },
-        setPriceStyle: (style) => events.push(`step2:priceStyle:${style}`),
-        setPriceScaleCountdown: (enabled) => events.push(`step2:countdown:${enabled}`),
-        applyNativeIndicators: async (entries) => {
-          await new Promise((r) => setTimeout(r, 5));
-          events.push(`step3:native:${entries.length}`);
-        },
-        applyPaneLayout: async (entries) => {
-          events.push(`step4:paneLayout:${entries.map((e) => e.signature).join(',')}`);
-          return true;
-        },
-        applyPriceScaleState: () => {
-          events.push('step5:priceScale');
-        },
-        setBarSpacing: () => {
-          events.push('step5:barSpacing');
-        },
-        applyVisibleRange: () => {
-          events.push('step5:visibleRange');
-          return true;
-        },
-        applyPaneWeights: () => {
-          events.push('step4:paneWeights');
+        captureWorkspaceSnapshot: () => ({ indicators: [] }),
+        applyWorkspaceSnapshot: async (snapshot, opts) => {
+          const primaryCell = snapshot.cells?.[0] ?? {
+            symbol: snapshot.symbol || 'ETHUSDT',
+            timeframe: snapshot.timeframe || '1h',
+            providerId: snapshot.providerId || 'binance',
+            rendererConfig: snapshot.rendererConfig,
+            priceStyle: snapshot.priceStyle,
+            priceScaleCountdown: snapshot.priceScaleCountdown,
+            paneLayout: snapshot.paneLayout,
+            nativeIndicators: snapshot.nativeIndicators,
+            priceScaleState: snapshot.priceScaleState,
+            barSpacing: snapshot.barSpacing,
+            visibleRange: snapshot.visibleRange ?? undefined,
+          };
+          await restoreCellThroughPipeline(
+            primaryCell,
+            {
+              applyRendererConfig: (cfg) => {
+                receivedRendererConfig = cfg;
+                events.push('step2:rendererConfig');
+              },
+              setPriceStyle: (style) => events.push(`step2:priceStyle:${style}`),
+              setPriceScaleCountdown: (enabled) => events.push(`step2:countdown:${enabled}`),
+              addPineIndicator: async (ind) => {
+                await new Promise((r) => setTimeout(r, 5));
+                events.push(`pine:${ind.title}`);
+              },
+              applyNativeIndicators: async (entries) => {
+                await new Promise((r) => setTimeout(r, 5));
+                events.push(`step3:native:${entries.length}`);
+              },
+              onSyncIndicators: opts?.onSyncIndicators,
+              applyPaneLayout: async (entries) => {
+                events.push(`step4:paneLayout:${entries.map((e) => e.signature).join(',')}`);
+                return true;
+              },
+              applyPaneWeights: () => {
+                events.push('step4:paneWeights');
+              },
+              applyPriceScaleState: () => {
+                events.push('step5:priceScale');
+              },
+              setBarSpacing: () => {
+                events.push('step5:barSpacing');
+              },
+              applyVisibleRange: () => {
+                events.push('step5:visibleRange');
+                return true;
+              },
+            },
+            {
+              indicators: snapshot.indicators,
+              fallbackPaneWeights: snapshot.paneWeights,
+            }
+          );
         },
       };
 
