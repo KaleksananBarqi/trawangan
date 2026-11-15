@@ -93,14 +93,8 @@ describe('Fase 4: Migrasi Drawing saat Save As, Fingerprint Plan & Reset Memori 
     let resetMemoryCalled = false;
 
     const mockChart: WorkspaceChartPort = {
-      clearAllIndicators: () => {},
-      addPineIndicator: async () => {},
-      getActiveIndicators: () => [],
-      toggleIndicatorVisibility: () => {},
-      setPriceStyle: () => {},
-      setBarSpacing: () => {},
-      applyPriceScaleState: () => {},
-      applyPaneWeights: () => {},
+      captureWorkspaceSnapshot: () => ({ indicators: [] }),
+      applyWorkspaceSnapshot: async () => {},
     };
 
     const mockPlan: WorkspacePlanPort = {

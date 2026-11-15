@@ -26,9 +26,9 @@ import {
   WORKSPACE_SCHEMA_VERSION,
   normalizeWorkspace,
 } from './persistence/workspaceSchema';
+import { sanitizeRendererConfigForApply } from './persistence/rendererConfigSanitizer';
 import {
   computeWorkspaceFingerprint,
-  type WorkspaceFingerprintInput,
 } from './persistence/workspaceService';
 
 export const PENDING_WORKSPACE_KEY_PREFIX = 'trawangan_workspace_pending_';
@@ -39,42 +39,48 @@ export interface PendingStorageAdapter {
   removeItem(key: string): void;
 }
 
+/**
+ * Snapshot deklaratif state sesi chart yang dipertukarkan antara WorkspaceLifecycle dan ChartSessionController.
+ */
+export interface WorkspaceChartSnapshot {
+  symbol?: string;
+  timeframe?: string;
+  layout?: string;
+  providerId?: string;
+  showVolume?: boolean;
+  syncConfig?: MultiChartSyncConfig;
+  indicators: SavedWorkspaceIndicator[];
+  paneWeights?: number[];
+  paneLayout?: PaneLayoutEntry[];
+  nativeIndicators?: NativeIndicatorSnapshot[];
+  priceScaleState?: any;
+  priceStyle?: string;
+  priceScaleCountdown?: boolean;
+  barSpacing?: number;
+  visibleRange?: VisibleRangeSnapshot | null;
+  rendererConfig?: Record<string, unknown>;
+  cells?: CellSnapshot[];
+  trackSizes?: WorkspaceTrackSizes;
+  activeCellIndex?: number;
+}
+
+export interface ApplyWorkspaceChartSnapshotOptions {
+  /** Lewati penyesuaian ulang viewport/visibleRange saat memulihkan snapshot */
+  preserveViewport?: boolean;
+  /** Callback sinkronisasi daftar indikator aktif ke shell UI */
+  onSyncIndicators?: () => void;
+  /** Bersihkan indikator lama sebelum menerapkan snapshot (default: true) */
+  cleanSlate?: boolean;
+}
+
 export interface WorkspaceChartPort {
-  clearAllIndicators(): void;
-  addPineIndicator(source: string, title?: string, inputs?: any, props?: any): Promise<void | boolean>;
-  getActiveIndicators(): any[];
-  toggleIndicatorVisibility(idOrTitle: string): void;
-  setPriceStyle(style: string, cell?: any): void;
-  getPriceStyle?(cell?: any): string;
-  setPriceScaleCountdown?(enabled: boolean, cell?: any): void;
-  isPriceScaleCountdownEnabled?(cell?: any): boolean;
-  setBarSpacing(spacing: number, cell?: any): void;
-  getBarSpacing?(cell?: any): number;
-  applyPriceScaleState(state: any, cell?: any): void | boolean;
-  getPriceScaleState?(cell?: any): any;
-  applyPaneWeights(weights: number[], cell?: any): void | boolean;
-  getPaneWeights?(cell?: any): number[];
-  getPaneLayout?(cell?: any): PaneLayoutEntry[];
-  applyPaneLayout?(entries: PaneLayoutEntry[], options?: { timeoutMs?: number }, cell?: any): Promise<boolean>;
-  getNativeIndicators?(cell?: any): NativeIndicatorSnapshot[];
-  applyNativeIndicators?(entries: NativeIndicatorSnapshot[], cell?: any): Promise<void>;
-  getCellsSnapshot?(): CellSnapshot[];
-  getTrackSizes?(): WorkspaceTrackSizes | undefined;
-  getActiveCellIndex?(): number | undefined;
-  applyCellsSnapshot?(
-    cells: CellSnapshot[],
-    options?: {
-      trackSizes?: WorkspaceTrackSizes;
-      activeCellIndex?: number;
-      layout?: string;
-      sharedIndicators?: SavedWorkspaceIndicator[];
-    }
+  /** Menangkap snapshot deklaratif kondisi chart aktif saat ini */
+  captureWorkspaceSnapshot(): WorkspaceChartSnapshot;
+  /** Menerapkan snapshot deklaratif ke sesi chart melalui pipeline 5-langkah ADR-0023 */
+  applyWorkspaceSnapshot(
+    snapshot: WorkspaceChartSnapshot,
+    options?: ApplyWorkspaceChartSnapshotOptions
   ): Promise<void>;
-  getVisibleRangeSnapshot?(cell?: any): VisibleRangeSnapshot | null;
-  applyVisibleRange?(vr: VisibleRangeSnapshot, cell?: any): boolean;
-  applyRendererConfig?(config: any, cell?: any): void;
-  beginWorkspaceRestore?(): void;
-  endWorkspaceRestore?(): void;
 }
 
 export interface WorkspacePlanPort {
@@ -132,6 +138,179 @@ export interface RestoreWorkspaceChartAndPlansOptions {
   onSyncIndicators?: () => void;
   restoreCellDrawings?: boolean;
   resetPlansWhenEmpty?: boolean;
+  preserveViewport?: boolean;
+  cleanSlate?: boolean;
+}
+
+export interface CellRestorationTarget {
+  /** Langkah 1: Sinkronisasi identitas market/timeframe/sesi pada sel target */
+  applyMarketIdentity?: (cellSnap: CellSnapshot) => void;
+  /** Langkah 2: Terapkan rendererConfig yang sudah disanitasi, priceStyle, & countdown */
+  applyRendererConfig?: (config: Record<string, unknown>) => void;
+  setPriceStyle?: (style: string) => void;
+  setPriceScaleCountdown?: (enabled: boolean) => void;
+  /** Langkah 3: Bersihkan studi non-volume lalu mount studi Pine & Native */
+  clearNonVolumeIndicators?: () => void;
+  addPineIndicator?: (ind: SavedWorkspaceIndicator) => Promise<void>;
+  applyNativeIndicators?: (entries: NativeIndicatorSnapshot[]) => Promise<void>;
+  onSyncIndicators?: () => void;
+  /** Langkah 4: Terapkan tata letak pane berbasis Pane Signature setelah studi selesai mount */
+  applyPaneLayout?: (entries: PaneLayoutEntry[], options?: { timeoutMs?: number }) => Promise<boolean>;
+  applyPaneWeights?: (weights: number[]) => void | boolean;
+  /** Langkah 5: Pulihkan skala harga, barSpacing, & viewport logical range */
+  withSuppressedPersistEvents?: (fn: () => void) => void;
+  applyPriceScaleState?: (state: any) => void | boolean;
+  setBarSpacing?: (spacing: number) => void;
+  applyVisibleRange?: (vr: VisibleRangeSnapshot) => boolean;
+  /** Sinkronisasi visual global setelah restorasi sel selesai */
+  finalizeCellVisuals?: () => void;
+}
+
+export interface RestoreCellPipelineOptions {
+  indicators?: SavedWorkspaceIndicator[];
+  fallbackPaneWeights?: number[];
+}
+
+/**
+ * Pipeline restorasi 5-langkah ADR-0023 terpadu (Single Source of Truth) untuk satu sel maupun single-chart:
+ * 1. Market, timeframe & sesi
+ * 2. Renderer config tersanitasi, priceStyle, & priceScaleCountdown
+ * 3. Studi Pine & Native (+ Native Volume Overlay)
+ * 4. Pane Signature layout matching (diterapkan hanya setelah seluruh studi selesai mount)
+ * 5. Skala harga, barSpacing, & viewport logical range
+ */
+export async function restoreCellThroughPipeline(
+  cellSnap: CellSnapshot,
+  target: CellRestorationTarget,
+  options?: RestoreCellPipelineOptions
+): Promise<void> {
+  // Langkah 1: Market, timeframe & sesi
+  target.applyMarketIdentity?.(cellSnap);
+
+  // Langkah 2: Renderer config tersanitasi, priceStyle & priceScaleCountdown
+  if (cellSnap.rendererConfig && typeof cellSnap.rendererConfig === 'object') {
+    const sanitizedConfig = sanitizeRendererConfigForApply(cellSnap.rendererConfig);
+    if (sanitizedConfig && typeof target.applyRendererConfig === 'function') {
+      target.applyRendererConfig(sanitizedConfig);
+    }
+  }
+  if (cellSnap.priceStyle && typeof target.setPriceStyle === 'function') {
+    target.setPriceStyle(cellSnap.priceStyle);
+  }
+  if (typeof cellSnap.priceScaleCountdown === 'boolean' && typeof target.setPriceScaleCountdown === 'function') {
+    target.setPriceScaleCountdown(cellSnap.priceScaleCountdown);
+  }
+
+  // Langkah 3: Studi Pine & Native (+ Native Volume Overlay)
+  const targetIndicators = Array.isArray(options?.indicators)
+    ? options.indicators
+    : Array.isArray(cellSnap.indicators)
+      ? cellSnap.indicators
+      : undefined;
+
+  if (Array.isArray(targetIndicators) && targetIndicators.length > 0) {
+    target.clearNonVolumeIndicators?.();
+    for (const ind of targetIndicators) {
+      if (ind?.source || ind?.title) {
+        try {
+          await target.addPineIndicator?.(ind);
+        } catch (e) {
+          console.warn(`[WorkspaceLifecycle] Gagal memuat indikator ${ind.title}:`, e);
+        }
+      }
+    }
+  } else if (Array.isArray(targetIndicators)) {
+    target.clearNonVolumeIndicators?.();
+  }
+
+  if (Array.isArray(cellSnap.nativeIndicators) && cellSnap.nativeIndicators.length > 0) {
+    try {
+      await target.applyNativeIndicators?.(cellSnap.nativeIndicators);
+    } catch (e) {
+      console.warn('[WorkspaceLifecycle] Gagal memulihkan nativeIndicators:', e);
+    }
+  }
+
+  target.onSyncIndicators?.();
+
+  // Langkah 4: Pane Signature layout matching (hanya setelah semua studi Pine & Native selesai mount)
+  if (Array.isArray(cellSnap.paneLayout) && cellSnap.paneLayout.length > 0 && typeof target.applyPaneLayout === 'function') {
+    await target.applyPaneLayout(cellSnap.paneLayout, { timeoutMs: 3000 });
+  } else if (
+    Array.isArray(options?.fallbackPaneWeights) &&
+    options.fallbackPaneWeights.length > 0 &&
+    typeof target.applyPaneWeights === 'function'
+  ) {
+    target.applyPaneWeights(options.fallbackPaneWeights);
+  }
+
+  // Langkah 5: Skala harga, zoom spacing, & viewport logical range
+  const applyViewportAndScales = () => {
+    if (cellSnap.priceScaleState && typeof target.applyPriceScaleState === 'function') {
+      target.applyPriceScaleState(cellSnap.priceScaleState);
+    }
+    if (typeof cellSnap.barSpacing === 'number' && cellSnap.barSpacing > 0 && typeof target.setBarSpacing === 'function') {
+      target.setBarSpacing(cellSnap.barSpacing);
+    }
+    if (cellSnap.visibleRange && typeof target.applyVisibleRange === 'function') {
+      target.applyVisibleRange(cellSnap.visibleRange);
+    }
+  };
+
+  if (typeof target.withSuppressedPersistEvents === 'function') {
+    target.withSuppressedPersistEvents(applyViewportAndScales);
+  } else {
+    applyViewportAndScales();
+  }
+
+  target.finalizeCellVisuals?.();
+}
+
+/**
+ * Memetakan dokumen SavedWorkspace v2 yang sudah dinormalkan menjadi WorkspaceChartSnapshot deklaratif.
+ */
+export function toWorkspaceChartSnapshot(workspace: SavedWorkspace): WorkspaceChartSnapshot {
+  const w = normalizeWorkspace(workspace);
+  const rawRootConfig = (w as SavedWorkspace & { rendererConfig?: Record<string, unknown> }).rendererConfig;
+  const sanitizedRootConfig =
+    rawRootConfig && typeof rawRootConfig === 'object'
+      ? sanitizeRendererConfigForApply(rawRootConfig)
+      : undefined;
+
+  const sanitizedCells = Array.isArray(w.cells)
+    ? w.cells.map((cell) => {
+        if (!cell.rendererConfig || typeof cell.rendererConfig !== 'object') {
+          return cell;
+        }
+        const sanitizedCellConfig = sanitizeRendererConfigForApply(cell.rendererConfig);
+        return {
+          ...cell,
+          ...(sanitizedCellConfig ? { rendererConfig: sanitizedCellConfig } : { rendererConfig: undefined }),
+        };
+      })
+    : undefined;
+
+  return {
+    symbol: w.symbol,
+    timeframe: String(w.timeframe),
+    layout: w.layout,
+    providerId: w.providerId,
+    showVolume: w.showVolume,
+    syncConfig: w.syncConfig,
+    indicators: Array.isArray(w.indicators) ? w.indicators : [],
+    ...(w.paneWeights ? { paneWeights: w.paneWeights } : {}),
+    ...(w.paneLayout ? { paneLayout: w.paneLayout } : {}),
+    ...(w.nativeIndicators ? { nativeIndicators: w.nativeIndicators } : {}),
+    ...(w.priceScaleState !== undefined ? { priceScaleState: w.priceScaleState } : {}),
+    ...(w.priceStyle ? { priceStyle: w.priceStyle } : {}),
+    ...(typeof w.priceScaleCountdown === 'boolean' ? { priceScaleCountdown: w.priceScaleCountdown } : {}),
+    ...(typeof w.barSpacing === 'number' ? { barSpacing: w.barSpacing } : {}),
+    ...(w.visibleRange !== undefined ? { visibleRange: w.visibleRange } : {}),
+    ...(sanitizedRootConfig ? { rendererConfig: sanitizedRootConfig } : {}),
+    ...(sanitizedCells && sanitizedCells.length > 0 ? { cells: sanitizedCells } : {}),
+    ...(w.trackSizes ? { trackSizes: w.trackSizes } : {}),
+    ...(w.activeCellIndex !== undefined ? { activeCellIndex: w.activeCellIndex } : {}),
+  };
 }
 
 /**
@@ -142,96 +321,25 @@ export async function restoreWorkspaceChartAndPlans(
   options: RestoreWorkspaceChartAndPlansOptions
 ): Promise<void> {
   const {
-    workspace: w,
+    workspace: rawWorkspace,
     chart,
     plan,
     onSyncIndicators,
     restoreCellDrawings = true,
     resetPlansWhenEmpty = true,
+    preserveViewport = false,
+    cleanSlate = true,
   } = options;
 
-  const useMultiCellRestore =
-    Array.isArray(w.cells) &&
-    w.cells.length > 0 &&
-    typeof chart.applyCellsSnapshot === 'function' &&
-    (w.cells.length > 1 ||
-      w.trackSizes !== undefined ||
-      (w.activeCellIndex !== undefined && w.activeCellIndex > 0) ||
-      w.syncConfig?.indicators === false);
+  // Migrasikan snapshot v1 warisan secara transparan ke skema v2 sebelum diproses pipeline
+  const w = normalizeWorkspace(rawWorkspace);
+  const chartSnapshot = toWorkspaceChartSnapshot(w);
 
-  if (useMultiCellRestore) {
-    await chart.applyCellsSnapshot!(w.cells!, {
-      trackSizes: w.trackSizes,
-      activeCellIndex: w.activeCellIndex,
-      layout: w.layout,
-      sharedIndicators: w.indicators,
-    });
-    onSyncIndicators?.();
-  } else {
-    const primaryCellRendererConfig = w.cells?.[0]?.rendererConfig;
-    if (primaryCellRendererConfig && typeof chart.applyRendererConfig === 'function') {
-      chart.applyRendererConfig(primaryCellRendererConfig);
-    }
-
-    if (w.priceStyle) {
-      chart.setPriceStyle(w.priceStyle);
-    }
-
-    if (typeof w.priceScaleCountdown === 'boolean' && typeof chart.setPriceScaleCountdown === 'function') {
-      chart.setPriceScaleCountdown(w.priceScaleCountdown);
-    }
-
-    // Muat indikator Pine secara deterministik beserta inputs, props, dan status visible
-    if (Array.isArray(w.indicators) && w.indicators.length > 0) {
-      for (const ind of w.indicators) {
-        if (ind?.source || ind?.title) {
-          try {
-            await chart.addPineIndicator(ind.source || 'plot(close)', ind.title, ind.inputs, ind.props);
-            if (ind.visible === false && ind.title) {
-              const active = chart.getActiveIndicators();
-              const target = active.find((a: any) => a.title === ind.title);
-              if (target && target.visible) {
-                chart.toggleIndicatorVisibility(target.id || target.title);
-              } else if (!target) {
-                chart.toggleIndicatorVisibility(ind.title);
-              }
-            }
-          } catch (e) {
-            console.warn(`[WorkspaceLifecycle] Gagal memuat indikator ${ind.title}:`, e);
-          }
-        }
-      }
-    }
-
-    // Pulihkan konfigurasi indikator native (mis. tinggi & posisi pane Volume) sebelum tata letak pane diterapkan
-    if (Array.isArray(w.nativeIndicators) && w.nativeIndicators.length > 0 && typeof chart.applyNativeIndicators === 'function') {
-      try {
-        await chart.applyNativeIndicators(w.nativeIndicators);
-      } catch (e) {
-        console.warn('[WorkspaceLifecycle] Gagal memulihkan nativeIndicators:', e);
-      }
-    }
-
-    onSyncIndicators?.();
-
-    // Pulihkan tata letak pane terlebih dahulu, baru skala harga, barSpacing, dan visibleRange (Fase 5)
-    if (Array.isArray(w.paneLayout) && w.paneLayout.length > 0 && typeof chart.applyPaneLayout === 'function') {
-      await chart.applyPaneLayout(w.paneLayout, { timeoutMs: 3000 });
-    } else if (Array.isArray(w.paneWeights) && w.paneWeights.length > 0) {
-      chart.applyPaneWeights(w.paneWeights);
-    }
-
-    if (w.priceScaleState) {
-      chart.applyPriceScaleState(w.priceScaleState);
-    }
-    if (w.barSpacing) {
-      chart.setBarSpacing(w.barSpacing);
-    }
-
-    if (w.visibleRange && typeof chart.applyVisibleRange === 'function') {
-      chart.applyVisibleRange(w.visibleRange);
-    }
-  }
+  await chart.applyWorkspaceSnapshot(chartSnapshot, {
+    preserveViewport,
+    onSyncIndicators,
+    cleanSlate,
+  });
 
   let hasRestoredCellDrawings = false;
   let hasAuthoritativePlanMeta = false;
@@ -293,7 +401,6 @@ export async function executeWorkspaceLoadPipeline(
     onLog,
   } = options;
 
-  chart.beginWorkspaceRestore?.();
   try {
     // 1. Inisialisasi identitas workspace pada modul gambar & flush
     if (w.id) {
@@ -303,10 +410,7 @@ export async function executeWorkspaceLoadPipeline(
       try { await plan.flushDrawings(); } catch (_) {}
     }
 
-    // 2. Tahap 1 Clean-slate: Kosongkan indikator chart lama
-    chart.clearAllIndicators();
-
-    // 3. Terapkan konfigurasi provider, simbol, timeframe, dan layout
+    // 2. Terapkan konfigurasi provider, simbol, timeframe, dan layout
     if (w.providerId && w.providerId !== activeProviderId) {
       await onProviderChange(w.providerId);
     }
@@ -333,10 +437,7 @@ export async function executeWorkspaceLoadPipeline(
     // Barrier jeda singkat agar render grid layout & WebGL stabil
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // 4. Tahap 2 Clean-slate (Double-barrier): Pastikan chart benar-benar bersih sebelum memuat indikator baru
-    chart.clearAllIndicators();
-
-    // 5-8. Pulihkan konten grafik per sel, indikator, tata letak pane, viewport, plans, dan toolbar secara terpusat
+    // 3. Pulihkan konten grafik per sel, indikator, tata letak pane, viewport, plans, dan toolbar secara terpusat
     await restoreWorkspaceChartAndPlans({
       workspace: w,
       chart,
@@ -344,30 +445,10 @@ export async function executeWorkspaceLoadPipeline(
       onSyncIndicators,
       restoreCellDrawings: true,
       resetPlansWhenEmpty: true,
+      cleanSlate: true,
     });
 
-    // 9. Hitung fingerprint komprehensif melalui Single Source of Truth `buildWorkspaceSnapshotPayload` agar identik dgn auto-save guard
-    const step9ChartPort: Partial<WorkspaceChartPort> = {
-      getActiveIndicators: () => chart.getActiveIndicators(),
-      getPaneWeights: () => (typeof chart.getPaneWeights === 'function' ? chart.getPaneWeights() : (w.paneWeights ?? [])),
-      getPaneLayout: () => (typeof chart.getPaneLayout === 'function' ? chart.getPaneLayout() : (w.paneLayout ?? [])),
-      getNativeIndicators: () => (typeof chart.getNativeIndicators === 'function' ? chart.getNativeIndicators() : (w.nativeIndicators ?? [])),
-      getPriceScaleState: () => (typeof chart.getPriceScaleState === 'function' ? chart.getPriceScaleState() : (w.priceScaleState ?? null)),
-      getPriceStyle: () => (typeof chart.getPriceStyle === 'function' ? chart.getPriceStyle() : (w.priceStyle ?? 'candles')),
-      isPriceScaleCountdownEnabled: () => (typeof chart.isPriceScaleCountdownEnabled === 'function' ? chart.isPriceScaleCountdownEnabled() : (w.priceScaleCountdown ?? false)),
-      getBarSpacing: () => (typeof chart.getBarSpacing === 'function' ? chart.getBarSpacing() : (w.barSpacing ?? 8)),
-      getCellsSnapshot: () => {
-        const liveCells = typeof chart.getCellsSnapshot === 'function' ? chart.getCellsSnapshot() : undefined;
-        return liveCells && liveCells.length > 0 ? liveCells : (w.cells ?? []);
-      },
-      getTrackSizes: () => (typeof chart.getTrackSizes === 'function' ? chart.getTrackSizes() : w.trackSizes),
-      getActiveCellIndex: () => (typeof chart.getActiveCellIndex === 'function' ? chart.getActiveCellIndex() : w.activeCellIndex),
-      getVisibleRangeSnapshot: () =>
-        typeof chart.getVisibleRangeSnapshot === 'function'
-          ? (chart.getVisibleRangeSnapshot() ?? (w.visibleRange ?? null))
-          : (w.visibleRange ?? null),
-    };
-
+    // 4. Hitung fingerprint komprehensif melalui Single Source of Truth `buildWorkspaceSnapshotPayload`
     const step9PlanPort: Partial<WorkspacePlanPort> = {
       getActivePlans: () => plan.getActivePlans(),
       ...(typeof plan.getAllActivePlans === 'function'
@@ -398,11 +479,11 @@ export async function executeWorkspaceLoadPipeline(
       providerId: w.providerId || activeProviderId,
       showVolume: w.showVolume,
       syncConfig: w.syncConfig,
-      chart: step9ChartPort,
+      chart,
       plan: step9PlanPort,
       activeRightDockPanel: w.activeRightDockPanel,
     });
-    const fingerprint = computeWorkspaceFingerprint(step9Snapshot as WorkspaceFingerprintInput);
+    const fingerprint = computeWorkspaceFingerprint(step9Snapshot);
 
     const indCount = w.indicators?.length || 0;
     const indTitles = w.indicators && w.indicators.length > 0
@@ -432,14 +513,12 @@ export async function executeWorkspaceLoadPipeline(
       indicatorTitles: '',
       error,
     };
-  } finally {
-    chart.endWorkspaceRestore?.();
   }
 }
 
 export interface AutoSaveCoordinatorOptions {
   debounceMs?: number;
-  onSave: (input: WorkspaceFingerprintInput) => Promise<SavedWorkspace | void>;
+  onSave: (input: Partial<SavedWorkspace>) => Promise<SavedWorkspace | void>;
   onError?: (err: any) => void;
 }
 
@@ -450,11 +529,11 @@ export class WorkspaceAutoSaveCoordinator {
   private timer: any = null;
   private isSaving = false;
   private lastSavedFingerprint = '';
-  private pendingInput: WorkspaceFingerprintInput | null = null;
-  private pendingBuilder: (() => WorkspaceFingerprintInput | null) | null = null;
+  private pendingInput: Partial<SavedWorkspace> | null = null;
+  private pendingBuilder: (() => Partial<SavedWorkspace> | null) | null = null;
   private activeSavePromise: Promise<SavedWorkspace | void> | null = null;
   private debounceMs: number;
-  private onSave: (input: WorkspaceFingerprintInput) => Promise<SavedWorkspace | void>;
+  private onSave: (input: Partial<SavedWorkspace>) => Promise<SavedWorkspace | void>;
   private onError?: (err: any) => void;
 
   constructor(options: AutoSaveCoordinatorOptions) {
@@ -488,7 +567,7 @@ export class WorkspaceAutoSaveCoordinator {
    * Memicu auto-save ter-debounce tanpa membangun payload berat & fingerprint di hot path.
    * Builder hanya dipanggil satu kali saat timer debounce jatuh tempo di `flushNow()`.
    */
-  public triggerDeferred(builder: () => WorkspaceFingerprintInput | null): void {
+  public triggerDeferred(builder: () => Partial<SavedWorkspace> | null): void {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -504,7 +583,7 @@ export class WorkspaceAutoSaveCoordinator {
   /**
    * Memicu auto-save ter-debounce jika fingerprint input berbeda dengan fingerprint yang sudah tersimpan.
    */
-  public trigger(input: WorkspaceFingerprintInput): string | null {
+  public trigger(input: Partial<SavedWorkspace>): string | null {
     const currentFingerprint = computeWorkspaceFingerprint(input);
 
     // KUNCI GUARD: Jika fingerprint nilai sama persis dengan yang sudah tersimpan, abaikan & bersihkan timer lama!
@@ -526,7 +605,7 @@ export class WorkspaceAutoSaveCoordinator {
   /**
    * Memaksa penulisan workspace tertunda secara langsung tanpa menunggu debounce (mis. saat exit atau Save manual).
    */
-  public async flushNow(overrideInput?: WorkspaceFingerprintInput): Promise<boolean> {
+  public async flushNow(overrideInput?: Partial<SavedWorkspace>): Promise<boolean> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -629,7 +708,9 @@ export function buildWorkspaceSnapshotPayload(
     timestamp,
   } = options;
 
-  const rawIndicators = chart?.getActiveIndicators?.() ?? fallbackIndicators ?? [];
+  const chartSnap = typeof chart?.captureWorkspaceSnapshot === 'function' ? chart.captureWorkspaceSnapshot() : undefined;
+
+  const rawIndicators = chartSnap?.indicators ?? fallbackIndicators ?? [];
   const indicators: SavedWorkspaceIndicator[] = Array.isArray(rawIndicators)
     ? rawIndicators.map((i: any) => ({
         title: i.title || 'Indicator',
@@ -647,10 +728,10 @@ export function buildWorkspaceSnapshotPayload(
         ? plan.getActivePlans()
         : [];
 
-  const cells = typeof chart?.getCellsSnapshot === 'function' ? chart.getCellsSnapshot() : undefined;
-  const trackSizes = typeof chart?.getTrackSizes === 'function' ? chart.getTrackSizes() : undefined;
-  const activeCellIndex = typeof chart?.getActiveCellIndex === 'function' ? chart.getActiveCellIndex() : undefined;
-  const visibleRange = typeof chart?.getVisibleRangeSnapshot === 'function' ? chart.getVisibleRangeSnapshot() : undefined;
+  const cells = chartSnap?.cells;
+  const trackSizes = chartSnap?.trackSizes;
+  const activeCellIndex = chartSnap?.activeCellIndex;
+  const visibleRange = chartSnap?.visibleRange;
   const rawThesisGeoms = typeof plan?.getThesisCardGeometries === 'function' ? plan.getThesisCardGeometries() : undefined;
   const thesisCardGeometry =
     rawThesisGeoms && Object.keys(rawThesisGeoms).length > 0 ? rawThesisGeoms : undefined;
@@ -671,13 +752,13 @@ export function buildWorkspaceSnapshotPayload(
     layout,
     providerId,
     indicators,
-    paneWeights: chart?.getPaneWeights?.() ?? [],
-    paneLayout: chart?.getPaneLayout?.() ?? [],
-    nativeIndicators: chart?.getNativeIndicators?.() ?? [],
-    priceScaleState: chart?.getPriceScaleState?.() ?? null,
-    priceStyle: chart?.getPriceStyle?.() ?? 'candles',
-    priceScaleCountdown: chart?.isPriceScaleCountdownEnabled?.() ?? false,
-    barSpacing: chart?.getBarSpacing?.() ?? 8,
+    paneWeights: chartSnap?.paneWeights ?? [],
+    paneLayout: chartSnap?.paneLayout ?? [],
+    nativeIndicators: chartSnap?.nativeIndicators ?? [],
+    priceScaleState: chartSnap?.priceScaleState ?? null,
+    priceStyle: chartSnap?.priceStyle ?? 'candles',
+    priceScaleCountdown: chartSnap?.priceScaleCountdown ?? false,
+    barSpacing: chartSnap?.barSpacing ?? 8,
     ...(visibleRange !== undefined && visibleRange !== null ? { visibleRange } : {}),
     showVolume: showVolume ?? true,
     ...(activeRightDockPanel !== undefined ? { activeRightDockPanel } : {}),

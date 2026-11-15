@@ -2,8 +2,8 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeWorkspaceFingerprint,
-  type WorkspaceFingerprintInput,
 } from '../src/lib/services/persistence/workspaceService';
+import type { SavedWorkspace } from '../src/lib/types/market';
 import {
   buildWorkspaceSnapshotPayload,
   executeWorkspaceLoadPipeline,
@@ -19,7 +19,7 @@ import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inM
 
 describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', () => {
   describe('1. Comprehensive Workspace Fingerprint Engine', () => {
-    const baseInput: WorkspaceFingerprintInput = {
+    const baseInput: Partial<SavedWorkspace> = {
       id: 'ws-1',
       name: 'Scalping Layout',
       symbol: 'BTCUSDT',
@@ -33,7 +33,7 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
       barSpacing: 8,
       showVolume: true,
       activeRightDockPanel: 'watchlist',
-      syncConfig: { crosshair: true, timeframe: false, interval: false },
+      syncConfig: { crosshair: true, viewport: false, symbol: false, drawings: false, timeframe: false },
       activePlans: [{ id: 'plan-1', symbol: 'BTCUSDT', side: 'long', entryPrice: 65000, stopLoss: 64000, takeProfits: [{ id: 'tp-1', price: 68000, percent: 100 }], active: true }],
       showThesisCards: true,
     };
@@ -107,6 +107,47 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
       assert.strictEqual(fpLegacy1, fpLegacy2);
       assert.ok(fpLegacy1.includes('ws-1:BTCUSDT:15m:1:binance#[RSI:plot(rsi):true::]'));
     });
+
+    test('mendeteksi toggle priceScaleCountdown di level root dan menandai workspace dirty di Auto-Save Guard', () => {
+      const fpOff = computeWorkspaceFingerprint({ ...baseInput, priceScaleCountdown: false });
+      const fpOn = computeWorkspaceFingerprint({ ...baseInput, priceScaleCountdown: true });
+      assert.notStrictEqual(fpOff, fpOn, 'Toggle priceScaleCountdown di root wajib mengubah fingerprint');
+
+      const coordinator = new WorkspaceAutoSaveCoordinator({
+        debounceMs: 50,
+        onSave: async () => {},
+      });
+      coordinator.setSavedFingerprint(fpOff);
+      const dirtyFp = coordinator.trigger({ ...baseInput, priceScaleCountdown: true });
+      assert.strictEqual(dirtyFp, fpOn, 'Auto-Save Guard wajib mendeteksi perubahan priceScaleCountdown sebagai dirty');
+      coordinator.cancel();
+    });
+
+    test('mendeteksi toggle priceScaleCountdown di dalam CellSnapshot multi-chart individual', () => {
+      const multiBase: Partial<SavedWorkspace> = {
+        ...baseInput,
+        layout: '2v',
+        cells: [
+          { symbol: 'BTCUSDT', timeframe: '15m', providerId: 'binance', priceScaleCountdown: false },
+          { symbol: 'ETHUSDT', timeframe: '1h', providerId: 'binance', priceScaleCountdown: false },
+        ],
+      };
+      const fpCellOff = computeWorkspaceFingerprint(multiBase);
+      const fpCellOn = computeWorkspaceFingerprint({
+        ...multiBase,
+        cells: [
+          multiBase.cells![0],
+          { ...multiBase.cells![1], priceScaleCountdown: true },
+        ],
+      });
+      assert.notStrictEqual(fpCellOff, fpCellOn, 'Toggle priceScaleCountdown di sel sekunder wajib mengubah fingerprint');
+    });
+
+    test('mengabaikan perbedaan timestamp pada SavedWorkspace kanonik yang identik', () => {
+      const fpT1 = computeWorkspaceFingerprint({ ...baseInput, timestamp: 1700000000000 });
+      const fpT2 = computeWorkspaceFingerprint({ ...baseInput, timestamp: 1700000099999 });
+      assert.strictEqual(fpT1, fpT2, 'Perbedaan timestamp tidak boleh memicu perubahan fingerprint');
+    });
   });
 
   describe('2. WorkspaceAutoSaveCoordinator', () => {
@@ -119,7 +160,7 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
         },
       });
 
-      const input: WorkspaceFingerprintInput = {
+      const input: Partial<SavedWorkspace> = {
         symbol: 'BTCUSDT',
         timeframe: '15m',
         layout: '1',
@@ -135,7 +176,7 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
     });
 
     test('mengeksekusi penyimpanan setelah waktu debounce terpenuhi', async () => {
-      let savedData: WorkspaceFingerprintInput | null = null;
+      let savedData: Partial<SavedWorkspace> | null = null;
       const coordinator = new WorkspaceAutoSaveCoordinator({
         debounceMs: 30,
         onSave: async (data) => {
@@ -143,7 +184,7 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
         },
       });
 
-      const input: WorkspaceFingerprintInput = {
+      const input: Partial<SavedWorkspace> = {
         symbol: 'SOLUSDT',
         timeframe: '1h',
         layout: '2',
@@ -154,7 +195,7 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
 
       await new Promise((r) => setTimeout(r, 60));
       assert.ok(savedData);
-      assert.strictEqual((savedData as WorkspaceFingerprintInput).symbol, 'SOLUSDT');
+      assert.strictEqual((savedData as Partial<SavedWorkspace>).symbol, 'SOLUSDT');
     });
 
     test('cancel() membatalkan timer debounce yang sedang berjalan', async () => {
@@ -176,31 +217,23 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
 
   describe('3. executeWorkspaceLoadPipeline', () => {
     test('menjalankan pipeline restorasi lengkap secara deterministik', async () => {
-      const indicatorCallHistory: string[] = [];
-      const appliedScales: any[] = [];
+      let capturedAppliedSnapshot: any = null;
+      let capturedCleanSlate: boolean | undefined;
       let restoredPlans: any[] = [];
       let restoredThesisCards = false;
 
       const mockChart: WorkspaceChartPort = {
-        clearAllIndicators: () => {
-          indicatorCallHistory.push('clearAll');
-        },
-        addPineIndicator: async (source, title) => {
-          indicatorCallHistory.push(`add:${title}`);
-        },
-        getActiveIndicators: () => [{ title: 'MACD', source: 'plot(macd)', visible: true }],
-        toggleIndicatorVisibility: () => {},
-        setPriceStyle: (style) => {
-          appliedScales.push(`style:${style}`);
-        },
-        setBarSpacing: (bs) => {
-          appliedScales.push(`bs:${bs}`);
-        },
-        applyPriceScaleState: (st) => {
-          appliedScales.push(`scale:${st.mode}`);
-        },
-        applyPaneWeights: (pw) => {
-          appliedScales.push(`pane:${pw.join(',')}`);
+        captureWorkspaceSnapshot: () => ({
+          indicators: [{ title: 'MACD', source: 'plot(macd)', visible: true }],
+          paneWeights: capturedAppliedSnapshot?.paneWeights ?? [2, 1],
+          priceScaleState: capturedAppliedSnapshot?.priceScaleState ?? { mode: 'log' },
+          priceStyle: capturedAppliedSnapshot?.priceStyle ?? 'bars',
+          barSpacing: capturedAppliedSnapshot?.barSpacing ?? 12,
+        }),
+        applyWorkspaceSnapshot: async (snapshot, options) => {
+          capturedAppliedSnapshot = snapshot;
+          capturedCleanSlate = options?.cleanSlate;
+          options?.onSyncIndicators?.();
         },
       };
 
@@ -263,11 +296,12 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
       assert.strictEqual(res.indicatorCount, 2);
       assert.ok(res.fingerprint.length > 0);
 
-      // Verifikasi urutan eksekusi: double barrier clean-slate
-      assert.strictEqual(indicatorCallHistory[0], 'clearAll', 'Clean-slate tahap 1');
-      assert.strictEqual(indicatorCallHistory[1], 'clearAll', 'Clean-slate tahap 2 (Double-barrier)');
-      assert.ok(indicatorCallHistory.includes('add:MACD'));
-      assert.ok(indicatorCallHistory.includes('add:EMA 200'));
+      // Verifikasi snapshot deklaratif yang dikirim ke WorkspaceChartPort
+      assert.strictEqual(capturedCleanSlate, true);
+      assert.ok(capturedAppliedSnapshot);
+      assert.strictEqual(capturedAppliedSnapshot.indicators.length, 2);
+      assert.strictEqual(capturedAppliedSnapshot.indicators[0].title, 'MACD');
+      assert.strictEqual(capturedAppliedSnapshot.indicators[1].title, 'EMA 200');
 
       // Verifikasi event perubahan navigasi
       assert.ok(changedEvents.includes('provider:bitunix'));
@@ -276,10 +310,10 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
       assert.ok(changedEvents.includes('syncIndicators'));
 
       // Verifikasi restorasi skala dan plan
-      assert.ok(appliedScales.includes('style:bars'));
-      assert.ok(appliedScales.includes('bs:12'));
-      assert.ok(appliedScales.includes('scale:log'));
-      assert.ok(appliedScales.includes('pane:2,1'));
+      assert.strictEqual(capturedAppliedSnapshot.priceStyle, 'bars');
+      assert.strictEqual(capturedAppliedSnapshot.barSpacing, 12);
+      assert.deepStrictEqual(capturedAppliedSnapshot.priceScaleState, { mode: 'log' });
+      assert.deepStrictEqual(capturedAppliedSnapshot.paneWeights, [2, 1]);
       assert.strictEqual(restoredPlans.length, 1);
       assert.strictEqual(restoredPlans[0].id, 'plan-xyz');
       assert.strictEqual(restoredThesisCards, true);
@@ -423,14 +457,8 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
 
     test('restoreWorkspaceChartAndPlans melarang w.activePlans basi menimpa kanvas jika _trawangan_meta otoritatif dan tetap menerapkan showThesisCards', async () => {
       const mockChart: WorkspaceChartPort = {
-        clearAllIndicators: () => {},
-        addPineIndicator: async () => {},
-        getActiveIndicators: () => [],
-        toggleIndicatorVisibility: () => {},
-        setPriceStyle: () => {},
-        setBarSpacing: () => {},
-        applyPriceScaleState: () => {},
-        applyPaneWeights: () => {},
+        captureWorkspaceSnapshot: () => ({ indicators: [] }),
+        applyWorkspaceSnapshot: async () => {},
       };
 
       let restorePlansCalled = 0;
@@ -500,14 +528,8 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
 
     test('restoreWorkspaceChartAndPlans tetap fallback ke w.activePlans pada workspace warisan tanpa _trawangan_meta, dan reset memori saat kosong', async () => {
       const mockChart: WorkspaceChartPort = {
-        clearAllIndicators: () => {},
-        addPineIndicator: async () => {},
-        getActiveIndicators: () => [],
-        toggleIndicatorVisibility: () => {},
-        setPriceStyle: () => {},
-        setBarSpacing: () => {},
-        applyPriceScaleState: () => {},
-        applyPaneWeights: () => {},
+        captureWorkspaceSnapshot: () => ({ indicators: [] }),
+        applyWorkspaceSnapshot: async () => {},
       };
 
       const restoredCalls: Array<{ plans: any[]; showThesisCards?: boolean }> = [];
@@ -616,8 +638,8 @@ describe('Workspace Lifecycle & Auto-Save Guard Engine Suite (Candidate #4)', ()
       });
       assert.deepStrictEqual(payloadAfterDelete.activePlans, []);
       assert.notStrictEqual(
-        computeWorkspaceFingerprint(payloadWithPlan as WorkspaceFingerprintInput),
-        computeWorkspaceFingerprint(payloadAfterDelete as WorkspaceFingerprintInput),
+        computeWorkspaceFingerprint(payloadWithPlan),
+        computeWorkspaceFingerprint(payloadAfterDelete),
         'Fingerprint wajib berubah ketika activePlans di kanvas dihapus'
       );
     });

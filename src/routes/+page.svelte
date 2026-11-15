@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack, tick } from 'svelte';
   import Header from '../lib/components/Header.svelte';
-  import Chart from '../lib/components/Chart.svelte';
+  import Chart, { type ChartViewHandle } from '../lib/components/Chart.svelte';
+  import type { ChartSessionController } from '../lib/services/chartSessionController';
   import DrawingToolbar from '../lib/components/DrawingToolbar.svelte';
   import WatchlistPanel from '../lib/components/WatchlistPanel.svelte';
   import ReplayBar from '../lib/components/ReplayBar.svelte';
@@ -33,6 +34,7 @@
   import type { ParsedTradingPlan } from '../lib/services/planParserService';
   import { getAdaptiveTickSize } from '../lib/services/priceSnapService';
   import { formatPriceWithQuoteSymbol } from '../lib/services/priceScaleLabelService';
+  import type { MarketSession } from '../lib/services/marketSessionService';
   import { parseAdaptiveSymbol } from '../lib/services/market/symbolSearchService';
   import {
     compositeSnapshot,
@@ -215,6 +217,10 @@
 
   // Docked Structural Shell Reactive States (Unified WorkspaceShell Deep Module)
   let shellState = $state<WorkspaceShellState>(workspaceShellService.getSnapshot());
+  let chartSessionState = $state<{ session: MarketSession; sessionAvailable: boolean }>({
+    session: 'regular',
+    sessionAvailable: false,
+  });
   let allAlerts = $state<PriceAlert[]>(alertService.getAlerts());
   let unsubShell: (() => void) | null = null;
   let unsubAlertsList: (() => void) | null = null;
@@ -415,7 +421,8 @@
     }
   }
 
-  let chartComponent: any = $state(null);
+  let sessionController: ChartSessionController | null = $state(null);
+  let chartView: ChartViewHandle | null = $state(null);
   let pineEditorComponent: any = $state(null);
   let unsubTicker: (() => void) | null = null;
   let pinePanelWidth = $state(480);
@@ -607,7 +614,7 @@
       executeExitFlush({
         flushDrawings: () => flushDrawings(),
         buildSnapshot: () => {
-          if (!isAutoSaveWorkspace || !activeWorkspace || !chartComponent) return null;
+          if (!isAutoSaveWorkspace || !activeWorkspace || !sessionController) return null;
           return buildCurrentWorkspacePayload(activeWorkspace.name, activeWorkspace.id);
         },
         coordinator: isAutoSaveWorkspace ? workspaceCoordinator : null,
@@ -724,15 +731,15 @@
         addSystemLog('Shortcut: Buka tab Trade Plan di panel kanan (Ctrl+Shift+P)', 'info');
       }),
       commandDispatcher.bindHandler('fit-chart-z', () => {
-        if (chartComponent?.fitChart) chartComponent.fitChart();
+        sessionController?.fitChart();
         addSystemLog('Shortcut: Reset skala/fit grafik (Alt+Z)', 'info');
       }),
       commandDispatcher.bindHandler('fit-chart-f', () => {
-        if (chartComponent?.fitChart) chartComponent.fitChart();
+        sessionController?.fitChart();
         addSystemLog('Shortcut: Fit grafik ke viewport (F)', 'info');
       }),
       commandDispatcher.bindHandler('create-alert-cursor', () => {
-        const cursorPrice = chartComponent?.getLastHoveredPrice?.() || ticker?.price;
+        const cursorPrice = chartView?.getLastHoveredPrice() ?? ticker?.price;
         handleRequestCreateAlert(activeSymbol, cursorPrice);
         addSystemLog(`Shortcut: Buat Price Alert untuk ${activeSymbol} (Alt+A)`, 'info');
       }),
@@ -812,31 +819,23 @@
         addSystemLog('Shortcut: Beralih panel Object Tree & Indikator (Alt+O)', 'info');
       }),
       commandDispatcher.bindHandler('invert-price-scale', () => {
-        if (chartComponent?.getPriceScaleState && chartComponent?.applyPriceScaleState) {
-          const cur = chartComponent.getPriceScaleState();
+        if (sessionController) {
+          const cur = sessionController.getPriceScaleState();
           const nextInvert = !cur?.invert;
-          chartComponent.applyPriceScaleState({ ...cur, invert: nextInvert });
+          sessionController.applyPriceScaleState({ ...cur, invert: nextInvert });
           addSystemLog(`Invert skala harga: ${nextInvert ? 'AKTIF' : 'NONAKTIF'} (Alt+I)`, 'info');
         }
       }),
       commandDispatcher.bindHandler('cycle-price-style', () => {
-        if (chartComponent && typeof chartComponent.cyclePriceStyle === 'function') {
-          const nextStyle = chartComponent.cyclePriceStyle();
+        if (sessionController) {
+          const nextStyle = sessionController.cyclePriceStyle();
           activePriceStyle = nextStyle;
           addSystemLog(`Siklus gaya lilin grafik: ${nextStyle.toUpperCase()} (Alt+Y)`, 'info');
-        } else if (chartComponent?.getPriceStyle && chartComponent?.setPriceStyle) {
-          const current = chartComponent.getPriceStyle();
-          const styles = ['candles', 'heikinashi', 'bars', 'line', 'area', 'baseline'];
-          const idx = styles.indexOf(current);
-          const next = styles[(idx + 1) % styles.length];
-          chartComponent.setPriceStyle(next);
-          activePriceStyle = next;
-          addSystemLog(`Siklus gaya lilin grafik: ${next.toUpperCase()} (Alt+Y)`, 'info');
         }
       }),
       commandDispatcher.bindHandler('cycle-range-preset', () => {
-        if (chartComponent && typeof chartComponent.cycleRangePreset === 'function') {
-          void chartComponent.cycleRangePreset('next').then((nextPreset: string | null) => {
+        if (sessionController) {
+          void sessionController.cycleRangePreset('next').then((nextPreset: string | null) => {
             if (nextPreset) {
               addSystemLog(`Siklus rentang waktu grafik: ${nextPreset} (Alt+R)`, 'info');
             }
@@ -1038,8 +1037,8 @@
     appSettings.syncConfig = { ...syncConfig };
     persistAppSettings();
     addSystemLog(`Sinkronisasi indikator multi-chart: ${syncConfig.indicators ? 'AKTIF' : 'NONAKTIF'}`, 'info');
-    if (syncConfig.indicators && chartComponent && typeof chartComponent.syncIndicatorsFromActiveCell === 'function') {
-      chartComponent.syncIndicatorsFromActiveCell();
+    if (syncConfig.indicators && sessionController) {
+      sessionController.syncIndicatorsFromActiveCell();
     }
   }
 
@@ -1048,16 +1047,14 @@
     appSettings.syncConfig = { ...syncConfig };
     persistAppSettings();
     addSystemLog(`Sinkronisasi gaya lilin multi-chart: ${syncConfig.style ? 'AKTIF' : 'NONAKTIF'}`, 'info');
-    if (syncConfig.style && chartComponent && typeof chartComponent.syncLayout === 'function') {
-      chartComponent.syncLayout({ style: syncConfig.style });
+    if (syncConfig.style && sessionController) {
+      sessionController.syncLayout({ style: syncConfig.style });
     }
   }
 
   function handlePriceStyleChange(newStyle: string) {
     activePriceStyle = newStyle;
-    if (chartComponent && typeof chartComponent.setPriceStyle === 'function') {
-      chartComponent.setPriceStyle(newStyle);
-    }
+    sessionController?.setPriceStyle(newStyle);
     addSystemLog(`Gaya tampilan harga diubah ke: ${newStyle}`, 'info');
   }
 
@@ -1189,7 +1186,7 @@
       providerId: activeProviderId,
       showVolume: appSettings.showVolume ?? true,
       syncConfig: { ...syncConfig },
-      chart: chartComponent,
+      chart: sessionController,
       plan: chartDrawingController,
       fallbackIndicators: activeIndicators,
       activeRightDockPanel: shellState.isRightDockOpen ? shellState.activeRightDockTab : null,
@@ -1301,10 +1298,15 @@
         clearPendingWorkspaceBackup(w.id);
       }
 
+      if (!sessionController) {
+        addSystemLog('ChartSessionController belum siap untuk memuat workspace.', 'warn');
+        return;
+      }
+
       // Jalankan pipeline restorasi workspace melalui deep workspaceLifecycle engine
       const res = await executeWorkspaceLoadPipeline({
         workspace: w,
-        chart: chartComponent,
+        chart: sessionController,
         plan: chartDrawingController,
         shell: workspaceShellService,
         activeProviderId,
@@ -1341,7 +1343,7 @@
   function triggerWorkspaceAutoSave() {
     // KUNCI PENTING: Hanya jalankan auto-save jika ada activeWorkspace yang sedang dimuat!
     // Jika activeWorkspace === null (sedang membuat workspace baru/lepas), jangan auto-save untuk mencegah tabrakan/overwrite!
-    if (!isAutoSaveWorkspace || !isPageMounted || isLoadingWorkspace || !chartComponent || !activeWorkspace) return;
+    if (!isAutoSaveWorkspace || !isPageMounted || isLoadingWorkspace || !sessionController || !activeWorkspace) return;
     const wsName = activeWorkspace.name;
     const wsId = activeWorkspace.id;
     // Tunda pembangunan payload lengkap + fingerprint sampai debounce flush dieksekusi
@@ -1407,18 +1409,14 @@
   }
 
   function handleClearIndicators() {
-    if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
-      chartComponent.clearAllIndicators();
-    }
+    sessionController?.clearAllIndicators();
     activeIndicators = [];
     addSystemLog('Seluruh indikator teknikal di grafik dibersihkan.', 'info');
   }
 
   async function handleClearAll() {
     await chartDrawingController.clearAll();
-    if (chartComponent && typeof chartComponent.clearAllIndicators === 'function') {
-      chartComponent.clearAllIndicators();
-    }
+    sessionController?.clearAllIndicators();
     activeIndicators = [];
     addSystemLog('Seluruh objek gambar dan indikator di grafik dibersihkan.', 'warn');
   }
@@ -1452,8 +1450,8 @@
 
   // ─── Indicators & Pine Script Handlers ───
   async function handleAddIndicator(code: string, title: string): Promise<boolean> {
-    if (chartComponent) {
-      const ok = await chartComponent.addPineIndicator(code, title);
+    if (sessionController) {
+      const ok = await sessionController.addPineIndicator(code, title);
       if (ok) {
         syncActiveIndicators();
         addSystemLog(`Indikator "${title}" berhasil diterapkan ke grafik.`, 'success');
@@ -1464,8 +1462,8 @@
   }
 
   async function handleAddNativeIndicator(type: string, title?: string): Promise<boolean> {
-    if (chartComponent) {
-      const ok = await chartComponent.addNativeIndicator(type, undefined, title);
+    if (sessionController) {
+      const ok = await sessionController.addNativeIndicator(type, undefined, title);
       if (ok) {
         syncActiveIndicators();
         addSystemLog(`Indikator native "${title || type}" berhasil diterapkan ke grafik.`, 'success');
@@ -1476,8 +1474,8 @@
   }
 
   async function handleApplyIndicator(descriptor: any): Promise<boolean> {
-    if (chartComponent) {
-      const ok = await chartComponent.addIndicator(descriptor);
+    if (sessionController) {
+      const ok = await sessionController.addIndicator(descriptor);
       if (ok) {
         syncActiveIndicators();
         addSystemLog(`Indikator "${descriptor?.title || 'Indicator'}" berhasil diterapkan ke grafik.`, 'success');
@@ -1488,24 +1486,20 @@
   }
 
   function syncActiveIndicators() {
-    if (chartComponent && typeof chartComponent.getActiveIndicators === 'function') {
-      activeIndicators = chartComponent.getActiveIndicators();
+    if (sessionController) {
+      activeIndicators = sessionController.getActiveIndicators();
     }
   }
 
   function handleRemoveIndicator(id: string) {
-    if (chartComponent && typeof chartComponent.removeIndicator === 'function') {
-      chartComponent.removeIndicator(id);
-    }
+    sessionController?.removeIndicator(id);
     activeIndicators = activeIndicators.filter(i => i.id !== id);
     syncActiveIndicators();
     addSystemLog(`Indikator dihapus: ${id}`, 'info');
   }
 
   function handleToggleIndicatorVisibility(id: string) {
-    if (chartComponent && typeof chartComponent.toggleIndicatorVisibility === 'function') {
-      chartComponent.toggleIndicatorVisibility(id);
-    }
+    sessionController?.toggleIndicatorVisibility(id);
     syncActiveIndicators();
   }
 
@@ -1546,13 +1540,9 @@
     let schema: any[] = [];
     let currentInputs: Record<string, any> = {};
 
-    if (chartComponent) {
-      if (typeof chartComponent.getIndicatorInputSchema === 'function') {
-        schema = chartComponent.getIndicatorInputSchema(id);
-      }
-      if (typeof chartComponent.getIndicatorInputs === 'function') {
-        currentInputs = chartComponent.getIndicatorInputs(id);
-      }
+    if (sessionController) {
+      schema = sessionController.getIndicatorInputSchema(id);
+      currentInputs = sessionController.getIndicatorInputs(id);
     }
 
     configuringIndicator = {
@@ -1636,7 +1626,7 @@
     try {
       const scope = appSettings.snapshotScope ?? 'active';
       const thesisLayout = appSettings.snapshotThesisLayout ?? 'side-panel';
-      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope, thesisLayout);
+      const canvas = chartView?.getChartScreenshotCanvas(scope, thesisLayout);
       if (!canvas) {
         snapshotToast = {
           visible: true,
@@ -1718,7 +1708,7 @@
     try {
       const scope = appSettings.snapshotScope ?? 'active';
       const thesisLayout = appSettings.snapshotThesisLayout ?? 'side-panel';
-      const canvas = chartComponent?.getChartScreenshotCanvas?.(scope, thesisLayout);
+      const canvas = chartView?.getChartScreenshotCanvas(scope, thesisLayout);
       if (!canvas) {
         snapshotToast = {
           visible: true,
@@ -1889,7 +1879,8 @@
 
         <!-- WebGL2 Vela Chart Core (PERSISTENT SINGLETON INSTANCE) -->
         <Chart
-          bind:this={chartComponent}
+          bind:this={chartView}
+          bind:sessionController={sessionController}
           symbol={activeSymbol}
           timeframe={activeTimeframe}
           defaultTimeframe={appSettings.defaultTimeframe || '15m'}
@@ -1928,6 +1919,9 @@
           }
           onEditPlan={(planId) => openRightPlanTab({ subMode: 'form', planId })}
           onVelaThemeSelect={handleVelaThemeSelect}
+          onSessionStateChange={(st) => {
+            chartSessionState = st;
+          }}
           onPersistableStateChange={() => (chartDirtyTick += 1)}
         />
       </div>
@@ -2075,9 +2069,11 @@
   <StatusBar
     isConsoleOpen={isConsoleDrawerOpen}
     settings={appSettings}
+    session={chartSessionState.session}
+    sessionAvailable={chartSessionState.sessionAvailable}
     onSelectTimezone={(tz) => handleUpdateSettings({ timezone: tz })}
     onToggleSession={() => {
-      const next = (appSettings.marketSession ?? 'regular') === 'regular' ? 'extended' : 'regular';
+      const next = sessionController?.toggleSession() ?? ((appSettings.marketSession ?? 'regular') === 'regular' ? 'extended' : 'regular');
       handleUpdateSettings({ marketSession: next });
     }}
     onToggleConsole={() => (isConsoleDrawerOpen = !isConsoleDrawerOpen)}
@@ -2093,12 +2089,17 @@
     settings={appSettings}
     {activeProviderId}
     initialTab={settingsInitialTab}
+    sessionState={chartSessionState}
+    onSetSession={(mode) => {
+      sessionController?.setSession(mode);
+      handleUpdateSettings({ marketSession: mode });
+    }}
     onClose={() => (isSettingsModalOpen = false)}
     onUpdateSettings={handleUpdateSettings}
     onProviderChange={handleProviderChange}
-    onOpenChartSettings={(sec?: string) => chartComponent?.openChartSettings(sec)}
-    onSaveChartAsDefault={() => chartComponent?.saveCurrentChartSettingsAsDefault() ?? false}
-    onResetChartFactory={() => chartComponent?.resetChartSettingsToFactory()}
+    onOpenChartSettings={(sec?: string) => chartView?.openChartSettings(sec)}
+    onSaveChartAsDefault={() => sessionController?.saveCurrentSettingsAsDefault() ?? false}
+    onResetChartFactory={() => sessionController?.resetSettingsToFactory()}
     onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
   />
 
@@ -2126,9 +2127,7 @@
     currentTimeframe={activeTimeframe}
     onApply={(newTf) => {
       handleTimeframeChange(newTf as Timeframe);
-      if (chartComponent && typeof chartComponent.setTimeframe === 'function') {
-        chartComponent.setTimeframe(newTf as Timeframe);
-      }
+      sessionController?.setTimeframe(newTf as Timeframe);
     }}
     onClose={() => {
       isTimeframeQuickBarOpen = false;
@@ -2164,18 +2163,18 @@
         configuringIndicator = null;
       }}
       onChange={(draft) => {
-        if (chartComponent && configuringIndicator) {
-          chartComponent.updateIndicatorInputs(configuringIndicator.id, draft);
+        if (sessionController && configuringIndicator) {
+          sessionController.updateIndicatorInputs(configuringIndicator.id, draft);
         }
       }}
       onRevert={(prev) => {
-        if (chartComponent && configuringIndicator) {
-          chartComponent.updateIndicatorInputs(configuringIndicator.id, prev);
+        if (sessionController && configuringIndicator) {
+          sessionController.updateIndicatorInputs(configuringIndicator.id, prev);
         }
       }}
       onApply={(finalInputs) => {
-        if (chartComponent && configuringIndicator) {
-          chartComponent.updateIndicatorInputs(configuringIndicator.id, finalInputs);
+        if (sessionController && configuringIndicator) {
+          sessionController.updateIndicatorInputs(configuringIndicator.id, finalInputs);
         }
         addSystemLog(`Pengaturan parameter indikator "${configuringIndicator?.title}" diperbarui.`, 'info');
       }}
@@ -2251,7 +2250,7 @@
     {appSettings}
     activePlans={currentActivePlans}
     {showThesisCards}
-    getScreenshotCanvas={(scope, thesisLayout) => chartComponent?.getChartScreenshotCanvas?.(scope, thesisLayout) || null}
+    getScreenshotCanvas={(scope, thesisLayout) => chartView?.getChartScreenshotCanvas(scope, thesisLayout) || null}
     onUpdateSettings={handleUpdateSettings}
     onClose={() => { isSnapshotPreviewOpen = false; }}
     onLog={(msg, type) => addSystemLog(msg, type || 'info')}

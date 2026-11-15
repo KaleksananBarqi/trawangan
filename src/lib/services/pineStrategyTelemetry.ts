@@ -6,6 +6,12 @@
  * trade execution markers (TradeExecution[]) untuk dirender pada WebGL2 canvas grafik.
  */
 
+import type {
+  StrategyBacktestReport,
+  StrategyEquityPoint,
+  StrategyTradeRecord,
+} from '../types/market';
+
 /**
  * Status broker strategi kuantitatif pada bar komputasi terakhir.
  * Desain netral sesuai kontrak @luxalgo/vela.
@@ -339,6 +345,160 @@ export function tradesToTradeExecutions(trades: Array<StrategyTrade | any>): Tra
 }
 
 /**
+ * Mengekstrak payload telemetri kanonikal dari objek konteks eksekusi Pine
+ * tanpa efek samping mutasi state service.
+ */
+export function extractStrategyTelemetryPayload(
+  indicatorId: string,
+  context: any,
+  title?: string,
+  cellId?: string
+): StrategyTelemetryPayload | null {
+  if (!indicatorId || !context || typeof context !== 'object') return null;
+
+  const rawStrat = context.strategy || context;
+  const state = parseStrategyState(rawStrat);
+
+  const rawTrades = Array.isArray(context.trades)
+    ? context.trades
+    : Array.isArray(rawStrat.closedtrades) || Array.isArray(rawStrat.opentrades)
+    ? [...(rawStrat.closedtrades || []), ...(rawStrat.opentrades || [])]
+    : [];
+
+  const trades = parseStrategyTrades(rawTrades);
+  const tradeExecutions = tradesToTradeExecutions(trades);
+
+  return {
+    indicatorId,
+    scriptTitle: title ?? (context.meta?.title ? String(context.meta.title) : undefined),
+    cellId,
+    state,
+    trades,
+    tradeExecutions,
+    timestamp: Date.now(),
+  };
+}
+
+/** Membulatkan angka desimal hingga 2 digit di belakang koma secara aman */
+function round2(n: number): number {
+  return parseFloat(n.toFixed(2));
+}
+
+/**
+ * Mengonversi payload telemetri kanonikal menjadi laporan StrategyBacktestReport
+ * (sumber kebenaran tunggal untuk metrik Pine Editor & telemetri live chart).
+ */
+export function telemetryToPerformanceSummary(
+  payload: StrategyTelemetryPayload
+): StrategyBacktestReport {
+  const { state, trades } = payload;
+
+  const initialCapital = state.initialCapital;
+  const netProfit = state.netPnl;
+  const grossProfit = state.grossProfit;
+  const grossLoss = state.grossLoss;
+  const equity = state.equity || initialCapital + netProfit;
+  const netProfitPercent = initialCapital > 0 ? (netProfit / initialCapital) * 100 : 0;
+
+  let profitFactor = 0;
+  if (grossLoss > 0) {
+    profitFactor = round2(grossProfit / grossLoss);
+  } else if (grossProfit > 0) {
+    profitFactor = 999.0;
+  }
+
+  const closedTrades = trades.filter((t) => !t.open);
+  const openTrades = trades.filter((t) => t.open);
+  const totalClosed = closedTrades.length;
+  const winRate = totalClosed > 0 ? parseFloat(((state.wins / totalClosed) * 100).toFixed(1)) : 0;
+
+  const maxDrawdown = state.maxDrawdown;
+  const maxDrawdownPercent =
+    initialCapital > 0 && maxDrawdown > 0 ? round2((maxDrawdown / initialCapital) * 100) : 0;
+
+  const openPnlPercent = initialCapital > 0 ? (state.openPnl / initialCapital) * 100 : 0;
+  const currentPosition = {
+    size: state.position,
+    avgPrice: state.avgPrice,
+    direction: (state.position > 0 ? 'long' : state.position < 0 ? 'short' : 'flat') as
+      | 'flat'
+      | 'long'
+      | 'short',
+    unrealizedPnl: state.openPnl,
+    unrealizedPnlPercent: round2(openPnlPercent),
+  };
+
+  // Urutkan transaksi berdasarkan waktu entry untuk daftar transaksi yang konsisten
+  const sortedTrades = [...trades].sort((a, b) => a.entry.time - b.entry.time);
+  const formattedTrades: StrategyTradeRecord[] = sortedTrades.map((t, idx) => {
+    let profitPercent: number | undefined;
+    if (t.pnl !== undefined && t.entry.price > 0 && t.qty > 0) {
+      const notionalCost = t.qty * t.entry.price;
+      if (notionalCost > 0) {
+        profitPercent = round2((t.pnl / notionalCost) * 100);
+      }
+    }
+
+    return {
+      id: t.id || `trade_${idx + 1}`,
+      tradeNum: idx + 1,
+      direction: t.side,
+      entryPrice: t.entry.price,
+      entryTime: t.entry.time,
+      entryComment: t.entry.comment || t.entry.id || 'Entry',
+      exitPrice: t.exit?.price,
+      exitTime: t.exit?.time,
+      exitComment: t.exit?.comment || t.exit?.id || (t.open ? 'Open Position' : 'Exit'),
+      size: t.qty,
+      profit: t.pnl !== undefined ? round2(t.pnl) : undefined,
+      profitPercent,
+      status: t.open ? 'open' : 'closed',
+      maxDrawdown: t.maxDrawdown !== undefined ? round2(t.maxDrawdown) : undefined,
+      maxRunup: t.maxRunup !== undefined ? round2(t.maxRunup) : undefined,
+    };
+  });
+
+  // Bangun kurva ekuitas deterministik dari modal awal dan realisasi PnL transaksi tertutup
+  const equityCurve: StrategyEquityPoint[] = [];
+  if (sortedTrades.length > 0) {
+    equityCurve.push({ time: sortedTrades[0].entry.time, equity: round2(initialCapital) });
+  }
+  const closedByExit = [...closedTrades].sort(
+    (a, b) => (a.exit?.time ?? a.entry.time) - (b.exit?.time ?? b.entry.time)
+  );
+  let runningEquity = initialCapital;
+  for (const t of closedByExit) {
+    runningEquity += t.pnl ?? 0;
+    equityCurve.push({
+      time: t.exit?.time ?? t.entry.time,
+      equity: round2(runningEquity),
+    });
+  }
+
+  return {
+    strategyTitle: payload.scriptTitle || 'Pine Strategy',
+    netProfit: round2(netProfit),
+    netProfitPercent: round2(netProfitPercent),
+    grossProfit: round2(grossProfit),
+    grossLoss: round2(grossLoss),
+    profitFactor,
+    winRate,
+    totalTrades: totalClosed,
+    winningTrades: state.wins,
+    losingTrades: state.losses,
+    evenTrades: state.even,
+    maxDrawdown: round2(maxDrawdown),
+    maxDrawdownPercent,
+    initialCapital,
+    equity: round2(equity),
+    openTrades: openTrades.length,
+    currentPosition,
+    trades: formattedTrades,
+    equityCurve,
+  };
+}
+
+/**
  * Service pengelola telemetri performa dan marker eksekusi strategi Pine Script.
  */
 export class PineStrategyTelemetryService {
@@ -478,29 +638,8 @@ export class PineStrategyTelemetryService {
     title?: string,
     cellId?: string
   ): StrategyTelemetryPayload | null {
-    if (!indicatorId || !context || typeof context !== 'object') return null;
-
-    const rawStrat = context.strategy || context;
-    const state = parseStrategyState(rawStrat);
-
-    const rawTrades = Array.isArray(context.trades)
-      ? context.trades
-      : Array.isArray(rawStrat.closedtrades) || Array.isArray(rawStrat.opentrades)
-      ? [...(rawStrat.closedtrades || []), ...(rawStrat.opentrades || [])]
-      : [];
-
-    const trades = parseStrategyTrades(rawTrades);
-    const tradeExecutions = tradesToTradeExecutions(trades);
-
-    const payload: StrategyTelemetryPayload = {
-      indicatorId,
-      scriptTitle: title,
-      cellId,
-      state,
-      trades,
-      tradeExecutions,
-      timestamp: Date.now(),
-    };
+    const payload = extractStrategyTelemetryPayload(indicatorId, context, title, cellId);
+    if (!payload) return null;
 
     this.recordTelemetry(payload);
     return payload;

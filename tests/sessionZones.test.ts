@@ -1,5 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import * as marketSessionModule from '../src/lib/services/marketSessionService';
 import {
   SESSION_PRE,
   SESSION_POST,
@@ -7,9 +10,6 @@ import {
   type MarketSession,
   isSessionSupported,
   getSymbolSessionSpec,
-  expandSessionZones,
-  createSessionRendererConfig,
-  marketSessionService,
 } from '../src/lib/services/marketSessionService';
 
 function createMockContainer(): any {
@@ -25,7 +25,7 @@ function createMockContainer(): any {
 }
 
 describe('Tiket #205: Session Zones & Extended Hours Shading Suite', () => {
-  describe('1. Token Warna Tematik & Tipe Sesi Pasar', () => {
+  describe('1. Token Warna Tematik & Pemangkasan Dead Code', () => {
     test('Token warna tematik sesi pasar sesuai spesifikasi Vela WebGL2', () => {
       // Spesifikasi: SESSION_PRE = "#f97316" (Amber), SESSION_POST = "#0ea5e9" (Biru), SESSION_OFF = "#9ca3af" (Abu-abu)
       assert.strictEqual(SESSION_PRE, '#f97316', 'SESSION_PRE wajib berupa warna amber #f97316');
@@ -33,12 +33,18 @@ describe('Tiket #205: Session Zones & Extended Hours Shading Suite', () => {
       assert.strictEqual(SESSION_OFF, '#9ca3af', 'SESSION_OFF wajib berupa warna slate #9ca3af');
     });
 
-    test('createSessionRendererConfig mengembalikan konfigurasi warna WebGL2 sessions yang valid', () => {
-      const cfg = createSessionRendererConfig();
-      assert.ok(cfg.sessions, 'Konfigurasi wajib memiliki field sessions');
-      assert.strictEqual(cfg.sessions.premarketColor, SESSION_PRE);
-      assert.strictEqual(cfg.sessions.postmarketColor, SESSION_POST);
-      assert.strictEqual(cfg.sessions.extendedColor, SESSION_POST);
+    test('expandSessionZones, createSessionRendererConfig, dan singleton marketSessionService telah dihapus', () => {
+      assert.strictEqual((marketSessionModule as any).expandSessionZones, undefined, 'expandSessionZones wajib dihapus');
+      assert.strictEqual(
+        (marketSessionModule as any).createSessionRendererConfig,
+        undefined,
+        'createSessionRendererConfig wajib dihapus'
+      );
+      assert.strictEqual(
+        (marketSessionModule as any).marketSessionService,
+        undefined,
+        'Singleton stateful marketSessionService wajib dihapus'
+      );
     });
   });
 
@@ -80,72 +86,56 @@ describe('Tiket #205: Session Zones & Extended Hours Shading Suite', () => {
     });
   });
 
-  describe('3. Kalkulasi Zona Shading expandSessionZones', () => {
-    test('expandSessionZones menghasilkan rentang pre-market dan post-market pada hari kerja', () => {
-      const spec = getSymbolSessionSpec('AAPL', 'yahoo')!;
-      // Rabu 12 November 2026 00:00 UTC sampai Kamis 13 November 2026 23:59 UTC
-      const from = Date.UTC(2026, 10, 11, 0, 0, 0);
-      const to = Date.UTC(2026, 10, 13, 23, 59, 59);
-
-      const zones = expandSessionZones(spec, from, to);
-      assert.ok(Array.isArray(zones.pre), 'pre zones harus berupa array');
-      assert.ok(Array.isArray(zones.post), 'post zones harus berupa array');
-      assert.ok(zones.pre.length > 0, 'Harus ada pita pre-market yang terhitung');
-      assert.ok(zones.post.length > 0, 'Harus ada pita post-market yang terhitung');
-
-      // Validasi setiap pita memiliki [from, to] dengan to > from
-      for (const [s, e] of zones.pre) {
-        assert.ok(e > s, `Batas pre-market harus valid (${s} < ${e})`);
-      }
-      for (const [s, e] of zones.post) {
-        assert.ok(e > s, `Batas post-market harus valid (${s} < ${e})`);
-      }
-    });
-
-    test('expandSessionZones mengabaikan akhir pekan (Sabtu dan Minggu non-overnight)', () => {
-      const spec = getSymbolSessionSpec('AAPL', 'yahoo')!;
-      // Sabtu 14 November 2026 12:00 UTC s/d Minggu 15 November 2026 20:00 UTC (Sabtu-Minggu siang di NY)
-      const from = Date.UTC(2026, 10, 14, 12, 0, 0);
-      const to = Date.UTC(2026, 10, 15, 20, 0, 0);
-
-      const zones = expandSessionZones(spec, from, to);
-      assert.strictEqual(zones.pre.length, 0, 'Tidak boleh ada pre-market di akhir pekan');
-      assert.strictEqual(zones.post.length, 0, 'Tidak boleh ada post-market di akhir pekan');
-    });
-  });
-
-  describe('4. Lifecycle State Service marketSessionService', () => {
-    test('Default session adalah "regular" dan sessionAvailable bernilai boolean', () => {
-      marketSessionService.reset();
-      assert.strictEqual(marketSessionService.getSession(), 'regular');
-      assert.strictEqual(marketSessionService.isSessionAvailable(), false);
-    });
-
-    test('setSession dan toggleSession memperbarui status dan memicu subscriber', () => {
-      marketSessionService.reset();
-      marketSessionService.setSessionAvailable(true);
-
-      let notifiedState: any = null;
-      const unsub = marketSessionService.subscribe((st) => {
-        notifiedState = st;
+  describe('3. Kontrak Single-Owner State pada ChartSessionController & UI', () => {
+    test('ChartSessionController.subscribe memancarkan perubahan session dan sessionAvailable secara reaktif', async () => {
+      const { ChartSessionController } = await import('../src/lib/services/chartSessionController');
+      const controller = new ChartSessionController({
+        symbol: 'AAPL',
+        timeframe: '15m',
+        providerId: 'yahoo',
+        layout: 'single',
       });
 
-      marketSessionService.setSession('extended');
-      assert.strictEqual(marketSessionService.getSession(), 'extended');
-      assert.strictEqual(notifiedState?.session, 'extended');
+      const observed: Array<{ session: MarketSession; sessionAvailable: boolean }> = [];
+      const unsub = controller.subscribe((snap) => {
+        observed.push({ session: snap.session, sessionAvailable: snap.sessionAvailable });
+      });
 
-      // toggleSession membalik 'extended' -> 'regular'
-      const toggled = marketSessionService.toggleSession();
-      assert.strictEqual(toggled, 'regular');
-      assert.strictEqual(marketSessionService.getSession(), 'regular');
-      assert.strictEqual(notifiedState?.session, 'regular');
-
-      // toggleSession membalik 'regular' -> 'extended'
-      const toggled2 = marketSessionService.toggleSession();
-      assert.strictEqual(toggled2, 'extended');
-      assert.strictEqual(marketSessionService.getSession(), 'extended');
-
+      controller.setSession('extended');
+      controller.toggleSession();
+      await controller.setSymbol('BTCUSDT', '15m', 'binance');
       unsub();
+
+      assert.deepStrictEqual(observed[0], { session: 'regular', sessionAvailable: true });
+      assert.deepStrictEqual(observed[1], { session: 'extended', sessionAvailable: true });
+      assert.deepStrictEqual(observed[2], { session: 'regular', sessionAvailable: true });
+      assert.deepStrictEqual(observed[observed.length - 1], { session: 'regular', sessionAvailable: false });
+    });
+
+    test('StatusBar.svelte dan ChartTab.svelte tidak mengimpor marketSessionService dan terikat ke kontrak ChartSessionController', () => {
+      const statusBarSrc = fs.readFileSync(path.resolve('src/lib/components/StatusBar.svelte'), 'utf8');
+      const chartTabSrc = fs.readFileSync(path.resolve('src/lib/components/settings/ChartTab.svelte'), 'utf8');
+
+      assert.doesNotMatch(
+        statusBarSrc,
+        /(?<!\/)\bmarketSessionService\b/,
+        'StatusBar.svelte tidak boleh lagi bergantung pada singleton marketSessionService'
+      );
+      assert.doesNotMatch(
+        chartTabSrc,
+        /(?<!\/)\bmarketSessionService\b/,
+        'ChartTab.svelte tidak boleh lagi bergantung pada singleton marketSessionService'
+      );
+    });
+
+    test('ChartTab.svelte memprioritaskan sessionState?.session sebelum settings.marketSession agar ChartSessionController menjadi otoritas tunggal', () => {
+      const chartTabSrc = fs.readFileSync(path.resolve('src/lib/components/settings/ChartTab.svelte'), 'utf8');
+
+      assert.match(
+        chartTabSrc,
+        /sessionState\?\.session\s*\?\?\s*settings\.marketSession\s*\?\?\s*['"]regular['"]/,
+        'ChartTab.svelte wajib mendahulukan sessionState?.session di atas settings.marketSession'
+      );
     });
   });
 

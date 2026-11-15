@@ -15,7 +15,6 @@ import {
   clearChartDefaultConfig,
   computeWorkspaceFingerprint,
 } from '../src/lib/services/persistence';
-import type { WorkspaceFingerprintInput } from '../src/lib/services/persistence/workspaceService';
 import { InMemoryLocalStorageAdapter } from '../src/lib/services/persistence/inMemoryLocalStorageAdapter';
 import type { SavedWorkspace } from '../src/lib/types/market';
 import { createMockChartContainer } from './helpers/mockChartContainer';
@@ -372,7 +371,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.ok(chartTabSrc.includes('Simpan sebagai Default'), 'ChartTab.svelte harus punya tombol Simpan sebagai Default');
     assert.ok(settingsModalSrc.includes('onSaveChartAsDefault'), 'SettingsModal.svelte harus meneruskan onSaveChartAsDefault');
     assert.ok(pageSrc.includes('onSaveChartAsDefault'), '+page.svelte harus menghubungkan onSaveChartAsDefault');
-    assert.ok(pageSrc.includes('saveCurrentChartSettingsAsDefault'), '+page.svelte harus memanggil saveCurrentChartSettingsAsDefault');
+    assert.ok(pageSrc.includes('saveCurrentSettingsAsDefault'), '+page.svelte harus memanggil saveCurrentSettingsAsDefault pada sessionController');
   });
 
   test('3. thesisCardGeometry: state di chartDrawingController, equality guard, snapshot roundtrip & props FloatingThesisCard', async () => {
@@ -410,14 +409,8 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.deepEqual((chartDrawingController as any).getThesisCardGeometries(), {});
 
     const mockChart: WorkspaceChartPort = {
-      clearAllIndicators: () => {},
-      addPineIndicator: async () => {},
-      getActiveIndicators: () => [],
-      toggleIndicatorVisibility: () => {},
-      setPriceStyle: () => {},
-      setBarSpacing: () => {},
-      applyPriceScaleState: () => {},
-      applyPaneWeights: () => {},
+      captureWorkspaceSnapshot: () => ({ indicators: [] }),
+      applyWorkspaceSnapshot: async () => {},
     };
 
     const fullWorkspace: SavedWorkspace = {
@@ -459,7 +452,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.deepEqual((chartDrawingController as any).getThesisCardGeometries(), { 'plan-1': geo1 });
 
     // Pastikan fingerprint Step 9 sama persis dengan buildWorkspaceSnapshotPayload pasca-load (anti false auto-save!)
-    const postLoadPayload: WorkspaceFingerprintInput = buildWorkspaceSnapshotPayload({
+    const postLoadPayload: Partial<SavedWorkspace> = buildWorkspaceSnapshotPayload({
       id: 'ws-geo',
       name: 'Geo WS',
       symbol: 'BTCUSDT',
@@ -510,14 +503,8 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     chartDrawingController.setStayMode(false);
 
     const mockChart: WorkspaceChartPort = {
-      clearAllIndicators: () => {},
-      addPineIndicator: async () => {},
-      getActiveIndicators: () => [],
-      toggleIndicatorVisibility: () => {},
-      setPriceStyle: () => {},
-      setBarSpacing: () => {},
-      applyPriceScaleState: () => {},
-      applyPaneWeights: () => {},
+      captureWorkspaceSnapshot: () => ({ indicators: [] }),
+      applyWorkspaceSnapshot: async () => {},
     };
 
     const res = await executeWorkspaceLoadPipeline({
@@ -706,14 +693,8 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     );
 
     const mockChart: WorkspaceChartPort = {
-      clearAllIndicators: () => {},
-      addPineIndicator: async () => {},
-      getActiveIndicators: () => [],
-      toggleIndicatorVisibility: () => {},
-      setPriceStyle: () => {},
-      setBarSpacing: () => {},
-      applyPriceScaleState: () => {},
-      applyPaneWeights: () => {},
+      captureWorkspaceSnapshot: () => ({ indicators: [] }),
+      applyWorkspaceSnapshot: async () => {},
     };
 
     const staleWorkspacePlan = {
@@ -764,7 +745,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.equal(ctrlA.getAllActivePlans().length, 0, 'Plan yang sudah dihapus di _trawangan_meta tidak boleh dibangkitkan oleh w.activePlans basi');
     assert.equal(ctrlA.isThesisCardsVisible(), false, 'showThesisCards workspace tetap diterapkan saat _trawangan_meta otoritatif');
 
-    const postLoadA: WorkspaceFingerprintInput = buildWorkspaceSnapshotPayload({
+    const postLoadA: Partial<SavedWorkspace> = buildWorkspaceSnapshotPayload({
       id: 'ws-auth-deleted',
       name: 'Auth Deleted Plan',
       symbol: 'BTCUSDT',
@@ -834,7 +815,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.equal(ctrlB.getAllActivePlans().length, 1, 'Workspace warisan tanpa _trawangan_meta wajib fallback memulihkan w.activePlans');
     assert.equal(ctrlB.getAllActivePlans()[0].id, 'legacy-plan-eth');
 
-    const postLoadB: WorkspaceFingerprintInput = buildWorkspaceSnapshotPayload({
+    const postLoadB: Partial<SavedWorkspace> = buildWorkspaceSnapshotPayload({
       id: 'ws-legacy-no-meta',
       name: 'Legacy No Meta',
       symbol: 'ETHUSDT',

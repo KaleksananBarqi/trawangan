@@ -13,7 +13,7 @@
   } from '@lucide/svelte';
   import type { AppSettings } from '../../types/market';
   import { timelineMarksController } from '../../services/timelineMarksController';
-  import { marketSessionService, type MarketSessionState } from '../../services/marketSessionService';
+  import type { MarketSession } from '../../services/marketSessionService';
 
   interface Props {
     settings: AppSettings;
@@ -22,6 +22,8 @@
     onOpenChartSettings?: (section?: string) => void;
     onSaveChartAsDefault?: () => Promise<boolean> | boolean;
     onResetChartFactory?: () => void;
+    sessionState?: { session: MarketSession; sessionAvailable: boolean };
+    onSetSession?: (mode: MarketSession) => void;
   }
 
   let {
@@ -30,7 +32,9 @@
     onClose,
     onOpenChartSettings,
     onSaveChartAsDefault,
-    onResetChartFactory
+    onResetChartFactory,
+    sessionState,
+    onSetSession
   }: Props = $props();
 
   const ALL_AVAILABLE_TIMEFRAMES = [
@@ -59,11 +63,8 @@
   let isMacroMarksVisible = $state(timelineMarksController.isGroupVisible('macro'));
   let isTradesMarksVisible = $state(timelineMarksController.isGroupVisible('trades'));
   let isJournalMarksVisible = $state(timelineMarksController.isGroupVisible('journal'));
-  let sessionState = $state<MarketSessionState>(marketSessionService.getSnapshot());
-  const unsubSession = marketSessionService.subscribe((st) => {
-    sessionState = st;
-  });
-  let currentMarketSession = $derived(settings.marketSession ?? sessionState.session ?? 'regular');
+  let currentMarketSession = $derived(sessionState?.session ?? settings.marketSession ?? 'regular');
+  let isSessionAvailable = $derived(sessionState?.sessionAvailable ?? false);
 
   function toggleMacroMarks() {
     const next = !isMacroMarksVisible;
@@ -147,7 +148,6 @@
       clearTimeout(resetChartFeedbackTimer);
       resetChartFeedbackTimer = null;
     }
-    unsubSession();
   });
 </script>
 
@@ -232,7 +232,7 @@
     <div class="setting-info">
       <span class="setting-label">Sesi Perdagangan (RTH / ETH)</span>
       <span class="setting-desc">
-        {#if sessionState.sessionAvailable}
+        {#if isSessionAvailable}
           Pilih Regular Trading Hours (RTH) atau Extended Hours (ETH) dengan shading Pre-Market & Post-Market.
         {:else}
           Aktif untuk saham & indeks Yahoo Finance. Pasar kripto 24/7 otomatis mengabaikan shading sesi.
@@ -244,8 +244,11 @@
         type="button"
         class="mode-chip {currentMarketSession === 'regular' ? 'active' : ''}"
         onclick={() => {
-          onUpdateSettings({ marketSession: 'regular' });
-          marketSessionService.setSession('regular');
+          if (onSetSession) {
+            onSetSession('regular');
+          } else {
+            onUpdateSettings({ marketSession: 'regular' });
+          }
         }}
         title="Regular Trading Hours (RTH): Hanya menampilkan jam bursa reguler"
       >
@@ -255,8 +258,11 @@
         type="button"
         class="mode-chip {currentMarketSession === 'extended' ? 'active' : ''}"
         onclick={() => {
-          onUpdateSettings({ marketSession: 'extended' });
-          marketSessionService.setSession('extended');
+          if (onSetSession) {
+            onSetSession('extended');
+          } else {
+            onUpdateSettings({ marketSession: 'extended' });
+          }
         }}
         title="Extended Trading Hours (ETH): Menampilkan Pre-Market (amber) dan Post-Market (biru)"
       >

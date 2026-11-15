@@ -3,14 +3,8 @@
  * 
  * Melacak workspace aktif dan mengelola penyimpanan serta pembacaan ID workspace terakhir.
  */
-import type {
-  CellSnapshot,
-  NativeIndicatorSnapshot,
-  PaneLayoutEntry,
-  SavedWorkspace,
-  SnapMode,
-  VisibleRangeSnapshot,
-} from '../../types/market';
+import type { SavedWorkspace } from '../../types/market';
+import { normalizeWorkspace } from './workspaceSchema';
 import {
   loadWorkspaces,
   saveWorkspace,
@@ -19,38 +13,6 @@ import {
   getLastActiveWorkspaceId,
   setLastActiveWorkspaceId,
 } from './index';
-
-/**
- * Parameter input komprehensif untuk fingerprinting workspace.
- * Menjamin deteksi perubahan pada seluruh dimensi state workspace v2 (visual, pane layout, indikator native, viewport, multi-cell, skala, dock, dan trading plan).
- */
-export interface WorkspaceFingerprintInput {
-  id?: string;
-  name?: string;
-  schemaVersion?: number;
-  symbol: string;
-  timeframe: string;
-  layout: string;
-  providerId?: string;
-  indicators?: Array<{ title?: string; source?: string; visible?: boolean; inputs?: any; props?: any }>;
-  paneWeights?: number[];
-  paneLayout?: PaneLayoutEntry[];
-  priceScaleState?: any;
-  priceStyle?: string;
-  barSpacing?: number;
-  showVolume?: boolean;
-  nativeIndicators?: NativeIndicatorSnapshot[];
-  visibleRange?: VisibleRangeSnapshot | null;
-  cells?: CellSnapshot[];
-  trackSizes?: { cols?: number[]; rows?: number[] };
-  activeCellIndex?: number;
-  activeRightDockPanel?: string | null;
-  syncConfig?: any;
-  activePlans?: any[];
-  showThesisCards?: boolean;
-  thesisCardGeometry?: Record<string, any>;
-  drawingToolbar?: { snapMode?: SnapMode; stayMode?: boolean };
-}
 
 function stableStringify(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -66,15 +28,16 @@ function stableStringify(value: unknown): string {
 }
 
 /**
- * Menghasilkan fingerprint string deterministik dari parameter struktural workspace
- * Digunakan oleh Workspace Auto-Save Guard untuk mencegah I/O disk berulang
- * saat mutasi referensi array terjadi tanpa adanya perubahan nilai data.
- * 
+ * Menghasilkan fingerprint string deterministik langsung dari struktur kanonik SavedWorkspace
+ * yang telah dinormalkan (tanpa tipe proyeksi manual terpisah).
+ * Digunakan oleh Workspace Auto-Save Guard untuk mendeteksi perubahan seluruh dimensi state
+ * (termasuk priceScaleCountdown di root maupun per-sel) sambil mengabaikan timestamp.
+ *
  * Mendukung pemanggilan polimorfik:
- * 1. Objek komprehensif (WorkspaceFingerprintInput) untuk memantau seluruh dimensi state.
+ * 1. Objek kanonik SavedWorkspace (atau Partial<SavedWorkspace>) untuk memantau seluruh dimensi state.
  * 2. Posisi argumen terpisah (legacy) untuk kompatibilitas ke belakang dengan pengujian yang ada.
  */
-export function computeWorkspaceFingerprint(input: WorkspaceFingerprintInput): string;
+export function computeWorkspaceFingerprint(workspace: Partial<SavedWorkspace>): string;
 export function computeWorkspaceFingerprint(
   workspaceId: string,
   symbol: string,
@@ -84,7 +47,7 @@ export function computeWorkspaceFingerprint(
   indicators?: Array<{ title?: string; source?: string; visible?: boolean; inputs?: any; props?: any }>
 ): string;
 export function computeWorkspaceFingerprint(
-  inputOrId: WorkspaceFingerprintInput | string,
+  inputOrId: Partial<SavedWorkspace> | string,
   symbol?: string,
   timeframe?: string,
   layout?: string,
@@ -92,60 +55,10 @@ export function computeWorkspaceFingerprint(
   indicators?: Array<{ title?: string; source?: string; visible?: boolean; inputs?: any; props?: any }>
 ): string {
   if (typeof inputOrId === 'object' && inputOrId !== null) {
-    const input = inputOrId;
-    const wsId = input.id || input.name || 'default';
-    const sym = input.symbol || '';
-    const tf = input.timeframe || '';
-    const ly = input.layout || '1';
-    const pId = input.providerId || 'binance';
-
-    const indParts = (input.indicators || [])
-      .map((i) => {
-        const inputsStr = i.inputs ? stableStringify(i.inputs) : '';
-        const propsStr = i.props ? stableStringify(i.props) : '';
-        return `${i.title || ''}:${i.source || ''}:${i.visible !== false}:${inputsStr}:${propsStr}`;
-      })
-      .sort()
-      .join('|');
-
-    const pwStr = (input.paneWeights || []).join(',');
-    const plStr = input.paneLayout ? stableStringify(input.paneLayout) : '';
-    const niStr = input.nativeIndicators ? stableStringify(input.nativeIndicators) : '';
-    const pssStr = input.priceScaleState ? stableStringify(input.priceScaleState) : '';
-    const styleStr = `${input.priceStyle || 'candles'}:${input.barSpacing ?? 8}:${input.showVolume !== false}`;
-    const vrStr = input.visibleRange ? stableStringify(input.visibleRange) : '';
-    const dockStr = input.activeRightDockPanel || '';
-    const syncStr = input.syncConfig ? stableStringify(input.syncConfig) : '';
-    const cellsStr = input.cells ? stableStringify(input.cells) : '';
-    const tracksStr = input.trackSizes ? stableStringify(input.trackSizes) : '';
-    const activeCellStr = input.activeCellIndex !== undefined ? String(input.activeCellIndex) : '';
-    const geomStr = input.thesisCardGeometry ? stableStringify(input.thesisCardGeometry) : '';
-    const tbStr = input.drawingToolbar ? stableStringify(input.drawingToolbar) : '';
-
-    // Mendukung kedua skema: ParsedTradingPlan (bias/entry/entries/targets) maupun legacy (side/entryPrice/takeProfits)
-    const plansParts = (input.activePlans || [])
-      .map((p: any) => {
-        const dir = p.bias ?? p.side ?? '';
-        const entryVal = p.entry ?? p.entryPrice ?? 0;
-        const entriesVal = Array.isArray(p.entries)
-          ? p.entries.map((e: any) => `${e.id || ''}:${e.price ?? 0}:${e.ratio ?? ''}`).join(',')
-          : '';
-        const targetList = Array.isArray(p.targets)
-          ? p.targets
-          : Array.isArray(p.takeProfits)
-            ? p.takeProfits
-            : [];
-        const tps = targetList
-          .map((t: any) => `${t.id || ''}:${t.price ?? 0}:${t.percent ?? t.allocationPct ?? 0}`)
-          .join(';');
-        return `${p.id || ''}:${p.symbol || ''}:${dir}:${entryVal}:[${entriesVal}]:${p.stopLoss ?? 0}:${tps}:${p.active !== false}`;
-      })
-      .sort()
-      .join('|');
-
-    const thesisStr = input.showThesisCards !== false ? 'thesis:on' : 'thesis:off';
-
-    return `${wsId}:${sym}:${tf}:${ly}:${pId}#[${indParts}]#pw:[${pwStr}]#pl:[${plStr}]#ni:[${niStr}]#scale:[${pssStr}]#vis:[${styleStr}]#vr:[${vrStr}]#dock:[${dockStr}]#sync:[${syncStr}]#cells:[${cellsStr}]#tracks:[${tracksStr}]#ac:${activeCellStr}#plans:[${plansParts}]#${thesisStr}#geom:[${geomStr}]#tb:[${tbStr}]`;
+    // Normalkan ke skema v2 kanonik lalu buang timestamp agar waktu simpan tidak memicu dirty palsu
+    const normalized = normalizeWorkspace(inputOrId);
+    const { timestamp: _timestamp, ...canonical } = normalized;
+    return stableStringify(canonical);
   }
 
   // Pemanggilan legacy 6 parameter posisi
