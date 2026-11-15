@@ -462,6 +462,92 @@ describe('Visible Range Presets Suite (#204)', () => {
       await controller.setSymbol('ETHUSDT');
       assert.strictEqual(controller.getActiveRangePreset(), null);
     });
+
+    test('Transisi timeframe via setVisibleRangePreset tidak menghapus activeRangePreset saat viewport:changed terpicu di tengah setMarket', async () => {
+      const mock = createMockVelaCell('cell-transition-guard');
+      const presetEvents: Array<VisibleRangePreset | null> = [];
+
+      // Simulasikan chart memancarkan viewport:changed dengan rentang lama saat setMarket sedang berjalan
+      const originalSetMarket = mock.chart.setMarket.bind(mock.chart);
+      mock.chart.setMarket = async (opts: any) => {
+        // Pancarkan viewport:changed dengan range bar 15m lama sebelum setMarket selesai
+        mock.chart.emit('viewport:changed');
+        if (opts.timeframe === 'D') {
+          const now = Date.now();
+          const dayMs = 86_400_000;
+          const dailyBars = Array.from({ length: 400 }, (_, i) => ({
+            time: now - (400 - i) * dayMs,
+            open: 50000,
+            high: 51000,
+            low: 49000,
+            close: 50500,
+            volume: 1000,
+          }));
+          mock.chart.bars = dailyBars;
+          mock.chart.rawBars = dailyBars;
+        }
+        return originalSetMarket(opts);
+      };
+
+      const mockWorkspace: any = {
+        active: mock.cell,
+        cells: () => [mock.cell],
+        cellsById: new Map([[mock.cell.id, mock.cell]]),
+        cell: () => mock.cell,
+        on: () => () => {},
+      };
+
+      const controller = new ChartSessionController({
+        symbol: 'BTCUSDT',
+        timeframe: '15m',
+        workspaceFactory: () => mockWorkspace,
+        onRangePresetChange: (preset) => presetEvents.push(preset),
+      });
+      controller.attach({} as HTMLElement);
+
+      const applied = await controller.applyRangePreset('1Y');
+      assert.strictEqual(applied, true);
+      assert.strictEqual(controller.getActiveRangePreset(), '1Y');
+      assert.strictEqual(mock.getMarketCalls().length, 1, 'Harus melakukan tepat satu kali setMarket (single-pass)');
+      assert.ok(!presetEvents.includes(null), 'activeRangePreset tidak boleh di-reset ke null selama transisi');
+    });
+
+    test('Panning horizontal di luar toleransi mereset activeRangePreset, sedangkan dalam toleransi mempertahankannya', async () => {
+      const mock = createMockVelaCell('cell-pan-drift');
+      const mockWorkspace: any = {
+        active: mock.cell,
+        cells: () => [mock.cell],
+        cellsById: new Map([[mock.cell.id, mock.cell]]),
+        cell: () => mock.cell,
+        on: () => () => {},
+      };
+
+      const controller = new ChartSessionController({
+        workspaceFactory: () => mockWorkspace,
+      });
+      controller.attach({} as HTMLElement);
+
+      await controller.applyRangePreset('1D');
+      assert.strictEqual(controller.getActiveRangePreset(), '1D');
+
+      const framed = mock.getCurrentVisibleRange()!;
+      const dayMs = 86_400_000;
+
+      // Geser kecil 10% (masih dalam toleransi 35%) -> preset harus tetap aktif
+      mock.chart.setVisibleRange({
+        from: framed.from - 0.1 * dayMs,
+        to: framed.to - 0.1 * dayMs,
+      });
+      assert.strictEqual(controller.getActiveRangePreset(), '1D');
+
+      // Geser horizontal 50% (di luar toleransi 35%, meski lebar span tetap 1D) -> preset harus di-reset
+      const drifted = controller.handleVisibleTimeRangeChange({
+        from: framed.from - 0.5 * dayMs,
+        to: framed.to - 0.5 * dayMs,
+      });
+      assert.strictEqual(drifted, true);
+      assert.strictEqual(controller.getActiveRangePreset(), null);
+    });
   });
 
   describe('3. Pendaftaran Perintah Keyboard (Keyboard Shortcut Integration)', () => {
