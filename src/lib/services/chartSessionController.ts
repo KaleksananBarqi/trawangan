@@ -129,6 +129,7 @@ export interface ChartSessionOptions {
   showPriceScaleCountdown?: boolean;
   wallClock?: any;
   showVolume?: boolean;
+  showWatermark?: boolean;
   gridMode?: GridMode;
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
@@ -148,6 +149,29 @@ export interface ChartSessionOptions {
   providerFactories?: Partial<Record<string, () => any>>;
   streamWatchdogMs?: number;
   streamStaleMs?: number;
+}
+
+export interface ChartReactiveProps {
+  symbol?: string;
+  timeframe?: Timeframe;
+  providerId?: string;
+  layout?: string;
+  syncConfig?: MultiChartSyncConfig;
+  gridMode?: GridMode;
+  themePreset?: ThemePresetId | string;
+  fontSize?: number;
+  customBullColor?: string;
+  customBearColor?: string;
+  customPalette?: CustomThemePalette | null;
+  customChartBackground?: CustomChartBackgroundConfig;
+  timezone?: string;
+  session?: MarketSession;
+  showCurrentPriceLine?: boolean;
+  priceScaleCountdown?: boolean;
+  showVolume?: boolean;
+  showWatermark?: boolean;
+  priceStyle?: PriceStyle | string;
+  rendererConfig?: Record<string, any>;
 }
 
 export interface ChartSessionSnapshot {
@@ -465,6 +489,8 @@ export class ChartSessionController {
   private wallClock: any = null;
   private priceScaleCountdownByCell = new WeakMap<any, boolean>();
   private showVolume: boolean;
+  private showWatermark: boolean;
+  private lastAppliedReactiveRendererConfig: Record<string, any> | null = null;
   private syncConfig: MultiChartSyncConfig;
   private onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
   private onPriceStyleChange?: (style: PriceStyle | string) => void;
@@ -544,6 +570,7 @@ export class ChartSessionController {
     this.priceScaleCountdown = options.priceScaleCountdown ?? options.showPriceScaleCountdown ?? false;
     this.wallClock = options.wallClock ?? getSharedTerminalWallClock();
     this.showVolume = options.showVolume ?? true;
+    this.showWatermark = options.showWatermark ?? true;
     this.gridMode = options.gridMode || 'normal';
     this.customChartBackground = options.customChartBackground;
     this.customPalette = options.customPalette || null;
@@ -708,6 +735,135 @@ export class ChartSessionController {
 
   public getGridMode(): GridMode {
     return this.gridMode;
+  }
+
+  /**
+   * Menyetel visibilitas watermark simbol pada seluruh sel kanvas WebGL2
+   */
+  public setWatermarkVisible(show: boolean): void {
+    const next = Boolean(show);
+    if (this.showWatermark === next) return;
+    this.showWatermark = next;
+    for (const c of this.getAllCells()) {
+      c?.setWatermarkVisible?.(next);
+    }
+    this.notify();
+  }
+
+  private arePlainValuesEqual(a: unknown, b: unknown): boolean {
+    if (Object.is(a, b)) return true;
+    if (a === null || b === null || a === undefined || b === undefined) return false;
+    if (typeof a !== 'object' || typeof b !== 'object') return false;
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+      return a.every((item, idx) => this.arePlainValuesEqual(item, b[idx]));
+    }
+    const objA = a as Record<string, unknown>;
+    const objB = b as Record<string, unknown>;
+    const keysA = Object.keys(objA).filter((k) => objA[k] !== undefined);
+    const keysB = Object.keys(objB).filter((k) => objB[k] !== undefined);
+    if (keysA.length !== keysB.length) return false;
+    for (const key of keysA) {
+      if (!this.arePlainValuesEqual(objA[key], objB[key])) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Merekonsiliasi seluruh prop reaktif dari shell UI secara idempoten dalam satu pass terkoordinasi.
+   * Field yang tidak berubah dilewati (strict no-op) dan pembaruan terkait (mis. symbol + timeframe atau theme + gridMode) digabung.
+   */
+  public applyReactiveProps(next: ChartReactiveProps): void {
+    if (!next || this.isDestroyed) return;
+
+    // 1. Rekonsiliasi instrumen & timeframe terkoordinasi (satu pemanggilan setSymbol jika symbol/provider berubah)
+    const nextSymbol = next.symbol !== undefined ? next.symbol : this.symbol;
+    const nextProvider = next.providerId !== undefined ? next.providerId : this.providerId;
+    const nextTimeframe = next.timeframe !== undefined ? next.timeframe : this.timeframe;
+    const symbolChanged = Boolean(nextSymbol) && nextSymbol !== this.symbol;
+    const providerChanged = Boolean(nextProvider) && nextProvider !== this.providerId;
+    const timeframeChanged = Boolean(nextTimeframe) && nextTimeframe !== this.timeframe;
+
+    if (symbolChanged || providerChanged) {
+      void this.setSymbol(
+        nextSymbol,
+        timeframeChanged ? nextTimeframe : undefined,
+        nextProvider
+      );
+    } else if (timeframeChanged) {
+      this.setTimeframe(nextTimeframe);
+    }
+
+    // 2. Tata letak & sinkronisasi multi-chart
+    if (next.layout !== undefined && next.layout && next.layout !== this.layout) {
+      this.setLayout(next.layout);
+    }
+    if (next.syncConfig !== undefined && !this.arePlainValuesEqual(this.syncConfig, next.syncConfig)) {
+      this.syncLayout(next.syncConfig);
+    }
+
+    // 3. Tema, gridMode, palet kustom, dan latar kanvas (digabung menjadi satu pemanggilan setTheme)
+    const nextGridMode = next.gridMode !== undefined ? (next.gridMode || 'normal') : this.gridMode;
+    const gridModeChanged = next.gridMode !== undefined && nextGridMode !== this.gridMode;
+    const nextThemePreset = next.themePreset !== undefined ? next.themePreset : this.themePreset;
+    const themePresetChanged = next.themePreset !== undefined && nextThemePreset !== this.themePreset;
+    const nextFontSize = next.fontSize !== undefined && next.fontSize > 0 ? next.fontSize : this.fontSize;
+    const fontSizeChanged = next.fontSize !== undefined && next.fontSize > 0 && nextFontSize !== this.fontSize;
+
+    const prevBull = this.customCandleColors?.bullColor;
+    const prevBear = this.customCandleColors?.bearColor;
+    const nextBull = 'customBullColor' in next ? next.customBullColor : prevBull;
+    const nextBear = 'customBearColor' in next ? next.customBearColor : prevBear;
+    const candleColorsChanged = nextBull !== prevBull || nextBear !== prevBear;
+
+    const nextPalette = 'customPalette' in next ? (next.customPalette ?? null) : this.customPalette;
+    const paletteChanged = !this.arePlainValuesEqual(this.customPalette, nextPalette);
+
+    const nextBg = 'customChartBackground' in next ? next.customChartBackground : this.customChartBackground;
+    const bgChanged = !this.arePlainValuesEqual(this.customChartBackground, nextBg);
+
+    if (gridModeChanged || themePresetChanged || fontSizeChanged || candleColorsChanged || paletteChanged || bgChanged) {
+      if (gridModeChanged) {
+        this.gridMode = nextGridMode;
+      }
+      const nextCandleColors =
+        nextBull !== undefined || nextBear !== undefined
+          ? { bullColor: nextBull, bearColor: nextBear }
+          : undefined;
+      this.setTheme(nextThemePreset, nextFontSize, nextCandleColors, nextBg, nextPalette);
+      if (nextCandleColors === undefined) {
+        this.customCandleColors = null;
+      }
+    }
+
+    // 4. Zona waktu & sesi pasar
+    if (next.timezone !== undefined && next.timezone && next.timezone !== this.timezone) {
+      this.setTimezone(next.timezone);
+    }
+    if (next.session !== undefined && next.session !== this.session) {
+      this.setSession(next.session);
+    }
+
+    // 5. Opsi tampilan skala harga, volume, watermark, gaya lilin, & rendererConfig
+    if (next.showCurrentPriceLine !== undefined && next.showCurrentPriceLine !== this.showCurrentPriceLine) {
+      this.setShowCurrentPriceLine(next.showCurrentPriceLine);
+    }
+    if (next.priceScaleCountdown !== undefined && Boolean(next.priceScaleCountdown) !== this.priceScaleCountdown) {
+      this.setPriceScaleCountdown(Boolean(next.priceScaleCountdown));
+    }
+    if (next.showVolume !== undefined && next.showVolume !== this.showVolume) {
+      this.setShowVolume(next.showVolume);
+    }
+    if (next.showWatermark !== undefined && Boolean(next.showWatermark) !== this.showWatermark) {
+      this.setWatermarkVisible(Boolean(next.showWatermark));
+    }
+    if (next.priceStyle !== undefined && isValidPriceStyle(next.priceStyle) && next.priceStyle !== this.getPriceStyle()) {
+      this.setPriceStyle(next.priceStyle);
+    }
+    if (next.rendererConfig !== undefined && !this.arePlainValuesEqual(this.lastAppliedReactiveRendererConfig, next.rendererConfig)) {
+      this.lastAppliedReactiveRendererConfig = structuredClone(next.rendererConfig);
+      this.applyRendererConfig(next.rendererConfig);
+    }
   }
 
   /**
@@ -2887,6 +3043,7 @@ export class ChartSessionController {
   public async setSymbol(symbol: string, timeframe?: Timeframe, providerId?: string): Promise<void> {
     if (!symbol) return;
     this.symbol = symbol;
+    if (timeframe) this.timeframe = timeframe;
     if (providerId) this.providerId = providerId;
     marketSessionService.updateContext(this.symbol, this.providerId);
     marketSessionService.setSessionAvailable(this.isSessionAvailable());
