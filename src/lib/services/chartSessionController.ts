@@ -78,6 +78,7 @@ import {
 import { WORKSPACE_SCHEMA_VERSION, computePaneSignature } from './persistence/workspaceSchema';
 import {
   buildWorkspaceSnapshotPayload,
+  restoreCellThroughPipeline,
   restoreWorkspaceChartAndPlans,
 } from './workspaceLifecycle';
 import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors, resolveThemeConfig } from '../constants/themes';
@@ -4755,7 +4756,7 @@ export class ChartSessionController {
         this.workspace.applyState(applyDoc);
       }
 
-      // 2. Selaraskan dan pulihkan properti per-sel pada live cells sesuai urutan deterministik Fase 5
+      // 2. Selaraskan dan pulihkan properti per-sel pada live cells melalui pipeline 5-langkah terpadu
       const updatedCells = this.getAllCells();
       const applyCount = Math.min(cellsSnap.length, updatedCells.length);
       for (let i = 0; i < applyCount; i++) {
@@ -4763,32 +4764,6 @@ export class ChartSessionController {
         const cell = updatedCells[i];
         if (!cell) continue;
 
-        this.attachCellListeners(cell);
-
-        const prov = snap.providerId || this.providerId || 'binance';
-        const targetSym = resolveVelaSymbol(snap.symbol || this.symbol, prov);
-        const targetTf = this.toVelaIntervalString(snap.timeframe || this.timeframe);
-
-        if (cell.symbol !== targetSym && typeof cell.setSymbol === 'function') {
-          cell.setSymbol(targetSym);
-        }
-        if (cell.timeframe !== targetTf && typeof cell.setTimeframe === 'function') {
-          cell.setTimeframe(targetTf);
-        }
-        this.syncCellMacroState(cell);
-
-        // Langkah 2a: Konfigurasi gaya lokal & tipe chart terlebih dahulu sebelum membangun indikator & sub-pane
-        if (snap.rendererConfig && typeof snap.rendererConfig === 'object') {
-          this.applyRendererConfig(snap.rendererConfig, cell);
-        }
-        if (snap.priceStyle) {
-          this.setPriceStyle(snap.priceStyle, cell);
-        }
-        if (snap.priceScaleCountdown !== undefined) {
-          this.setPriceScaleCountdown(snap.priceScaleCountdown, cell);
-        }
-
-        // Langkah 2b: Pulihkan indikator Pine per sel (atau fallback ke sharedIndicators saat syncConfig.indicators aktif)
         const chart = cell?.chart || cell?.inner;
         const targetIndicators =
           this.syncConfig.indicators === false
@@ -4799,53 +4774,64 @@ export class ChartSessionController {
               ? snap.indicators
               : options?.sharedIndicators;
 
-        if (Array.isArray(targetIndicators)) {
-          if (chart && typeof chart.indicators === 'function') {
-            for (const existingInd of Array.from(chart.indicators() || []) as any[]) {
-              if (existingInd?.nativeType === 'volume') continue;
-              try {
-                if (typeof existingInd?.remove === 'function') existingInd.remove();
-              } catch (_) {}
-            }
-          }
-          for (const ind of targetIndicators) {
-            if (!ind?.title) continue;
-            await this.addPineIndicatorToCell(
-              cell,
-              ind.source || 'plot(close)',
-              ind.title,
-              ind.inputs,
-              ind.props,
-              ind.visible !== false
-            );
-          }
-        }
+        await restoreCellThroughPipeline(
+          snap,
+          {
+            applyMarketIdentity: (cellSnap) => {
+              this.attachCellListeners(cell);
+              const prov = cellSnap.providerId || this.providerId || 'binance';
+              const targetSym = resolveVelaSymbol(cellSnap.symbol || this.symbol, prov);
+              const targetTf = this.toVelaIntervalString(cellSnap.timeframe || this.timeframe);
 
-        // Langkah 2c: Pulihkan indikator native (mis. Volume overlay / own-pane) sebelum tata letak pane
-        if (Array.isArray(snap.nativeIndicators) && snap.nativeIndicators.length > 0) {
-          await this.applyNativeIndicators(snap.nativeIndicators, cell);
-        }
-
-        // Langkah 2d: Pulihkan bobot & status collapse tiap pane setelah seluruh indikator & sub-pane terbentuk
-        if (Array.isArray(snap.paneLayout) && snap.paneLayout.length > 0) {
-          await this.applyPaneLayout(snap.paneLayout, { timeoutMs: 3000 }, cell);
-        }
-
-        // Langkah 2e: Pulihkan skala harga, zoom spacing, dan rentang historis setelah layout stabil
-        this.withSuppressedPersistEvents(() => {
-          if (snap.priceScaleState) {
-            this.applyPriceScaleState(snap.priceScaleState, cell);
+              if (cell.symbol !== targetSym && typeof cell.setSymbol === 'function') {
+                cell.setSymbol(targetSym);
+              }
+              if (cell.timeframe !== targetTf && typeof cell.setTimeframe === 'function') {
+                cell.setTimeframe(targetTf);
+              }
+              this.syncCellMacroState(cell);
+            },
+            applyRendererConfig: (sanitizedConfig) => {
+              this.applyRendererConfig(sanitizedConfig, cell);
+            },
+            setPriceStyle: (style) => this.setPriceStyle(style, cell),
+            setPriceScaleCountdown: (enabled) => this.setPriceScaleCountdown(enabled, cell),
+            clearNonVolumeIndicators: () => {
+              if (chart && typeof chart.indicators === 'function') {
+                for (const existingInd of Array.from(chart.indicators() || []) as any[]) {
+                  if (existingInd?.nativeType === 'volume') continue;
+                  try {
+                    if (typeof existingInd?.remove === 'function') existingInd.remove();
+                  } catch (_) {}
+                }
+              }
+            },
+            addPineIndicator: async (ind) => {
+              if (!ind?.title) return;
+              await this.addPineIndicatorToCell(
+                cell,
+                ind.source || 'plot(close)',
+                ind.title,
+                ind.inputs,
+                ind.props,
+                ind.visible !== false
+              );
+            },
+            applyNativeIndicators: (entries) => this.applyNativeIndicators(entries, cell),
+            applyPaneLayout: (entries, opts) => this.applyPaneLayout(entries, opts, cell),
+            withSuppressedPersistEvents: (fn) => this.withSuppressedPersistEvents(fn),
+            applyPriceScaleState: (state) => this.applyPriceScaleState(state, cell),
+            setBarSpacing: (spacing) => this.setBarSpacing(spacing, cell),
+            applyVisibleRange: (vr) => this.applyVisibleRange(vr, cell),
+            finalizeCellVisuals: () => {
+              this.enforceCurrentPriceLine(cell);
+              this.syncGlobalVisualChromeToCells(cell);
+            },
+          },
+          {
+            indicators: targetIndicators,
           }
-          if (typeof snap.barSpacing === 'number' && snap.barSpacing > 0) {
-            this.setBarSpacing(snap.barSpacing, cell);
-          }
-          if (snap.visibleRange) {
-            this.applyVisibleRange(snap.visibleRange, cell);
-          }
-        });
-
-        this.enforceCurrentPriceLine(cell);
-        this.syncGlobalVisualChromeToCells(cell);
+        );
       }
 
       // 3. Pastikan active cell terfokus tepat sesuai activeCellIndex dan UI shell tersinkron

@@ -51,11 +51,143 @@ export function cloneRendererConfigValue<T>(value: T, seen = new WeakMap<object,
   seen.set(value as object, out);
   for (const [key, entry] of Object.entries(value)) {
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    if (typeof entry === 'number' && !Number.isFinite(entry)) continue;
     if (entry !== undefined) {
       out[key] = cloneRendererConfigValue(entry, seen);
     }
   }
   return out as T;
+}
+
+function isFiniteInRange(value: unknown, min: number, max: number, maxInclusive = true): value is number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+  if (value < min) return false;
+  return maxInclusive ? value <= max : value < max;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function sanitizeMarginsRecord(margins: unknown): Record<string, number> | undefined {
+  if (!isPlainRecord(margins)) return undefined;
+  const out: Record<string, number> = {};
+  if (isFiniteInRange(margins.top, 0, 1, false)) {
+    out.top = margins.top;
+  }
+  if (isFiniteInRange(margins.bottom, 0, 1, false)) {
+    out.bottom = margins.bottom;
+  }
+  if (typeof out.top === 'number' && typeof out.bottom === 'number' && out.top + out.bottom >= 1) {
+    return undefined;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function sanitizeCandleOrBarGroup(group: unknown): Record<string, any> | undefined {
+  if (!isPlainRecord(group)) return undefined;
+  const out: Record<string, any> = {};
+  const boolKeys = ['bodyVisible', 'borderVisible', 'wickVisible'];
+  const colorKeys = ['upColor', 'downColor', 'borderUpColor', 'borderDownColor', 'wickUpColor', 'wickDownColor'];
+
+  for (const key of boolKeys) {
+    if (typeof group[key] === 'boolean') {
+      out[key] = group[key];
+    }
+  }
+  for (const key of colorKeys) {
+    if (isNonEmptyString(group[key])) {
+      out[key] = group[key];
+    }
+  }
+  for (const [key, val] of Object.entries(group)) {
+    if (!boolKeys.includes(key) && !colorKeys.includes(key) && val !== undefined) {
+      out[key] = val;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Membuang atau menormalkan properti rendererConfig yang malformed atau di luar rentang valid
+ * sebelum mencapai session port atau renderer.
+ */
+function sanitizeRendererPropertiesInPlace(target: Record<string, any>): void {
+  if ('margins' in target) {
+    const cleanMargins = sanitizeMarginsRecord(target.margins);
+    if (cleanMargins) {
+      target.margins = cleanMargins;
+    } else {
+      delete target.margins;
+    }
+  }
+
+  if ('barSpacing' in target && !isFiniteInRange(target.barSpacing, 0.5, 500)) {
+    delete target.barSpacing;
+  }
+
+  if ('priceScale' in target) {
+    if (!isPlainRecord(target.priceScale)) {
+      delete target.priceScale;
+    } else {
+      const ps = target.priceScale;
+      if ('autoScale' in ps && typeof ps.autoScale !== 'boolean') delete ps.autoScale;
+      if ('log' in ps && typeof ps.log !== 'boolean') delete ps.log;
+      if ('inverted' in ps && typeof ps.inverted !== 'boolean') delete ps.inverted;
+      if ('mode' in ps && !isNonEmptyString(ps.mode) && !isFiniteInRange(ps.mode, 0, 10)) {
+        delete ps.mode;
+      }
+      if ('scaleMargins' in ps) {
+        const cleanScaleMargins = sanitizeMarginsRecord(ps.scaleMargins);
+        if (cleanScaleMargins) {
+          ps.scaleMargins = cleanScaleMargins;
+        } else {
+          delete ps.scaleMargins;
+        }
+      }
+      if (Object.keys(ps).length === 0) {
+        delete target.priceScale;
+      }
+    }
+  }
+
+  if ('crosshair' in target) {
+    if (!isPlainRecord(target.crosshair)) {
+      delete target.crosshair;
+    } else {
+      const ch = target.crosshair;
+      if ('width' in ch && !isFiniteInRange(ch.width, 0.5, 20)) delete ch.width;
+      if ('opacity' in ch && !isFiniteInRange(ch.opacity, 0, 1)) delete ch.opacity;
+      if ('style' in ch && !isNonEmptyString(ch.style)) delete ch.style;
+      if (Object.keys(ch).length === 0) {
+        delete target.crosshair;
+      }
+    }
+  }
+
+  for (const groupKey of ['candles', 'bars'] as const) {
+    if (groupKey in target) {
+      const cleanGroup = sanitizeCandleOrBarGroup(target[groupKey]);
+      if (cleanGroup) {
+        target[groupKey] = cleanGroup;
+      } else {
+        delete target[groupKey];
+      }
+    }
+  }
+
+  if ('series' in target) {
+    if (!isPlainRecord(target.series)) {
+      delete target.series;
+    } else {
+      if ('style' in target.series && !isNonEmptyString(target.series.style)) {
+        delete target.series.style;
+      }
+      if (Object.keys(target.series).length === 0) {
+        delete target.series;
+      }
+    }
+  }
 }
 
 function stripGlobalKeysInPlace(target: Record<string, any>): void {
@@ -110,6 +242,7 @@ export function sanitizeRendererConfigForApply(
   if (!isPlainRecord(config)) return undefined;
   const cloned = cloneRendererConfigValue(config) as Record<string, any>;
   stripGlobalKeysInPlace(cloned);
+  sanitizeRendererPropertiesInPlace(cloned);
   return Object.keys(cloned).length > 0 ? cloned : undefined;
 }
 
@@ -127,6 +260,7 @@ export function sanitizeRendererConfigForPersistence(
   if (!isPlainRecord(rawConfig)) return undefined;
   const cloned = cloneRendererConfigValue(rawConfig) as Record<string, any>;
   stripGlobalKeysInPlace(cloned);
+  sanitizeRendererPropertiesInPlace(cloned);
 
   if (activeThemeColors) {
     if (isPlainRecord(cloned.candles)) {
