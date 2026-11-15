@@ -21,11 +21,9 @@ import {
 } from '../src/lib/services/indicatorCatalogService';
 import { ChartSessionController } from '../src/lib/services/chartSessionController';
 import {
-  calculateVpvrProfile,
   normalizeVpvrInputs,
-  type CandleBar,
+  toEngineVpvrOptions,
   type VpvrOptions,
-  type VpvrRow,
 } from '../src/lib/services/vpvrProfile';
 
 describe('Visible Range Volume Profile (VPVR) Suite (#196)', () => {
@@ -111,108 +109,89 @@ describe('Visible Range Volume Profile (VPVR) Suite (#196)', () => {
   });
 
   // =========================================================================
-  // 2. Perhitungan Profil WebGL2 VPVR (Algoritma, POC, Value Area, & Reaktivitas)
+  // 2. Normalisasi Input VPVR & Translasi Opsi Engine Vela
   // =========================================================================
-  describe('2. Perhitungan Profil WebGL2 VPVR (Algoritma, POC, Value Area, & Reaktivitas)', () => {
-    // Kumpulan lilin sintetis dengan konsentrasi volume tinggi di sekitar harga 105
-    const mockBars: CandleBar[] = [
-      { time: 1000, open: 100, high: 102, low: 99, close: 101, volume: 100 },   // Bullish
-      { time: 2000, open: 101, high: 103, low: 100, close: 100, volume: 150 },  // Bearish
-      { time: 3000, open: 100, high: 106, low: 100, close: 105, volume: 500 },  // Bullish (High Vol)
-      { time: 4000, open: 105, high: 107, low: 104, close: 106, volume: 1000 }, // Bullish (POC Cluster)
-      { time: 5000, open: 106, high: 107, low: 105, close: 105, volume: 800 },  // Bearish (POC Cluster)
-      { time: 6000, open: 105, high: 110, low: 105, close: 109, volume: 300 },  // Bullish
-      { time: 7000, open: 109, high: 112, low: 108, close: 111, volume: 200 },  // Bullish
-      { time: 8000, open: 111, high: 115, low: 110, close: 114, volume: 100 },  // Bullish
-    ];
-
-    test('menghitung profil volume dengan tepat memisahkan Up vs Down volume', () => {
-      const profile = calculateVpvrProfile(mockBars, 0, mockBars.length - 1, { rows: 10, valueAreaPct: 70 });
-      assert.ok(profile);
-      assert.strictEqual(profile.rows.length, 10, 'Harus menghasilkan tepat 10 baris');
-      assert.strictEqual(profile.minPrice, 99, 'Harga terendah harus 99');
-      assert.strictEqual(profile.maxPrice, 115, 'Harga tertinggi harus 115');
-
-      // Total volume harus sama dengan akumulasi volume lilin
-      const totalCandleVol = mockBars.reduce((sum, b) => sum + (b.volume || 0), 0);
-      assert.strictEqual(Math.round(profile.totalVolume), totalCandleVol, 'Total volume harus konsisten');
-
-      // Seluruh baris harus memiliki pembagian volume up dan down
-      for (const row of profile.rows) {
-        assert.ok(row.up >= 0, 'Volume up tidak boleh negatif');
-        assert.ok(row.down >= 0, 'Volume down tidak boleh negatif');
-        assert.strictEqual(row.total, row.up + row.down, 'Total row harus penjumlahan up + down');
-      }
+  describe('2. Normalisasi Input VPVR & Translasi Opsi Engine Vela', () => {
+    test('normalizeVpvrInputs menerapkan nilai default yang aman saat input kosong', () => {
+      const normalized = normalizeVpvrInputs();
+      assert.strictEqual(normalized.rows, 24);
+      assert.strictEqual(normalized.rowCount, 24);
+      assert.strictEqual(normalized.valueAreaPct, 70);
+      assert.strictEqual(normalized.valueAreaVolumePercentage, 70);
+      assert.strictEqual(normalized.widthPct, 30);
+      assert.strictEqual(normalized.showPoc, true);
+      assert.strictEqual(normalized.anchorMode, 'visible');
+      assert.strictEqual(normalized.anchorStartTime, null);
+      assert.strictEqual(normalized.anchorEndTime, null);
     });
 
-    test('mengidentifikasi Point of Control (POC) pada area konsentrasi volume tertinggi', () => {
-      const profile = calculateVpvrProfile(mockBars, 0, mockBars.length - 1, { rows: 16 });
-      assert.ok(profile);
-
-      // POC harus memiliki volume tertinggi
-      const pocRow = profile.rows[profile.pocIndex];
-      assert.strictEqual(pocRow.isPoc, true);
-      assert.strictEqual(pocRow.total, profile.maxVolume);
-
-      // Sesuai data sintetis, POC harus berada di sekitar harga 104 - 107
-      assert.ok(profile.pocPrice >= 104 && profile.pocPrice <= 108, `POC (${profile.pocPrice}) harus berada di area padat volume`);
-    });
-
-    test('menghitung Value Area High (VAH) dan Value Area Low (VAL) mencakup 70% volume', () => {
-      const profile = calculateVpvrProfile(mockBars, 0, mockBars.length - 1, { valueAreaPct: 70 });
-      assert.ok(profile);
-
-      assert.ok(profile.valIndex <= profile.pocIndex, 'VAL index harus <= POC index');
-      assert.ok(profile.vahIndex >= profile.pocIndex, 'VAH index harus >= POC index');
-      assert.ok(profile.valPrice <= profile.pocPrice, 'VAL price harus <= POC price');
-      assert.ok(profile.vahPrice >= profile.pocPrice, 'VAH price harus >= POC price');
-
-      // Akumulasi volume Value Area harus >= 70% dari total
-      assert.ok(profile.valueAreaPercentage >= 70, `Persentase Value Area (${profile.valueAreaPercentage}%) harus >= 70%`);
-
-      // Verifikasi penandaan flag isValueArea
-      profile.rows.forEach((row: VpvrRow, k: number) => {
-        if (k >= profile.valIndex && k <= profile.vahIndex) {
-          assert.strictEqual(row.isValueArea, true, `Baris ${k} harus di dalam Value Area`);
-        } else {
-          assert.strictEqual(row.isValueArea, false, `Baris ${k} harus di luar Value Area`);
-        }
+    test('normalizeVpvrInputs melakukan clamping untuk rowCount, valueAreaPercent, dan widthPct di luar batas', () => {
+      const lowBounds = normalizeVpvrInputs({
+        rowCount: -10,
+        valueAreaPercent: -25,
+        widthPct: 1,
+        vaOpacity: -5,
+        outsideOpacity: 150,
+        pocOpacity: Number.NaN,
       });
+      assert.strictEqual(lowBounds.rows, 2, 'rowCount minimum harus di-clamp ke 2');
+      assert.strictEqual(lowBounds.rowCount, 2);
+      assert.strictEqual(lowBounds.valueAreaPct, 0, 'valueAreaPercent minimum harus di-clamp ke 0');
+      assert.strictEqual(lowBounds.widthPct, 5, 'widthPct minimum harus di-clamp ke 5');
+      assert.strictEqual(lowBounds.vaOpacity, 0);
+      assert.strictEqual(lowBounds.outsideOpacity, 100);
+      assert.strictEqual(lowBounds.pocOpacity, 90);
+
+      const highBounds = normalizeVpvrInputs({
+        rowCount: 9999,
+        valueAreaPercent: 180,
+        widthPct: 120,
+      });
+      assert.strictEqual(highBounds.rows, 400, 'rowCount maksimum harus di-clamp ke 400');
+      assert.strictEqual(highBounds.rowCount, 400);
+      assert.strictEqual(highBounds.valueAreaPct, 100, 'valueAreaPercent maksimum harus di-clamp ke 100');
+      assert.strictEqual(highBounds.widthPct, 90, 'widthPct maksimum harus di-clamp ke 90');
     });
 
-    test('reaktivitas: menghitung ulang profil saat grafik di-pan atau di-zoom (perubahan rentang tampak)', () => {
-      // Skenario 1: Rentang penuh (0 .. 7)
-      const fullProfile = calculateVpvrProfile(mockBars, 0, 7);
-      assert.ok(fullProfile);
+    test('normalizeVpvrInputs mensanitasi custom anchor timestamps yang tidak valid atau terbalik', () => {
+      const invalidTimestamps = normalizeVpvrInputs({
+        anchorMode: 'custom',
+        anchorStartTime: -500,
+        anchorEndTime: Number.POSITIVE_INFINITY,
+      });
+      assert.strictEqual(invalidTimestamps.anchorMode, 'custom');
+      assert.strictEqual(invalidTimestamps.anchorStartTime, 0, 'Timestamp negatif harus di-clamp ke 0');
+      assert.strictEqual(invalidTimestamps.anchorEndTime, null, 'Timestamp non-finite harus menjadi null');
 
-      // Skenario 2: Grafik di-pan/zoom hanya melihat paruh kedua (4 .. 7)
-      const pannedProfile = calculateVpvrProfile(mockBars, 4, 7);
-      assert.ok(pannedProfile);
-
-      // Rentang harga dan titik POC harus berubah sesuai viewport aktif
-      assert.notStrictEqual(pannedProfile.minPrice, fullProfile.minPrice);
-      assert.strictEqual(pannedProfile.minPrice, 105, 'Min price paruh kedua harus 105');
-      assert.strictEqual(pannedProfile.maxPrice, 115, 'Max price paruh kedua harus 115');
-      assert.notStrictEqual(pannedProfile.totalVolume, fullProfile.totalVolume);
+      const reversedTimestamps = normalizeVpvrInputs({
+        anchorMode: 'custom',
+        anchorStartTime: 1700002000,
+        anchorEndTime: 1700001000,
+      });
+      assert.strictEqual(reversedTimestamps.anchorStartTime, 1700001000, 'Timestamp start/end terbalik harus dirapikan');
+      assert.strictEqual(reversedTimestamps.anchorEndTime, 1700002000);
     });
 
-    test('edge case: menangani lilin kosong dan lilin bervolume 0 tanpa error', () => {
-      assert.strictEqual(calculateVpvrProfile([], 0, 0), null);
+    test('toEngineVpvrOptions menerjemahkan parameter ternormalisasi ke kontrak engine Vela', () => {
+      const engineOpts = toEngineVpvrOptions({
+        rowCount: 48.6,
+        valueAreaPercent: 68,
+        widthPct: 40,
+        upColor: '#10b981',
+        downColor: '#ef4444',
+        showPoc: false,
+        anchorMode: 'session',
+      });
 
-      const zeroVolBars: CandleBar[] = [
-        { open: 100, high: 102, low: 98, close: 101, volume: 0 },
-        { open: 101, high: 103, low: 99, close: 100, volume: 0 },
-      ];
-      assert.strictEqual(calculateVpvrProfile(zeroVolBars, 0, 1), null);
-
-      // Lilin dengan spread harga 0 (high === low)
-      const flatBars: CandleBar[] = [
-        { open: 100, high: 100, low: 100, close: 100, volume: 50 },
-        { open: 100, high: 105, low: 100, close: 104, volume: 100 },
-      ];
-      const flatProfile = calculateVpvrProfile(flatBars, 0, 1);
-      assert.ok(flatProfile);
-      assert.strictEqual(flatProfile.rows.length >= 2, true);
+      assert.strictEqual(engineOpts.rows, 49);
+      assert.strictEqual(engineOpts.widthFrac, 0.4);
+      assert.strictEqual(engineOpts.valueAreaFrac, 0.68);
+      assert.strictEqual(engineOpts.upColor, '#10b981');
+      assert.strictEqual(engineOpts.downColor, '#ef4444');
+      assert.strictEqual(engineOpts.showPoc, false);
+      assert.strictEqual(engineOpts.anchorMode, 'session');
+      assert.strictEqual(engineOpts.anchorStartTime, null);
+      assert.strictEqual(engineOpts.anchorEndTime, null);
     });
   });
 
@@ -313,7 +292,7 @@ describe('Visible Range Volume Profile (VPVR) Suite (#196)', () => {
         workspaceFactory: () => harness.mockWs,
         syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
       });
-      controller.attach({ nodeType: 1 } as any);
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       const ok = await controller.addNativeIndicator('vpvr', {
         inputs: { rows: 32, valueAreaPct: 75, pocColor: '#f59e0b' },
@@ -349,7 +328,7 @@ describe('Visible Range Volume Profile (VPVR) Suite (#196)', () => {
         workspaceFactory: () => harness.mockWs,
         syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
       });
-      controller.attach({ nodeType: 1 } as any);
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       const vpvrDescriptor = catalogService.findIndicator('native:vpvr')!;
       assert.ok(vpvrDescriptor);
@@ -368,7 +347,7 @@ describe('Visible Range Volume Profile (VPVR) Suite (#196)', () => {
         workspaceFactory: () => harness.mockWs,
         syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
       });
-      controller.attach({ nodeType: 1 } as any);
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       await controller.addNativeIndicator('vpvr');
       await controller.addNativeIndicator('vpvr');
@@ -384,7 +363,7 @@ describe('Visible Range Volume Profile (VPVR) Suite (#196)', () => {
         workspaceFactory: () => harness.mockWs,
         syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
       });
-      controller.attach({ nodeType: 1 } as any);
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       await controller.addNativeIndicator('vpvr', { inputs: { rows: 24, valueAreaPct: 70 } });
       const active = controller.getActiveIndicators();
@@ -418,7 +397,7 @@ describe('Visible Range Volume Profile (VPVR) Suite (#196)', () => {
         workspaceFactory: () => harness.mockWs,
         syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
       });
-      controller.attach({ nodeType: 1 } as any);
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       await controller.addNativeIndicator('vpvr');
       assert.strictEqual(harness.cell1.chart.isVpvrMounted(), true);
@@ -445,7 +424,7 @@ describe('Visible Range Volume Profile (VPVR) Suite (#196)', () => {
         workspaceFactory: () => harness.mockWs,
         syncConfig: { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: false },
       });
-      controller.attach({ nodeType: 1 } as any);
+      controller.attach({ nodeType: 1 } as unknown as HTMLElement);
 
       // Pasang hanya ke sel 2
       const ok = await controller.addNativeIndicatorToCell(harness.cell2, 'vpvr', { inputs: { rows: 30 } });

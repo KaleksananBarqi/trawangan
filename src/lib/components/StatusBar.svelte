@@ -23,7 +23,7 @@
   } from '../services/updateService';
   import { openExternalUrl } from '../services/urlService';
   import { marketFeed } from '../services/market';
-  import { marketSessionService, type MarketSessionState } from '../services/marketSessionService';
+  import type { MarketSession } from '../services/marketSessionService';
   import type { FeedConnectionStatus } from '../services/market/types';
   import type { AppSettings } from '../types/market';
   import {
@@ -39,6 +39,8 @@
     onOpenAbout?: () => void;
     settings?: AppSettings;
     onSelectTimezone?: (tz: string) => void;
+    session?: MarketSession;
+    sessionAvailable?: boolean;
     onToggleSession?: () => void;
   }
 
@@ -48,6 +50,8 @@
     onOpenAbout,
     settings,
     onSelectTimezone,
+    session = 'regular',
+    sessionAvailable = false,
     onToggleSession
   }: Props = $props();
 
@@ -61,15 +65,9 @@
   let unsubUpdate: (() => void) | null = null;
   let feedStatus = $state<FeedConnectionStatus>(marketFeed.getConnectionStatus());
   let unsubFeed: (() => void) | null = null;
-  let sessionState = $state<MarketSessionState>(marketSessionService.getSnapshot());
-  let unsubSession: (() => void) | null = null;
 
   function handleSessionToggleClick() {
-    if (onToggleSession) {
-      onToggleSession();
-    } else {
-      marketSessionService.toggleSession();
-    }
+    onToggleSession?.();
   }
 
   function updateClock() {
@@ -98,9 +96,6 @@
     unsubFeed = marketFeed.onConnectionChange((st) => {
       feedStatus = st;
     });
-    unsubSession = marketSessionService.subscribe((st) => {
-      sessionState = st;
-    });
   });
 
   onDestroy(() => {
@@ -108,7 +103,6 @@
     if (unsubTelemetry) unsubTelemetry();
     if (unsubUpdate) unsubUpdate();
     if (unsubFeed) unsubFeed();
-    if (unsubSession) unsubSession();
   });
 </script>
 
@@ -273,8 +267,8 @@
       {/if}
     </div>
 
-    {#if sessionState.sessionAvailable}
-      {@const effectiveSession = settings?.marketSession ?? sessionState.session}
+    {#if sessionAvailable}
+      {@const effectiveSession = session ?? settings?.marketSession ?? 'regular'}
       <div class="divider"></div>
       <button
         type="button"
