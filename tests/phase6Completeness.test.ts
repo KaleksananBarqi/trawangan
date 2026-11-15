@@ -371,7 +371,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
     assert.ok(chartTabSrc.includes('Simpan sebagai Default'), 'ChartTab.svelte harus punya tombol Simpan sebagai Default');
     assert.ok(settingsModalSrc.includes('onSaveChartAsDefault'), 'SettingsModal.svelte harus meneruskan onSaveChartAsDefault');
     assert.ok(pageSrc.includes('onSaveChartAsDefault'), '+page.svelte harus menghubungkan onSaveChartAsDefault');
-    assert.ok(pageSrc.includes('saveCurrentChartSettingsAsDefault'), '+page.svelte harus memanggil saveCurrentChartSettingsAsDefault');
+    assert.ok(pageSrc.includes('saveCurrentSettingsAsDefault'), '+page.svelte harus memanggil saveCurrentSettingsAsDefault pada sessionController');
   });
 
   test('3. thesisCardGeometry: state di chartDrawingController, equality guard, snapshot roundtrip & props FloatingThesisCard', async () => {
