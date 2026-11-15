@@ -103,12 +103,23 @@ import {
 } from './marketSessionService';
 import {
   type VisibleRangePreset,
+  type RangePresetConfig,
+  VISIBLE_RANGE_PRESETS,
   isValidRangePreset,
   getRangePresetConfig,
   calculateRangePresetSpan,
   getNextRangePreset,
 } from './rangePresetService';
-export type { VisibleRangePreset };
+export type { VisibleRangePreset, RangePresetConfig };
+export type RangePresetId = VisibleRangePreset;
+export {
+  VISIBLE_RANGE_PRESETS,
+  VISIBLE_RANGE_PRESETS as RANGE_PRESETS,
+  isValidRangePreset,
+  getRangePresetConfig,
+  calculateRangePresetSpan,
+  getNextRangePreset,
+};
 
 export interface ChartSessionOptions {
   symbol: string;
@@ -471,6 +482,7 @@ export class ChartSessionController {
   private onRangePresetChange?: (preset: VisibleRangePreset | null) => void;
   private activeRangePreset: VisibleRangePreset | null = null;
   private activeRangePresetSpan: { from: number; to: number } | null = null;
+  private isApplyingRangePreset = false;
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   private onStrategyTelemetryHandler?: (payload: StrategyTelemetryPayload) => void;
   public readonly strategyTelemetry: PineStrategyTelemetryService;
@@ -4401,9 +4413,12 @@ export class ChartSessionController {
     const targetVelaTf = config.velaTimeframe;
     const requiredBars = config.bars;
     const prevTimeframe = this.timeframe;
+    const prevPreset = this.activeRangePreset;
+    const prevSpan = this.activeRangePresetSpan;
 
     // Hitung span awal tanpa clamping ke bar timeframe lama agar setMarket memuat kedalaman penuh
     const initialSpan = calculateRangePresetSpan(preset);
+    this.isApplyingRangePreset = true;
     this.activeRangePreset = preset;
     this.activeRangePresetSpan = initialSpan;
     this.timeframe = targetTf;
@@ -4462,9 +4477,22 @@ export class ChartSessionController {
       this.notify();
       return true;
     } catch (err) {
+      this.activeRangePreset = prevPreset;
+      this.activeRangePresetSpan = prevSpan;
+      this.timeframe = prevTimeframe;
+      this.activeCellInfo = { symbol: this.symbol, timeframe: prevTimeframe };
       console.warn('[ChartSessionController] Gagal menyetel visible range preset:', err);
       return false;
+    } finally {
+      this.isApplyingRangePreset = false;
     }
+  }
+
+  /**
+   * Alias seam terpadu untuk menerapkan Visible Range Preset pada sesi chart aktif.
+   */
+  public async applyRangePreset(presetId: VisibleRangePreset, cell?: any): Promise<boolean> {
+    return this.setVisibleRangePreset(presetId, cell);
   }
 
   /**
@@ -4499,16 +4527,29 @@ export class ChartSessionController {
   }
 
   /**
-   * Mengecek apakah posisi viewport pengguna telah menyimpang jauh dari rentang preset yang dibingkai
+   * Mengevaluasi perubahan rentang waktu terlihat (pan/zoom manual) terhadap horizon preset aktif.
+   * Mengembalikan true jika viewport menyimpang di luar toleransi sehingga activeRangePreset di-reset ke null.
    */
-  private checkRangePresetViewportDrift(cell: any): void {
-    if (!this.activeRangePreset || !this.activeRangePresetSpan) return;
-    const vr = this.getVisibleRangeSnapshot(cell);
-    if (!vr || typeof vr.from !== 'number' || typeof vr.to !== 'number') return;
+  public handleVisibleTimeRangeChange(
+    rangeOrCell?: { from: number; to: number } | any,
+    cell?: any
+  ): boolean {
+    if (this.isApplyingRangePreset) return false;
+    if (!this.activeRangePreset || !this.activeRangePresetSpan) return false;
+
+    const hasExplicitRange =
+      rangeOrCell &&
+      typeof rangeOrCell === 'object' &&
+      typeof rangeOrCell.from === 'number' &&
+      typeof rangeOrCell.to === 'number';
+    const vr = hasExplicitRange
+      ? (rangeOrCell as { from: number; to: number })
+      : this.getVisibleRangeSnapshot(cell ?? rangeOrCell);
+    if (!vr || typeof vr.from !== 'number' || typeof vr.to !== 'number') return false;
 
     const currentSpan = Math.abs(vr.to - vr.from);
     const targetSpan = Math.abs(this.activeRangePresetSpan.to - this.activeRangePresetSpan.from);
-    if (targetSpan <= 0) return;
+    if (targetSpan <= 0) return false;
 
     const ratio = currentSpan / targetSpan;
     const timeDrift = Math.abs(vr.to - this.activeRangePresetSpan.to);
@@ -4521,7 +4562,17 @@ export class ChartSessionController {
       this.activeRangePresetSpan = null;
       this.onRangePresetChange?.(null);
       this.notify();
+      return true;
     }
+
+    return false;
+  }
+
+  /**
+   * Mengecek apakah posisi viewport pengguna telah menyimpang jauh dari rentang preset yang dibingkai
+   */
+  private checkRangePresetViewportDrift(cell: any): void {
+    this.handleVisibleTimeRangeChange(undefined, cell);
   }
 
   /**
