@@ -5,6 +5,17 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.51.1] - 2026-11-15
+
+### 🐛 Diperbaiki (Fixed)
+- **Ketahanan Pengecekan Pembaruan terhadap Rate Limit GitHub API (`UpdateService`):**
+  - Menambahkan caching bersyarat berbasis `ETag` (`If-None-Match` / `304 Not Modified`) agar pengecekan ulang rilis tidak terus memotong kuota API.
+  - Menambahkan *fallback* otomatis ke endpoint rilis statis (`latest.json` dan `SHA256SUMS.txt`) ketika GitHub REST API mengembalikan `HTTP 403` atau `429`, serta menyembunyikan label ukuran `0 B` pada daftar aset di `AboutTab.svelte` bila ukuran belum tersedia.
+  - Menampilkan pesan error batas kuota beserta waktu reset (`x-ratelimit-reset`) apabila seluruh sumber gagal dijangkau.
+- **Konsistensi Warna Candle Tema Setelah Restart & Pemulihan Multi-Chart:**
+  - Memastikan `ChartSessionController.attach()` menerapkan warna `candles` dan `bars` tema aktif ke renderer WebGL2 sebelum `applyUserChartDefaultConfig`, sehingga warna candle tidak lagi kembali ke default pabrik saat aplikasi baru dimuat/di-restart.
+  - Menyertakan konfigurasi warna candle tema aktif sebagai lapisan dasar pada `applyCellsSnapshot()` sebelum override `userChartDefaultConfig` dan `rendererConfig` masing-masing sel saat memulihkan workspace multi-chart.
+
 ## [0.51.0] - 2026-11-15
 
 ### 🚀 Ditambahkan (Added)
