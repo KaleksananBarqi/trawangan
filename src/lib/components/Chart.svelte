@@ -51,6 +51,7 @@
     onEditPlan?: (planId: string) => void;
     onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
     onPersistableStateChange?: (reason: string) => void;
+    onSessionStateChange?: (state: { session: 'regular' | 'extended'; sessionAvailable: boolean }) => void;
     themePreset?: ThemePresetId | string; fontSize?: number; timezone?: string;
     marketSession?: 'regular' | 'extended';
     workspaceId?: string | null;
@@ -73,7 +74,7 @@
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onPriceStyleChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
-    onEditPlan, onVelaThemeSelect, onPersistableStateChange, securityWatermark, userProfile,
+    onEditPlan, onVelaThemeSelect, onPersistableStateChange, onSessionStateChange, securityWatermark, userProfile,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -127,6 +128,7 @@
   );
 
   let unsubAlerts: (() => void) | null = null;
+  let unsubController: (() => void) | null = null;
   let unsubDrawingState: (() => void) | null = null;
   let unsubDrawingDraft: (() => void) | null = null;
   let unsubAttachWorkspace: (() => void) | null = null;
@@ -275,6 +277,9 @@
       enableCutoffVisual: () => {},
       cancelCutoffVisual: () => {}
     });
+    unsubController = controller.subscribe((snap) => {
+      onSessionStateChange?.({ session: snap.session, sessionAvailable: snap.sessionAvailable });
+    });
     unsubAlerts = alertService.subscribe((alerts) => {
       allAlerts = alerts;
       priceScaleOverlayController.updateAlerts(alerts, symbol);
@@ -344,7 +349,7 @@
       clearTimeout(dblClickPaneCaptureTimer);
       dblClickPaneCaptureTimer = null;
     }
-    unsubAlerts?.(); unsubDrawingDraft?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
+    unsubController?.(); unsubAlerts?.(); unsubDrawingDraft?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
     unsubAttachWorkspace?.(); unsubAttachOverlay?.(); unsubAttachDataWindow?.();
     window.removeEventListener('paste', handleCanvasPaste);
     replaySession.bindDriver(null); controller.destroy();
@@ -555,6 +560,10 @@
   export function setPriceStyle(style: string, cell?: any): void { controller.setPriceStyle(style, cell); }
   export function cyclePriceStyle(cell?: any): string { return controller.cyclePriceStyle(cell); }
   export function setTimeframe(tf: Timeframe): void { controller.setTimeframe(tf); }
+  export function getSession(): 'regular' | 'extended' { return controller.getSession(); }
+  export function isSessionAvailable(): boolean { return controller.isSessionAvailable(); }
+  export function setSession(mode: 'regular' | 'extended'): void { controller.setSession(mode); }
+  export function toggleSession(): 'regular' | 'extended' { return controller.toggleSession(); }
   export function getBarSpacing(cell?: any): number { return controller.getBarSpacing(cell); }
   export function setBarSpacing(spacing: number, cell?: any): void { controller.setBarSpacing(spacing, cell); }
   export function saveWorkspaceState(name?: string) { return controller.saveWorkspaceState(name); }

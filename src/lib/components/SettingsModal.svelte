@@ -14,6 +14,7 @@
   } from '@lucide/svelte';
   import { onDestroy } from 'svelte';
   import type { AppSettings } from '../types/market';
+  import type { MarketSession } from '../services/marketSessionService';
   import { updateService, shouldShowUpdateBadge, type UpdateState } from '../services/updateService';
 
   // Submodul Pengaturan Terfokus (Architecture Deepening - Issue #9)
@@ -39,6 +40,8 @@
     onSaveChartAsDefault?: () => Promise<boolean> | boolean;
     onResetChartFactory?: () => void;
     onOpenGestureGuide?: () => void;
+    sessionState?: { session: MarketSession; sessionAvailable: boolean };
+    onSetSession?: (mode: MarketSession) => void;
   }
 
   let {
@@ -52,7 +55,9 @@
     onOpenChartSettings,
     onSaveChartAsDefault,
     onResetChartFactory,
-    onOpenGestureGuide
+    onOpenGestureGuide,
+    sessionState,
+    onSetSession
   }: Props = $props();
 
   let activeTab = $state<'general' | 'appearance' | 'typography' | 'chart' | 'profile' | 'feed' | 'system' | 'about' | 'help'>('general');
@@ -203,6 +208,8 @@
               {onOpenChartSettings}
               {onSaveChartAsDefault}
               {onResetChartFactory}
+              {sessionState}
+              {onSetSession}
             />
           {:else if activeTab === 'profile'}
             <ProfileTab {settings} {onUpdateSettings} />
