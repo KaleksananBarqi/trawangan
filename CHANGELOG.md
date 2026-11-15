@@ -5,6 +5,34 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.50.0] - 2026-11-15
+
+### 🚀 Ditambahkan (Added)
+- **Ekspansi Katalog Indikator Bawaan:**
+  - Menambahkan preset indikator **Double EMA**, **Key Levels**, dan **SMC** (*Smart Money Concepts*) ke katalog indikator bawaan.
+- **Modul Arsitektur Deepening (`#207`–`#211`):**
+  - Menambahkan `ChartStudyManager` (`chartStudyManager.ts`) sebagai pengelola siklus hidup studi Pine & Native (`VPVR`, **Native Volume Overlay**) berbasis sel.
+  - Menambahkan `PineRuntimeCoordinator` (`pineRuntimeCoordinator.ts`) yang menyatukan telemetri strategi, bridge alert/warning Pine, dan resolusi lintas-simbol `fetchSeries` (`request.security()`) di balik satu registrasi per sel.
+  - Menambahkan `rendererConfigSanitizer.ts` untuk validasi dan sanitasi konfigurasi renderer sebelum pemulihan dan persistensi **Workspace State v2**.
+
+### 🔄 Diubah (Changed)
+- **Konsolidasi Workspace State v2 (`#207`):**
+  - Menghapus `WorkspaceFingerprintInput` dan menghitung fingerprint **Workspace Auto-Save Guard** langsung dari `SavedWorkspace` kanonikal yang telah dinormalisasi.
+  - Menyatukan urutan pemulihan 5 langkah **ADR-0023** antara single-chart dan multi-cell melalui `restoreCellThroughPipeline`, serta menyempitkan `WorkspaceChartPort` menjadi kontrak deklaratif `captureWorkspaceSnapshot` / `applyWorkspaceSnapshot`.
+- **Penyederhanaan Seam Kanvas & Shell (`#209`):**
+  - Mengganti 19 blok `$effect` di `Chart.svelte` dengan metode rekonsiliasi prop idempoten `ChartSessionController.applyReactiveProps`.
+  - Merutekan `+page.svelte` ke `ChartSessionController` bertipe penuh dan `ChartViewHandle` sempit, serta memangkas ~78 wrapper *pass-through* di `Chart.svelte` (**ADR-0003** §2.B).
+- **Eksekusi Backtest Strategi Pine via Web Worker (`#210`):**
+  - Memindahkan `runPineStrategyBacktest` dari *main UI thread* ke pipeline `ScriptingEngine` berbasis Web Worker (**ADR-0003** §2.C) dengan ekstraktor **Strategy Backtest Report** tunggal.
+- **Kepemilikan Tunggal Sesi Pasar & Pemangkasan Kode Mati (`#208`, `#211`):**
+  - Menjadikan `ChartSessionController` otoritas tunggal state sesi pasar (`regular` / `extended`) dan framing **Visible Range Presets** beserta deteksi *viewport drift*.
+  - Menghapus kode mati produksi `calculateVpvrProfile`, `expandSessionZones`, `createSessionRendererConfig`, dan singleton stateful `marketSessionService`.
+
+### 🐛 Diperbaiki (Fixed)
+- Memperbaiki celah **Workspace Auto-Save Guard** sehingga perubahan `priceScaleCountdown` di level root maupun **Cell Snapshot** multi-chart langsung terdeteksi sebagai perubahan *dirty*.
+- Memperbaiki `cloneIndicatorsToCells` agar mengkloning studi Pine maupun Native (`VPVR`) secara utuh lintas sel tanpa menimpa seluruh studi menjadi `language: 'pine'`.
+- Memperbaiki presedensi state sesi pasar di `ChartTab.svelte` agar memprioritaskan state aktif dari `ChartSessionController` selaras dengan `StatusBar.svelte`.
+
 ## [0.49.0] - 2026-11-14
 
 ### 🚀 Ditambahkan (Added)
