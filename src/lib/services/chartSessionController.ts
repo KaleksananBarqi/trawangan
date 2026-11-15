@@ -36,6 +36,7 @@ import {
   type FetchSeriesHandler,
 } from './pineSeriesAdapter';
 import { IndicatorRegistry } from './indicatorRegistry';
+import { ChartStudyManager } from './chartStudyManager';
 import { normalizeVpvrInputs } from './vpvrProfile';
 import { chartDrawingController } from './chartDrawingController';
 import {
@@ -451,6 +452,47 @@ export class ChartSessionController {
   private subscribers = new Set<SessionSubscriber>();
   private isAttached = false;
   private indicatorRegistry = new IndicatorRegistry();
+  public readonly studyManager: ChartStudyManager = new ChartStudyManager(this.indicatorRegistry, {
+    getThemeContext: () => ({
+      themePreset: this.themePreset,
+      customPalette: this.customPalette,
+      customCandleColors: this.customCandleColors,
+    }),
+    withSuppressedPersistEvents: (fn) => this.withSuppressedPersistEvents(fn),
+    scheduleTimeout: (fn, ms) => this.scheduleManagedTimeout(fn, ms),
+    onStudyRemoved: (id) => {
+      this.strategyTelemetry.clearTelemetry(id);
+      this.pineAlertBridge.handleIndicatorRemoved(id);
+      for (const cell of this.getAllCells()) {
+        const chart = cell?.chart || cell?.inner;
+        const scene = chart?.renderer?.scene || chart?.scene;
+        if (scene?.indicators && typeof scene.indicators.get === 'function') {
+          const model = scene.indicators.get(id);
+          if (model && model.trades) {
+            model.trades = [];
+          }
+        }
+      }
+    },
+    onStudiesChanged: () => this.notifyActiveIndicators(),
+    onPersistableChange: (reason) => this.emitPersistableChange(reason),
+    onPineStrategyMounted: (cell, handle, cleanTitle) => {
+      if (typeof handle?.context === 'function') {
+        void handle.context().then((ctx: any) => {
+          if (ctx) {
+            const payload = this.strategyTelemetry.extractFromContext(handle.id, ctx, cleanTitle, cell?.id);
+            if (payload) {
+              this.strategyTelemetry.routeTradeMarkersToCell(cell, handle.id, payload.tradeExecutions);
+              this.onStrategyTelemetryHandler?.(payload);
+            }
+          }
+        }).catch((err: unknown) => {
+          console.warn('[ChartSessionController] Gagal mengambil context strategi Pine:', err);
+        });
+      }
+    },
+    enableTradeVisibility: (cell) => this.enableChartTradeVisibility(cell),
+  });
 
   private symbol: string;
   private timeframe: Timeframe;
@@ -1766,89 +1808,8 @@ export class ChartSessionController {
    * @param syncPineIndicators Apakah indikator Pine Script ikut disinkronkan (default: true saat pergantian tema)
    */
   public syncNativeVolumeColors(cell?: any, syncPineIndicators: boolean = true): void {
-    const { upColor: effectiveUp, downColor: effectiveDown, maColor: effectiveMA } =
-      resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
     const cells = cell ? [cell] : this.getAllCells();
-
-    for (const c of cells) {
-      const chart = c?.chart || c?.inner;
-      if (chart) {
-        let activeHeightPct: number | undefined;
-        if (typeof chart.indicators === 'function') {
-          for (const ind of Array.from(chart.indicators() || []) as any[]) {
-            const isNativeVol = ind?.nativeType === 'volume' || ind?.source === 'volume' || ind?.id === 'native:volume';
-            const isPineVol = isVolumeIndicator(ind?.title);
-
-            if (isNativeVol && typeof ind.inputValues === 'function') {
-              try {
-                const vals = ind.inputValues();
-                if (typeof vals?.heightPct === 'number' && Number.isFinite(vals.heightPct)) {
-                  activeHeightPct = vals.heightPct;
-                }
-              } catch (_) {}
-            }
-
-            if (isNativeVol || (syncPineIndicators && isPineVol)) {
-              if (typeof ind.setInputs === 'function') {
-                try {
-                  this.withSuppressedPersistEvents(() => {
-                    ind.setInputs({
-                      upColor: effectiveUp,
-                      downColor: effectiveDown,
-                      ...(isPineVol ? { maColor: effectiveMA } : {}),
-                    });
-                  });
-                } catch (err) {
-                  console.warn('[ChartSessionController] syncVolumeColors setInputs error:', err);
-                }
-              }
-            }
-          }
-        }
-        const renderer = chart.renderer?.renderer || chart.renderer;
-        if (renderer) {
-          const existingFrac = renderer.scene?.volumeLayer?.heightFrac;
-          const preservedFrac =
-            activeHeightPct !== undefined
-              ? Math.min(0.5, Math.max(0.05, activeHeightPct / 100))
-              : (typeof existingFrac === 'number' && Number.isFinite(existingFrac) ? existingFrac : 0.15);
-
-          if (typeof renderer.setNativeData === 'function') {
-            renderer.setNativeData('volume', {
-              upColor: effectiveUp,
-              downColor: effectiveDown,
-              heightFrac: preservedFrac,
-            });
-          } else if (renderer.scene?.volumeLayer) {
-            renderer.scene.volumeLayer.upColor = effectiveUp;
-            renderer.scene.volumeLayer.downColor = effectiveDown;
-            renderer.scheduler?.invalidate?.(3);
-          }
-        }
-      }
-    }
-
-    // Selaraskan juga entri tersimpan di indicatorRegistry saat pergantian tema global
-    if (this.indicatorRegistry) {
-      let hasRegistryUpdate = false;
-      for (const item of this.indicatorRegistry.getActiveIndicators()) {
-        const isNativeVol = item.source === 'volume' || item.id === 'native:volume' || (item as any).nativeType === 'volume';
-        const isPineVol = syncPineIndicators && isVolumeIndicator(item.title);
-        if (isNativeVol || isPineVol) {
-          this.withSuppressedPersistEvents(() => {
-            this.indicatorRegistry.updateInputs(item.id, {
-              upColor: effectiveUp,
-              downColor: effectiveDown,
-              ...(isPineVol ? { maColor: effectiveMA } : {}),
-            });
-          });
-          hasRegistryUpdate = true;
-        }
-      }
-      if (hasRegistryUpdate) {
-        this.notifyActiveIndicators();
-      }
-    }
+    this.studyManager.syncVolumeColors(cells, undefined, syncPineIndicators);
   }
 
   // ─── Persistent Price Line Guard Engine ───
@@ -2141,145 +2102,24 @@ export class ChartSessionController {
     savedProps?: Record<string, any>
   ): Promise<boolean> {
     if (!this.workspace) return false;
-
     try {
       const cleanTitle = (customTitle || 'Custom Indicator').trim();
-
-      // 1. DEDUPLIKASI: Hapus instance lama dengan judul atau source identik agar worker tidak menumpuk
-      for (const entry of this.getActiveIndicators()) {
-        if (entry.title === cleanTitle || (entry.source && entry.source.trim() === source.trim())) {
-          this.removeIndicator(entry.id);
-        }
-      }
-
-      // 2. Bersihkan juga secara native di cell target jika ada indikator dengan title yang sama
       const targetCells = (this.syncConfig.indicators !== false)
         ? this.getAllCells()
         : (this.workspace.active ? [this.workspace.active] : this.getAllCells());
 
-      for (const cell of targetCells as any[]) {
-        const chart = cell?.chart || cell?.inner;
-        if (!cell || !chart || typeof chart.indicators !== 'function') continue;
-        try {
-          const nativeList = chart.indicators();
-          for (const ind of nativeList) {
-            if (ind && (ind.title === cleanTitle || ind.title === customTitle)) {
-              if (typeof ind.remove === 'function') ind.remove();
-            }
-          }
-        } catch (_) {}
-      }
-
-      // 3. Tambahkan indikator ke cell target
-      const isStrategy = /\bstrategy\s*\(/.test(source);
-      if (isStrategy) {
-        for (const cell of targetCells as any[]) {
-          this.enableChartTradeVisibility(cell);
-        }
-      }
-
-      const isVolumeScript = isVolumeIndicator(cleanTitle);
-      let effectiveInputs = savedInputs ? { ...savedInputs } : undefined;
-      if (isVolumeScript) {
-        const { upColor: effectiveUp, downColor: effectiveDown, maColor: effectiveMA } =
-          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
-
-        effectiveInputs = {
-          upColor: effectiveUp,
-          downColor: effectiveDown,
-          maColor: effectiveMA,
-          ...(effectiveInputs || {}),
-        };
-      }
-
-      const createdHandles: any[] = [];
-      let firstHandle: any = null;
-
-      for (const cell of targetCells as any[]) {
-        const chart = cell?.chart || cell?.inner;
-        if (!chart || typeof chart.addIndicator !== 'function') continue;
-        if (isStrategy) {
-          this.enableChartTradeVisibility(cell);
-        }
-
-        const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
-        const addOptions: any = {
+      const res = await this.studyManager.addStudyToCells(
+        targetCells,
+        {
           language: 'pine',
           title: cleanTitle,
-          ...(isOverlay ? { overlay: true, pane: 'price' } : {}),
-        };
-        if (effectiveInputs && Object.keys(effectiveInputs).length > 0) {
-          addOptions.inputs = effectiveInputs;
-        }
-        if (savedProps && Object.keys(savedProps).length > 0) {
-          addOptions.props = savedProps;
-        }
-
-        const handle = chart.addIndicator(source, addOptions);
-        if (handle) {
-          if (isStrategy && typeof handle.context === 'function') {
-            void handle.context().then((ctx: any) => {
-              if (ctx) {
-                const payload = this.strategyTelemetry.extractFromContext(handle.id, ctx, cleanTitle, cell?.id);
-                if (payload) {
-                  this.strategyTelemetry.routeTradeMarkersToCell(cell, handle.id, payload.tradeExecutions);
-                  this.onStrategyTelemetryHandler?.(payload);
-                }
-              }
-            }).catch((err: unknown) => {
-              console.warn('[ChartSessionController] Gagal mengambil context strategi Pine:', err);
-            });
-          }
-          if (effectiveInputs && typeof handle.setInputs === 'function') {
-            try {
-              handle.setInputs(effectiveInputs);
-            } catch (err) {
-              console.warn('[ChartSessionController] Gagal memanggil handle.setInputs:', err);
-            }
-          }
-          if (savedProps && typeof handle.setProps === 'function') {
-            try {
-              handle.setProps(savedProps);
-            } catch (err) {
-              console.warn('[ChartSessionController] Gagal memanggil handle.setProps:', err);
-            }
-          }
-          createdHandles.push(handle);
-          if (!firstHandle) firstHandle = handle;
-        }
-      }
-
-      if (firstHandle) {
-        this.indicatorRegistry.register({
-          id: firstHandle.id,
-          handle: firstHandle,
-          handles: createdHandles,
-          title: cleanTitle,
           source,
-          visible: firstHandle.visible ?? true,
-          inputs: effectiveInputs,
+          inputs: savedInputs,
           props: savedProps,
-        });
-
-        if (effectiveInputs && Object.keys(effectiveInputs).length > 0) {
-          this.scheduleManagedTimeout(() => {
-            this.withSuppressedPersistEvents(() => {
-              for (const h of createdHandles) {
-                try {
-                  if (typeof h?.setInputs === 'function') {
-                    h.setInputs(effectiveInputs);
-                  }
-                } catch (_) {}
-              }
-            });
-            this.notifyActiveIndicators();
-          }, 350);
-        }
-
-        this.notifyActiveIndicators();
-        return true;
-      }
-      return false;
+        },
+        { deduplicate: true }
+      );
+      return res.ok;
     } catch (err) {
       console.error('[ChartSessionController] addPineIndicator error:', err);
       return false;
@@ -2351,77 +2191,23 @@ export class ChartSessionController {
     try {
       const cleanType = (type || '').trim().replace(/^native:/, '');
       const cleanTitle = (customTitle || cleanType).trim();
-
-      // Normalisasi opsi khusus untuk Visible Range Volume Profile (VPVR) dan Volume
-      let resolvedOptions = options || {};
-      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
-        resolvedOptions = {
-          ...resolvedOptions,
-          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
-        };
-      } else if (cleanType === 'volume') {
-        const { upColor: effectiveUp, downColor: effectiveDown } =
-          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
-        const currentInputs = (resolvedOptions.inputs || {}) as Record<string, any>;
-        const upStr = typeof currentInputs.upColor === 'string' ? currentInputs.upColor.toLowerCase() : '';
-        const downStr = typeof currentInputs.downColor === 'string' ? currentInputs.downColor.toLowerCase() : '';
-        const isVelaDefaultUp = !upStr || upStr === '#26a69a';
-        const isVelaDefaultDown = !downStr || downStr === '#ef5350';
-        resolvedOptions = {
-          ...resolvedOptions,
-          inputs: {
-            ...currentInputs,
-            upColor: isVelaDefaultUp ? effectiveUp : currentInputs.upColor,
-            downColor: isVelaDefaultDown ? effectiveDown : currentInputs.downColor,
-          },
-        };
-      }
-
       const targetCells = (this.syncConfig.indicators !== false)
         ? this.getAllCells()
         : (this.workspace.active ? [this.workspace.active] : this.getAllCells());
 
-      const createdHandles: any[] = [];
-      let firstHandle: any = null;
-
-      for (const cell of targetCells as any[]) {
-        const chart = cell?.chart || cell?.inner;
-        if (!chart || typeof chart.addNativeIndicator !== 'function') continue;
-
-        try {
-          const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
-          if (handle) {
-            this.enrichNativeHandle(handle, type);
-            createdHandles.push(handle);
-            if (!firstHandle) firstHandle = handle;
-          }
-        } catch (err) {
-          console.warn(`[ChartSessionController] addNativeIndicator("${cleanType}") error:`, err);
-        }
-      }
-
-      if (firstHandle) {
-        if (cleanType === 'volume') {
-          this.syncNativeVolumeColors();
-        }
-
-        this.indicatorRegistry.register({
-          id: firstHandle.id,
-          handle: firstHandle,
-          handles: createdHandles,
-          title: cleanTitle || firstHandle.title || cleanType,
+      const res = await this.studyManager.addStudyToCells(
+        targetCells,
+        {
+          language: 'native',
+          nativeType: cleanType,
+          title: cleanTitle,
           source: cleanType,
-          visible: firstHandle.visible ?? true,
-          inputs: resolvedOptions.inputs,
-          props: resolvedOptions.props,
-        });
-
-        this.notifyActiveIndicators();
-        this.emitPersistableChange('indicator:add_native');
-        return true;
-      }
-
-      return false;
+          inputs: options?.inputs,
+          props: options?.props,
+        },
+        { deduplicate: false }
+      );
+      return res.ok;
     } catch (err) {
       console.error('[ChartSessionController] addNativeIndicator error:', err);
       return false;
@@ -2443,53 +2229,19 @@ export class ChartSessionController {
     try {
       const cleanType = (type || '').trim().replace(/^native:/, '');
       const cleanTitle = (customTitle || cleanType).trim();
-
-      let resolvedOptions = options || {};
-      if (cleanType === 'vpvr' && resolvedOptions.inputs) {
-        resolvedOptions = {
-          ...resolvedOptions,
-          inputs: normalizeVpvrInputs(resolvedOptions.inputs),
-        };
-      } else if (cleanType === 'volume') {
-        const { upColor: effectiveUp, downColor: effectiveDown } =
-          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
-        const currentInputs = (resolvedOptions.inputs || {}) as Record<string, any>;
-        const upStr = typeof currentInputs.upColor === 'string' ? currentInputs.upColor.toLowerCase() : '';
-        const downStr = typeof currentInputs.downColor === 'string' ? currentInputs.downColor.toLowerCase() : '';
-        const isVelaDefaultUp = !upStr || upStr === '#26a69a';
-        const isVelaDefaultDown = !downStr || downStr === '#ef5350';
-        resolvedOptions = {
-          ...resolvedOptions,
-          inputs: {
-            ...currentInputs,
-            upColor: isVelaDefaultUp ? effectiveUp : currentInputs.upColor,
-            downColor: isVelaDefaultDown ? effectiveDown : currentInputs.downColor,
-          },
-        };
-      }
-
-      const handle = chart.addNativeIndicator(cleanType, resolvedOptions);
-      if (!handle) return false;
-
-      this.enrichNativeHandle(handle, type);
-      if (cleanType === 'volume') {
-        this.syncNativeVolumeColors(cell);
-      }
-
-      this.indicatorRegistry.register({
-        id: handle.id || `${cell.id || 'cell'}:${cleanTitle}`,
-        handle,
-        handles: [handle],
-        title: cleanTitle || handle.title || cleanType,
-        source: cleanType,
-        visible: handle.visible ?? true,
-        inputs: resolvedOptions.inputs,
-        props: resolvedOptions.props,
-      });
-
-      this.notifyActiveIndicators();
-      this.emitPersistableChange('indicator:add_native_cell');
-      return true;
+      const handle = await this.studyManager.addStudy(
+        cell,
+        {
+          language: 'native',
+          nativeType: cleanType,
+          title: cleanTitle,
+          source: cleanType,
+          inputs: options?.inputs,
+          props: options?.props,
+        },
+        { deduplicate: false, register: true }
+      );
+      return Boolean(handle);
     } catch (err) {
       console.error('[ChartSessionController] addNativeIndicatorToCell error:', err);
       return false;
@@ -2545,26 +2297,7 @@ export class ChartSessionController {
    * Menghapus indikator secara tuntas di seluruh sel (mencegah zombie indicator)
    */
   public removeIndicator(id: string): void {
-    if (id) {
-      this.strategyTelemetry.clearTelemetry(id);
-      this.pineAlertBridge.handleIndicatorRemoved(id);
-      for (const cell of this.getAllCells()) {
-        const chart = cell?.chart || cell?.inner;
-        const scene = chart?.renderer?.scene || chart?.scene;
-        if (scene?.indicators && typeof scene.indicators.get === 'function') {
-          const model = scene.indicators.get(id);
-          if (model && model.trades) {
-            model.trades = [];
-          }
-        }
-      }
-    }
-    this.indicatorRegistry.removeIndicator(
-      id,
-      this.syncConfig.indicators !== false,
-      () => this.getAllCells()
-    );
-    this.notifyActiveIndicators();
+    this.studyManager.removeStudy(id, this.getAllCells(), this.syncConfig.indicators !== false);
   }
 
   /**
@@ -2583,40 +2316,28 @@ export class ChartSessionController {
    * Mengubah status visibilitas indikator
    */
   public toggleIndicatorVisibility(id: string): void {
-    this.indicatorRegistry.toggleVisibility(id, this.syncConfig.indicators !== false);
-    this.notifyActiveIndicators();
-    this.emitPersistableChange('indicator:visibility');
+    this.studyManager.toggleStudyVisibility(id, this.syncConfig.indicators !== false);
   }
 
   /**
    * Memperbarui input parameter indikator
    */
   public updateIndicatorInputs(id: string, inputs: Record<string, any>): boolean {
-    let resolvedInputs = inputs;
-    const entry = this.indicatorRegistry.findEntry(id)?.entry;
-    const isVpvr = entry?.source === 'vpvr' || id.toLowerCase().includes('vpvr');
-    if (isVpvr && inputs) {
-      resolvedInputs = normalizeVpvrInputs(inputs);
-    }
-
-    const ok = this.indicatorRegistry.updateInputs(id, resolvedInputs);
-    this.notifyActiveIndicators();
-    this.emitPersistableChange('indicator:inputs');
-    return ok;
+    return this.studyManager.updateStudyInputs(id, inputs);
   }
 
   /**
    * Mengambil skema input untuk indikator tertentu
    */
   public getIndicatorInputSchema(idOrType: string): any[] {
-    return this.indicatorRegistry.getSchema(idOrType);
+    return this.studyManager.getInputSchema(idOrType);
   }
 
   /**
    * Mengambil input tersimpan atau live untuk indikator tertentu
    */
   public getIndicatorInputs(idOrType: string): Record<string, any> {
-    return this.indicatorRegistry.getInputs(idOrType);
+    return this.studyManager.getInputs(idOrType);
   }
 
   /**
@@ -2724,98 +2445,19 @@ export class ChartSessionController {
 
     try {
       const cleanTitle = (customTitle || 'Custom Indicator').trim();
-      if (typeof chart.indicators === 'function') {
-        for (const ind of Array.from(chart.indicators() || []) as any[]) {
-          if (ind && !ind.nativeType && (ind.title === cleanTitle || ind.title === customTitle)) {
-            try {
-              if (typeof ind.remove === 'function') ind.remove();
-            } catch (_) {}
-          }
-        }
-      }
-
-      const isVolumeScript = isVolumeIndicator(cleanTitle);
-      let effectiveInputs = savedInputs ? { ...savedInputs } : undefined;
-      if (isVolumeScript) {
-        const { upColor: effectiveUp, downColor: effectiveDown, maColor: effectiveMA } =
-          resolveEffectiveVolumeColors(this.themePreset, this.customPalette || undefined, this.customCandleColors || undefined);
-        effectiveInputs = {
-          upColor: effectiveUp,
-          downColor: effectiveDown,
-          maColor: effectiveMA,
-          ...(effectiveInputs || {}),
-        };
-      }
-
-      const isStrategy = /\bstrategy\s*\(/.test(source);
-      if (isStrategy) {
-        this.enableChartTradeVisibility(cell);
-      }
-
-      const isOverlay = source.includes('overlay=true') || source.includes('overlay = true');
-      const addOptions: any = {
-        language: 'pine',
-        title: cleanTitle,
-        ...(isOverlay ? { overlay: true, pane: 'price' } : {}),
-      };
-      if (effectiveInputs && Object.keys(effectiveInputs).length > 0) {
-        addOptions.inputs = effectiveInputs;
-      }
-      if (savedProps && Object.keys(savedProps).length > 0) {
-        addOptions.props = savedProps;
-      }
-
-      const handle = chart.addIndicator(source, addOptions);
-      if (!handle) return false;
-
-      if (isStrategy && typeof handle.context === 'function') {
-        void handle.context().then((ctx: any) => {
-          if (ctx) {
-            const payload = this.strategyTelemetry.extractFromContext(handle.id, ctx, cleanTitle, cell?.id);
-            if (payload) {
-              this.strategyTelemetry.routeTradeMarkersToCell(cell, handle.id, payload.tradeExecutions);
-              this.onStrategyTelemetryHandler?.(payload);
-            }
-          }
-        }).catch((err: unknown) => {
-          console.warn('[ChartSessionController] Gagal mengekstrak konteks strategi Pine pada cell:', err);
-        });
-      }
-
-      if (effectiveInputs && typeof handle.setInputs === 'function') {
-        try {
-          handle.setInputs(effectiveInputs);
-        } catch (err) {
-          console.warn('[ChartSessionController] Gagal menerapkan effectiveInputs pada handle indikator cell:', err);
-        }
-      }
-      if (savedProps && typeof handle.setProps === 'function') {
-        try {
-          handle.setProps(savedProps);
-        } catch (err) {
-          console.warn('[ChartSessionController] Gagal menerapkan savedProps pada handle indikator cell:', err);
-        }
-      }
-      if (visible === false && typeof handle.setVisible === 'function') {
-        try {
-          handle.setVisible(false);
-        } catch (err) {
-          console.warn('[ChartSessionController] Gagal menyembunyikan handle indikator cell:', err);
-        }
-      }
-
-      this.indicatorRegistry.register({
-        id: handle.id || `${cell.id || 'cell'}:${cleanTitle}`,
-        handle,
-        handles: [handle],
-        title: cleanTitle,
-        source,
-        visible,
-        inputs: effectiveInputs,
-        props: savedProps,
-      });
-
-      return true;
+      const handle = await this.studyManager.addStudy(
+        cell,
+        {
+          language: 'pine',
+          title: cleanTitle,
+          source,
+          inputs: savedInputs,
+          props: savedProps,
+          visible,
+        },
+        { deduplicate: true, register: true }
+      );
+      return Boolean(handle);
     } catch (err) {
       console.error('[ChartSessionController] addPineIndicatorToCell error:', err);
       return false;
@@ -3487,70 +3129,12 @@ export class ChartSessionController {
   }
 
   /**
-   * Mengkloning daftar indikator aktif ke seluruh cell workspace yang belum memilikinya
+   * Mengkloning daftar indikator aktif (Pine maupun Native seperti VPVR) ke seluruh cell workspace yang belum memilikinya
    */
   public cloneIndicatorsToCells(snapshot: ActiveIndicatorInfo[]): void {
     if (!this.workspace || !snapshot || snapshot.length === 0) return;
     try {
-      const cells = this.getAllCells();
-      for (const cell of cells) {
-        const chart = cell?.chart || cell?.inner;
-        if (!cell || !chart || typeof chart.indicators !== 'function') continue;
-
-        const existingNative = Array.from(chart.indicators() || []);
-        const existingTitles = new Set(existingNative.map((ind: any) => ind?.title).filter(Boolean));
-
-        for (const ind of snapshot) {
-          if (!ind.title || existingTitles.has(ind.title)) continue;
-          const source = ind.source || 'plot(close)';
-          if (!source) continue;
-
-          const addOptions: any = {
-            language: 'pine',
-            title: ind.title,
-          };
-          if (ind.inputs && Object.keys(ind.inputs).length > 0) {
-            addOptions.inputs = ind.inputs;
-          }
-          if (ind.props && Object.keys(ind.props).length > 0) {
-            addOptions.props = ind.props;
-          }
-
-          const handle = chart.addIndicator(source, addOptions);
-          if (handle) {
-            if (ind.visible === false && typeof handle.setVisible === 'function') {
-              try { handle.setVisible(false); } catch (_) {}
-            }
-            if (ind.inputs && typeof handle.setInputs === 'function') {
-              try { handle.setInputs(ind.inputs); } catch (_) {}
-            }
-            if (ind.props && typeof handle.setProps === 'function') {
-              try { handle.setProps(ind.props); } catch (_) {}
-            }
-
-            const matched = this.indicatorRegistry.findEntry(ind.id);
-            if (matched) {
-              const entry = matched.entry;
-              if (!entry.handles) entry.handles = entry.handle ? [entry.handle] : [];
-              if (!entry.handles.includes(handle)) {
-                entry.handles.push(handle);
-              }
-            } else {
-              this.indicatorRegistry.register({
-                id: handle.id || ind.id,
-                handle,
-                handles: [handle],
-                title: ind.title,
-                source,
-                visible: ind.visible ?? true,
-                inputs: ind.inputs,
-                props: ind.props,
-              });
-            }
-          }
-        }
-      }
-      this.notifyActiveIndicators();
+      this.studyManager.cloneStudiesToCells(snapshot, this.getAllCells());
     } catch (err) {
       console.warn('[ChartSessionController] Gagal clone indicators ke cells:', err);
     }
@@ -3871,61 +3455,8 @@ export class ChartSessionController {
    * Mengambil konfigurasi tata letak pane berbasis identitas/signature pane (stabil meski urutan pane berubah).
    */
   public getPaneLayout(cell?: any): PaneLayoutEntry[] {
-    try {
-      const targetCell = this.resolveTargetCell(cell);
-      const chart = targetCell?.chart || targetCell?.inner;
-      const native = chart?.renderer?.renderer || chart?.renderer;
-      if (!native?.scene) return [];
-
-      const scenePanesMap: Map<string, any> | undefined = native.scene.panes;
-      const orderedScenePanes: any[] =
-        typeof native.scene.orderedPanes === 'function' ? native.scene.orderedPanes() : [];
-
-      if (chart?.panes && typeof chart.panes.list === 'function') {
-        const listed = chart.panes.list() || [];
-        if (listed.length > 0) {
-          return listed.map((p: any, idx: number) => {
-            const sp =
-              scenePanesMap?.get?.(p.id) ||
-              orderedScenePanes.find((item: any) => item?.id === p.id) ||
-              orderedScenePanes[idx];
-            const weight =
-              typeof sp?.heightWeight === 'number' && Number.isFinite(sp.heightWeight) && sp.heightWeight > 0
-                ? sp.heightWeight
-                : p.kind === 'price'
-                  ? 3
-                  : 1;
-            const collapsed =
-              typeof p.collapsed === 'boolean' ? p.collapsed : Boolean(sp?.collapsed);
-            return {
-              signature: computePaneSignature(p),
-              weight,
-              ...(collapsed ? { collapsed: true } : {}),
-            };
-          });
-        }
-      }
-
-      if (orderedScenePanes.length > 0) {
-        return orderedScenePanes.map((sp: any, idx: number) => {
-          const isPrice = sp.kind === 'price' || sp.id === 'price';
-          const weight =
-            typeof sp.heightWeight === 'number' && Number.isFinite(sp.heightWeight) && sp.heightWeight > 0
-              ? sp.heightWeight
-              : isPrice
-                ? 3
-                : 1;
-          return {
-            signature: isPrice ? 'price' : `study:${idx}`,
-            weight,
-            ...(sp.collapsed ? { collapsed: true } : {}),
-          };
-        });
-      }
-    } catch (err) {
-      console.warn('[ChartSessionController] Gagal membaca paneLayout:', err);
-    }
-    return [];
+    const targetCell = this.resolveTargetCell(cell);
+    return this.studyManager.getPaneLayout(targetCell);
   }
 
   /**
