@@ -40,12 +40,20 @@ export async function universalFetch(
 ): Promise<UniversalResponse> {
   const method = (options?.method || 'GET').toUpperCase() as 'GET' | 'POST';
 
-  // Jalur Tauri native IPC hanya mengekspos http_get; permintaan POST (mis. Hyperliquid /info) memakai fetch ber-timeout
-  if (isTauriEnvironment() && method === 'GET') {
+  // Jalur Tauri native IPC meneruskan GET via http_get dan POST via http_post agar bebas CORS di desktop
+  if (isTauriEnvironment() && (method === 'GET' || method === 'POST')) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const timeoutSecs = Math.max(1, Math.ceil((options?.timeoutMs || DEFAULT_HTTP_TIMEOUT_MS) / 1000));
-      const bodyText = await invoke<string>('http_get', { url, timeoutSecs });
+      const bodyText =
+        method === 'GET'
+          ? await invoke<string>('http_get', { url, timeoutSecs })
+          : await invoke<string>('http_post', {
+              url,
+              body: options?.body ?? '',
+              headers: options?.headers,
+              timeoutSecs,
+            });
 
       return {
         ok: true,

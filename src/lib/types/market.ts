@@ -396,6 +396,11 @@ export interface AppSettings {
   timezone: string;
   soundEnabled: boolean;
   systemNotificationEnabled?: boolean;
+  telegramNotificationEnabled?: boolean;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  discordNotificationEnabled?: boolean;
+  discordWebhookUrl?: string;
   showWatermark: boolean;
   showGrid: boolean;
   gridMode?: GridMode;

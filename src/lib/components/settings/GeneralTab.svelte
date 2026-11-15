@@ -9,10 +9,20 @@
     Camera,
     Folder,
     FolderOpen,
-    Sparkles
+    Sparkles,
+    Send,
+    MessageSquare,
+    Eye,
+    EyeOff
   } from '@lucide/svelte';
   import { THEME_PRESETS, resolveThemeConfig } from '../../constants/themes';
-  import { sendTestNotification } from '../../services/systemNotificationService';
+  import {
+    isValidDiscordWebhookUrl,
+    isValidTelegramConfig,
+    sendTestDiscordNotification,
+    sendTestNotification,
+    sendTestTelegramNotification
+  } from '../../services/systemNotificationService';
   import type { AppSettings } from '../../types/market';
   import {
     SUPPORTED_WORLD_CITIES,
@@ -32,6 +42,19 @@
   let { settings, onUpdateSettings, onNavigateTab }: Props = $props();
 
   let testNotificationFeedback = $state<string | null>(null);
+  let telegramTestFeedback = $state<{ ok: boolean; text: string } | null>(null);
+  let isTestingTelegram = $state(false);
+  let showTelegramToken = $state(false);
+
+  let discordTestFeedback = $state<{ ok: boolean; text: string } | null>(null);
+  let isTestingDiscord = $state(false);
+  let showDiscordWebhook = $state(false);
+
+  const isTelegramConfigValid = $derived(
+    isValidTelegramConfig(settings.telegramBotToken, settings.telegramChatId)
+  );
+  const hasDiscordInput = $derived(Boolean((settings.discordWebhookUrl || '').trim()));
+  const isDiscordUrlValid = $derived(isValidDiscordWebhookUrl(settings.discordWebhookUrl));
 
   function handleToggleCity(tz: string) {
     const current = settings.worldClockCities ?? DEFAULT_WORLD_CLOCK_CITIES;
@@ -46,16 +69,62 @@
   }
 
   async function handleSendTestNotification() {
-    testNotificationFeedback = 'Mengirim notifikasi ke Windows...';
+    testNotificationFeedback = 'Mengirim notifikasi desktop...';
     const ok = await sendTestNotification();
     if (ok) {
-      testNotificationFeedback = '✓ Notifikasi terkirim ke Windows Action Center!';
+      testNotificationFeedback = '✓ Notifikasi terkirim ke desktop sistem!';
     } else {
-      testNotificationFeedback = '⚠ Izin notifikasi belum diizinkan di Windows.';
+      testNotificationFeedback = '⚠ Izin notifikasi desktop belum diizinkan.';
     }
     setTimeout(() => {
       testNotificationFeedback = null;
     }, 4500);
+  }
+
+  async function runExternalChannelTest(
+    channelLabel: string,
+    getTesting: () => boolean,
+    setTesting: (v: boolean) => void,
+    setFeedback: (fb: { ok: boolean; text: string } | null) => void,
+    sender: () => Promise<{ ok: boolean; error?: string }>
+  ) {
+    if (getTesting()) return;
+    setTesting(true);
+    setFeedback({ ok: true, text: `Mengirim tes ke ${channelLabel}...` });
+    const res = await sender();
+    setTesting(false);
+    setFeedback(
+      res.ok
+        ? { ok: true, text: `✓ Notifikasi tes terkirim ke ${channelLabel}!` }
+        : { ok: false, text: `⚠ Gagal: ${res.error || 'Terjadi kesalahan'}` }
+    );
+    setTimeout(() => {
+      setFeedback(null);
+    }, 6000);
+  }
+
+  function handleSendTestTelegram() {
+    return runExternalChannelTest(
+      'Telegram',
+      () => isTestingTelegram,
+      (v) => (isTestingTelegram = v),
+      (fb) => (telegramTestFeedback = fb),
+      () =>
+        sendTestTelegramNotification(
+          settings.telegramBotToken || '',
+          settings.telegramChatId || ''
+        )
+    );
+  }
+
+  function handleSendTestDiscord() {
+    return runExternalChannelTest(
+      'Discord',
+      () => isTestingDiscord,
+      (v) => (isTestingDiscord = v),
+      (fb) => (discordTestFeedback = fb),
+      () => sendTestDiscordNotification(settings.discordWebhookUrl || '')
+    );
   }
 
   async function handlePickSnapshotDirectory() {
@@ -152,11 +221,11 @@
     </button>
   </div>
 
-  <!-- Notifikasi Native Windows Action Center -->
+  <!-- Notifikasi Desktop Sistem -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Notifikasi Sistem Windows (Windows Toast)</span>
-      <span class="setting-desc">Kirim notifikasi native ke Windows Action Center saat alert terpicu</span>
+      <span class="setting-label">Notifikasi Desktop Sistem</span>
+      <span class="setting-desc">Kirim notifikasi native ke pusat notifikasi OS (Linux, Windows, macOS) saat alert terpicu</span>
       {#if testNotificationFeedback}
         <span class="notification-test-feedback mono-nums">{testNotificationFeedback}</span>
       {/if}
@@ -166,10 +235,10 @@
         type="button"
         class="btn-test-notification"
         onclick={handleSendTestNotification}
-        title="Kirim notifikasi uji coba ke Windows"
+        title="Kirim notifikasi uji coba ke desktop sistem"
       >
         <Bell size={12} />
-        <span>Tes Notifikasi</span>
+        <span>Tes Desktop</span>
       </button>
       <button
         type="button"
@@ -182,6 +251,158 @@
           <BellOff size={14} /> Nonaktif
         {/if}
       </button>
+    </div>
+  </div>
+
+  <!-- Notifikasi Bot Telegram -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Notifikasi Bot Telegram</span>
+      <span class="setting-desc">Teruskan Price Alert & Pine Script Alert ke chat atau grup Telegram Anda</span>
+      {#if telegramTestFeedback}
+        <span class="notification-test-feedback {telegramTestFeedback.ok ? '' : 'error'} mono-nums">
+          {telegramTestFeedback.text}
+        </span>
+      {/if}
+    </div>
+    <div class="setting-action-group">
+      <button
+        type="button"
+        class="btn-test-notification"
+        disabled={isTestingTelegram || !isTelegramConfigValid}
+        onclick={handleSendTestTelegram}
+        title={isTelegramConfigValid ? 'Kirim pesan tes ke Bot Telegram' : 'Lengkapi Bot Token & Chat ID terlebih dahulu'}
+      >
+        <Send size={12} />
+        <span>{isTestingTelegram ? 'Mengirim...' : 'Tes Telegram'}</span>
+      </button>
+      <button
+        type="button"
+        class="toggle-btn {settings.telegramNotificationEnabled ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ telegramNotificationEnabled: !settings.telegramNotificationEnabled })}
+      >
+        {#if settings.telegramNotificationEnabled}
+          <Send size={13} /> Aktif
+        {:else}
+          <BellOff size={13} /> Nonaktif
+        {/if}
+      </button>
+    </div>
+  </div>
+
+  <div class="setting-sub-row channel-config-row">
+    <div class="channel-fields-grid">
+      <div class="channel-field">
+        <label class="setting-label-sub" for="telegram-bot-token">Bot Token</label>
+        <div class="secret-input-wrap">
+          <input
+            id="telegram-bot-token"
+            type={showTelegramToken ? 'text' : 'password'}
+            class="channel-input mono-nums"
+            placeholder="Contoh: 123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ"
+            value={settings.telegramBotToken || ''}
+            oninput={(e) => onUpdateSettings({ telegramBotToken: e.currentTarget.value })}
+            onchange={(e) => onUpdateSettings({ telegramBotToken: e.currentTarget.value.trim() })}
+            autocomplete="off"
+          />
+          <button
+            type="button"
+            class="secret-toggle-btn"
+            onclick={() => (showTelegramToken = !showTelegramToken)}
+            title={showTelegramToken ? 'Sembunyikan Token' : 'Lihat Token'}
+          >
+            {#if showTelegramToken}
+              <EyeOff size={13} />
+            {:else}
+              <Eye size={13} />
+            {/if}
+          </button>
+        </div>
+      </div>
+
+      <div class="channel-field">
+        <label class="setting-label-sub" for="telegram-chat-id">Chat ID</label>
+        <input
+          id="telegram-chat-id"
+          type="text"
+          class="channel-input mono-nums"
+          placeholder="Contoh: 123456789 atau -100..."
+          value={settings.telegramChatId || ''}
+          oninput={(e) => onUpdateSettings({ telegramChatId: e.currentTarget.value })}
+          onchange={(e) => onUpdateSettings({ telegramChatId: e.currentTarget.value.trim() })}
+          autocomplete="off"
+        />
+      </div>
+    </div>
+  </div>
+
+  <!-- Notifikasi Webhook Discord -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Notifikasi Webhook Discord</span>
+      <span class="setting-desc">Kirim Rich Embed ke channel Discord Anda saat Price Alert atau Pine Alert terpicu</span>
+      {#if discordTestFeedback}
+        <span class="notification-test-feedback {discordTestFeedback.ok ? '' : 'error'} mono-nums">
+          {discordTestFeedback.text}
+        </span>
+      {:else if hasDiscordInput && !isDiscordUrlValid}
+        <span class="notification-test-feedback error mono-nums">
+          ⚠ URL harus diawali https://discord.com/api/webhooks/
+        </span>
+      {/if}
+    </div>
+    <div class="setting-action-group">
+      <button
+        type="button"
+        class="btn-test-notification"
+        disabled={isTestingDiscord || !isDiscordUrlValid}
+        onclick={handleSendTestDiscord}
+        title={isDiscordUrlValid ? 'Kirim pesan tes ke Discord Webhook' : 'Masukkan URL Webhook Discord yang valid terlebih dahulu'}
+      >
+        <MessageSquare size={12} />
+        <span>{isTestingDiscord ? 'Mengirim...' : 'Tes Discord'}</span>
+      </button>
+      <button
+        type="button"
+        class="toggle-btn {settings.discordNotificationEnabled ? 'active' : ''}"
+        onclick={() => onUpdateSettings({ discordNotificationEnabled: !settings.discordNotificationEnabled })}
+      >
+        {#if settings.discordNotificationEnabled}
+          <MessageSquare size={13} /> Aktif
+        {:else}
+          <BellOff size={13} /> Nonaktif
+        {/if}
+      </button>
+    </div>
+  </div>
+
+  <div class="setting-sub-row channel-config-row">
+    <div class="channel-field full-width">
+      <label class="setting-label-sub" for="discord-webhook-url">Webhook URL</label>
+      <div class="secret-input-wrap">
+        <input
+          id="discord-webhook-url"
+          type={showDiscordWebhook ? 'text' : 'password'}
+          class="channel-input mono-nums {hasDiscordInput && !isDiscordUrlValid ? 'input-invalid' : ''}"
+          placeholder="https://discord.com/api/webhooks/..."
+          value={settings.discordWebhookUrl || ''}
+          oninput={(e) => onUpdateSettings({ discordWebhookUrl: e.currentTarget.value })}
+          onchange={(e) => onUpdateSettings({ discordWebhookUrl: e.currentTarget.value.trim() })}
+          autocomplete="off"
+        />
+        <button
+          type="button"
+          class="secret-toggle-btn"
+          onclick={() => (showDiscordWebhook = !showDiscordWebhook)}
+          title={showDiscordWebhook ? 'Sembunyikan URL' : 'Lihat URL'}
+        >
+          {#if showDiscordWebhook}
+            <EyeOff size={13} />
+          {:else}
+            <Eye size={13} />
+          {/if}
+        </button>
+      </div>
     </div>
   </div>
 
@@ -489,16 +710,93 @@
     transition: all 0.15s ease;
   }
 
-  .btn-test-notification:hover {
+  .btn-test-notification:hover:not(:disabled) {
     background-color: var(--bg-hover);
     color: var(--text-main);
     border-color: var(--border-subtle);
+  }
+
+  .btn-test-notification:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .notification-test-feedback {
     font-size: 10.5px;
     color: var(--brand-primary);
     margin-top: 3px;
+  }
+
+  .notification-test-feedback.error {
+    color: var(--bear-color, #FF4466);
+  }
+
+  .channel-config-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .channel-fields-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 10px;
+  }
+
+  .channel-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .channel-field.full-width {
+    width: 100%;
+  }
+
+  .secret-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .channel-input {
+    flex: 1;
+    min-width: 0;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 6px 9px;
+    border-radius: var(--radius-xs);
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .channel-input:focus {
+    border-color: var(--brand-primary);
+  }
+
+  .channel-input.input-invalid {
+    border-color: var(--bear-color, #FF4466);
+  }
+
+  .secret-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-muted);
+    padding: 6px 8px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.12s ease;
+  }
+
+  .secret-toggle-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
   }
 
   /* Sub-Row Pilihan Bursa Jam Dunia */

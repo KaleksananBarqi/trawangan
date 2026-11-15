@@ -2,7 +2,11 @@ import type { PriceAlert, AlertCondition, AlertFrequency } from '../types/market
 import type { ParsedTradingPlan } from './planParserService';
 import { loadAlerts, saveAlerts } from './persistence';
 import { playAlertChime, playSuccessPip } from './soundService';
-import { sendWindowsAlertNotification } from './systemNotificationService';
+import {
+  dispatchExternalAlertNotifications,
+  sendDesktopAlertNotification,
+  type NotificationChannelsConfig,
+} from './systemNotificationService';
 import { roundToTickSize } from './priceSnapService';
 import { normalizeSymbolForMatching, isSameInstrument } from './instrumentIdentity';
 import { buildAutoAlertLabel } from './alertFormHelper';
@@ -18,6 +22,7 @@ class AlertService {
   private isLoaded = false;
   private soundEnabled = true;
   private systemNotificationEnabled = true;
+  private externalChannelsConfig: NotificationChannelsConfig = {};
 
   constructor() {
     this.init();
@@ -55,6 +60,17 @@ class AlertService {
 
   public isSystemNotificationEnabled(): boolean {
     return this.systemNotificationEnabled;
+  }
+
+  public setNotificationChannelsConfig(config: Partial<NotificationChannelsConfig>): void {
+    this.externalChannelsConfig = {
+      ...this.externalChannelsConfig,
+      ...config,
+    };
+  }
+
+  public getNotificationChannelsConfig(): NotificationChannelsConfig {
+    return { ...this.externalChannelsConfig };
   }
 
   public getAlerts(): PriceAlert[] {
@@ -723,15 +739,29 @@ class AlertService {
       if (this.soundEnabled && triggeredList.length > 0) {
         playAlertChime();
       }
-      if (this.systemNotificationEnabled && triggeredList.length > 0) {
+      if (triggeredList.length > 0) {
         for (const t of triggeredList) {
-          sendWindowsAlertNotification({
-            symbol: t.symbol,
-            targetPrice: t.targetPrice,
-            actualPrice: currentPrice,
-            condition: t.condition,
-            label: t.label,
-          });
+          if (this.systemNotificationEnabled) {
+            sendDesktopAlertNotification({
+              symbol: t.symbol,
+              targetPrice: t.targetPrice,
+              actualPrice: currentPrice,
+              condition: t.condition,
+              label: t.label,
+            });
+          }
+          dispatchExternalAlertNotifications(
+            {
+              kind: 'price',
+              symbol: t.symbol,
+              targetPrice: t.targetPrice,
+              actualPrice: currentPrice,
+              condition: t.condition,
+              label: t.label,
+              timestamp: t.triggeredAt,
+            },
+            this.externalChannelsConfig
+          );
         }
       }
       for (const t of triggeredList) {

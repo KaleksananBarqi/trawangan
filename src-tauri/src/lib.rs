@@ -65,6 +65,7 @@ pub fn run() {
             commands::load_all_app_preferences,
             commands::get_process_memory,
             commands::http_get,
+            commands::http_post,
             commands::get_default_snapshot_directory,
             commands::save_snapshot_file,
             commands::open_snapshot_folder,

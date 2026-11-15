@@ -20,6 +20,11 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   timezone: 'Asia/Jakarta',
   soundEnabled: true,
   systemNotificationEnabled: true,
+  telegramNotificationEnabled: false,
+  telegramBotToken: '',
+  telegramChatId: '',
+  discordNotificationEnabled: false,
+  discordWebhookUrl: '',
   showWatermark: true,
   showGrid: true,
   gridMode: 'normal',
@@ -195,6 +200,26 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
       ...DEFAULT_WORLD_CLOCK_CITIES,
     ],
     defaultTimeframe: saved.defaultTimeframe ?? DEFAULT_APP_SETTINGS.defaultTimeframe ?? '15m',
+    telegramNotificationEnabled:
+      typeof saved.telegramNotificationEnabled === 'boolean'
+        ? saved.telegramNotificationEnabled
+        : (DEFAULT_APP_SETTINGS.telegramNotificationEnabled ?? false),
+    telegramBotToken:
+      typeof saved.telegramBotToken === 'string'
+        ? saved.telegramBotToken
+        : (DEFAULT_APP_SETTINGS.telegramBotToken ?? ''),
+    telegramChatId:
+      typeof saved.telegramChatId === 'string'
+        ? saved.telegramChatId
+        : (DEFAULT_APP_SETTINGS.telegramChatId ?? ''),
+    discordNotificationEnabled:
+      typeof saved.discordNotificationEnabled === 'boolean'
+        ? saved.discordNotificationEnabled
+        : (DEFAULT_APP_SETTINGS.discordNotificationEnabled ?? false),
+    discordWebhookUrl:
+      typeof saved.discordWebhookUrl === 'string'
+        ? saved.discordWebhookUrl
+        : (DEFAULT_APP_SETTINGS.discordWebhookUrl ?? ''),
     snapshotIncludeFrame: saved.snapshotIncludeFrame ?? DEFAULT_APP_SETTINGS.snapshotIncludeFrame ?? true,
     snapshotIncludePrice: saved.snapshotIncludePrice ?? DEFAULT_APP_SETTINGS.snapshotIncludePrice ?? true,
     snapshotIncludeTimestamp: saved.snapshotIncludeTimestamp ?? DEFAULT_APP_SETTINGS.snapshotIncludeTimestamp ?? true,

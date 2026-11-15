@@ -50,7 +50,10 @@
   import { alertService } from '../lib/services/alertService';
   import { workspaceShellService, type WorkspaceShellState } from '../lib/services/workspaceShellService';
   import { hydrateDrawingToolsFromPersistence } from '../lib/services/drawingToolsService';
-  import { ensureNotificationPermission } from '../lib/services/systemNotificationService';
+  import {
+    ensureNotificationPermission,
+    extractNotificationChannelsConfig,
+  } from '../lib/services/systemNotificationService';
   import { marketFeed } from '../lib/services/market';
   import { telemetryService } from '../lib/services/telemetryService';
   import { replaySession, type ReplaySnapshot } from '../lib/services/replay';
@@ -552,14 +555,15 @@
         }
       }
 
-      // Sinkronisasi preferensi audio notifikasi & notifikasi sistem Windows
+      // Sinkronisasi preferensi audio notifikasi, desktop sistem, serta kanal eksternal (Telegram & Discord)
       alertService.setSoundEnabled(appSettings.soundEnabled);
       alertService.setSystemNotificationEnabled(appSettings.systemNotificationEnabled !== false);
+      alertService.setNotificationChannelsConfig(extractNotificationChannelsConfig(appSettings));
 
-      // Verifikasi izin notifikasi native Windows desktop
+      // Verifikasi izin notifikasi native desktop sistem
       ensureNotificationPermission().then((granted) => {
         if (granted && isPageActive) {
-          addSystemLog('Notifikasi native Windows Action Center aktif.', 'info');
+          addSystemLog('Notifikasi desktop sistem aktif.', 'info');
         }
       });
 
@@ -1125,6 +1129,16 @@
     }
     if (newSettings.systemNotificationEnabled !== undefined) {
       alertService.setSystemNotificationEnabled(newSettings.systemNotificationEnabled);
+    }
+    if (
+      newSettings.systemNotificationEnabled !== undefined ||
+      newSettings.telegramNotificationEnabled !== undefined ||
+      newSettings.telegramBotToken !== undefined ||
+      newSettings.telegramChatId !== undefined ||
+      newSettings.discordNotificationEnabled !== undefined ||
+      newSettings.discordWebhookUrl !== undefined
+    ) {
+      alertService.setNotificationChannelsConfig(extractNotificationChannelsConfig(nextSettings));
     }
     persistAppSettings();
     addSystemLog(`Pengaturan aplikasi diperbarui.`, 'info');

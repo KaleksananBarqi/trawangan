@@ -375,6 +375,17 @@ pub async fn http_get(
     market.get(&url, timeout_secs).await
 }
 
+#[tauri::command]
+pub async fn http_post(
+    market: State<'_, MarketService>,
+    url: String,
+    body: String,
+    headers: Option<std::collections::HashMap<String, String>>,
+    timeout_secs: Option<u64>,
+) -> Result<String, String> {
+    market.post(&url, &body, headers, timeout_secs).await
+}
+
 // =========================================================================
 // Snapshot & Screenshot Storage Management Commands
 // =========================================================================

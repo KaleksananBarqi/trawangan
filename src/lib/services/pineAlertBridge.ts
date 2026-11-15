@@ -7,7 +7,12 @@
  */
 
 import { alertService } from './alertService';
-import { sendDesktopNotification } from './systemNotificationService';
+import {
+  dispatchExternalAlertNotifications,
+  sendDesktopNotification,
+  type AlertNotificationEvent,
+  type NotificationChannelsConfig,
+} from './systemNotificationService';
 
 export interface PineAlertPayload {
   /** Identifier unik alert (opsional dari engine) */
@@ -68,6 +73,7 @@ export interface PineWarningRecord {
 export interface PineAlertBridgeOptions {
   alertService?: typeof alertService;
   desktopNotificationSender?: (opts: { title: string; body: string; icon?: string }) => Promise<boolean>;
+  externalNotificationDispatcher?: (event: AlertNotificationEvent, config: NotificationChannelsConfig) => void;
   onAlert?: (alert: PineAlertRecord) => void;
   onWarning?: (warning: PineWarningRecord) => void;
 }
@@ -244,6 +250,23 @@ export class PineAlertBridge {
         console.warn('[PineAlertBridge] Gagal mengirim push notification desktop:', err);
       });
     }
+
+    // Kirim notifikasi ke kanal eksternal (Telegram & Discord) secara paralel & non-blocking
+    const channelsConfig = svc.getNotificationChannelsConfig
+      ? svc.getNotificationChannelsConfig()
+      : {};
+    const externalDispatcher =
+      this.options.externalNotificationDispatcher || dispatchExternalAlertNotifications;
+    externalDispatcher(
+      {
+        kind: 'pine',
+        symbol: record.symbol,
+        indicatorTitle: record.indicatorTitle,
+        label: record.message,
+        timestamp: record.timestamp,
+      },
+      channelsConfig
+    );
 
     return record;
   }

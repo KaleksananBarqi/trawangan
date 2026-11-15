@@ -43,6 +43,56 @@ impl MarketService {
             .map_err(|e| format!("Gagal membaca respons server: {}", e))
     }
 
+    /// Mengirimkan payload HTTP POST (mis. Telegram Bot API / Discord Webhook) via native reqwest (bebas CORS)
+    pub async fn post(
+        &self,
+        url: &str,
+        body: &str,
+        headers: Option<std::collections::HashMap<String, String>>,
+        timeout_secs: Option<u64>,
+    ) -> Result<String, String> {
+        let mut req = self.client.post(url).body(body.to_string());
+        if let Some(secs) = timeout_secs {
+            req = req.timeout(std::time::Duration::from_secs(secs));
+        }
+
+        let mut has_content_type = false;
+        if let Some(hdrs) = headers {
+            for (k, v) in hdrs {
+                if k.eq_ignore_ascii_case("content-type") {
+                    has_content_type = true;
+                }
+                req = req.header(&k, &v);
+            }
+        }
+        if !has_content_type {
+            req = req.header("Content-Type", "application/json");
+        }
+
+        let res = req
+            .send()
+            .await
+            .map_err(|e| format!("Gagal menghubungi endpoint: {}", e))?;
+
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            let detail = if text.trim().is_empty() {
+                status.canonical_reason().unwrap_or("").to_string()
+            } else {
+                text
+            };
+            return Err(format!(
+                "Server mengembalikan status HTTP {}: {}",
+                status.as_u16(),
+                detail
+            ));
+        }
+
+        Ok(text)
+    }
+
     /// Ambil data candle historis dari Binance Public REST API
     pub async fn fetch_binance_klines(
         &self,
