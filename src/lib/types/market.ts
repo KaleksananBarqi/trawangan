@@ -480,6 +480,12 @@ export interface StrategyTradeRecord {
   maxRunup?: number;
 }
 
+/** Satu titik data pada kurva ekuitas hasil backtest strategi */
+export interface StrategyEquityPoint {
+  time: number;
+  equity: number;
+}
+
 export interface StrategyPerformanceSummary {
   strategyTitle?: string;
   netProfit: number;
@@ -505,6 +511,12 @@ export interface StrategyPerformanceSummary {
     unrealizedPnlPercent: number;
   };
   trades: StrategyTradeRecord[];
+  equityCurve?: StrategyEquityPoint[];
+}
+
+/** Laporan backtest strategi kanonikal yang selalu menyertakan kurva ekuitas */
+export interface StrategyBacktestReport extends StrategyPerformanceSummary {
+  equityCurve: StrategyEquityPoint[];
 }
 
 export interface PriceScaleState {
