@@ -65,6 +65,9 @@ export interface ActiveIndicatorInfo {
   id: string;
   title: string;
   source?: string;
+  language?: 'pine' | 'native';
+  nativeType?: string;
+  placement?: 'overlay' | 'own-pane';
   visible: boolean;
   inputs?: Record<string, any>;
   props?: Record<string, any>;

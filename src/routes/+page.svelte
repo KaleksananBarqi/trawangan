@@ -33,6 +33,7 @@
   import type { ParsedTradingPlan } from '../lib/services/planParserService';
   import { getAdaptiveTickSize } from '../lib/services/priceSnapService';
   import { formatPriceWithQuoteSymbol } from '../lib/services/priceScaleLabelService';
+  import type { MarketSession } from '../lib/services/marketSessionService';
   import { parseAdaptiveSymbol } from '../lib/services/market/symbolSearchService';
   import {
     compositeSnapshot,
@@ -215,6 +216,10 @@
 
   // Docked Structural Shell Reactive States (Unified WorkspaceShell Deep Module)
   let shellState = $state<WorkspaceShellState>(workspaceShellService.getSnapshot());
+  let chartSessionState = $state<{ session: MarketSession; sessionAvailable: boolean }>({
+    session: 'regular',
+    sessionAvailable: false,
+  });
   let allAlerts = $state<PriceAlert[]>(alertService.getAlerts());
   let unsubShell: (() => void) | null = null;
   let unsubAlertsList: (() => void) | null = null;
@@ -1928,6 +1933,9 @@
           }
           onEditPlan={(planId) => openRightPlanTab({ subMode: 'form', planId })}
           onVelaThemeSelect={handleVelaThemeSelect}
+          onSessionStateChange={(st) => {
+            chartSessionState = st;
+          }}
           onPersistableStateChange={() => (chartDirtyTick += 1)}
         />
       </div>
@@ -2075,9 +2083,11 @@
   <StatusBar
     isConsoleOpen={isConsoleDrawerOpen}
     settings={appSettings}
+    session={chartSessionState.session}
+    sessionAvailable={chartSessionState.sessionAvailable}
     onSelectTimezone={(tz) => handleUpdateSettings({ timezone: tz })}
     onToggleSession={() => {
-      const next = (appSettings.marketSession ?? 'regular') === 'regular' ? 'extended' : 'regular';
+      const next = chartComponent?.toggleSession() ?? ((appSettings.marketSession ?? 'regular') === 'regular' ? 'extended' : 'regular');
       handleUpdateSettings({ marketSession: next });
     }}
     onToggleConsole={() => (isConsoleDrawerOpen = !isConsoleDrawerOpen)}
@@ -2093,6 +2103,11 @@
     settings={appSettings}
     {activeProviderId}
     initialTab={settingsInitialTab}
+    sessionState={chartSessionState}
+    onSetSession={(mode) => {
+      chartComponent?.setSession(mode);
+      handleUpdateSettings({ marketSession: mode });
+    }}
     onClose={() => (isSettingsModalOpen = false)}
     onUpdateSettings={handleUpdateSettings}
     onProviderChange={handleProviderChange}

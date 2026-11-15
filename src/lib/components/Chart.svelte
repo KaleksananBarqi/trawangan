@@ -51,6 +51,7 @@
     onEditPlan?: (planId: string) => void;
     onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
     onPersistableStateChange?: (reason: string) => void;
+    onSessionStateChange?: (state: { session: 'regular' | 'extended'; sessionAvailable: boolean }) => void;
     themePreset?: ThemePresetId | string; fontSize?: number; timezone?: string;
     marketSession?: 'regular' | 'extended';
     workspaceId?: string | null;
@@ -60,6 +61,7 @@
     customChartBackground?: CustomChartBackgroundConfig;
     securityWatermark?: SecurityWatermarkConfig;
     userProfile?: UserProfileConfig;
+    sessionController?: ChartSessionController | null;
   }
 
   let {
@@ -73,7 +75,8 @@
     showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
     onPriceStyleChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
-    onEditPlan, onVelaThemeSelect, onPersistableStateChange, securityWatermark, userProfile,
+    onEditPlan, onVelaThemeSelect, onPersistableStateChange, onSessionStateChange, securityWatermark, userProfile,
+    sessionController = $bindable<ChartSessionController | null>(null),
   }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = $state(null);
@@ -82,7 +85,7 @@
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, session: marketSession, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
-    showCurrentPriceLine, showPriceScaleCountdown, showVolume, syncConfig, onActiveCellChange,
+    showCurrentPriceLine, showPriceScaleCountdown, showVolume, showWatermark, syncConfig, onActiveCellChange,
     onPriceStyleChange,
     onActiveIndicatorsChange: (indicators) => {
       priceScaleOverlayController.updateIndicators(indicators, showIndicatorPriceLabels);
@@ -90,6 +93,14 @@
     },
     onVelaThemeSelect, onPersistableStateChange
   });
+  sessionController = controller;
+
+  /**
+   * Mengekspos instance ChartSessionController bertipe ketat untuk pemanggil shell (#217)
+   */
+  export function getSessionController(): ChartSessionController {
+    return controller;
+  }
 
   let feedConnectionStatus = $state(marketFeed.getConnectionStatus());
   let isDismissedConnectionWarning = $state(false);
@@ -127,6 +138,7 @@
   );
 
   let unsubAlerts: (() => void) | null = null;
+  let unsubController: (() => void) | null = null;
   let unsubDrawingState: (() => void) | null = null;
   let unsubDrawingDraft: (() => void) | null = null;
   let unsubAttachWorkspace: (() => void) | null = null;
@@ -175,72 +187,96 @@
     return p !== null ? priceScaleOverlayController.getPriceY(p) : null;
   }
 
-  // Explicit prop read guarantees Svelte 5 dependency registration on initial run;
-  // untrack pemanggilan controller agar callback persistensi tidak melacak state eksternal (anti-loop effect)
-  $effect(() => { const s = symbol, p = providerId; if (isMounted) untrack(() => controller.setSymbol(s, undefined, p)); });
-  $effect(() => { const tf = timeframe; if (isMounted) untrack(() => controller.setTimeframe(tf)); });
-  $effect(() => { const l = layout; if (isMounted && l) untrack(() => controller.setLayout(l)); });
-  $effect(() => { const sc = syncConfig; if (isMounted && sc) untrack(() => controller.syncLayout(sc)); });
+  let prevOverlaySymbol: string | null = null;
+  let prevOverlayTimeframe: Timeframe | null = null;
+  let prevShowDrawingLabels: boolean | null = null;
+  let prevShowIndicatorLabels: boolean | null = null;
+  let prevOverlayAlerts: PriceAlert[] | null = null;
+  let prevOverlayPlans: Array<any> | null = null;
+
+  // Satu efek rekonsiliasi terpadu untuk seluruh prop reaktif: mencegah 19 efek terpecah dan membatasi mutasi engine secara idempoten (#217)
   $effect(() => {
+    const mounted = isMounted;
+    const s = symbol;
+    const p = providerId;
+    const tf = timeframe;
+    const l = layout;
+    const sc = syncConfig;
     const wsId = workspaceId || 'default_workspace';
+    const gm = gridMode;
+    const tp = themePreset;
+    const fs = fontSize;
+    const cb = customBullColor;
+    const cr = customBearColor;
+    const cp = customPalette;
+    const tz = timezone;
+    const ms = marketSession;
+    const bg = customChartBackground;
+    const showDrawingLabels = showDrawingPriceLabels;
+    const pl = showCurrentPriceLine;
+    const cd = showPriceScaleCountdown;
+    const alerts = allAlerts;
+    const v = showVolume;
+    const wm = showWatermark;
+    const showIndLabels = showIndicatorPriceLabels;
+    const plans = scopedActivePlans;
+
     untrack(() => {
       chartDrawingController.setWorkspaceId(wsId);
-      if (isMounted && lastLoadedWorkspaceId !== null && lastLoadedWorkspaceId !== wsId && !controller.isRestoring()) {
-        chartDrawingController.restoreDrawings(symbol, timeframe, providerId, wsId).catch(() => {});
+      if (!mounted) {
+        lastLoadedWorkspaceId = wsId;
+        return;
+      }
+
+      controller.applyReactiveProps({
+        symbol: s,
+        providerId: p,
+        timeframe: tf,
+        layout: l,
+        syncConfig: sc,
+        gridMode: gm,
+        themePreset: tp,
+        fontSize: fs,
+        customBullColor: cb,
+        customBearColor: cr,
+        customPalette: cp !== undefined ? cp : null,
+        customChartBackground: bg,
+        timezone: tz,
+        session: ms,
+        showCurrentPriceLine: pl,
+        priceScaleCountdown: cd,
+        showVolume: v,
+        showWatermark: wm,
+      });
+
+      if (lastLoadedWorkspaceId !== null && lastLoadedWorkspaceId !== wsId && !controller.isRestoring()) {
+        chartDrawingController.restoreDrawings(s, tf, p, wsId).catch(() => {});
       }
       lastLoadedWorkspaceId = wsId;
+
+      if (s !== prevOverlaySymbol || tf !== prevOverlayTimeframe) {
+        prevOverlayTimeframe = tf;
+        refreshCachedCandles();
+      }
+      if (showDrawingLabels !== prevShowDrawingLabels) {
+        prevShowDrawingLabels = showDrawingLabels;
+        priceScaleOverlayController.updateDrawings(chartDrawingController.getSnapshot().activeDrawings || [], showDrawingLabels);
+      }
+      if (s !== prevOverlaySymbol || alerts !== prevOverlayAlerts) {
+        priceScaleOverlayController.updateAlerts(alerts, s);
+      }
+      if (showIndLabels !== prevShowIndicatorLabels) {
+        prevShowIndicatorLabels = showIndLabels;
+        priceScaleOverlayController.updateIndicators(controller.getActiveIndicators(), showIndLabels);
+      }
+      if (plans !== prevOverlayPlans || alerts !== prevOverlayAlerts) {
+        prevOverlayPlans = plans;
+        controller.getTimelineMarksController().loadTradePlans(plans, alerts);
+      }
+
+      prevOverlaySymbol = s;
+      prevOverlayAlerts = alerts;
     });
-  });
-  $effect(() => {
-    const gm = gridMode;
-    if (isMounted) untrack(() => controller.setGridMode(gm));
-  });
-  $effect(() => {
-    const tp = themePreset, fs = fontSize, cb = customBullColor, cr = customBearColor, cp = customPalette;
-    if (isMounted) untrack(() => controller.setTheme(tp, fs, { bullColor: cb, bearColor: cr }, undefined, cp !== undefined ? cp : null));
-  });
-  $effect(() => { const tz = timezone; if (isMounted && tz) untrack(() => controller.setTimezone(tz)); });
-  $effect(() => { const ms = marketSession; if (isMounted && ms) untrack(() => controller.setSession(ms)); });
-  $effect(() => {
-    const bg = customChartBackground;
-    if (isMounted) untrack(() => controller.setCustomChartBackground(bg));
-  });
-  $effect(() => {
-    const show = showDrawingPriceLabels;
-    if (isMounted) {
-      untrack(() => {
-        priceScaleOverlayController.updateDrawings(chartDrawingController.getSnapshot().activeDrawings || [], show);
-      });
-    }
-  });
-  $effect(() => { const pl = showCurrentPriceLine; if (isMounted) untrack(() => controller.setShowCurrentPriceLine(pl)); });
-  $effect(() => { const cd = showPriceScaleCountdown; if (isMounted && cd !== undefined) untrack(() => controller.setPriceScaleCountdown(cd)); });
-  $effect(() => {
-    const s = symbol, a = allAlerts;
-    if (isMounted) {
-      // untrack: mencegah effect ikut berlangganan overlayTick (loop reaktif tak berujung)
-      untrack(() => {
-        priceScaleOverlayController.updateAlerts(a, s);
-      });
-    }
-  });
-  $effect(() => { const v = showVolume; if (isMounted && v !== undefined) controller.setShowVolume(v); });
-  $effect(() => {
-    const wm = showWatermark;
-    if (isMounted) for (const c of controller.getAllCells()) c?.setWatermarkVisible?.(wm);
-  });
-  $effect(() => {
-    const lbl = showIndicatorPriceLabels;
-    untrack(() => {
-      priceScaleOverlayController.updateIndicators(controller.getActiveIndicators(), lbl);
-    });
-  });
-  $effect(() => {
-    const plans = scopedActivePlans;
-    const alerts = allAlerts;
-    if (isMounted && plans) {
-      controller.getTimelineMarksController().loadTradePlans(plans, alerts);
-    }
   });
 
   onMount(() => {
@@ -274,6 +310,9 @@
       },
       enableCutoffVisual: () => {},
       cancelCutoffVisual: () => {}
+    });
+    unsubController = controller.subscribe((snap) => {
+      onSessionStateChange?.({ session: snap.session, sessionAvailable: snap.sessionAvailable });
     });
     unsubAlerts = alertService.subscribe((alerts) => {
       allAlerts = alerts;
@@ -344,10 +383,10 @@
       clearTimeout(dblClickPaneCaptureTimer);
       dblClickPaneCaptureTimer = null;
     }
-    unsubAlerts?.(); unsubDrawingDraft?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
+    unsubController?.(); unsubAlerts?.(); unsubDrawingDraft?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
     unsubAttachWorkspace?.(); unsubAttachOverlay?.(); unsubAttachDataWindow?.();
     window.removeEventListener('paste', handleCanvasPaste);
-    replaySession.bindDriver(null); controller.destroy();
+    replaySession.bindDriver(null); sessionController = null; controller.destroy();
   });
 
   export function enableCutoffSelection(): void { isSelectingCutoff = true; }
@@ -416,13 +455,6 @@
     await controller.reconnectLiveFeed();
     void refreshCachedCandles();
   }
-
-  $effect(() => {
-    const s = symbol, tf = timeframe;
-    if (isMounted) {
-      refreshCachedCandles();
-    }
-  });
 
   function handleAlertPointerDown(e: PointerEvent, alert: PriceAlert) {
     e.stopPropagation();
@@ -555,6 +587,10 @@
   export function setPriceStyle(style: string, cell?: any): void { controller.setPriceStyle(style, cell); }
   export function cyclePriceStyle(cell?: any): string { return controller.cyclePriceStyle(cell); }
   export function setTimeframe(tf: Timeframe): void { controller.setTimeframe(tf); }
+  export function getSession(): 'regular' | 'extended' { return controller.getSession(); }
+  export function isSessionAvailable(): boolean { return controller.isSessionAvailable(); }
+  export function setSession(mode: 'regular' | 'extended'): void { controller.setSession(mode); }
+  export function toggleSession(): 'regular' | 'extended' { return controller.toggleSession(); }
   export function getBarSpacing(cell?: any): number { return controller.getBarSpacing(cell); }
   export function setBarSpacing(spacing: number, cell?: any): void { controller.setBarSpacing(spacing, cell); }
   export function saveWorkspaceState(name?: string) { return controller.saveWorkspaceState(name); }
