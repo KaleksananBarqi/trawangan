@@ -303,4 +303,56 @@ describe('PineRuntimeCoordinator (#219)', () => {
     engine.terminate?.();
     coordinator.dispose();
   });
+
+  test('clearAll() membersihkan telemetri, riwayat alert/warning, deduplikasi, dan marker scene tanpa melepas sel', async () => {
+    const dispatchedAlerts: any[] = [];
+    const mockAlertService = {
+      dispatchPineAlert(params: any) {
+        dispatchedAlerts.push(params);
+        return params;
+      },
+      isSystemNotificationEnabled() {
+        return false;
+      },
+    };
+
+    const coordinator = new PineRuntimeCoordinator({
+      alertService: mockAlertService as any,
+    });
+
+    const cell = createMockCell('cell_clear', 'BTCUSDT');
+    cell.sceneIndicators.set('strat_clear', { id: 'strat_clear', trades: [] });
+    coordinator.attachCell(cell);
+
+    cell.chart.emit('script:run', {
+      id: 'strat_clear',
+      title: 'Clear Strategy',
+      kind: 'strategy',
+      strategy: { netPnl: 100, initialCapital: 1000 },
+      trades: async () => [
+        { id: 't1', side: 'long', qty: 1, entry: { id: 'E1', time: 1000, price: 50000 }, open: true },
+      ],
+      alerts: [{ indicatorId: 'strat_clear', message: 'Signal', barIndex: 10 }],
+      warnings: [{ indicatorId: 'strat_clear', message: 'Warn', time: 1000 }],
+    });
+    await new Promise((r) => setTimeout(r, 15));
+
+    assert.ok(coordinator.telemetry.getTelemetry('strat_clear'));
+    assert.strictEqual(coordinator.alertBridge.getAlertHistory().length, 1);
+    assert.strictEqual(coordinator.alertBridge.getWarningHistory().length, 1);
+    assert.strictEqual(cell.sceneIndicators.get('strat_clear').trades.length, 1);
+
+    coordinator.clearAll();
+
+    assert.strictEqual(coordinator.telemetry.getTelemetry('strat_clear'), null);
+    assert.strictEqual(coordinator.alertBridge.getAlertHistory().length, 0);
+    assert.strictEqual(coordinator.alertBridge.getWarningHistory().length, 0);
+    assert.strictEqual(cell.sceneIndicators.get('strat_clear').trades.length, 0);
+
+    // Sel masih terikat sehingga alert dengan barIndex sama dapat dipancarkan ulang setelah clearAll
+    cell.chart.emit('alert', { indicatorId: 'strat_clear', message: 'Signal', barIndex: 10 });
+    assert.strictEqual(dispatchedAlerts.length, 2);
+
+    coordinator.dispose();
+  });
 });

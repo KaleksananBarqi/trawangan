@@ -63,7 +63,7 @@
   let isMacroMarksVisible = $state(timelineMarksController.isGroupVisible('macro'));
   let isTradesMarksVisible = $state(timelineMarksController.isGroupVisible('trades'));
   let isJournalMarksVisible = $state(timelineMarksController.isGroupVisible('journal'));
-  let currentMarketSession = $derived(settings.marketSession ?? sessionState?.session ?? 'regular');
+  let currentMarketSession = $derived(sessionState?.session ?? settings.marketSession ?? 'regular');
   let isSessionAvailable = $derived(sessionState?.sessionAvailable ?? false);
 
   function toggleMacroMarks() {

@@ -487,6 +487,28 @@ export class PineRuntimeCoordinator {
   }
 
   /**
+   * Membersihkan seluruh state runtime sementara (telemetri strategi, riwayat alert/warning,
+   * kunci deduplikasi, dan marker eksekusi pada scene) tanpa melepas pengikatan sel aktif.
+   */
+  public clearAll(): void {
+    this.telemetry.clearTelemetry();
+    this.alertBridge.clearHistory();
+    this.emittedAlertKeys.clear();
+    this.cellIndicatorIds.clear();
+    for (const ctx of this.attachedCells.values()) {
+      const chart = ctx.cell?.chart || ctx.cell?.inner || ctx.cell;
+      const scene = chart?.renderer?.scene || chart?.scene;
+      if (scene?.indicators && typeof scene.indicators.values === 'function') {
+        for (const model of scene.indicators.values()) {
+          if (model && model.trades) {
+            model.trades = [];
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Membersihkan seluruh state koordinator dan melepas semua sel yang terikat.
    */
   public dispose(): void {

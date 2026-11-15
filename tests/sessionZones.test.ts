@@ -127,6 +127,16 @@ describe('Tiket #205: Session Zones & Extended Hours Shading Suite', () => {
         'ChartTab.svelte tidak boleh lagi bergantung pada singleton marketSessionService'
       );
     });
+
+    test('ChartTab.svelte memprioritaskan sessionState?.session sebelum settings.marketSession agar ChartSessionController menjadi otoritas tunggal', () => {
+      const chartTabSrc = fs.readFileSync(path.resolve('src/lib/components/settings/ChartTab.svelte'), 'utf8');
+
+      assert.match(
+        chartTabSrc,
+        /sessionState\?\.session\s*\?\?\s*settings\.marketSession\s*\?\?\s*['"]regular['"]/,
+        'ChartTab.svelte wajib mendahulukan sessionState?.session di atas settings.marketSession'
+      );
+    });
   });
 
   describe('5. YahooFinanceProvider Session Integration', () => {

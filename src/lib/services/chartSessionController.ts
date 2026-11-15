@@ -2440,8 +2440,7 @@ export class ChartSessionController implements WorkspaceChartPort {
    * Membersihkan seluruh indikator aktif di workspace
    */
   public clearAllIndicators(): void {
-    this.pineRuntime.telemetry.clearTelemetry();
-    this.pineRuntime.alertBridge.clearHistory();
+    this.pineRuntime.clearAll();
     this.desiredPaneWeightsByCell = new WeakMap();
     this.lastCapturedPaneLayoutByCell = new WeakMap();
     this.userTouchedPaneLayoutByCell = new WeakSet<any>();
