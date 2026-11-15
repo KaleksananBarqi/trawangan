@@ -223,7 +223,7 @@ describe('Fase 3: Pemicu Auto-Save Lengkap & Flush saat Exit', () => {
     const coordinator = new WorkspaceAutoSaveCoordinator({
       onSave: async (input) => {
         saveCalls++;
-        savedSymbol = input.symbol;
+        savedSymbol = input.symbol ?? '';
       },
     });
     assert.equal((coordinator as any).debounceMs, 1500);
