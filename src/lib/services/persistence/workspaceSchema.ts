@@ -87,6 +87,7 @@ export function normalizeWorkspace(raw: any): SavedWorkspace {
     timeframe,
     providerId,
     ...(base.priceStyle ? { priceStyle: base.priceStyle } : {}),
+    ...(typeof base.priceScaleCountdown === 'boolean' ? { priceScaleCountdown: base.priceScaleCountdown } : {}),
     ...(typeof base.barSpacing === 'number' ? { barSpacing: base.barSpacing } : {}),
     ...(base.priceScaleState !== undefined ? { priceScaleState: base.priceScaleState } : {}),
     ...(paneLayout ? { paneLayout } : {}),

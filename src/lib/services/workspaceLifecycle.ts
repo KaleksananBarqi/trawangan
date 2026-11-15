@@ -28,7 +28,6 @@ import {
 } from './persistence/workspaceSchema';
 import {
   computeWorkspaceFingerprint,
-  type WorkspaceFingerprintInput,
 } from './persistence/workspaceService';
 
 export const PENDING_WORKSPACE_KEY_PREFIX = 'trawangan_workspace_pending_';
@@ -402,7 +401,7 @@ export async function executeWorkspaceLoadPipeline(
       plan: step9PlanPort,
       activeRightDockPanel: w.activeRightDockPanel,
     });
-    const fingerprint = computeWorkspaceFingerprint(step9Snapshot as WorkspaceFingerprintInput);
+    const fingerprint = computeWorkspaceFingerprint(step9Snapshot);
 
     const indCount = w.indicators?.length || 0;
     const indTitles = w.indicators && w.indicators.length > 0
@@ -439,7 +438,7 @@ export async function executeWorkspaceLoadPipeline(
 
 export interface AutoSaveCoordinatorOptions {
   debounceMs?: number;
-  onSave: (input: WorkspaceFingerprintInput) => Promise<SavedWorkspace | void>;
+  onSave: (input: Partial<SavedWorkspace>) => Promise<SavedWorkspace | void>;
   onError?: (err: any) => void;
 }
 
@@ -450,11 +449,11 @@ export class WorkspaceAutoSaveCoordinator {
   private timer: any = null;
   private isSaving = false;
   private lastSavedFingerprint = '';
-  private pendingInput: WorkspaceFingerprintInput | null = null;
-  private pendingBuilder: (() => WorkspaceFingerprintInput | null) | null = null;
+  private pendingInput: Partial<SavedWorkspace> | null = null;
+  private pendingBuilder: (() => Partial<SavedWorkspace> | null) | null = null;
   private activeSavePromise: Promise<SavedWorkspace | void> | null = null;
   private debounceMs: number;
-  private onSave: (input: WorkspaceFingerprintInput) => Promise<SavedWorkspace | void>;
+  private onSave: (input: Partial<SavedWorkspace>) => Promise<SavedWorkspace | void>;
   private onError?: (err: any) => void;
 
   constructor(options: AutoSaveCoordinatorOptions) {
@@ -488,7 +487,7 @@ export class WorkspaceAutoSaveCoordinator {
    * Memicu auto-save ter-debounce tanpa membangun payload berat & fingerprint di hot path.
    * Builder hanya dipanggil satu kali saat timer debounce jatuh tempo di `flushNow()`.
    */
-  public triggerDeferred(builder: () => WorkspaceFingerprintInput | null): void {
+  public triggerDeferred(builder: () => Partial<SavedWorkspace> | null): void {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -504,7 +503,7 @@ export class WorkspaceAutoSaveCoordinator {
   /**
    * Memicu auto-save ter-debounce jika fingerprint input berbeda dengan fingerprint yang sudah tersimpan.
    */
-  public trigger(input: WorkspaceFingerprintInput): string | null {
+  public trigger(input: Partial<SavedWorkspace>): string | null {
     const currentFingerprint = computeWorkspaceFingerprint(input);
 
     // KUNCI GUARD: Jika fingerprint nilai sama persis dengan yang sudah tersimpan, abaikan & bersihkan timer lama!
@@ -526,7 +525,7 @@ export class WorkspaceAutoSaveCoordinator {
   /**
    * Memaksa penulisan workspace tertunda secara langsung tanpa menunggu debounce (mis. saat exit atau Save manual).
    */
-  public async flushNow(overrideInput?: WorkspaceFingerprintInput): Promise<boolean> {
+  public async flushNow(overrideInput?: Partial<SavedWorkspace>): Promise<boolean> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
