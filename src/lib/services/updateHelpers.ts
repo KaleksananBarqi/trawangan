@@ -249,3 +249,100 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+export interface LatestManifestPayload {
+  version: string;
+  notes?: string;
+  pub_date?: string;
+  platforms?: Record<string, { url?: string; signature?: string }>;
+}
+
+/**
+ * Memformat ISO timestamp rilis ke format tanggal lokal Indonesia.
+ */
+export function formatReleaseDate(isoDate?: string | null): string {
+  if (!isoDate) return '';
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('id-ID', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+/**
+ * Mem-parse isi berkas SHA256SUMS.txt menjadi daftar ReleaseAsset dengan URL unduhan langsung.
+ */
+export function parseSha256SumsAssets(
+  rawText: string,
+  tag: string,
+  downloadBase: string
+): ReleaseAsset[] {
+  const assets: ReleaseAsset[] = [];
+  const seen = new Set<string>();
+
+  for (const line of rawText.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const match = trimmed.match(/^[a-fA-F0-9]{64}\s+\*?(.+)$/);
+    if (!match) continue;
+    const name = match[1].trim();
+    if (!name || name.endsWith('.sig') || name === 'latest.json' || name === 'SHA256SUMS.txt') {
+      continue;
+    }
+    if (seen.has(name)) continue;
+    seen.add(name);
+    assets.push({
+      name,
+      browserDownloadUrl: `${downloadBase}/${tag}/${name}`,
+      size: 0,
+      kind: classifyAssetKind(name),
+    });
+  }
+
+  return assets;
+}
+
+/**
+ * Mengekstrak daftar ReleaseAsset cadangan dari field `platforms` milik latest.json.
+ */
+export function buildAssetsFromLatestManifest(manifest: LatestManifestPayload): ReleaseAsset[] {
+  const platforms = manifest.platforms;
+  if (!platforms || typeof platforms !== 'object') return [];
+
+  const assets: ReleaseAsset[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of Object.values(platforms)) {
+    const url = entry?.url?.trim();
+    if (!url) continue;
+    const name = url.split('/').pop() || '';
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    assets.push({
+      name,
+      browserDownloadUrl: url,
+      size: 0,
+      kind: classifyAssetKind(name),
+    });
+  }
+
+  return assets;
+}
+
+/**
+ * Menyusun pesan error yang informatif saat GitHub API terkena rate limit (HTTP 403 / 429).
+ */
+export function formatRateLimitErrorMessage(status: number, resetEpochHeader?: string | null): string {
+  const resetEpoch = resetEpochHeader ? Number.parseInt(resetEpochHeader, 10) : NaN;
+  if (Number.isFinite(resetEpoch) && resetEpoch > 0) {
+    const resetTime = new Date(resetEpoch * 1000).toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    return `Batas kuota GitHub API tercapai (HTTP ${status}). Coba lagi setelah pukul ${resetTime}.`;
+  }
+  return `Batas kuota GitHub API tercapai (HTTP ${status}). Coba lagi beberapa saat lagi.`;
+}

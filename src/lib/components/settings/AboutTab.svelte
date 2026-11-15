@@ -334,7 +334,7 @@
                         onclick={() => openExternalUrl(asset.browserDownloadUrl)}
                       >
                         <span class="asset-name">{asset.name}</span>
-                        <span class="asset-size">{formatBytes(asset.size)} ↗</span>
+                        <span class="asset-size">{asset.size > 0 ? `${formatBytes(asset.size)} ` : ''}↗</span>
                       </button>
                     {/each}
                   </div>

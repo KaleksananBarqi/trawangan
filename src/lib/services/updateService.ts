@@ -1,12 +1,16 @@
 import { APP_VERSION } from '../config/version';
 import { getUiPreferenceSync, setUiPreference, removeUiPreference } from './persistence';
 import {
+  buildAssetsFromLatestManifest,
   classifyAssetKind,
   compareSemver,
   detectPlatform,
   formatBytes,
+  formatRateLimitErrorMessage,
+  formatReleaseDate,
   getUpdatePillContent,
   isUpdateFlowActive,
+  parseSha256SumsAssets,
   resolveUpdateStrategy,
   selectMatchedAsset,
   shouldShowUpdateBadge,
@@ -14,6 +18,7 @@ import {
   type DownloadProgress,
   type InstallEnvironment,
   type InstallKind,
+  type LatestManifestPayload,
   type ReleaseAsset,
   type UpdateInfo,
   type UpdatePillContent,
@@ -48,6 +53,8 @@ export type {
 
 const RELEASE_API_URL = 'https://api.github.com/repos/KaleksananBarqi/trawangan/releases/latest';
 const RELEASE_DOWNLOAD_BASE = 'https://github.com/KaleksananBarqi/trawangan/releases/download';
+const RELEASE_TAG_BASE = 'https://github.com/KaleksananBarqi/trawangan/releases/tag';
+const LATEST_MANIFEST_URL = 'https://github.com/KaleksananBarqi/trawangan/releases/latest/download/latest.json';
 const PERIODIC_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export interface TauriUpdateHandle {
@@ -95,6 +102,8 @@ export class UpdateService {
   private listeners: Set<(state: UpdateState) => void> = new Set();
   private hasInitializedRuntime = false;
   private pendingTauriUpdate: TauriUpdateHandle | null = null;
+  private cachedApiEtag: string | null = null;
+  private cachedApiData: any | null = null;
   private adapters: UpdateServiceAdapters;
 
   constructor(adapters: UpdateServiceAdapters = {}) {
@@ -241,60 +250,11 @@ export class UpdateService {
 
     try {
       const fetchImpl = this.adapters.fetchFn ?? fetch;
-      const res = await fetchImpl(RELEASE_API_URL, {
-        headers: { Accept: 'application/vnd.github.v3+json' },
-      });
-
-      if (!res.ok) {
-        throw new Error(`Gagal mengambil data rilis (HTTP ${res.status})`);
-      }
-
-      const data = await res.json();
-      const latestTag = data.tag_name || 'v0.0.0';
-      const latestVersion = latestTag.replace(/^v/, '');
-      const currentVersion = this.state.currentVersion;
-      const isUpdateAvailable = compareSemver(latestVersion, currentVersion) > 0;
-
-      const rawAssets = Array.isArray(data.assets) ? data.assets : [];
-      const assets: ReleaseAsset[] = rawAssets
-        .filter((a: any) => {
-          const name: string = a?.name || '';
-          return !name.endsWith('.sig') && name !== 'latest.json' && name !== 'SHA256SUMS.txt';
-        })
-        .map((a: any) => {
-          const name: string = a.name || '';
-          return {
-            name,
-            browserDownloadUrl: a.browser_download_url,
-            size: a.size || 0,
-            kind: classifyAssetKind(name),
-          };
-        });
-
-      const matchedAsset = selectMatchedAsset(assets, this.state.installEnvironment, detectPlatform());
-
-      const updateInfo: UpdateInfo = {
-        currentVersion,
-        latestVersion,
-        latestTag,
-        releaseName: data.name || latestTag,
-        releaseNotes: data.body || 'Tidak ada catatan rilis.',
-        releaseUrl: data.html_url || 'https://github.com/KaleksananBarqi/trawangan/releases/latest',
-        publishedAt: data.published_at
-          ? new Date(data.published_at).toLocaleDateString('id-ID', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })
-          : '',
-        isUpdateAvailable,
-        assets,
-        matchedAsset,
-      };
+      const updateInfo = await this.fetchLatestUpdateInfo(fetchImpl);
 
       this.state.updateInfo = updateInfo;
       this.state.lastChecked = new Date();
-      this.state.status = isUpdateAvailable ? 'available' : 'latest';
+      this.state.status = updateInfo.isUpdateAvailable ? 'available' : 'latest';
       this.state.errorMessage = null;
       this.state.statusMessage = null;
     } catch (err: any) {
@@ -310,6 +270,133 @@ export class UpdateService {
 
     this.notify();
     return this.getSnapshot();
+  }
+
+  /**
+   * Mengambil metadata rilis terbaru dari GitHub API (dengan ETag cache) lalu fallback ke manifest statis saat rate-limit.
+   */
+  private async fetchLatestUpdateInfo(fetchImpl: typeof fetch): Promise<UpdateInfo> {
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github.v3+json',
+    };
+    if (this.cachedApiEtag && this.cachedApiData) {
+      headers['If-None-Match'] = this.cachedApiEtag;
+    }
+
+    const res = await fetchImpl(RELEASE_API_URL, { headers });
+
+    if (res.status === 304 && this.cachedApiData) {
+      return this.buildUpdateInfoFromGitHubApi(this.cachedApiData);
+    }
+
+    if (res.ok) {
+      const data = await res.json();
+      const etag = res.headers?.get?.('etag');
+      if (etag) {
+        this.cachedApiEtag = etag;
+        this.cachedApiData = data;
+      }
+      return this.buildUpdateInfoFromGitHubApi(data);
+    }
+
+    if (res.status === 403 || res.status === 429) {
+      try {
+        return await this.fetchFromStaticManifestFallback(fetchImpl);
+      } catch {
+        const resetHeader = res.headers?.get?.('x-ratelimit-reset') ?? null;
+        const remaining = res.headers?.get?.('x-ratelimit-remaining');
+        if (res.status === 429 || remaining === '0') {
+          throw new Error(formatRateLimitErrorMessage(res.status, resetHeader));
+        }
+      }
+    }
+
+    throw new Error(`Gagal mengambil data rilis (HTTP ${res.status})`);
+  }
+
+  private buildUpdateInfoFromGitHubApi(data: any): UpdateInfo {
+    const latestTag = data.tag_name || 'v0.0.0';
+    const latestVersion = latestTag.replace(/^v/, '');
+    const currentVersion = this.state.currentVersion;
+    const isUpdateAvailable = compareSemver(latestVersion, currentVersion) > 0;
+
+    const rawAssets = Array.isArray(data.assets) ? data.assets : [];
+    const assets: ReleaseAsset[] = rawAssets
+      .filter((a: any) => {
+        const name: string = a?.name || '';
+        return !name.endsWith('.sig') && name !== 'latest.json' && name !== 'SHA256SUMS.txt';
+      })
+      .map((a: any) => {
+        const name: string = a.name || '';
+        return {
+          name,
+          browserDownloadUrl: a.browser_download_url,
+          size: a.size || 0,
+          kind: classifyAssetKind(name),
+        };
+      });
+
+    const matchedAsset = selectMatchedAsset(assets, this.state.installEnvironment, detectPlatform());
+
+    return {
+      currentVersion,
+      latestVersion,
+      latestTag,
+      releaseName: data.name || latestTag,
+      releaseNotes: data.body || 'Tidak ada catatan rilis.',
+      releaseUrl: data.html_url || 'https://github.com/KaleksananBarqi/trawangan/releases/latest',
+      publishedAt: formatReleaseDate(data.published_at),
+      isUpdateAvailable,
+      assets,
+      matchedAsset,
+    };
+  }
+
+  /**
+   * Fallback bebas rate-limit menggunakan berkas rilis statis `latest.json` dan `SHA256SUMS.txt`.
+   */
+  private async fetchFromStaticManifestFallback(fetchImpl: typeof fetch): Promise<UpdateInfo> {
+    const manifestRes = await fetchImpl(LATEST_MANIFEST_URL);
+    if (!manifestRes.ok) {
+      throw new Error(`Gagal mengambil latest.json (HTTP ${manifestRes.status})`);
+    }
+
+    const manifest = (await manifestRes.json()) as LatestManifestPayload;
+    const rawVersion = (manifest.version || '0.0.0').trim();
+    const latestVersion = rawVersion.replace(/^v/, '');
+    const latestTag = `v${latestVersion}`;
+    const currentVersion = this.state.currentVersion;
+    const isUpdateAvailable = compareSemver(latestVersion, currentVersion) > 0;
+
+    let assets: ReleaseAsset[] = [];
+    try {
+      const sumsRes = await fetchImpl(`${RELEASE_DOWNLOAD_BASE}/${latestTag}/SHA256SUMS.txt`);
+      if (sumsRes.ok) {
+        const sumsText = await sumsRes.text();
+        assets = parseSha256SumsAssets(sumsText, latestTag, RELEASE_DOWNLOAD_BASE);
+      }
+    } catch {
+      // Abaikan kegagalan SHA256SUMS.txt; lanjut pakai daftar platform dari latest.json.
+    }
+
+    if (assets.length === 0) {
+      assets = buildAssetsFromLatestManifest(manifest);
+    }
+
+    const matchedAsset = selectMatchedAsset(assets, this.state.installEnvironment, detectPlatform());
+
+    return {
+      currentVersion,
+      latestVersion,
+      latestTag,
+      releaseName: `trawangan ${latestTag}`,
+      releaseNotes: manifest.notes || 'Tidak ada catatan rilis.',
+      releaseUrl: `${RELEASE_TAG_BASE}/${latestTag}`,
+      publishedAt: formatReleaseDate(manifest.pub_date),
+      isUpdateAvailable,
+      assets,
+      matchedAsset,
+    };
   }
 
   /**

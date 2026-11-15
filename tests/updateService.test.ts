@@ -427,4 +427,141 @@ describe('Update Service & Semver Logic Unit Tests', () => {
     ]);
     assert.equal(sums, '1111  a.deb\n2222  b.rpm\n');
   });
+
+  test('checkForUpdates menggunakan ETag cache saat GitHub API membalas 304 Not Modified', async () => {
+    let callCount = 0;
+    let receivedIfNoneMatch: string | null = null;
+
+    const service = new UpdateService({
+      isTauri: () => false,
+      fetchFn: (async (_url, init) => {
+        callCount += 1;
+        const headers = new Headers(init?.headers);
+        if (callCount === 1) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers({ etag: '"v0.99.0-etag"' }),
+            json: async () => ({
+              tag_name: 'v0.99.0',
+              name: 'trawangan v0.99.0',
+              body: 'Rilis uji ETag',
+              html_url: 'https://github.com/KaleksananBarqi/trawangan/releases/tag/v0.99.0',
+              published_at: '2026-11-15T10:00:00Z',
+              assets: [],
+            }),
+          } as Response;
+        }
+        receivedIfNoneMatch = headers.get('If-None-Match');
+        return {
+          ok: false,
+          status: 304,
+          headers: new Headers(),
+        } as Response;
+      }) as typeof fetch,
+    });
+
+    const first = await service.checkForUpdates(false);
+    assert.equal(first.status, 'available');
+    assert.equal(first.updateInfo?.latestTag, 'v0.99.0');
+
+    const second = await service.checkForUpdates(false);
+    assert.equal(receivedIfNoneMatch, '"v0.99.0-etag"');
+    assert.equal(second.status, 'available');
+    assert.equal(second.updateInfo?.latestTag, 'v0.99.0');
+  });
+
+  test('checkForUpdates otomatis fallback ke latest.json dan SHA256SUMS.txt saat API terkena HTTP 403', async () => {
+    const requestedUrls: string[] = [];
+
+    const service = new UpdateService({
+      isTauri: () => true,
+      getAppVersion: async () => '0.50.0',
+      detectEnvironment: async () => ({
+        os: 'linux',
+        arch: 'x86_64',
+        installKind: 'rpm',
+        recommendedLinuxFormat: 'rpm',
+        packageManager: 'dnf',
+        canInAppUpdate: true,
+        isDev: false,
+      }),
+      fetchFn: (async (input) => {
+        const url = String(input);
+        requestedUrls.push(url);
+
+        if (url.includes('api.github.com')) {
+          return {
+            ok: false,
+            status: 403,
+            headers: new Headers({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1794744235' }),
+          } as Response;
+        }
+
+        if (url.endsWith('/latest.json')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              version: '0.51.0',
+              notes: 'Catatan dari latest.json',
+              pub_date: '2026-11-15T11:21:22.690Z',
+              platforms: {
+                'linux-x86_64': {
+                  url: 'https://github.com/KaleksananBarqi/trawangan/releases/download/v0.51.0/trawangan_0.51.0_amd64.AppImage',
+                  signature: 'SIG',
+                },
+              },
+            }),
+          } as Response;
+        }
+
+        if (url.endsWith('/SHA256SUMS.txt')) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              [
+                'c6d3bf2c994af0b4b4462f8d8ea00ded8c1819e4c3b986453888349ef8827d20  trawangan_0.51.0_amd64.AppImage',
+                '82b771b8ca15795042dc14b1723e11b362e845534498313678b800d6012d3f50  trawangan-0.51.0-1.x86_64.rpm',
+              ].join('\n'),
+          } as Response;
+        }
+
+        return { ok: false, status: 404 } as Response;
+      }) as typeof fetch,
+    });
+
+    const state = await service.checkForUpdates(false);
+    assert.equal(state.status, 'available');
+    assert.equal(state.errorMessage, null);
+    assert.equal(state.updateInfo?.latestVersion, '0.51.0');
+    assert.equal(state.updateInfo?.releaseNotes, 'Catatan dari latest.json');
+    assert.equal(state.updateInfo?.matchedAsset?.name, 'trawangan-0.51.0-1.x86_64.rpm');
+    assert.equal(requestedUrls.length, 3);
+  });
+
+  test('checkForUpdates menampilkan pesan rate-limit yang jelas bila API 403 dan fallback gagal', async () => {
+    const service = new UpdateService({
+      isTauri: () => false,
+      fetchFn: (async (input) => {
+        const url = String(input);
+        if (url.includes('api.github.com')) {
+          return {
+            ok: false,
+            status: 403,
+            headers: new Headers({
+              'x-ratelimit-remaining': '0',
+              'x-ratelimit-reset': '1794744235',
+            }),
+          } as Response;
+        }
+        return { ok: false, status: 503, headers: new Headers() } as Response;
+      }) as typeof fetch,
+    });
+
+    const state = await service.checkForUpdates(false);
+    assert.equal(state.status, 'error');
+    assert.match(state.errorMessage ?? '', /Batas kuota GitHub API tercapai \(HTTP 403\)/);
+  });
 });
