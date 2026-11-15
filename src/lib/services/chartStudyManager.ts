@@ -1,6 +1,7 @@
 import { getNativeIndicator } from '@luxalgo/vela';
 import { IndicatorRegistry } from './indicatorRegistry';
-import { normalizeVpvrInputs } from './vpvrProfile';
+import { normalizeVpvrInputs, toEngineVpvrOptions, type VpvrOptions, type EngineVpvrOptions } from './vpvrProfile';
+export { normalizeVpvrInputs, toEngineVpvrOptions, type VpvrOptions, type EngineVpvrOptions };
 import { resolveEffectiveVolumeColors } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
 import { computePaneSignature } from './persistence/workspaceSchema';
