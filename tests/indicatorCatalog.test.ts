@@ -70,14 +70,29 @@ describe('Unified Indicator Catalog & 76 Native Indicators Suite (#194)', () => 
       assert.strictEqual(fractal.category, 'Signals', 'Williams Fractal harus Signals');
     });
 
-    test('memuat 7 Pine Presets resmi secara harmonis', () => {
+    test('memuat 10 Pine Presets resmi secara harmonis', () => {
       const presets = catalogService.getPinePresets();
-      assert.strictEqual(presets.length, 7, 'Harus memuat tepat 7 preset Pine resmi');
+      assert.strictEqual(presets.length, 10, 'Harus memuat tepat 10 preset Pine resmi');
 
       for (const p of presets) {
         assert.strictEqual(p.kind, 'pine');
         assert.ok(p.sourceCode && p.sourceCode.includes('//@version'));
       }
+
+      const doubleEma = presets.find((p) => p.id === 'double-ema');
+      assert.ok(doubleEma, 'Preset double-ema harus terdaftar');
+      assert.strictEqual(doubleEma.category, 'Trend');
+      assert.strictEqual(doubleEma.overlay, true);
+
+      const keyLevels = presets.find((p) => p.id === 'key-levels');
+      assert.ok(keyLevels, 'Preset key-levels harus terdaftar');
+      assert.strictEqual(keyLevels.category, 'Profile');
+      assert.strictEqual(keyLevels.overlay, true);
+
+      const smc = presets.find((p) => p.id === 'smc-luxalgo');
+      assert.ok(smc, 'Preset smc-luxalgo harus terdaftar');
+      assert.strictEqual(smc.category, 'Signals');
+      assert.strictEqual(smc.overlay, true);
     });
 
     test('mengagregasi Native + Pine Presets + Skrip Kustom pengguna secara utuh', () => {
@@ -103,8 +118,8 @@ describe('Unified Indicator Catalog & 76 Native Indicators Suite (#194)', () => 
       const all = catalogService.getAllIndicators(dummyCustomScripts);
       assert.strictEqual(
         all.length,
-        76 + 7 + 2,
-        'Total indikator gabungan harus 85 (76 Native + 7 Presets + 2 Kustom)'
+        76 + 10 + 2,
+        'Total indikator gabungan harus 88 (76 Native + 10 Presets + 2 Kustom)'
       );
     });
   });
@@ -118,9 +133,10 @@ describe('Unified Indicator Catalog & 76 Native Indicators Suite (#194)', () => 
       assert.ok(trendItems.every((i) => i.category === 'Trend'));
 
       const profileItems = catalogService.filterIndicators(all, { category: 'Profile' });
-      assert.strictEqual(profileItems.length, 2, 'Profile harus mencakup VPVR dan Pivot Points');
+      assert.strictEqual(profileItems.length, 3, 'Profile harus mencakup VPVR, Pivot Points, dan Key Levels');
       assert.ok(profileItems.some((i) => i.nativeType === 'vpvr'));
       assert.ok(profileItems.some((i) => i.nativeType === 'pivot-points'));
+      assert.ok(profileItems.some((i) => i.id === 'key-levels'));
 
       const signalsItems = catalogService.filterIndicators(all, { category: 'Signals' });
       assert.ok(signalsItems.length > 0, 'Kategori Signals harus menemukan indikator (misal: Williams Fractal)');
@@ -166,7 +182,7 @@ describe('Unified Indicator Catalog & 76 Native Indicators Suite (#194)', () => 
       assert.ok(nativeOnly.every((i) => i.kind === 'native'));
 
       const pineOnly = catalogService.filterIndicators(all, { kind: 'pine' });
-      assert.strictEqual(pineOnly.length, 7);
+      assert.strictEqual(pineOnly.length, 10);
       assert.ok(pineOnly.every((i) => i.kind === 'pine'));
     });
   });
