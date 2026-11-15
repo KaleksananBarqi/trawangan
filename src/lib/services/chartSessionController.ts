@@ -31,10 +31,14 @@ function getSharedTerminalWallClock(): WallClock {
   return sharedTerminalWallClock;
 }
 import {
-  createPineFetchSeriesAdapter,
-  TrawanganPineWorkerEngine,
+  PineRuntimeCoordinator,
+  pineRuntimeCoordinator,
+  PineStrategyTelemetryService,
+  PineAlertBridge,
   type FetchSeriesHandler,
-} from './pineSeriesAdapter';
+  type StrategyTelemetryPayload,
+  type TradeExecution,
+} from './pineRuntimeCoordinator';
 import { IndicatorRegistry } from './indicatorRegistry';
 import { normalizeVpvrInputs } from './vpvrProfile';
 import { chartDrawingController } from './chartDrawingController';
@@ -42,19 +46,7 @@ import {
   TimelineMarksController,
   timelineMarksController
 } from './timelineMarksController';
-import {
-  PineStrategyTelemetryService,
-  pineStrategyTelemetry,
-  tradesToTradeExecutions,
-  type StrategyState,
-  type StrategyTrade,
-  type TradeExecution,
-  type StrategyTelemetryPayload,
-} from './pineStrategyTelemetry';
-import {
-  PineAlertBridge,
-  pineAlertBridge,
-} from './pineAlertBridge';
+import { pineAlertBridge } from './pineAlertBridge';
 import {
   type Timeframe,
   type MultiChartSyncConfig,
@@ -147,6 +139,7 @@ export interface ChartSessionOptions {
   onRangePresetChange?: (preset: VisibleRangePreset | null) => void;
   onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   onStrategyTelemetry?: (payload: StrategyTelemetryPayload) => void;
+  pineRuntimeCoordinator?: PineRuntimeCoordinator;
   strategyTelemetry?: PineStrategyTelemetryService;
   pineAlertBridge?: PineAlertBridge;
   onVelaThemeSelect?: (mode: 'dark' | 'light') => void;
@@ -196,8 +189,7 @@ let staticEngineRegistered = false;
 export function ensurePineEngine(): void {
   if (!staticEngineRegistered) {
     try {
-      const globalFetchSeries = createPineFetchSeriesAdapter();
-      registerDefaultEngine('pine', () => new TrawanganPineWorkerEngine({ fetchSeries: globalFetchSeries }));
+      registerDefaultEngine('pine', () => pineRuntimeCoordinator.createWorkerEngine());
       staticEngineRegistered = true;
     } catch (_) {
       // Abaikan jika sudah terdaftar
@@ -485,8 +477,15 @@ export class ChartSessionController {
   private isApplyingRangePreset = false;
   private onActiveIndicatorsChange?: (indicators: ActiveIndicatorInfo[]) => void;
   private onStrategyTelemetryHandler?: (payload: StrategyTelemetryPayload) => void;
-  public readonly strategyTelemetry: PineStrategyTelemetryService;
-  public readonly pineAlertBridge: PineAlertBridge;
+  public readonly pineRuntime: PineRuntimeCoordinator;
+
+  public get strategyTelemetry(): PineStrategyTelemetryService {
+    return this.pineRuntime.telemetry;
+  }
+
+  public get pineAlertBridge(): PineAlertBridge {
+    return this.pineRuntime.alertBridge;
+  }
   private workspaceFactory?: (container: HTMLElement, config: any) => any;
   private activeCellInfo: { symbol: string; timeframe: Timeframe } | null = null;
   private activeChartDefaultConfig: any = null;
@@ -531,7 +530,6 @@ export class ChartSessionController {
   private registeredCustomSignatures = new Map<string, string>();
   private customHydrationEpoch = 0;
   private timelineMarksController: TimelineMarksController = timelineMarksController;
-  private fetchSeriesAdapter: FetchSeriesHandler = createPineFetchSeriesAdapter();
   private session: MarketSession = 'regular';
 
   public getTimelineMarksController(): TimelineMarksController {
@@ -539,7 +537,7 @@ export class ChartSessionController {
   }
 
   public getFetchSeriesAdapter(): FetchSeriesHandler {
-    return this.fetchSeriesAdapter;
+    return this.pineRuntime.getFetchSeriesAdapter();
   }
 
   constructor(options: Partial<ChartSessionOptions> = {}) {
@@ -580,8 +578,13 @@ export class ChartSessionController {
     this.onRangePresetChange = options.onRangePresetChange;
     this.onActiveIndicatorsChange = options.onActiveIndicatorsChange;
     this.onStrategyTelemetryHandler = options.onStrategyTelemetry;
-    this.strategyTelemetry = options.strategyTelemetry ?? new PineStrategyTelemetryService();
-    this.pineAlertBridge = options.pineAlertBridge ?? pineAlertBridge;
+    this.pineRuntime =
+      options.pineRuntimeCoordinator ??
+      new PineRuntimeCoordinator({
+        strategyTelemetry: options.strategyTelemetry,
+        alertBridge: options.pineAlertBridge ?? pineAlertBridge,
+        onTelemetry: (payload) => this.onStrategyTelemetryHandler?.(payload),
+      });
     this.workspaceFactory = options.workspaceFactory;
     this.hasCustomPersistence = Boolean(options.persistence);
     this.persistence = options.persistence ?? storage;
@@ -1021,7 +1024,7 @@ export class ChartSessionController {
       session: this.session,
       providers: guardedProviders,
       engines: {
-        pine: () => new TrawanganPineWorkerEngine({ fetchSeries: this.getFetchSeriesAdapter() }),
+        pine: () => this.pineRuntime.createWorkerEngine(),
       },
       maxWebglCells: 8,
       sync: {
@@ -1149,15 +1152,9 @@ export class ChartSessionController {
 
         let scriptRunHandler: ((run: any) => void) | null = null;
         const uScriptRun = this.workspace.on('script:run', (scriptRunHandler = async (run: any) => {
-          if (run?.kind === 'strategy' || Boolean(run?.strategy) || typeof run?.trades === 'function') {
-            const cellId = run?.cell || this.workspace?.active?.id;
-            const targetCell = (cellId && this.workspace?.cell?.(cellId)) || this.workspace?.active;
-            const payload = await this.strategyTelemetry.extractFromScriptRun(run, cellId);
-            if (payload && targetCell) {
-              this.strategyTelemetry.routeTradeMarkersToCell(targetCell, payload.indicatorId, payload.tradeExecutions);
-              this.onStrategyTelemetryHandler?.(payload);
-            }
-          }
+          const cellId = run?.cell || this.workspace?.active?.id;
+          const targetCell = (cellId && this.workspace?.cell?.(cellId)) || this.workspace?.active;
+          await this.pineRuntime.handleScriptRun(run, targetCell);
         }));
         this.workspaceEventUnsubs.push(
           typeof uScriptRun === 'function'
@@ -1653,8 +1650,9 @@ export class ChartSessionController {
     const chart = cell.chart || cell.inner;
     if (chart) {
       this.timelineMarksController.attachSingleCellOrChart(chart);
-      const { symbol: cellSym } = getCellMarketIdentity(cell);
-      this.pineAlertBridge.attach(chart, { symbol: cellSym || this.symbol, cellId: cell?.id });
+      this.pineRuntime.attachCell(cell, {
+        resolveSymbol: () => getCellMarketIdentity(cell).symbol || this.symbol,
+      });
     }
     // Otoritas Tunggal Tema Trawangan: Sembunyikan 'canvas.theme' dari dialog Vela
     if (chart && typeof chart.setSettingsVisibility === 'function') {
@@ -1697,7 +1695,6 @@ export class ChartSessionController {
           this.syncCellMacroState(cell);
           const { symbol: cellSym, providerId: cellProv } = getCellMarketIdentity(cell);
           this.timelineMarksController.syncForMarket(cellSym || this.symbol, cellProv || this.providerId);
-          this.pineAlertBridge.attach(chart, { symbol: cellSym || this.symbol, cellId: cell?.id });
         });
         chart.on('indicator:added', () => {
           this.syncNativeVolumeColors(cell, false);
@@ -1711,9 +1708,6 @@ export class ChartSessionController {
         });
         chart.on('indicator:removed', (ev: any) => {
           this.handleIndicatorRemoved(ev?.id);
-          if (ev?.id) {
-            this.pineAlertBridge.handleIndicatorRemoved(ev.id);
-          }
           this.emitPersistableChange('indicator:removed');
         });
         chart.on('priceStyle:change', () => {
@@ -1734,15 +1728,6 @@ export class ChartSessionController {
         chart.on('pane:changed', () => {
           this.capturePaneLayoutIfChanged(cell, { silent: true });
           this.emitPersistableChange('pane:changed');
-        });
-        chart.on('script:run', async (run: any) => {
-          if (run?.kind === 'strategy' || Boolean(run?.strategy) || typeof run?.trades === 'function') {
-            const payload = await this.strategyTelemetry.extractFromScriptRun(run, cell?.id);
-            if (payload) {
-              this.strategyTelemetry.routeTradeMarkersToCell(cell, payload.indicatorId, payload.tradeExecutions);
-              this.onStrategyTelemetryHandler?.(payload);
-            }
-          }
         });
         chart.on('viewport:changed', () => {
           this.checkRangePresetViewportDrift(cell);
@@ -2232,11 +2217,7 @@ export class ChartSessionController {
           if (isStrategy && typeof handle.context === 'function') {
             void handle.context().then((ctx: any) => {
               if (ctx) {
-                const payload = this.strategyTelemetry.extractFromContext(handle.id, ctx, cleanTitle, cell?.id);
-                if (payload) {
-                  this.strategyTelemetry.routeTradeMarkersToCell(cell, handle.id, payload.tradeExecutions);
-                  this.onStrategyTelemetryHandler?.(payload);
-                }
+                this.pineRuntime.syncStrategyFromContext(handle.id, ctx, cleanTitle, cell);
               }
             }).catch((err: unknown) => {
               console.warn('[ChartSessionController] Gagal mengambil context strategi Pine:', err);
@@ -2558,18 +2539,7 @@ export class ChartSessionController {
    */
   public removeIndicator(id: string): void {
     if (id) {
-      this.strategyTelemetry.clearTelemetry(id);
-      this.pineAlertBridge.handleIndicatorRemoved(id);
-      for (const cell of this.getAllCells()) {
-        const chart = cell?.chart || cell?.inner;
-        const scene = chart?.renderer?.scene || chart?.scene;
-        if (scene?.indicators && typeof scene.indicators.get === 'function') {
-          const model = scene.indicators.get(id);
-          if (model && model.trades) {
-            model.trades = [];
-          }
-        }
-      }
+      this.pineRuntime.handleIndicatorRemoved(id, this.getAllCells());
     }
     this.indicatorRegistry.removeIndicator(
       id,
@@ -2583,7 +2553,8 @@ export class ChartSessionController {
    * Membersihkan seluruh indikator aktif di workspace
    */
   public clearAllIndicators(): void {
-    this.strategyTelemetry.clearTelemetry();
+    this.pineRuntime.telemetry.clearTelemetry();
+    this.pineRuntime.alertBridge.clearHistory();
     this.desiredPaneWeightsByCell = new WeakMap();
     this.lastCapturedPaneLayoutByCell = new WeakMap();
     this.userTouchedPaneLayoutByCell = new WeakSet<any>();
@@ -2783,11 +2754,7 @@ export class ChartSessionController {
       if (isStrategy && typeof handle.context === 'function') {
         void handle.context().then((ctx: any) => {
           if (ctx) {
-            const payload = this.strategyTelemetry.extractFromContext(handle.id, ctx, cleanTitle, cell?.id);
-            if (payload) {
-              this.strategyTelemetry.routeTradeMarkersToCell(cell, handle.id, payload.tradeExecutions);
-              this.onStrategyTelemetryHandler?.(payload);
-            }
+            this.pineRuntime.syncStrategyFromContext(handle.id, ctx, cleanTitle, cell);
           }
         }).catch((err: unknown) => {
           console.warn('[ChartSessionController] Gagal mengekstrak konteks strategi Pine pada cell:', err);
@@ -2859,17 +2826,7 @@ export class ChartSessionController {
    */
   public handleIndicatorRemoved(removedId?: string): void {
     if (removedId) {
-      this.strategyTelemetry.clearTelemetry(removedId);
-      for (const cell of this.getAllCells()) {
-        const chart = cell?.chart || cell?.inner;
-        const scene = chart?.renderer?.scene || chart?.scene;
-        if (scene?.indicators && typeof scene.indicators.get === 'function') {
-          const model = scene.indicators.get(removedId);
-          if (model && model.trades) {
-            model.trades = [];
-          }
-        }
-      }
+      this.pineRuntime.handleIndicatorRemoved(removedId, this.getAllCells());
     }
     this.indicatorRegistry.handleRemovedEvent(
       removedId,
@@ -5349,13 +5306,7 @@ export class ChartSessionController {
     this.streamCoordinator.clear();
     this.registeredCustomSignatures.clear();
     this.timelineMarksController.detach();
-    for (const cell of this.getAllCells()) {
-      const chart = cell?.chart || cell?.inner;
-      if (chart) {
-        this.pineAlertBridge.detach(chart);
-      }
-    }
-    this.strategyTelemetry.clearTelemetry();
+    this.pineRuntime.dispose();
 
     if (this.resizeObserver) {
       try {
