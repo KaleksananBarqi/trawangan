@@ -188,4 +188,173 @@ test('Tiket 3: resetSettingsToFactory harus memulihkan lilin ke Theme Preset akt
   controller.destroy();
 });
 
+function createStatefulVelaWorkspaceMock() {
+  const createCell = (id: string) => {
+    const rendererConfig: Record<string, any> = {
+      candles: {
+        upColor: '#089981',
+        downColor: '#f23645',
+        bodyVisible: true,
+        borderVisible: false,
+        borderUpColor: '#089981',
+        borderDownColor: '#f23645',
+        wickVisible: true,
+        wickUpColor: '#089981',
+        wickDownColor: '#f23645',
+      },
+      bars: {
+        upColor: '#089981',
+        downColor: '#f23645',
+      },
+    };
+    return {
+      id,
+      symbol: 'binance:BTCUSDT',
+      timeframe: '15',
+      chart: {
+        setTheme: () => {},
+        setSurfaceBackground: () => {},
+        renderer: {
+          renderer: {
+            applyConfig(patch: any) {
+              if (!patch || typeof patch !== 'object') return;
+              if (patch.candles) rendererConfig.candles = { ...rendererConfig.candles, ...patch.candles };
+              if (patch.bars) rendererConfig.bars = { ...rendererConfig.bars, ...patch.bars };
+              if (patch.margins) rendererConfig.margins = { ...patch.margins };
+            },
+            getConfig() {
+              return structuredClone(rendererConfig);
+            },
+            scene: {},
+            scheduler: { invalidate: () => {} },
+          },
+        },
+      },
+    };
+  };
+
+  let cellList = [createCell('c1')];
+  const ws = {
+    cells: () => cellList,
+    cell: (id: string) => cellList.find((c) => c.id === id) || null,
+    get active() {
+      return cellList[0];
+    },
+    setTheme: () => {},
+    applyState(doc: any) {
+      // Simulasikan VelaWorkspace.applyState yang membuat/mereset sel dari chartsDoc
+      const nextCells = (doc?.charts || []).map((entry: any, idx: number) => {
+        const cell = createCell(entry.id || `c${idx + 1}`);
+        if (entry.rendererConfig) {
+          cell.chart.renderer.renderer.applyConfig(entry.rendererConfig);
+        }
+        return cell;
+      });
+      if (nextCells.length > 0) {
+        cellList = nextCells;
+      }
+    },
+    on: () => () => {},
+    off: () => {},
+    destroy: () => {},
+    setLayout(layoutId: string) {
+      if (layoutId === '2h' && cellList.length < 2) {
+        cellList = [cellList[0], createCell('c2')];
+      } else if (layoutId === '1') {
+        cellList = [cellList[0]];
+      }
+    },
+  };
+
+  return { ws };
+}
+
+test('Regresi: startup attach() + applyReactiveProps() harus menerapkan warna candle sesuai tema aktif tanpa setTheme manual', () => {
+  const { ws } = createStatefulVelaWorkspaceMock();
+  const mockContainer: any = {
+    nodeType: 1,
+    clientWidth: 1000,
+    clientHeight: 600,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+
+  const controller = new ChartSessionController({
+    symbol: 'BTCUSDT',
+    timeframe: '15m',
+    themePreset: 'signature',
+    workspaceFactory: () => ws,
+  });
+
+  // Simulasikan siklus hidup Chart.svelte saat restart aplikasi: attach() lalu applyReactiveProps() dengan tema sama
+  controller.attach(mockContainer);
+  controller.applyReactiveProps({ themePreset: 'signature' });
+
+  const cfg = ws.cells()[0].chart.renderer.renderer.getConfig();
+  assert.equal(cfg.candles.upColor, THEME_PRESETS.signature.chart.upColor);
+  assert.equal(cfg.candles.downColor, THEME_PRESETS.signature.chart.downColor);
+  assert.equal(cfg.candles.borderUpColor, THEME_PRESETS.signature.chart.borderUpColor);
+  assert.equal(cfg.candles.borderDownColor, THEME_PRESETS.signature.chart.borderDownColor);
+  assert.equal(cfg.candles.wickUpColor, THEME_PRESETS.signature.chart.wickUpColor);
+  assert.equal(cfg.candles.wickDownColor, THEME_PRESETS.signature.chart.wickDownColor);
+  assert.equal(cfg.bars.upColor, THEME_PRESETS.signature.chart.upColor);
+  assert.equal(cfg.bars.downColor, THEME_PRESETS.signature.chart.downColor);
+
+  controller.destroy();
+});
+
+test('Regresi: applyWorkspaceSnapshot() multi-chart tidak boleh me-reset warna candle ke default Vela ketika snapshot sel tanpa override warna', async () => {
+  const { ws } = createStatefulVelaWorkspaceMock();
+  const mockContainer: any = {
+    nodeType: 1,
+    clientWidth: 1000,
+    clientHeight: 600,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 600 }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+
+  const controller = new ChartSessionController({
+    symbol: 'BTCUSDT',
+    timeframe: '15m',
+    themePreset: 'signature',
+    workspaceFactory: () => ws,
+  });
+
+  controller.attach(mockContainer);
+  controller.setLayout('2h');
+
+  await controller.applyWorkspaceSnapshot({
+    layout: '2h',
+    activeCellIndex: 0,
+    indicators: [],
+    cells: [
+      {
+        symbol: 'BTCUSDT',
+        timeframe: '15m',
+        providerId: 'binance',
+        rendererConfig: { margins: { top: 0.1 } },
+      },
+      {
+        symbol: 'ETHUSDT',
+        timeframe: '1h',
+        providerId: 'binance',
+      },
+    ],
+  });
+
+  assert.equal(ws.cells().length, 2);
+  for (const cell of ws.cells()) {
+    const cfg = cell.chart.renderer.renderer.getConfig();
+    assert.equal(cfg.candles.upColor, THEME_PRESETS.signature.chart.upColor);
+    assert.equal(cfg.candles.downColor, THEME_PRESETS.signature.chart.downColor);
+    assert.equal(cfg.bars.upColor, THEME_PRESETS.signature.chart.upColor);
+    assert.equal(cfg.bars.downColor, THEME_PRESETS.signature.chart.downColor);
+  }
+
+  controller.destroy();
+});
+
+
 

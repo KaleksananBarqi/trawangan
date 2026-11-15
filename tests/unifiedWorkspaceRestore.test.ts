@@ -8,6 +8,7 @@ import {
   type WorkspaceChartPort,
 } from '../src/lib/services/workspaceLifecycle';
 import { createMockChartContainer } from './helpers/mockChartContainer';
+import { THEME_PRESETS } from '../src/lib/constants/themes';
 import type { SavedWorkspace } from '../src/lib/types/market';
 
 describe('Ticket #213: Unified 5-Step Cell & Workspace Restoration Pipeline', () => {
@@ -335,9 +336,9 @@ describe('Ticket #213: Unified 5-Step Cell & Workspace Restoration Pipeline', ()
 
       await controller.loadWorkspaceState(multiCellWs);
 
-      // Verifikasi sanitasi rendererConfig pada kedua sel (out-of-range/malformed dibuang)
+      // Verifikasi sanitasi rendererConfig pada kedua sel (out-of-range/malformed dibuang, warna tema aktif tetap terjaga)
       assert.deepEqual(finalConfigs.c1?.margins, { bottom: 0.9 }, 'c1 margins.top out-of-range wajib dibuang, bottom valid bertahan');
-      assert.equal(finalConfigs.c1?.candles?.upColor, undefined, 'c1 candles.upColor malformed wajib dibuang');
+      assert.equal(finalConfigs.c1?.candles?.upColor, THEME_PRESETS.signature.chart.upColor, 'c1 candles.upColor malformed wajib dibuang dan mempertahankan warna tema aktif');
       assert.equal(finalConfigs.c1?.candles?.wickVisible, false, 'c1 candles.wickVisible valid bertahan');
       assert.equal(finalConfigs.c2?.crosshair?.width, undefined, 'c2 crosshair.width Infinity wajib dibuang');
       assert.equal(finalConfigs.c2?.crosshair?.style, 'dotted', 'c2 crosshair.style valid bertahan');

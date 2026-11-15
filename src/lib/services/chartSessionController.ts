@@ -1123,20 +1123,8 @@ export class ChartSessionController implements WorkspaceChartPort {
     this.applyBackground();
     ensurePineEngine();
 
-    const isCustomBg = this.customChartBackground?.mode === 'solid' || this.customChartBackground?.mode === 'gradient';
-    const themeConfig = resolveThemeConfig(this.themePreset);
-    const { textColor: themeTextColor, isDark: themeIsDark } = resolveEffectiveThemeColors(this.themePreset, this.customPalette);
-    const effectiveGridInit = this.resolveEffectiveGridColor(themeTextColor, themeIsDark);
-    const velaTheme = {
-      background: isCustomBg ? 'transparent' : themeConfig.chart.background,
-      textColor: themeConfig.chart.textColor,
-      gridColor: effectiveGridInit,
-      borderColor: themeConfig.chart.borderColor,
-      upColor: themeConfig.chart.upColor,
-      downColor: themeConfig.chart.downColor,
-      fontSize: Math.max(9, Math.min(32, Math.round(this.fontSize))),
-      fontFamily: "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-    };
+    const initialVisual = this.resolveActiveThemeVisualState();
+    const velaTheme = initialVisual.themeObj;
 
     const velaSym = resolveVelaSymbol(this.symbol, this.providerId);
     const knownCustomConfigs = this.getKnownCustomConfigs();
@@ -1235,11 +1223,18 @@ export class ChartSessionController implements WorkspaceChartPort {
       return () => {};
     }
 
-    // Pasang listener & price line guard ke seluruh cell awal
+    // Pasang listener & price line guard ke seluruh cell awal, lalu terapkan warna candle/bars tema aktif ke WebGL2 renderer
     this.lastAppliedThemeColors = this.resolveActiveThemeCandleColors();
     for (const cell of this.getAllCells()) {
       this.attachCellListeners(cell);
     }
+    this.setTheme(
+      this.themePreset,
+      this.fontSize,
+      this.customCandleColors ?? undefined,
+      this.customChartBackground,
+      this.customPalette
+    );
 
     // Inisialisasi TimelineMarksController pada workspace dan sinkronkan penanda pasar aktif
     this.timelineMarksController.attach(this.workspace);
@@ -2910,6 +2905,24 @@ export class ChartSessionController implements WorkspaceChartPort {
     this.applyBackground();
   }
 
+  private buildThemeCandleConfig(visual: ReturnType<ChartSessionController['resolveActiveThemeVisualState']>) {
+    return {
+      candles: {
+        upColor: visual.candleColors.upColor,
+        downColor: visual.candleColors.downColor,
+        borderUpColor: visual.candleColors.borderUpColor,
+        borderDownColor: visual.candleColors.borderDownColor,
+        wickUpColor: visual.candleColors.wickUpColor,
+        wickDownColor: visual.candleColors.wickDownColor,
+      },
+      bars: {
+        upColor: visual.candleColors.upColor,
+        downColor: visual.candleColors.downColor,
+      },
+      grid: visual.globalRendererPatch.grid,
+    };
+  }
+
   /**
    * Menyelaraskan tema visual kanvas WebGL2 dan warna candlestick (bawaan tema maupun kustom)
    */
@@ -2936,21 +2949,7 @@ export class ChartSessionController implements WorkspaceChartPort {
       this.lastAppliedThemeColors = visual.candleColors;
 
       // Bangun patch konfigurasi warna candles dan bars untuk WebGL2 Renderer (tanpa menimpa flag visibilitas lokal body/border/wick)
-      const candleConfig = {
-        candles: {
-          upColor: visual.candleColors.upColor,
-          downColor: visual.candleColors.downColor,
-          borderUpColor: visual.candleColors.borderUpColor,
-          borderDownColor: visual.candleColors.borderDownColor,
-          wickUpColor: visual.candleColors.wickUpColor,
-          wickDownColor: visual.candleColors.wickDownColor,
-        },
-        bars: {
-          upColor: visual.candleColors.upColor,
-          downColor: visual.candleColors.downColor,
-        },
-        grid: visual.globalRendererPatch.grid,
-      };
+      const candleConfig = this.buildThemeCandleConfig(visual);
 
       // Terapkan ke seluruh sel grafik aktif tanpa memicu dirty event tema global ke workspace
       this.withSuppressedPersistEvents(() => {
@@ -4397,6 +4396,11 @@ export class ChartSessionController implements WorkspaceChartPort {
       const activeCellId = targetActiveCell?.id || `c${activeIdx + 1}`;
       const pairCount = Math.min(cellsSnap.length, liveCells.length);
 
+      const themeCandlePatch = this.buildThemeCandleConfig(this.resolveActiveThemeVisualState());
+      const baseCellRendererConfig = this.userChartDefaultConfig
+        ? this.mergeRendererConfigs(themeCandlePatch, this.userChartDefaultConfig)
+        : themeCandlePatch;
+
       // 1. Panggil Vela workspace.applyState() parsial TANPA field drawings & indicators (Keputusan K1)
       if (typeof this.workspace.applyState === 'function') {
         const chartsDoc: any[] = [];
@@ -4409,10 +4413,8 @@ export class ChartSessionController implements WorkspaceChartPort {
           const velaTf = this.toVelaIntervalString(snap.timeframe || this.timeframe);
           const sanitizedSnapConfig = sanitizeRendererConfigForApply(snap.rendererConfig);
           const effectiveRendererConfig = sanitizedSnapConfig
-            ? (this.userChartDefaultConfig
-                ? this.mergeRendererConfigs(this.userChartDefaultConfig, sanitizedSnapConfig)
-                : sanitizedSnapConfig)
-            : undefined;
+            ? this.mergeRendererConfigs(baseCellRendererConfig, sanitizedSnapConfig)
+            : cloneRendererConfigValue(baseCellRendererConfig);
           if (liveCell && sanitizedSnapConfig) {
             this.workspaceRendererConfigByCell.set(liveCell, sanitizedSnapConfig);
           }
@@ -4458,6 +4460,8 @@ export class ChartSessionController implements WorkspaceChartPort {
         const snap = cellsSnap[i];
         const cell = updatedCells[i];
         if (!cell) continue;
+        // Pastikan sel yang baru dibuat/di-reset applyState selalu mewarisi warna tema & default user sebelum override sel
+        this.applyEffectiveRendererConfig(cell, baseCellRendererConfig);
 
         const chart = cell?.chart || cell?.inner;
         const targetIndicators =
