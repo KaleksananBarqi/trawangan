@@ -566,6 +566,8 @@
   }
 
   // Delegasi tunggal ke ChartSessionController
+  export function captureWorkspaceSnapshot() { return controller.captureWorkspaceSnapshot(); }
+  export function applyWorkspaceSnapshot(snapshot: any, options?: any) { return controller.applyWorkspaceSnapshot(snapshot, options); }
   export function getPaneWeights(cell?: any): number[] { return controller.getPaneWeights(cell); }
   export function applyPaneWeights(weights: number[], cell?: any): boolean { return controller.applyPaneWeights(weights, cell); }
   export function getPaneLayout(cell?: any) { return controller.getPaneLayout(cell); }

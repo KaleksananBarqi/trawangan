@@ -73,6 +73,9 @@ import {
   buildWorkspaceSnapshotPayload,
   restoreCellThroughPipeline,
   restoreWorkspaceChartAndPlans,
+  type ApplyWorkspaceChartSnapshotOptions,
+  type WorkspaceChartPort,
+  type WorkspaceChartSnapshot,
 } from './workspaceLifecycle';
 import { THEME_PRESETS, resolveEffectiveVolumeColors, resolveEffectiveThemeColors, resolveThemeConfig } from '../constants/themes';
 import { isVolumeIndicator } from '../data/indicatorPresets';
@@ -472,7 +475,7 @@ export function attachDrawingSyncBoundaryGuard(workspace: any): void {
  * Deep Module: ChartSessionController
  * Mengelola seluruh orkestrasi kanvas WebGL2 dan state sesi grafik
  */
-export class ChartSessionController {
+export class ChartSessionController implements WorkspaceChartPort {
   private workspace: any = null;
   private container: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -4373,6 +4376,7 @@ export class ChartSessionController {
       activeCellIndex?: number;
       layout?: string;
       sharedIndicators?: SavedWorkspaceIndicator[];
+      preserveViewport?: boolean;
     }
   ): Promise<void> {
     if (!this.workspace || !Array.isArray(cellsSnap) || cellsSnap.length === 0) return;
@@ -4514,7 +4518,9 @@ export class ChartSessionController {
             withSuppressedPersistEvents: (fn) => this.withSuppressedPersistEvents(fn),
             applyPriceScaleState: (state) => this.applyPriceScaleState(state, cell),
             setBarSpacing: (spacing) => this.setBarSpacing(spacing, cell),
-            applyVisibleRange: (vr) => this.applyVisibleRange(vr, cell),
+            applyVisibleRange: options?.preserveViewport
+              ? undefined
+              : (vr) => this.applyVisibleRange(vr, cell),
             finalizeCellVisuals: () => {
               this.enforceCurrentPriceLine(cell);
               this.syncGlobalVisualChromeToCells(cell);
@@ -4571,6 +4577,146 @@ export class ChartSessionController {
       this.notify();
     } finally {
       this.isRestoringWorkspace = wasRestoring;
+    }
+  }
+
+  /**
+   * Menangkap snapshot deklaratif kondisi chart aktif (implementasi kontrak WorkspaceChartPort)
+   */
+  public captureWorkspaceSnapshot(): WorkspaceChartSnapshot {
+    const rawIndicators = this.getActiveIndicators();
+    const indicators: SavedWorkspaceIndicator[] = Array.isArray(rawIndicators)
+      ? rawIndicators.map((i: any) => ({
+          title: i.title || 'Indicator',
+          source: i.source || '',
+          visible: i.visible !== false,
+          inputs: i.inputs,
+          props: i.props,
+        }))
+      : [];
+
+    return {
+      symbol: this.symbol,
+      timeframe: this.timeframe,
+      layout: this.layout,
+      providerId: this.providerId,
+      showVolume: this.showVolume,
+      syncConfig: { ...this.syncConfig },
+      indicators,
+      paneWeights: this.getPaneWeights(),
+      paneLayout: this.getPaneLayout(),
+      nativeIndicators: this.getNativeIndicators(),
+      priceScaleState: this.getPriceScaleState(),
+      priceStyle: this.getPriceStyle(),
+      priceScaleCountdown: this.isPriceScaleCountdownEnabled(),
+      barSpacing: this.getBarSpacing(),
+      visibleRange: this.getVisibleRangeSnapshot(),
+      cells: this.getCellsSnapshot(),
+      trackSizes: this.getTrackSizes(),
+      activeCellIndex: this.getActiveCellIndex(),
+    };
+  }
+
+  /**
+   * Menerapkan snapshot deklaratif ke sesi chart melalui pipeline 5-langkah ADR-0023 (kontrak WorkspaceChartPort)
+   */
+  public async applyWorkspaceSnapshot(
+    snapshot: WorkspaceChartSnapshot,
+    options?: ApplyWorkspaceChartSnapshotOptions
+  ): Promise<void> {
+    if (!snapshot) return;
+
+    this.beginWorkspaceRestore();
+    try {
+      if (options?.cleanSlate !== false) {
+        this.clearAllIndicators();
+      }
+
+      const effectiveSync = snapshot.syncConfig ?? this.syncConfig;
+      const useMultiCellRestore =
+        Array.isArray(snapshot.cells) &&
+        snapshot.cells.length > 0 &&
+        (snapshot.cells.length > 1 ||
+          snapshot.trackSizes !== undefined ||
+          (snapshot.activeCellIndex !== undefined && snapshot.activeCellIndex > 0) ||
+          effectiveSync?.indicators === false);
+
+      if (useMultiCellRestore) {
+        await this.applyCellsSnapshot(snapshot.cells!, {
+          trackSizes: snapshot.trackSizes,
+          activeCellIndex: snapshot.activeCellIndex,
+          layout: snapshot.layout,
+          sharedIndicators: snapshot.indicators,
+          preserveViewport: options?.preserveViewport,
+        });
+        options?.onSyncIndicators?.();
+      } else {
+        const baseCell: CellSnapshot = snapshot.cells?.[0] ?? {
+          symbol: snapshot.symbol || this.symbol,
+          timeframe: snapshot.timeframe || this.timeframe,
+          providerId: snapshot.providerId || this.providerId || 'binance',
+          ...(snapshot.rendererConfig ? { rendererConfig: snapshot.rendererConfig } : {}),
+          ...(snapshot.priceStyle ? { priceStyle: snapshot.priceStyle } : {}),
+          ...(typeof snapshot.priceScaleCountdown === 'boolean'
+            ? { priceScaleCountdown: snapshot.priceScaleCountdown }
+            : {}),
+          ...(typeof snapshot.barSpacing === 'number' ? { barSpacing: snapshot.barSpacing } : {}),
+          ...(snapshot.priceScaleState !== undefined ? { priceScaleState: snapshot.priceScaleState } : {}),
+          ...(snapshot.paneLayout ? { paneLayout: snapshot.paneLayout } : {}),
+          ...(snapshot.nativeIndicators ? { nativeIndicators: snapshot.nativeIndicators } : {}),
+          ...(snapshot.visibleRange !== undefined ? { visibleRange: snapshot.visibleRange } : {}),
+        };
+
+        const primaryCell: CellSnapshot = options?.preserveViewport
+          ? { ...baseCell, visibleRange: undefined }
+          : baseCell;
+
+        const primaryCellIndicators =
+          Array.isArray(snapshot.indicators) && snapshot.indicators.length > 0
+            ? snapshot.indicators
+            : Array.isArray(primaryCell.indicators)
+              ? primaryCell.indicators
+              : undefined;
+
+        await restoreCellThroughPipeline(
+          primaryCell,
+          {
+            applyRendererConfig: (cfg) => this.applyRendererConfig(cfg),
+            setPriceStyle: (style) => this.setPriceStyle(style),
+            setPriceScaleCountdown: (enabled) => this.setPriceScaleCountdown(enabled),
+            addPineIndicator: async (ind) => {
+              await this.addPineIndicator(ind.source || 'plot(close)', ind.title, ind.inputs, ind.props);
+              if (ind.visible === false && ind.title) {
+                const active = this.getActiveIndicators();
+                const target = active.find((a: any) => a.title === ind.title);
+                if (target && target.visible) {
+                  this.toggleIndicatorVisibility(target.id || target.title);
+                } else if (!target) {
+                  this.toggleIndicatorVisibility(ind.title);
+                }
+              }
+            },
+            applyNativeIndicators: (entries) => this.applyNativeIndicators(entries),
+            onSyncIndicators: options?.onSyncIndicators,
+            applyPaneLayout: (entries, opts) => this.applyPaneLayout(entries, opts),
+            applyPaneWeights: (weights) => this.applyPaneWeights(weights),
+            withSuppressedPersistEvents: (fn) => this.withSuppressedPersistEvents(fn),
+            applyPriceScaleState: (state) => this.applyPriceScaleState(state),
+            setBarSpacing: (spacing) => this.setBarSpacing(spacing),
+            applyVisibleRange: options?.preserveViewport
+              ? undefined
+              : (vr) => this.applyVisibleRange(vr),
+          },
+          {
+            indicators: primaryCellIndicators,
+            fallbackPaneWeights: snapshot.paneWeights,
+          }
+        );
+      }
+
+      this.notify();
+    } finally {
+      this.endWorkspaceRestore();
     }
   }
 
