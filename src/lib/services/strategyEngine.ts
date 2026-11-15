@@ -1,22 +1,127 @@
-import { Indicator, PineTS } from 'pinets';
-import type { Candle, StrategyPerformanceSummary, StrategyTradeRecord } from '../types/market';
+/**
+ * Engine Backtest Strategi Pine Script Terisolasi Worker (Ticket #220 / Spec #210)
+ *
+ * Menjalankan evaluasi backtest strategi Pine Script v5/v6 di luar main UI thread
+ * menggunakan pipeline worker `PineRuntimeCoordinator` (`TrawanganPineWorkerEngine`)
+ * sesuai ADR-0003 §2.C, dengan adapter headless Node (`PineEngine`) untuk pengujian unit.
+ *
+ * Seluruh metrik `StrategyBacktestReport` dan daftar transaksi dihitung melalui
+ * ekstraktor telemetri kanonikal (`extractStrategyTelemetryPayload` +
+ * `telemetryToPerformanceSummary`) agar identik dengan telemetri strategi live di grafik.
+ */
+
+import { PineEngine } from '@luxalgo/vela-pinets';
+import type { EngineContextSnapshot, ExecutionSession, OHLCV, ScriptingEngine } from '@luxalgo/vela/plugin';
+import type { Candle, StrategyBacktestReport } from '../types/market';
+import {
+  PineRuntimeCoordinator,
+  pineRuntimeCoordinator,
+  extractStrategyTelemetryPayload,
+  telemetryToPerformanceSummary,
+} from './pineRuntimeCoordinator';
 
 export interface StrategyBacktestResult {
   success: boolean;
   isStrategy: boolean;
   scriptTitle?: string;
-  summary?: StrategyPerformanceSummary;
+  summary?: StrategyBacktestReport;
   error?: string;
   executionTimeMs: number;
 }
 
+export interface PineStrategyBacktestOptions {
+  symbol?: string;
+  timeframe?: string;
+  /** Injeksi ScriptingEngine opsional (misal untuk pengujian atau worker kustom) */
+  engine?: ScriptingEngine;
+  /** Koordinator runtime opsional (default: pineRuntimeCoordinator) */
+  coordinator?: PineRuntimeCoordinator;
+}
+
+type TerminableScriptingEngine = ScriptingEngine & { terminate?: () => void };
+
 /**
- * Menjalankan evaluasi backtest Pine Script v6 secara instan dan mengembalikan
- * telemetri performa kuantitatif serta daftar seluruh transaksi (trade ledger).
+ * Memilih engine eksekusi: worker engine di browser, atau adapter PineEngine headless di Node.
+ */
+function resolveBacktestEngine(
+  options: PineStrategyBacktestOptions,
+  coordinator: PineRuntimeCoordinator
+): { engine: TerminableScriptingEngine; ownsEngine: boolean } {
+  if (options.engine) {
+    return { engine: options.engine, ownsEngine: false };
+  }
+
+  if (typeof Worker !== 'undefined') {
+    return { engine: coordinator.createWorkerEngine(), ownsEngine: true };
+  }
+
+  return { engine: new PineEngine(), ownsEngine: true };
+}
+
+/**
+ * Menjalankan eksekusi statis satu kali pada ScriptingEngine dan mengambil snapshot konteks.
+ */
+function executeStaticForContext(
+  engine: ScriptingEngine,
+  prepared: Awaited<ReturnType<ScriptingEngine['prepare']>>,
+  bars: OHLCV[],
+  symbol: string,
+  timeframe: string,
+  coordinator: PineRuntimeCoordinator
+): Promise<EngineContextSnapshot | null> {
+  return new Promise((resolve, reject) => {
+    let session: ExecutionSession | null = null;
+    let settled = false;
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      try {
+        session?.stop();
+      } catch {
+        // Abaikan error saat menghentikan sesi
+      }
+      fn();
+    };
+
+    session = engine.execute(
+      {
+        prepared,
+        market: { symbol, timeframe },
+        bars,
+        fetchSeries: coordinator.getFetchSeriesAdapter(),
+        mode: 'static',
+      },
+      {
+        onModel: () => {
+          // Model visual tidak dirender pada backtest headless editor
+        },
+        onError: (err) => {
+          finish(() => reject(err));
+        },
+        onDone: async () => {
+          try {
+            const ctx = session?.getContext
+              ? await session.getContext(['strategy', 'trades'])
+              : null;
+            finish(() => resolve(ctx));
+          } catch (err) {
+            finish(() => reject(err));
+          }
+        },
+      }
+    );
+  });
+}
+
+/**
+ * Menjalankan evaluasi backtest Pine Script di luar main UI thread melalui pipeline
+ * PineRuntimeCoordinator dan mengembalikan laporan StrategyBacktestReport kanonikal.
  */
 export async function runPineStrategyBacktest(
   code: string,
-  candles: Candle[]
+  candles: Candle[],
+  options: PineStrategyBacktestOptions = {}
 ): Promise<StrategyBacktestResult> {
   const startTime = performance.now();
 
@@ -38,27 +143,16 @@ export async function runPineStrategyBacktest(
     };
   }
 
+  const coordinator = options.coordinator ?? pineRuntimeCoordinator;
+  const { engine, ownsEngine } = resolveBacktestEngine(options, coordinator);
+  const instanceId = `backtest_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const symbol = options.symbol || 'BTCUSDT';
+  const timeframe = options.timeframe || '1h';
+
   try {
-    // 1. Parsing dan analisis tipe deklarasi Pine Script
-    const indicator = new Indicator(code);
-    await indicator.prepare();
+    const prepared = await engine.prepare(code, instanceId);
 
-    const declType = indicator.getDeclarationType?.();
-    const isStrategy = declType === 'strategy';
-
-    if (!isStrategy) {
-      const execMs = Math.round(performance.now() - startTime);
-      return {
-        success: true,
-        isStrategy: false,
-        error: 'Skrip yang dimasukkan merupakan indikator visual (indicator()), bukan strategi kuantitatif (strategy()). Gunakan fungsi strategy("Nama Strategi", ...) untuk mengaktifkan backtesting.',
-        executionTimeMs: execMs,
-      };
-    }
-
-    // 2. Format candle ke representasi PineTS
-    const pineCandles = candles.map((c) => ({
-      openTime: c.time,
+    const bars: OHLCV[] = candles.map((c) => ({
       time: c.time,
       open: c.open,
       high: c.high,
@@ -67,133 +161,56 @@ export async function runPineStrategyBacktest(
       volume: c.volume ?? 0,
     }));
 
-    // 3. Eksekusi PineTS Runtime Engine
-    const pine = new PineTS(pineCandles);
-    const ctx = await pine.run(indicator);
-    const strat = ctx.strategy;
-
-    const initialCapital = Number(strat?.initial_capital) || 1000;
-    const netProfit = Number(strat?.netprofit) || 0;
-    const grossProfit = Number(strat?.grossprofit) || 0;
-    const grossLoss = Number(strat?.grossloss) || 0;
-    const equity = Number(strat?.equity) || initialCapital + netProfit;
-    const netProfitPercent = initialCapital > 0 ? (netProfit / initialCapital) * 100 : 0;
-
-    // Profit Factor: Rasio Gross Profit terhadap Gross Loss
-    let profitFactor = 0;
-    if (grossLoss > 0) {
-      profitFactor = parseFloat((grossProfit / grossLoss).toFixed(2));
-    } else if (grossProfit > 0) {
-      profitFactor = 999.0;
-    }
-
-    const wintrades = Number(strat?.wintrades) || 0;
-    const losstrades = Number(strat?.losstrades) || 0;
-    const eventrades = Number(strat?.eventrades) || 0;
-
-    const closedTradesRaw = Array.isArray(strat?.closedtrades) ? strat.closedtrades : [];
-    const openTradesRaw = Array.isArray(strat?.opentrades) ? strat.opentrades : [];
-    const totalClosed = closedTradesRaw.length;
-    const winRate = totalClosed > 0 ? parseFloat(((wintrades / totalClosed) * 100).toFixed(1)) : 0;
-
-    // Drawdown
-    const maxDrawdown = Number(strat?.max_drawdown) || 0;
-    let maxDrawdownPercent = Number(strat?.max_drawdown_percent_value) || 0;
-    if (maxDrawdownPercent === 0 && initialCapital > 0 && maxDrawdown > 0) {
-      maxDrawdownPercent = (maxDrawdown / initialCapital) * 100;
-    }
-    maxDrawdownPercent = parseFloat(maxDrawdownPercent.toFixed(2));
-
-    // Posisi Berjalan Terkini
-    const positionSize = Number(strat?.position_size) || 0;
-    const avgPrice = Number(strat?.position_avg_price) || 0;
-    const openPnl = Number(strat?.openprofit) || 0;
-    const openPnlPercent = initialCapital > 0 ? (openPnl / initialCapital) * 100 : 0;
-
-    const currentPosition = {
-      size: positionSize,
-      avgPrice,
-      direction: (positionSize > 0 ? 'long' : positionSize < 0 ? 'short' : 'flat') as 'flat' | 'long' | 'short',
-      unrealizedPnl: openPnl,
-      unrealizedPnlPercent: parseFloat(openPnlPercent.toFixed(2)),
-    };
-
-    // 4. Transformasi Trade Ledger ke StrategyTradeRecord
-    const allTradesRaw = [...closedTradesRaw, ...openTradesRaw];
-    allTradesRaw.sort((a, b) => (Number(a.entry_time) || 0) - (Number(b.entry_time) || 0));
-
-    const formattedTrades: StrategyTradeRecord[] = allTradesRaw.map((t, idx) => {
-      const sizeVal = Number(t.size) || 0;
-      const entryPrice = Number(t.entry_price) || 0;
-      const exitPrice = t.exit_price !== undefined ? Number(t.exit_price) : undefined;
-      const profit = t.profit !== undefined ? Number(t.profit) : undefined;
-
-      let profitPercent: number | undefined = undefined;
-      if (profit !== undefined && entryPrice > 0 && Math.abs(sizeVal) > 0) {
-        const notionalCost = Math.abs(sizeVal) * entryPrice;
-        if (notionalCost > 0) {
-          profitPercent = parseFloat(((profit / notionalCost) * 100).toFixed(2));
-        }
-      }
-
-      return {
-        id: String(t.id || `trade_${idx + 1}`),
-        tradeNum: idx + 1,
-        direction: sizeVal >= 0 ? 'long' : 'short',
-        entryPrice,
-        entryTime: Number(t.entry_time) || 0,
-        entryComment: t.entry_comment || t.entry_id || 'Entry',
-        exitPrice,
-        exitTime: t.exit_time !== undefined ? Number(t.exit_time) : undefined,
-        exitComment: t.exit_comment || t.exit_id || (t.status === 'open' ? 'Open Position' : 'Exit'),
-        size: Math.abs(sizeVal),
-        profit: profit !== undefined ? parseFloat(profit.toFixed(2)) : undefined,
-        profitPercent,
-        status: t.status === 'open' ? 'open' : 'closed',
-        maxDrawdown: t.max_drawdown !== undefined ? parseFloat(Number(t.max_drawdown).toFixed(2)) : undefined,
-        maxRunup: t.max_runup !== undefined ? parseFloat(Number(t.max_runup).toFixed(2)) : undefined,
-      };
-    });
-
-    const strategyTitle = strat?.config?.title || 'Pine Strategy';
-
-    const summary: StrategyPerformanceSummary = {
-      strategyTitle,
-      netProfit: parseFloat(netProfit.toFixed(2)),
-      netProfitPercent: parseFloat(netProfitPercent.toFixed(2)),
-      grossProfit: parseFloat(grossProfit.toFixed(2)),
-      grossLoss: parseFloat(grossLoss.toFixed(2)),
-      profitFactor,
-      winRate,
-      totalTrades: totalClosed,
-      winningTrades: wintrades,
-      losingTrades: losstrades,
-      evenTrades: eventrades,
-      maxDrawdown: parseFloat(maxDrawdown.toFixed(2)),
-      maxDrawdownPercent,
-      initialCapital,
-      equity: parseFloat(equity.toFixed(2)),
-      openTrades: openTradesRaw.length,
-      currentPosition,
-      trades: formattedTrades,
-    };
-
+    const ctx = await executeStaticForContext(engine, prepared, bars, symbol, timeframe, coordinator);
     const executionTimeMs = Math.round(performance.now() - startTime);
+
+    if (!ctx?.strategy) {
+      return {
+        success: true,
+        isStrategy: false,
+        scriptTitle: prepared.meta?.title || undefined,
+        error:
+          'Skrip yang dimasukkan merupakan indikator visual (indicator()), bukan strategi kuantitatif (strategy()). Gunakan fungsi strategy("Nama Strategi", ...) untuk mengaktifkan backtesting.',
+        executionTimeMs,
+      };
+    }
+
+    const title = prepared.meta?.title || ctx.meta?.title || 'Pine Strategy';
+    const payload = extractStrategyTelemetryPayload(instanceId, ctx, title);
+    if (!payload) {
+      return {
+        success: false,
+        isStrategy: true,
+        error: 'Gagal mengekstrak telemetri strategi dari konteks eksekusi.',
+        executionTimeMs,
+      };
+    }
+
+    const summary = telemetryToPerformanceSummary(payload);
 
     return {
       success: true,
       isStrategy: true,
-      scriptTitle: strategyTitle,
+      scriptTitle: summary.strategyTitle,
       summary,
       executionTimeMs,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     const executionTimeMs = Math.round(performance.now() - startTime);
+    const message = err instanceof Error ? err.message : String(err);
     return {
       success: false,
-      isStrategy: true,
-      error: err?.message || String(err),
+      isStrategy: false,
+      error: message,
       executionTimeMs,
     };
+  } finally {
+    if (ownsEngine && typeof engine.terminate === 'function') {
+      try {
+        engine.terminate();
+      } catch {
+        // Abaikan error terminasi worker
+      }
+    }
   }
 }
