@@ -1,3 +1,20 @@
+<script module lang="ts">
+  import type { SnapshotThesisLayout } from '../types/market';
+
+  /**
+   * Handle sempit untuk operasi view/DOM khusus milik Chart.svelte
+   * (di luar kontroler sesi ChartSessionController).
+   */
+  export interface ChartViewHandle {
+    getLastHoveredPrice(): number | null;
+    getChartScreenshotCanvas(
+      scope?: 'active' | 'all',
+      thesisLayout?: SnapshotThesisLayout
+    ): HTMLCanvasElement | null;
+    openChartSettings(section?: string): void;
+  }
+</script>
+
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte';
   import './chart.css';
@@ -20,12 +37,11 @@
   import ChartContextMenu from './ChartContextMenu.svelte';
   import FloatingThesisCard from './FloatingThesisCard.svelte';
   import RangePresetBar from './RangePresetBar.svelte';
-  import type { VisibleRangePreset } from '../services/rangePresetService';
   import type {
-    Timeframe, ActiveIndicatorInfo, DrawingToolType, SnapMode, MultiChartSyncConfig,
-    Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId, SavedWorkspace,
+    Timeframe, ActiveIndicatorInfo, DrawingToolType, MultiChartSyncConfig,
+    Candle, StrategyPerformanceSummary, PriceAlert, ThemePresetId,
     CustomChartBackgroundConfig, UserProfileConfig, SecurityWatermarkConfig,
-    SnapshotThesisLayout, CustomThemePalette, GridMode
+    CustomThemePalette, GridMode
   } from '../types/market';
   import type { PriceScaleBadge } from '../services/priceScaleLabelService';
   import type { FeedConnectionStatus } from '../services/market/types';
@@ -389,16 +405,13 @@
     replaySession.bindDriver(null); sessionController = null; controller.destroy();
   });
 
-  export function enableCutoffSelection(): void { isSelectingCutoff = true; }
-  export function cancelCutoffSelection(): void {
+  function cancelCutoffSelection(): void {
     isSelectingCutoff = false; cutlineX = null; cutlineY = null; onCutoffCancelled?.();
   }
-  export function isCutoffSelectionActive(): boolean { return isSelectingCutoff; }
-  export function getReplayBounds(): { first: number; last: number } | null {
+  function getReplayBounds(): { first: number; last: number } | null {
     return controller.getWorkspace()?.replay?.bounds || null;
   }
-  export function getReplayState(): any { return replaySession.getSnapshot(); }
-  export async function startReplay(fromTimestamp?: number): Promise<boolean> {
+  async function startReplay(fromTimestamp?: number): Promise<boolean> {
     const ws = controller.getWorkspace();
     if (!ws?.replay) return false;
     try {
@@ -406,15 +419,11 @@
       return true;
     } catch (_) { return false; }
   }
-  export function playReplay(speed = 1): void { replaySession.play(speed); }
-  export function pauseReplay(): void { replaySession.pause(); }
-  export function stepReplay(): void { replaySession.step(); }
-  export function stopReplay(): void {
+  function stopReplay(): void {
     const ws = controller.getWorkspace();
     if (ws?.replay?.active) ws.replay.stop();
     replaySession.close();
   }
-  export function isReplaying(): boolean { return replaySession.getSnapshot().active; }
 
   let cachedCandles = $state<Candle[]>([]);
   let snapInfo = $state<{
@@ -550,7 +559,7 @@
     }
 
     if (isAxis) {
-      fitChart();
+      controller.fitChart();
     } else {
       chartDrawingController.handleDrawingDblClick();
     }
@@ -565,44 +574,9 @@
     }, 0);
   }
 
-  // Delegasi tunggal ke ChartSessionController
-  export function captureWorkspaceSnapshot() { return controller.captureWorkspaceSnapshot(); }
-  export function applyWorkspaceSnapshot(snapshot: any, options?: any) { return controller.applyWorkspaceSnapshot(snapshot, options); }
-  export function getPaneWeights(cell?: any): number[] { return controller.getPaneWeights(cell); }
-  export function applyPaneWeights(weights: number[], cell?: any): boolean { return controller.applyPaneWeights(weights, cell); }
-  export function getPaneLayout(cell?: any) { return controller.getPaneLayout(cell); }
-  export function applyPaneLayout(entries: any[], options?: { timeoutMs?: number }, cell?: any) { return controller.applyPaneLayout(entries, options, cell); }
-  export function getNativeIndicators(cell?: any) { return controller.getNativeIndicators(cell); }
-  export function applyNativeIndicators(entries: any[], cell?: any) { return controller.applyNativeIndicators(entries, cell); }
-  export function getCellsSnapshot() { return controller.getCellsSnapshot(); }
-  export function getTrackSizes() { return controller.getTrackSizes(); }
-  export function getActiveCellIndex(): number { return controller.getActiveCellIndex(); }
-  export function applyCellsSnapshot(cells: any[], options?: any) { return controller.applyCellsSnapshot(cells, options); }
-  export function getVisibleRangeSnapshot(cell?: any) { return controller.getVisibleRangeSnapshot(cell); }
-  export function applyVisibleRange(vr: any, cell?: any) { return controller.applyVisibleRange(vr, cell); }
-  export function applyRendererConfig(cfg: any, cell?: any) { return controller.applyRendererConfig(cfg, cell); }
-  export function beginWorkspaceRestore(): void { controller.beginWorkspaceRestore(); }
-  export function endWorkspaceRestore(): void { controller.endWorkspaceRestore(); }
-  export function getPriceScaleState(cell?: any): any { return controller.getPriceScaleState(cell); }
-  export function applyPriceScaleState(state: any, cell?: any): boolean { return controller.applyPriceScaleState(state, cell); }
-  export function getPriceStyle(cell?: any): string { return controller.getPriceStyle(cell); }
-  export function setPriceStyle(style: string, cell?: any): void { controller.setPriceStyle(style, cell); }
-  export function cyclePriceStyle(cell?: any): string { return controller.cyclePriceStyle(cell); }
-  export function setTimeframe(tf: Timeframe): void { controller.setTimeframe(tf); }
-  export function getSession(): 'regular' | 'extended' { return controller.getSession(); }
-  export function isSessionAvailable(): boolean { return controller.isSessionAvailable(); }
-  export function setSession(mode: 'regular' | 'extended'): void { controller.setSession(mode); }
-  export function toggleSession(): 'regular' | 'extended' { return controller.toggleSession(); }
-  export function getBarSpacing(cell?: any): number { return controller.getBarSpacing(cell); }
-  export function setBarSpacing(spacing: number, cell?: any): void { controller.setBarSpacing(spacing, cell); }
-  export function saveWorkspaceState(name?: string) { return controller.saveWorkspaceState(name); }
-  export function loadWorkspaceState(snapshot: SavedWorkspace) { return controller.loadWorkspaceState(snapshot); }
-  export function saveCurrentChartSettingsAsDefault() { return controller.saveCurrentSettingsAsDefault(); }
-  export function resetChartSettingsToFactory() { return controller.resetSettingsToFactory(); }
-  export function enforceCurrentPriceLine(): void { controller.enforceCurrentPriceLine(); }
-  export function enforceCurrentPriceLineOnCell(cell: any): void { controller.enforceCurrentPriceLine(cell); }
-  export function applyWorkspaceTimezone(tz: string): void { controller.setTimezone(tz); }
-  export function getActiveIndicators(): ActiveIndicatorInfo[] { return controller.getActiveIndicators(); }
+  /**
+   * Merender screenshot kanvas WebGL2 beserta overlay anotasi DOM & trading plan (#95, #135).
+   */
   export function getChartScreenshotCanvas(scope: 'active' | 'all' = 'active', thesisLayout?: SnapshotThesisLayout): HTMLCanvasElement | null {
     const baseCanvas = controller.getScreenshotCanvas(scope);
     if (!baseCanvas) return null;
@@ -625,53 +599,9 @@
       themeConfig: currentTheme
     });
   }
-  export function addPineIndicator(src: string, t?: string, i?: Record<string, any>, p?: Record<string, any>) {
-    return controller.addPineIndicator(src, t, i, p);
-  }
-  export function addNativeIndicator(type: string, options?: any, title?: string) {
-    return controller.addNativeIndicator(type, options, title);
-  }
-  export function addNativeIndicatorToCell(cell: any, type: string, options?: any, title?: string) {
-    return controller.addNativeIndicatorToCell(cell, type, options, title);
-  }
-  export function addIndicator(descriptor: any, options?: any) {
-    return controller.addIndicator(descriptor, options);
-  }
-  export function addIndicatorToCell(descriptor: any, cell?: any, options?: any) {
-    return controller.addIndicatorToCell(descriptor, cell, options);
-  }
-  export function removeIndicator(id: string): void { controller.removeIndicator(id); }
-  export function clearAllIndicators(): void { controller.clearAllIndicators(); }
-  export function toggleIndicatorVisibility(id: string): void { controller.toggleIndicatorVisibility(id); }
-  export function getIndicatorSource(id: string): string | undefined { return controller.getIndicatorSource(id); }
-  export function syncIndicatorsFromActiveCell(): void { controller.syncIndicatorsFromActiveCell(); }
-  export async function getActiveCandles(limit = 1000): Promise<Candle[]> { return marketFeed.getCandles(symbol, timeframe, limit); }
-  export function fitChart(): void {
-    const cell = controller.getWorkspace()?.active || controller.getAllCells()[0];
-    if (cell) {
-      if (typeof cell.resetView === 'function') {
-        cell.resetView();
-        return;
-      }
-      const chart = cell.chart || cell.inner || cell;
-      const renderer = chart?.renderer?.renderer || chart?.renderer;
-      if (typeof renderer?.resetView === 'function') {
-        renderer.resetView();
-        return;
-      }
-      if (typeof chart?.fitContent === 'function') {
-        chart.fitContent();
-        return;
-      }
-      if (typeof chart?.resetView === 'function') {
-        chart.resetView();
-        return;
-      }
-    }
-    if (typeof controller.fitChart === 'function') {
-      controller.fitChart();
-    }
-  }
+  /**
+   * Mengambil harga terakhir di bawah kursor untuk pembuatan alert cepat (Alt+A).
+   */
   export function getLastHoveredPrice(): number | null {
     if (lastPointerClientY !== null) {
       const livePrice = priceScaleOverlayController.getPriceFromClientY(lastPointerClientY);
@@ -682,36 +612,15 @@
     }
     return lastHoveredPrice;
   }
+  /**
+   * Membuka dialog pengaturan bawaan renderer Vela pada sel aktif.
+   */
   export function openChartSettings(section: string = 'Symbol'): void {
     const cell = controller.getWorkspace()?.active || controller.getAllCells()[0];
     const r = cell?.chart?.renderer?.renderer || cell?.chart?.renderer;
     if (r?.openSettings) r.openSettings(section);
     else if (r?.openSettingsDialog) r.openSettingsDialog(section);
   }
-  export function openIndicatorSettings(id: string): boolean {
-    return controller.openIndicatorSettings(id);
-  }
-  export function updateIndicatorInputs(id: string, inputs: Record<string, any>): boolean {
-    return controller.updateIndicatorInputs(id, inputs);
-  }
-  export function getIndicatorInputSchema(idOrType: string): any[] {
-    return controller.getIndicatorInputSchema(idOrType);
-  }
-  export function getIndicatorInputs(idOrType: string): Record<string, any> {
-    return controller.getIndicatorInputs(idOrType);
-  }
-
-  // Delegasi Drawing ke ChartDrawingController
-  export function setDrawingTool(tool: DrawingToolType | null): void { chartDrawingController.setTool(tool); }
-  export function setSnapMode(mode: SnapMode): void { chartDrawingController.setSnapMode(mode); }
-  export function setStayMode(stay: boolean): void { chartDrawingController.setStayMode(stay); }
-  export function undoDrawing(): void { chartDrawingController.undo(); }
-  export function redoDrawing(): void { chartDrawingController.redo(); }
-  export async function clearAllDrawings(): Promise<void> { await chartDrawingController.clearAll(); }
-  export function lockAllDrawings(lock: boolean): void { chartDrawingController.setLock(lock); }
-  export function hideAllDrawings(hide: boolean): void { chartDrawingController.setHide(hide); }
-  export function setDrawingsLocked(lock: boolean): void { chartDrawingController.setLock(lock); }
-  export function setDrawingsHidden(hide: boolean): void { chartDrawingController.setHide(hide); }
 
   function syncInkCanvasSize() {
     if (gestureInkCanvas && chartContainer) {
@@ -912,16 +821,6 @@
     }
   }
 
-  export function setShowVolume(show: boolean): void { controller.setShowVolume(show); }
-  export function setVisibleRangePreset(preset: VisibleRangePreset): Promise<boolean> {
-    return controller.setVisibleRangePreset(preset);
-  }
-  export function getActiveRangePreset(): VisibleRangePreset | null {
-    return controller.getActiveRangePreset();
-  }
-  export function cycleRangePreset(direction: 'next' | 'prev' = 'next'): Promise<VisibleRangePreset | null> {
-    return controller.cycleRangePreset(direction);
-  }
 
   const chartBackgroundStyle = $derived.by(() => {
     const cfg = resolveThemeConfig(themePreset);
@@ -1155,7 +1054,7 @@
     time={contextMenuTime}
     onCreateAlert={() => { if (contextMenuPrice) onRequestCreateAlert?.(symbol, contextMenuPrice); isContextMenuOpen = false; }}
     onDrawHorizontalLine={() => { chartDrawingController.setTool('hline'); isContextMenuOpen = false; }}
-    onResetChartScale={fitChart}
+    onResetChartScale={() => controller.fitChart()}
     onClose={() => (isContextMenuOpen = false)}
   />
 
