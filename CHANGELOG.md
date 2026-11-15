@@ -5,6 +5,17 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.51.0] - 2026-11-15
+
+### 🚀 Ditambahkan (Added)
+- **Notifikasi Multi-Kanal (Desktop Sistem, Bot Telegram, Discord Webhook):**
+  - Menambahkan integrasi pengiriman notifikasi ke **Bot Telegram** (format HTML terstruktur dengan *HTML escaping* dan *footer* `trawangan`) dan **Discord Webhook** (*Rich Embed* dengan warna dinamis Bullish/Bearish/Cyan dan *footer* `trawangan`) untuk seluruh **Price Alerts** (termasuk *Plan-Linked Auto-Alerts*) serta **Pine Script Alerts** (`alert()` / `alertcondition()`).
+  - Menambahkan kontrol toggle global independen per kanal di **Pengaturan → Umum & Audio** (`GeneralTab.svelte`), lengkap dengan input *Bot Token*, *Chat ID*, *Webhook URL* (disamarkan dengan opsi lihat/sembunyikan dan validasi format), serta tombol **Tes** interaktif per kanal.
+  - Menambahkan command Tauri native `http_post` berbasis `reqwest` di backend Rust (`market.rs`, `commands.rs`) yang terhubung ke `universalFetch` (`httpClient.ts`) agar pengiriman HTTP `POST` di aplikasi desktop bebas dari blokir CORS.
+
+### 🔄 Diubah (Changed)
+- Menyelaraskan pelabelan dan teks notifikasi uji coba desktop menjadi **"Notifikasi Desktop Sistem"** lintas OS (Linux, Windows, macOS) serta mengekstrak helper `extractNotificationChannelsConfig` dan `sendDesktopAlertNotification` di `systemNotificationService.ts`.
+
 ## [0.50.0] - 2026-11-15
 
 ### 🚀 Ditambahkan (Added)

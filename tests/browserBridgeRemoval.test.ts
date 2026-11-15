@@ -52,7 +52,7 @@ describe('Penghapusan End-to-End Browser Bridge & Smart Clipboard Watcher (#169)
     // Pastikan fitur non-bridge di GeneralTab tetap utuh
     assert.match(generalTabSrc, /Zona Waktu Chart/);
     assert.match(generalTabSrc, /Jam Bursa Dunia/);
-    assert.match(generalTabSrc, /Notifikasi Sistem Windows/);
+    assert.match(generalTabSrc, /Notifikasi Desktop Sistem/);
     assert.match(generalTabSrc, /openSnapshotFolder/);
     assert.match(generalTabSrc, /autoSaveWorkspace/);
 
