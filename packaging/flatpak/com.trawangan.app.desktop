@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=trawangan
+Comment=Native Crypto Charting Desktop App
+Exec=trawangan
+Icon=com.trawangan.app
+Terminal=false
+Type=Application
+Categories=Finance;Utility;
+Keywords=crypto;chart;trading;pinescript;vela;
+StartupWMClass=trawangan

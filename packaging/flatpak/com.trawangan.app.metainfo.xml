@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.trawangan.app</id>
+
+  <name>trawangan</name>
+  <summary>Native Crypto Charting Desktop App</summary>
+
+  <developer id="com.trawangan">
+    <name>Kaleksanan Barqi Aji Massani</name>
+  </developer>
+
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+
+  <description>
+    <p>
+      trawangan is an ultra-lightweight native desktop crypto charting terminal
+      powered by LuxAlgo Vela WebGL2 and PineTS.
+    </p>
+    <ul>
+      <li>Unlimited simultaneous indicators and watchlists without paywalls</li>
+      <li>Local Pine Script execution via PineTS Web Worker</li>
+      <li>100% offline local SQLite storage with zero trackers or telemetry</li>
+      <li>GPU-accelerated WebGL2 charting engine</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.trawangan.app.desktop</launchable>
+
+  <url type="homepage">https://github.com/KaleksananBarqi/trawangan</url>
+  <url type="bugtracker">https://github.com/KaleksananBarqi/trawangan/issues</url>
+  <url type="vcs-browser">https://github.com/KaleksananBarqi/trawangan</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>trawangan Crypto Charting Terminal</caption>
+      <image>https://raw.githubusercontent.com/KaleksananBarqi/trawangan/main/docs/screenshots/Screenshot_20261116_120848.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>BTCUSDT.P 1D Chart View</caption>
+      <image>https://raw.githubusercontent.com/KaleksananBarqi/trawangan/main/docs/screenshots/trawangan-BTCUSDT.P-1D-20261116-121400.png</image>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.51.1" date="2026-11-15">
+      <url type="details">https://github.com/KaleksananBarqi/trawangan/releases/tag/v0.51.1</url>
+    </release>
+  </releases>
+</component>
