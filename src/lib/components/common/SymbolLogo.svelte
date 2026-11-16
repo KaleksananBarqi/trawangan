@@ -1,14 +1,21 @@
 <script lang="ts">
   import {
-    resolveCoinLogoUrl,
+    resolveAssetLogoUrl,
+    resolveQuoteLogoUrl,
+    shouldShowDualAssetBadge,
     getMonogramInitials,
     getMonogramColor,
+    type AssetLogoClass,
+    type LogoResolution,
   } from '../../services/symbolLogoService';
-  import { isMacroIndexSymbol } from '../../services/macroIndexCatalog';
+  import { recordLogoFailure, recordLogoSuccess } from '../../services/symbolLogoCache';
 
   interface Props {
     baseAsset: string;
     quoteAsset?: string;
+    symbol?: string;
+    provider?: string;
+    assetClass?: AssetLogoClass;
     size?: 'xs' | 'sm' | 'md' | 'lg' | number;
     showDualBadge?: boolean;
     class?: string;
@@ -17,11 +24,16 @@
   let {
     baseAsset = '',
     quoteAsset = '',
+    symbol = '',
+    provider = '',
+    assetClass,
     size = 'md',
     showDualBadge = false,
     class: customClass = '',
   }: Props = $props();
 
+  let baseFallbackIndex = $state(0);
+  let quoteFallbackIndex = $state(0);
   let currentBaseSrc = $state<string | null>(null);
   let currentQuoteSrc = $state<string | null>(null);
   let hasBaseError = $state(false);
@@ -40,49 +52,80 @@
 
   const quotePixelSize = $derived(Math.max(9, Math.round(pixelSize * 0.52)));
 
-  const baseResolution = $derived(resolveCoinLogoUrl(baseAsset));
-  const quoteResolution = $derived(quoteAsset ? resolveCoinLogoUrl(quoteAsset) : null);
+  const baseResolution = $derived(
+    resolveAssetLogoUrl(baseAsset || symbol, { symbol, provider, assetClass })
+  );
+  const quoteResolution = $derived(resolveQuoteLogoUrl(quoteAsset, baseResolution));
+  const shouldRenderDualBadge = $derived(
+    shouldShowDualAssetBadge(baseAsset, quoteAsset, baseResolution, showDualBadge)
+  );
 
-  const shouldRenderDualBadge = $derived.by(() => {
-    if (!quoteAsset) return false;
-    const q = quoteAsset.toUpperCase();
-    const b = baseAsset.toUpperCase();
-    if (q === b || q === '%' || isMacroIndexSymbol(b)) return false;
-    if (showDualBadge) return true;
-    // Tampilkan dual-badge jika bukan kuotasi standar USDT
-    return q !== 'USDT';
-  });
-
-  // Sinkronisasi sumber gambar saat baseAsset atau quoteAsset berganti
   $effect(() => {
-    if (baseAsset) {
-      currentBaseSrc = baseResolution.primary;
-      hasBaseError = false;
-    }
+    baseFallbackIndex = 0;
+    currentBaseSrc = baseResolution.primary || null;
+    hasBaseError = !baseResolution.primary;
   });
 
   $effect(() => {
-    if (quoteAsset && quoteResolution) {
-      currentQuoteSrc = quoteResolution.primary;
+    quoteFallbackIndex = 0;
+    if (quoteResolution) {
+      currentQuoteSrc = quoteResolution.primary || null;
+      hasQuoteError = !quoteResolution.primary;
+    } else {
+      currentQuoteSrc = null;
       hasQuoteError = false;
     }
   });
 
-  // Penanganan error cascade 3-tier: Tier 1 (Lokal) -> Tier 2 (CDN Publik) -> Tier 3 (Monogram Avatar)
-  function handleBaseError() {
-    if (currentBaseSrc !== baseResolution.cdnFallback && baseResolution.cdnFallback) {
-      currentBaseSrc = baseResolution.cdnFallback;
-    } else {
-      hasBaseError = true;
+  function handleBaseLoad() {
+    if (currentBaseSrc && /^https?:\/\//i.test(currentBaseSrc) && baseResolution.cacheKey) {
+      recordLogoSuccess(baseResolution.cacheKey, currentBaseSrc);
     }
   }
 
-  function handleQuoteError() {
-    if (quoteResolution && currentQuoteSrc !== quoteResolution.cdnFallback && quoteResolution.cdnFallback) {
-      currentQuoteSrc = quoteResolution.cdnFallback;
+  function advanceFallback(
+    resolution: LogoResolution | null,
+    index: number,
+    onNext: (url: string, nextIdx: number) => void,
+    onExhausted: () => void
+  ) {
+    const nextUrl = resolution?.fallbacks[index];
+    if (nextUrl) {
+      onNext(nextUrl, index + 1);
     } else {
-      hasQuoteError = true;
+      onExhausted();
     }
+  }
+
+  function handleBaseError() {
+    advanceFallback(
+      baseResolution,
+      baseFallbackIndex,
+      (url, nextIdx) => {
+        currentBaseSrc = url;
+        baseFallbackIndex = nextIdx;
+      },
+      () => {
+        hasBaseError = true;
+        if (baseResolution.cacheKey) {
+          recordLogoFailure(baseResolution.cacheKey);
+        }
+      }
+    );
+  }
+
+  function handleQuoteError() {
+    advanceFallback(
+      quoteResolution,
+      quoteFallbackIndex,
+      (url, nextIdx) => {
+        currentQuoteSrc = url;
+        quoteFallbackIndex = nextIdx;
+      },
+      () => {
+        hasQuoteError = true;
+      }
+    );
   }
 </script>
 
@@ -91,16 +134,16 @@
   style="width: {pixelSize}px; height: {pixelSize}px;"
   title="{baseAsset}{quoteAsset ? '/' + quoteAsset : ''}"
 >
-  <!-- Logo Koin Utama / Monogram Avatar -->
   <div
-    class="logo-base-wrapper"
+    class="logo-base-wrapper {!hasBaseError && currentBaseSrc && baseResolution.needsContrastBacking ? 'contrast-backing' : ''}"
     style="width: {pixelSize}px; height: {pixelSize}px;"
   >
     {#if !hasBaseError && currentBaseSrc}
       <img
         src={currentBaseSrc}
         alt="{baseAsset} logo"
-        class="coin-img"
+        class="coin-img {baseResolution.needsContrastBacking ? 'contain-img' : ''}"
+        onload={handleBaseLoad}
         onerror={handleBaseError}
         loading="lazy"
       />
@@ -114,7 +157,6 @@
     {/if}
   </div>
 
-  <!-- Dual-Asset Badge: Mini Quote Badge di sudut kanan-bawah -->
   {#if shouldRenderDualBadge && quoteResolution}
     <div
       class="logo-quote-badge"
@@ -160,6 +202,12 @@
     overflow: hidden;
     background: rgba(255, 255, 255, 0.05);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    box-sizing: border-box;
+  }
+
+  .logo-base-wrapper.contrast-backing {
+    background: rgba(248, 250, 252, 0.94);
+    padding: 2px;
   }
 
   .coin-img {
@@ -167,6 +215,11 @@
     height: 100%;
     object-fit: cover;
     display: block;
+    border-radius: 50%;
+  }
+
+  .coin-img.contain-img {
+    object-fit: contain;
     border-radius: 50%;
   }
 

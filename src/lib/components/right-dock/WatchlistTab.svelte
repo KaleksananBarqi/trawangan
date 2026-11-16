@@ -397,7 +397,7 @@
                   <GripVertical size={10} />
                 </span>
                 <span class="status-pip {isBull ? 'pip-bull' : 'pip-bear'}"></span>
-                <SymbolLogo baseAsset={displaySymName} quoteAsset={isMacroEntry ? '' : parsedPair.quoteAsset} size="sm" />
+                <SymbolLogo baseAsset={displaySymName} quoteAsset={isMacroEntry ? '' : parsedPair.quoteAsset} symbol={entry.symbol} provider={entry.providerId} size="sm" />
                 <span class="symbol-name">{displaySymName}</span>
                 <span class="venue-badge {isMacroEntry ? 'macro' : entry.providerId} mono-nums">
                   {isMacroEntry ? 'IDX' : entry.providerId.toUpperCase()}

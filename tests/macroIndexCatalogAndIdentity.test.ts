@@ -153,18 +153,20 @@ describe('ADR-0024: Katalog Indeks Makro, Identitas Instrumen, & Isolasi Watchli
     assert.ok(afterRemove.includes('binance:BTCUSDT'));
   });
 
-  test('5. Engine logo memakai monogram offline untuk indeks makro tanpa menyentuh logo koin reguler', () => {
+  test('5. Engine logo memakai ikon vektor lokal khusus untuk indeks makro tanpa menyentuh logo koin reguler', () => {
     const totalLogo = resolveCoinLogoUrl('TOTAL');
-    assert.equal(totalLogo.primary, '');
+    assert.equal(totalLogo.primary, '/icons/indices/total.svg');
     assert.equal(totalLogo.cdnFallback, '');
     assert.equal(totalLogo.isLocal, true);
     assert.equal(totalLogo.baseAsset, 'TOTAL');
+    assert.equal(totalLogo.assetClass, 'macro-index');
 
     const btcDomLogo = resolveCoinLogoUrl('btcd');
-    assert.equal(btcDomLogo.primary, '');
+    assert.equal(btcDomLogo.primary, '/icons/indices/btcd.svg');
     assert.equal(btcDomLogo.cdnFallback, '');
     assert.equal(btcDomLogo.isLocal, true);
     assert.equal(btcDomLogo.baseAsset, 'BTC.D');
+    assert.equal(btcDomLogo.assetClass, 'macro-index');
 
     assert.equal(getMonogramInitials('TOTAL'), 'TOT');
     assert.equal(getMonogramInitials('TOTAL2'), 'TOT2');

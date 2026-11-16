@@ -496,7 +496,7 @@
                   class="recent-chip mono-nums"
                   onclick={() => handlePickSymbol(rSym)}
                 >
-                  <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} size="xs" />
+                  <SymbolLogo baseAsset={parsedPair.baseAsset} quoteAsset={parsedPair.quoteAsset} symbol={rSym} size="xs" />
                   <span>{rSym}</span>
                   <ArrowRight size={10} class="recent-arrow" />
                 </button>
@@ -525,7 +525,7 @@
               >
                 <!-- Left: Logo + Symbol + Type Tag + Name -->
                 <div class="item-left">
-                  <SymbolLogo baseAsset={item.baseAsset} quoteAsset={isMacroItem ? '' : item.quoteAsset} size="md" />
+                  <SymbolLogo baseAsset={item.baseAsset} quoteAsset={isMacroItem ? '' : item.quoteAsset} symbol={item.symbol} provider={item.provider} size="md" />
                   <div class="item-text-info">
                     <div class="symbol-title-row">
                       <span class="symbol-name mono-nums">{item.baseAsset}</span>

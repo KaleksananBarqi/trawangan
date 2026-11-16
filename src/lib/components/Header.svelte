@@ -198,7 +198,7 @@
       title="Klik atau tekan Ctrl+K untuk mencari simbol koin & pair"
       onclick={() => onOpenSymbolSearch?.()}
     >
-      <SymbolLogo baseAsset={activeParsedSymbol.baseAsset} quoteAsset={activeParsedSymbol.quoteAsset} size="sm" />
+      <SymbolLogo baseAsset={activeParsedSymbol.baseAsset} quoteAsset={activeParsedSymbol.quoteAsset} symbol={activeSymbol} provider={activeProviderId} size="sm" />
       <span class="active-sym-title mono-nums">{activeSymbol}</span>
       <span class="kbd-hint mono-nums">Ctrl+K</span>
     </button>

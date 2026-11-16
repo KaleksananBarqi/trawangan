@@ -27,7 +27,8 @@ describe('Ticket 4 (#90): End-to-End Symbol Logo UI Integration Suite', () => {
     const resolvLogo = resolveCoinLogoUrl(resolv.baseAsset);
     assert.equal(resolv.baseAsset, 'RESOLV');
     assert.equal(resolvLogo.isLocal, false);
-    assert.ok(resolvLogo.primary.includes('jsdelivr.net'));
+    assert.ok(resolvLogo.primary.includes('web3icons') || resolvLogo.primary.includes('jsdelivr.net'));
+    assert.ok(resolvLogo.fallbacks.some((u) => u.includes('jsdelivr.net')));
     assert.equal(getMonogramInitials('RESOLV'), 'RESO');
     assert.ok(
       getMonogramColor('RESOLV').startsWith('hsl') ||

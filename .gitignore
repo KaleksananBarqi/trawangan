@@ -11,8 +11,9 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 src-tauri/target/
 .playwright-mcp/
+.scratch/
 .worktrees/
 /Widget Tanggal Jawa/
 /widget jawa/
-
+/anti-slop
 .aider*
