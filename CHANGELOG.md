@@ -5,6 +5,19 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.52.0] - 2026-11-16
+
+### 🚀 Ditambahkan (Added)
+- **Sistem Ikon Multi-Aset Lokal & Cache Resolusi Logo (`symbolLogoService`, `symbolLogoCache`, `SymbolLogo.svelte`):**
+  - Menambahkan kurasi aset ikon lokal ke `static/icons/` yang mencakup kripto (`coins/`), saham AS & IDX (`stocks/`), bendera mata uang/forex (`flags/`), komoditas (`commodities/`), dan indeks makro/dominasi (`indices/`), lengkap dengan skrip sinkronisasi `scripts/sync-asset-icons.mjs` serta manifest otomatis `symbolLogoManifest.ts`.
+  - Menambahkan `symbolLogoCache.ts` berbasis `localStorage` dengan TTL positif (30 hari) dan negatif (24 jam) untuk mempercepat pemuatan ulang logo serta mencegah permintaan 404 berulang.
+- **Dukungan Distribusi Flatpak / Flathub:**
+  - Menambahkan manifes Flathub, berkas `.desktop`, metadata AppStream (`metainfo`), dan tangkapan layar aplikasi untuk persiapan distribusi paket Linux melalui Flathub.
+
+### 🔄 Diubah (Changed)
+- **Pembaruan Komponen Tampilan Logo (`SymbolLogo.svelte`):**
+  - Memperbarui resolusi logo multi-aset pada `Header.svelte`, `SymbolSearchModal.svelte`, dan `WatchlistTab.svelte` agar memanfaatkan manifest lokal dan cache resolusi logo secara terpadu.
+
 ## [0.51.1] - 2026-11-15
 
 ### 🐛 Diperbaiki (Fixed)
