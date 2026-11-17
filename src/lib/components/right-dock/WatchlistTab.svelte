@@ -111,12 +111,16 @@
 
   const groupedSections = $derived.by<SectionGroup[]>(() => {
     const groups: SectionGroup[] = [];
+    const seenSectionIds = new Set<string>();
+    const seenItems = new Set<string>();
     let current: SectionGroup = { section: null, items: [] };
 
     for (const item of symbols) {
       if (isSectionToken(item)) {
         const parsed = parseSectionToken(item);
         if (parsed) {
+          if (seenSectionIds.has(parsed.id)) continue;
+          seenSectionIds.add(parsed.id);
           if (current.section !== null || current.items.length > 0) {
             groups.push(current);
           }
@@ -124,6 +128,8 @@
           continue;
         }
       }
+      if (seenItems.has(item)) continue;
+      seenItems.add(item);
       current.items.push(item);
     }
 

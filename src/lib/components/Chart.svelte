@@ -23,6 +23,7 @@
   import { chartDrawingController, isSameSymbol, type GestureCreationState } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { alertService } from '../services/alertService';
+  import { dedupeByKey } from '../utils/dedupeByKey';
   import { dataWindowService } from '../services/dataWindowService';
   import { marketFeed } from '../services/market';
   import { replaySession } from '../services/replay';
@@ -137,7 +138,10 @@
 
   let allAlerts = $state<PriceAlert[]>([]);
   let activeSymbolAlerts = $derived.by(() => {
-    return allAlerts.filter((a) => isSameSymbol(a.symbol, symbol));
+    return dedupeByKey(
+      allAlerts.filter((a) => isSameSymbol(a.symbol, symbol)),
+      (a) => a.id
+    );
   });
   let draggingAlertId = $state<string | null>(null);
   let draggingAlertPrice = $state<number | null>(null);
@@ -150,7 +154,10 @@
   let activePlans = $state<Array<any>>([]);
   let showThesisCards = $state(true);
   let scopedActivePlans = $derived(
-    activePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, symbol))
+    dedupeByKey(
+      activePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, symbol)),
+      (p) => p.id
+    )
   );
 
   let unsubAlerts: (() => void) | null = null;

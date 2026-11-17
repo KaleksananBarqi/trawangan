@@ -21,6 +21,7 @@
     Sparkles
   } from '@lucide/svelte';
   import { isSameSymbol } from '../../services/instrumentIdentity';
+  import { dedupeByKey } from '../../utils/dedupeByKey';
   import type { ActiveTradingPlan } from '../../services/tradingPlanLifecycle';
   import type { TradePlanTabSubMode } from '../../services/tradePlanFormService';
 
@@ -80,11 +81,16 @@
   let isPlansGroupOpen = $state(true);
   let isDrawingsGroupOpen = $state(true);
 
+  const uniqueIndicators = $derived(dedupeByKey(activeIndicators, (i) => i.id));
+  const uniqueDrawings = $derived(dedupeByKey(activeDrawings, (d) => d.id));
   const scopedPlans = $derived(
-    activePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, activeSymbol))
+    dedupeByKey(
+      activePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, activeSymbol)),
+      (p) => p.id
+    )
   );
   const nativeVolumeCount = $derived(showVolume ? 1 : 0);
-  const totalIndicatorsCount = $derived(activeIndicators.length + nativeVolumeCount);
+  const totalIndicatorsCount = $derived(uniqueIndicators.length + nativeVolumeCount);
 
   // Otomatis scroll item layer yang dipilih dari kanvas ke area pandang
   function scrollIntoViewIfSelected(node: HTMLElement, isSelected: boolean) {
@@ -149,7 +155,7 @@
 
 <div class="sub-toolbar">
   <span class="sub-title">Unified Object Tree</span>
-  <span class="layer-count mono-nums">{totalIndicatorsCount + activeDrawings.length} Total</span>
+  <span class="layer-count mono-nums">{totalIndicatorsCount + uniqueDrawings.length} Total</span>
 </div>
 
 <div class="items-list objects-list">
@@ -198,7 +204,7 @@
           </div>
         </div>
 
-        {#each activeIndicators as ind (ind.id)}
+        {#each uniqueIndicators as ind (ind.id)}
           <div class="layer-item">
             <div class="layer-info">
               <span class="layer-icon"><Layers size={13} /></span>
@@ -251,7 +257,7 @@
           </div>
         {/each}
 
-        {#if activeIndicators.length === 0 && !showVolume}
+        {#if uniqueIndicators.length === 0 && !showVolume}
           <div class="empty-subgroup">
             <span>Tidak ada indikator aktif</span>
           </div>
@@ -372,7 +378,7 @@
           {/if}
         </span>
         <span>Objek Gambar</span>
-        <span class="group-count mono-nums">{activeDrawings.length}</span>
+        <span class="group-count mono-nums">{uniqueDrawings.length}</span>
       </button>
 
       <div class="group-bulk-actions">
@@ -380,7 +386,7 @@
           type="button"
           class="bulk-action-btn"
           title="Sembunyikan / Tampilkan Semua Gambar"
-          onclick={() => onBulkHideDrawings?.(activeDrawings.some((d) => d.visible !== false))}
+          onclick={() => onBulkHideDrawings?.(uniqueDrawings.some((d) => d.visible !== false))}
         >
           <Eye size={11} />
         </button>
@@ -388,7 +394,7 @@
           type="button"
           class="bulk-action-btn"
           title="Kunci / Buka Semua Gambar"
-          onclick={() => onBulkLockDrawings?.(activeDrawings.some((d) => !d.locked))}
+          onclick={() => onBulkLockDrawings?.(uniqueDrawings.some((d) => !d.locked))}
         >
           <Lock size={11} />
         </button>
@@ -405,7 +411,7 @@
 
     {#if isDrawingsGroupOpen}
       <div class="tree-group-content">
-        {#each activeDrawings as drawing (drawing.id)}
+        {#each uniqueDrawings as drawing (drawing.id)}
           {@const meta = getDrawingMeta(drawing)}
           {@const isSelected = selectedDrawingId === drawing.id}
           {@const isVisible = drawing.visible !== false}
@@ -470,7 +476,7 @@
           </div>
         {/each}
 
-        {#if activeDrawings.length === 0}
+        {#if uniqueDrawings.length === 0}
           <div class="empty-subgroup">
             <span>Belum ada coretan gambar pada pair ini</span>
           </div>

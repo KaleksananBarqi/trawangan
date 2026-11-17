@@ -95,15 +95,25 @@
         document.body.appendChild(card);
       }
 
+      function formatRuntimeErrorDetail(err, fallback) {
+        if (!err) return fallback;
+        var message = typeof err === 'string' ? err : (err.message || '');
+        var stack = (typeof err === 'object' && err.stack) ? String(err.stack) : '';
+        if (message && stack) {
+          return stack.indexOf(message) !== -1 ? stack : message + '\n' + stack;
+        }
+        return stack || message || String(err) || fallback;
+      }
+
       window.addEventListener('error', function(event) {
         console.error('[TRAWANGAN_STARTUP_ERROR]', event.error || event.message);
-        var msg = (event.error && (event.error.stack || event.error.message)) || event.message || 'Unknown runtime error';
+        var msg = formatRuntimeErrorDetail(event.error, event.message || 'Unknown runtime error');
         showTrawanganErrorCard('⚠️ Runtime Error', msg);
       });
 
       window.addEventListener('unhandledrejection', function(event) {
         console.error('[TRAWANGAN_UNHANDLED_REJECTION]', event.reason);
-        var msg = (event.reason && (event.reason.stack || event.reason.message || event.reason)) || 'Unknown promise rejection';
+        var msg = formatRuntimeErrorDetail(event.reason, 'Unknown promise rejection');
         showTrawanganErrorCard('⚠️ Unhandled Promise Rejection', String(msg));
       });
 

@@ -1,6 +1,7 @@
 // Layanan Ekstraksi & Formatter Label Harga pada Skala Kanan (Indikator & Drawing Tools)
 import { roundToTickSize } from './priceSnapService';
 import { formatMacroCompactValue, resolveMacroIndexDescriptor } from './macroIndexCatalog';
+import { dedupeByKey } from '../utils/dedupeByKey';
 
 export interface PriceScaleBadge {
   id: string;
@@ -259,7 +260,7 @@ export function extractDrawingPriceBadges(
     }
   }
 
-  return badges;
+  return dedupeByKey(badges, (b) => b.id);
 }
 
 /**
@@ -292,5 +293,5 @@ export function extractIndicatorPriceBadges(
     }
   }
 
-  return badges;
+  return dedupeByKey(badges, (b) => b.id);
 }
