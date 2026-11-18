@@ -5,6 +5,32 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.53.0] - 2026-11-18
+
+### 🚀 Ditambahkan (Added)
+- **Rework Total Bar Replay HUD (`ReplayBar.svelte`, `ReplaySession`):**
+  - Mengganti bilah atas statis menjadi **Floating Draggable Pill HUD** di tengah-bawah kanvas (*zero layout shift* pada grafik WebGL) lengkap dengan *drag handle*, *viewport clamping*, dan *double-click* reset posisi.
+  - Menambahkan **Interactive Timeline Scrubber** dengan preview tooltip waktu, penghitung progres (`currentStepIndex/totalReplayBars`), tombol **Ke Real-Time (`skipToEnd`)** tanpa menutup sesi Replay, serta **Speed Popover** (`0.5x`, `1x`, `2x`, `5x`, `10x`, `20x`).
+  - Menambahkan **Garis Potong Magnetik (*Snap-to-Candle*)** beserta **Dimmed Future Curtain** (bayangan semi-transparan di sisi kanan garis potong) dan badge tanggal/harga saat memilih candle di grafik.
+- **Custom Date & Time Popover (`ReplayDatePickerModal.svelte`):**
+  - Mengganti modal layar penuh dan `<input type="datetime-local">` bawaan OS dengan popover kalender bulanan *dark-mode* kustom yang menempel di atas Replay HUD, dilengkapi chip *Quick Jump* (`24 Jam`, `3 Hari`, `7 Hari`, `30 Hari`, `Awal Chart`), stepper jam/menit, dan input ketik cepat `YYYY-MM-DD HH:mm`.
+- **Utilitas Deduplikasi & Kloning Aman (`dedupeByKey.ts`, `safeClone.ts`):**
+  - Menambahkan `dedupeByKey` untuk menjaga keunikan key render di daftar layers, watchlist, badge skala harga, dan overlay chart, serta `safeClone` untuk meng-unwrap objek `Proxy` Svelte 5 secara aman.
+
+### 🔄 Diubah (Changed)
+- **Pre-Fetch Konteks Historis & Multi-Timeframe Replay (`Chart.svelte`, `ReplaySession`):**
+  - Menambahkan `ensureHistoricalContext` untuk memuat otomatis buffer konteks hingga 350 bar sebelum tanggal target (hingga 25.000 bar) serta `focusCameraOnTimestamp` untuk memfokuskan kamera dan skala harga ke titik potong.
+  - Mempertahankan posisi waktu Replay saat berganti *timeframe* pada simbol yang sama (*multi-timeframe carry-over*) dan menutup sesi Replay otomatis saat berganti simbol.
+
+### 🐛 Diperbaiki (Fixed)
+- **Proyeksi Trade Plan pada Mode Replay & Error `structuredClone` (`chartDrawingController.ts`, `tradingPlanLifecycle.ts`):**
+  - Memperbaiki `resolveCandleMetrics` agar membaca `activeChart.rawBars` dan memprioritaskan `cursorTime` Replay aktif, sehingga proyeksi maupun *re-plot* Trade Plan dari riwayat Vault muncul tepat di waktu Replay (bukan `Date.now()`).
+  - Mengganti pemanggilan `structuredClone` mentah pada `TradingPlanLifecycle` dan `ChartDrawingController` dengan `safeClone` untuk menghilangkan `DataCloneError` saat menyunting/commit Trade Plan ber-Proxy Svelte 5.
+- **Koneksi Driver Vela, Backfill Provider, & Pintasan Keyboard (`Chart.svelte`, `indodaxProvider.ts`, `bitunixProvider.ts`, `commandDispatcher.ts`):**
+  - Menghidupkan kembali `stepBack`, `enableCutoffVisual`, `cancelCutoffVisual`, dan listener event `replay:*` pada `ReplayDriver`, serta memperbaiki pembacaan `ws.replay.state`.
+  - Memperbaiki kalkulasi `fromSec` pada `IndodaxProvider.fetchBarsStrict` saat *backfill* mundur (`toSec - countBack * secondsPerBar`) dan penerusan `startTime`/`endTime` pada fallback Binance di `BitunixProvider`.
+  - Memperbaiki bentrokan tombol `Space` antara `nav-watchlist-space` dan `replay-play-pause`, melengkapi matcher `←`/`→` serta `Shift+←`/`Shift+→` (`±10` bar), dan menangkap `Escape` di *capture phase* pada popover tanggal & menu speed agar tidak ikut membatalkan sesi Replay.
+
 ## [0.52.0] - 2026-11-16
 
 ### 🚀 Ditambahkan (Added)
