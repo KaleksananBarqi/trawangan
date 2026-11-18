@@ -2,6 +2,22 @@
 // Menyediakan satu sumber kebenaran (Single Source of Truth) untuk definisi perintah,
 // normalisasi keystroke fisik OS Windows/macOS, input suppression, dan eksekusi shortcut.
 
+import { replaySession } from './replay';
+
+function replayShortcutMatch(
+  keyOrCode: string | string[],
+  shift = false
+): (e: KeyboardEvent) => boolean {
+  const targets = Array.isArray(keyOrCode) ? keyOrCode : [keyOrCode];
+  return (e: KeyboardEvent) =>
+    replaySession.getSnapshot().active &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey &&
+    Boolean(e.shiftKey) === shift &&
+    targets.some((t) => e.key === t || e.code === t);
+}
+
 export type CommandCategory =
   | 'Navigasi & Simbol'
   | 'Alat Gambar (Drawing Tools)'
@@ -391,7 +407,14 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       category: 'Navigasi & Simbol',
       keys: ['Space'],
       desc: 'Koin berikutnya (Space) atau koin sebelumnya (Shift+Space)',
-      match: { ctrlOrMeta: false, alt: false, key: ' ', code: 'Space' },
+      match: {
+        customMatch: (e) =>
+          !replaySession.getSnapshot().active &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey &&
+          (e.code === 'Space' || e.key === ' '),
+      },
     },
     {
       id: 'cancel-action',
@@ -622,18 +645,40 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       category: 'Bar Replay (Simulasi)',
       keys: ['Space'],
       desc: 'Mulai atau jeda putaran otomatis simulasi lilin harga (saat Replay aktif)',
+      allowInInput: false,
+      match: { customMatch: replayShortcutMatch(['Space', ' '], false) },
     },
     {
       id: 'replay-step-forward',
       category: 'Bar Replay (Simulasi)',
       keys: ['→'],
       desc: 'Maju 1 bar simulasi ke depan',
+      allowInInput: false,
+      match: { customMatch: replayShortcutMatch('ArrowRight', false) },
     },
     {
       id: 'replay-step-backward',
       category: 'Bar Replay (Simulasi)',
       keys: ['←'],
       desc: 'Mundur 1 bar simulasi ke belakang (potong ulang 1 lilin)',
+      allowInInput: false,
+      match: { customMatch: replayShortcutMatch('ArrowLeft', false) },
+    },
+    {
+      id: 'replay-fast-forward',
+      category: 'Bar Replay (Simulasi)',
+      keys: ['Shift', '→'],
+      desc: 'Lompat maju 10 bar simulasi ke depan',
+      allowInInput: false,
+      match: { customMatch: replayShortcutMatch('ArrowRight', true) },
+    },
+    {
+      id: 'replay-fast-backward',
+      category: 'Bar Replay (Simulasi)',
+      keys: ['Shift', '←'],
+      desc: 'Lompat mundur 10 bar simulasi ke belakang',
+      allowInInput: false,
+      match: { customMatch: replayShortcutMatch('ArrowLeft', true) },
     },
 
     // --- Analisis & Indikator ---

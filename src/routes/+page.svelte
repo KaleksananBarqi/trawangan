@@ -6,7 +6,6 @@
   import DrawingToolbar from '../lib/components/DrawingToolbar.svelte';
   import WatchlistPanel from '../lib/components/WatchlistPanel.svelte';
   import ReplayBar from '../lib/components/ReplayBar.svelte';
-  import ReplayDatePickerModal from '../lib/components/ReplayDatePickerModal.svelte';
   import PineEditor from '../lib/components/PineEditor.svelte';
   import StatusBar from '../lib/components/StatusBar.svelte';
   import SettingsModal from '../lib/components/SettingsModal.svelte';
@@ -369,7 +368,6 @@
 
   // Deep Replay Session Reactive State
   let replaySnapshot = $state<ReplaySnapshot>(replaySession.getSnapshot());
-  let isReplayDatePickerOpen = $state(false);
 
   // Drawing Tools State
   let activeDrawingTool = $state<DrawingToolType | null>('cursor');
@@ -763,12 +761,22 @@
       }),
       commandDispatcher.bindHandler('replay-step-forward', () => {
         if (replaySnapshot.active) {
-          replaySession.step();
+          replaySession.step(1);
         }
       }),
       commandDispatcher.bindHandler('replay-step-backward', () => {
         if (replaySnapshot.active) {
-          replaySession.stepBack();
+          replaySession.stepBack(1);
+        }
+      }),
+      commandDispatcher.bindHandler('replay-fast-forward', () => {
+        if (replaySnapshot.active) {
+          replaySession.step(10);
+        }
+      }),
+      commandDispatcher.bindHandler('replay-fast-backward', () => {
+        if (replaySnapshot.active) {
+          replaySession.stepBack(10);
         }
       }),
       commandDispatcher.bindHandler('cancel-action', () => {
@@ -1450,18 +1458,6 @@
     }
   }
 
-  function handleSelectDate(timestamp: number) {
-    replaySession.setCutoff(timestamp);
-    const formatted = new Date(timestamp).toLocaleString('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    addSystemLog(`Bar Replay melompat ke tanggal: ${formatted}.`, 'success');
-  }
-
   // ─── Indicators & Pine Script Handlers ───
   async function handleAddIndicator(code: string, title: string): Promise<boolean> {
     if (sessionController) {
@@ -1819,17 +1815,6 @@
 
   <!-- Main Viewport Area -->
   <main class="main-workspace {workspaceMode}">
-    <!-- Optional Bar Replay Controller (Only visible when active) -->
-    {#if replaySnapshot.active}
-      <ReplayBar
-        onOpenDatePicker={() => (isReplayDatePickerOpen = true)}
-        onClose={() => {
-          replaySession.close();
-          addSystemLog('Bar Replay ditutup. Kembali ke data pasar live.', 'info');
-        }}
-      />
-    {/if}
-
     <!-- WORKSPACE UNIFIED VIEWPORT (Docked Structural Shell: Left Rail | Chart Canvas | Drawer Panel | Right Dock Rail) -->
     <div class="workspace-viewport mode-{workspaceMode}">
       {#if isPersistenceBootstrapped}
@@ -1938,6 +1923,15 @@
           }}
           onPersistableStateChange={() => (chartDirtyTick += 1)}
         />
+
+        {#if replaySnapshot.active}
+          <ReplayBar
+            onClose={() => {
+              replaySession.close();
+              addSystemLog('Bar Replay ditutup. Kembali ke data pasar live.', 'info');
+            }}
+          />
+        {/if}
       </div>
 
       <!-- 3. RIGHT DRAWER COLUMN: Side-by-side Pine Editor atau Drawer Watchlist -->
@@ -2194,15 +2188,6 @@
       }}
     />
   {/if}
-
-  <!-- Replay Jump to Date Modal -->
-  <ReplayDatePickerModal
-    isOpen={isReplayDatePickerOpen}
-    bounds={replaySnapshot.bounds}
-    currentBarTime={replaySnapshot.cursorTime}
-    onSelectDate={handleSelectDate}
-    onClose={() => (isReplayDatePickerOpen = false)}
-  />
 
   <!-- Create & Edit Price Alert Modal -->
   <CreateAlertModal

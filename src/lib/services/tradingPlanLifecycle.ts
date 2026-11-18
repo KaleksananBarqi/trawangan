@@ -23,6 +23,7 @@ import {
 } from './planParserService';
 import { getAdaptiveTickSize, roundToTickSize } from './priceSnapService';
 import { computeRiskPercent } from './tradePlanFormService';
+import { safeClone } from '../utils/safeClone';
 
 export const CONTEXT_ZONE_STYLES = {
   bull: {
@@ -595,8 +596,8 @@ export class TradingPlanLifecycle {
           targetLabel: target.label || `TP${i + 1}`,
           rMultiple: target.rMultiple,
           bias: plan.bias,
-          reasons: plan.reasons,
-          contextZones: plan.contextZones,
+          reasons: safeClone(plan.reasons),
+          contextZones: safeClone(plan.contextZones),
           rawPlanText: plan.rawText,
           lastEntry: plan.entry,
           lastStop: plan.stopLoss,
@@ -749,10 +750,11 @@ export class TradingPlanLifecycle {
    * Proyeksi sinkron ParsedTradingPlan ke kanvas menjadi Staged Position Boxes, Entry Zone, dan Context Zone
    */
   projectPlan(
-    plan: ParsedTradingPlan & { id?: string },
+    rawPlan: ParsedTradingPlan & { id?: string },
     options?: ApplyPlanOptions
   ): AppliedPlanResult | null {
-    if (!plan) return null;
+    if (!rawPlan) return null;
+    const plan = safeClone(rawPlan);
     if (plan.validation && !plan.validation.valid) return null;
     if (!plan.entry || !plan.stopLoss || !plan.targets || plan.targets.length === 0) {
       return null;
@@ -884,10 +886,11 @@ export class TradingPlanLifecycle {
    */
   updatePlan(
     planId: string,
-    updatedPlan: ParsedTradingPlan & { id?: string },
+    rawUpdatedPlan: ParsedTradingPlan & { id?: string },
     options?: UpdatePlanOptions
   ): AppliedPlanResult | null {
-    if (!updatedPlan) return null;
+    if (!rawUpdatedPlan) return null;
+    const updatedPlan = safeClone(rawUpdatedPlan);
     if (updatedPlan.validation && !updatedPlan.validation.valid) return null;
     if (!updatedPlan.entry || !updatedPlan.stopLoss || !updatedPlan.targets || updatedPlan.targets.length === 0) {
       return null;
@@ -908,7 +911,7 @@ export class TradingPlanLifecycle {
     const stageDuration = span * deltaT;
     const paneId = options?.paneId || 'price';
 
-    const prevPlanSnapshot = structuredClone(existingPlan);
+    const prevPlanSnapshot = safeClone(existingPlan);
     const prevDrawingIdSet = this.planDrawingIds.get(planId) || new Set<string>();
     const currentDrawings = this.host.getCanvasDrawings() || [];
     const prevPlanDrawings = currentDrawings.filter(
@@ -920,7 +923,7 @@ export class TradingPlanLifecycle {
         ...prevPlanDrawings.map((d) => d.id).filter(Boolean)
       ])
     );
-    const prevDrawingsSnapshot = prevPlanDrawings.map((d) => structuredClone(d));
+    const prevDrawingsSnapshot = prevPlanDrawings.map((d) => safeClone(d));
 
     // Pertahankan koordinat waktu tiap stage posisi sebelumnya agar drag X-axis pengguna tidak hilang
     const prevPositions = prevPlanDrawings
@@ -1047,9 +1050,9 @@ export class TradingPlanLifecycle {
 
     this.host.recordUndoAction?.({
       action: 'update',
-      plan: structuredClone(planRecord),
+      plan: safeClone(planRecord),
       drawingIds: createdDrawingIds,
-      drawings: createdDrawings.map((d) => structuredClone(d)),
+      drawings: createdDrawings.map((d) => safeClone(d)),
       autoCreateAlerts: nextAutoAlerts,
       previousPlan: prevPlanSnapshot,
       previousDrawingIds: prevDrawingIds,

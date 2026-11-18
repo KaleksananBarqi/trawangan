@@ -1,4 +1,3 @@
-// Tipe dan Kontrak Antarmuka Modul Deep Replay Session Trawangan
 export type ReplayStatus = 'idle' | 'selecting_cutoff' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended';
 
 export interface ReplayBounds {
@@ -15,22 +14,34 @@ export interface ReplaySnapshot {
   cutoffTime: number | null;
   cursorTime: number | null;
   remainingBars: number;
+  totalReplayBars: number;
+  currentStepIndex: number;
   bounds: ReplayBounds | null;
+  errorMessage: string | null;
+}
+
+export interface ReplayDriverState {
+  active: boolean;
+  playing: boolean;
+  cursorTime: number | null;
+  remaining: number;
 }
 
 /**
- * Driver Seam: Mengabstraksi komunikasi antara ReplaySession dan engine chart
- * Memungkinkan testing headless tanpa memuat canvas WebGL atau DOM.
+ * Driver Seam: mengabstraksi komunikasi antara ReplaySession dan engine chart
+ * agar testing headless dapat berjalan tanpa WebGL atau DOM.
  */
 export interface ReplayDriver {
   getBounds(): ReplayBounds | null;
   start(targetTime: number): Promise<boolean>;
+  seekTo?(targetTime: number): Promise<boolean>;
+  skipToEnd?(): Promise<boolean>;
   play(intervalMs: number): void;
   pause(): void;
-  step(): void;
-  stepBack(): void;
+  step(count?: number): void | Promise<void>;
+  stepBack(count?: number): void | Promise<void>;
   stop(): void;
-  getState(): { active: boolean; playing: boolean; cursorTime: number | null; remaining: number } | null;
+  getState(): ReplayDriverState | null;
   enableCutoffVisual(): void;
   cancelCutoffVisual(): void;
 }
@@ -43,13 +54,16 @@ export interface IReplaySession {
   enableBarSelection(): void;
   cancelBarSelection(): void;
   setCutoff(timestamp: number): Promise<boolean>;
+  seekTo(timestamp: number): Promise<boolean>;
+  skipToEnd(): Promise<boolean>;
   play(speed?: number): void;
   pause(): void;
   togglePlay(): void;
-  step(): void;
-  stepBack(): void;
+  step(count?: number): void;
+  stepBack(count?: number): void;
   setSpeed(speed: number): void;
   rewind(): Promise<boolean>;
+  clearError(): void;
   bindDriver(driver: ReplayDriver | null): void;
   notifyDriverState(state: {
     active?: boolean;
@@ -57,6 +71,7 @@ export interface IReplaySession {
     cursorTime?: number | null;
     remaining?: number;
     bounds?: ReplayBounds | null;
+    errorMessage?: string | null;
   }): void;
   subscribe(listener: ReplayListener): () => void;
   getSnapshot(): ReplaySnapshot;

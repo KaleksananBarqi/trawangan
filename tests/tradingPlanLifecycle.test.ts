@@ -544,4 +544,73 @@ describe('TradingPlanLifecycle (Deep Module & Dual-Entry Drift Fix)', () => {
     );
     assert.equal(lifecycle.toPersistedEnvelope('BTCUSDT').drawingMetadata.d_leaked_meta_for_eth, undefined);
   });
+
+  it('8. resolveCandleMetrics memprioritaskan rawBars & cursorTime Replay (bukan Date.now)', async () => {
+    const { resolveCandleMetrics } = await import('../src/lib/services/chartDrawingController');
+    const { replaySession, MockReplayDriver } = await import('../src/lib/services/replay');
+
+    const pastBars = [
+      { time: 1_710_000_000_000, open: 100, high: 105, low: 95, close: 102 },
+      { time: 1_710_000_900_000, open: 102, high: 108, low: 100, close: 106 },
+      { time: 1_710_001_800_000, open: 106, high: 110, low: 104, close: 109 }
+    ];
+
+    const fakeVelaChart = {
+      rawBars: pastBars.slice(0, 2)
+    };
+
+    const metricsWithoutReplay = resolveCandleMetrics(fakeVelaChart, '15m');
+    assert.equal(metricsWithoutReplay.latestCandleTime, 1_710_000_900_000);
+    assert.equal(metricsWithoutReplay.deltaT, 900_000);
+
+    const driver = new MockReplayDriver(pastBars.map((b) => b.time));
+    replaySession.bindDriver(driver);
+    await replaySession.setCutoff(1_710_000_000_000);
+
+    const metricsInReplay = resolveCandleMetrics(fakeVelaChart, '15m');
+    assert.equal(metricsInReplay.latestCandleTime, 1_710_000_000_000);
+
+    replaySession.close();
+    replaySession.bindDriver(null);
+  });
+
+  it('9. updatePlan kebal terhadap objek Proxy Svelte 5 ($state) tanpa error structuredClone', () => {
+    const plan = parseTradingPlan(DUAL_ENTRY_BEARISH_MD);
+    assert.ok(plan.validation?.valid);
+
+    const wrapProxy = <T extends object>(obj: T): T =>
+      new Proxy(obj, {
+        get(target, prop, receiver) {
+          const val = Reflect.get(target, prop, receiver);
+          if (val && typeof val === 'object') {
+            return wrapProxy(val);
+          }
+          return val;
+        }
+      });
+
+    const proxiedInitialPlan = wrapProxy(plan);
+    const projected = lifecycle.projectPlan(proxiedInitialPlan);
+    assert.ok(projected);
+
+    // Simulasikan drawing di kanvas juga terbungkus Proxy
+    host.drawings = host.drawings.map((d) => wrapProxy(d));
+
+    const updated = parseTradingPlan(`
+| Parameter | Nilai |
+|---|---|
+| Bias | Bearish (Short) |
+| Entry | 2175.00 |
+| Stop Loss | 2195.00 |
+| TP1 | 2130.00 |
+| Alasan TP1 | Retest demand zone |
+`);
+    assert.ok(updated.validation?.valid);
+
+    const proxiedUpdatedPlan = wrapProxy(updated);
+    const res = lifecycle.updatePlan(projected.planId, proxiedUpdatedPlan);
+    assert.ok(res);
+    assert.equal(res.plan.entry, 2175);
+    assert.equal(res.plan.stopLoss, 2195);
+  });
 });

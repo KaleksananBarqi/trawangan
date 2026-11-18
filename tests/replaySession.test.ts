@@ -135,4 +135,72 @@ test('Deep Replay Session Module Unit Tests', async (t) => {
     assert.equal(finalLogged.active, false);
     assert.equal(finalLogged.status, 'idle');
   });
+
+  await t.test('6. Fast-step (±10 bar), seekTo, skipToEnd, dan error recovery', async () => {
+    const timestamps = Array.from({ length: 30 }, (_, i) => (i + 1) * 1000);
+    const mockDriver = new MockReplayDriver(timestamps);
+    const session = new ReplaySession();
+    session.bindDriver(mockDriver);
+
+    await session.setCutoff(5000);
+    let snap = session.getSnapshot();
+    assert.equal(snap.cutoffTime, 5000);
+    assert.equal(snap.cursorTime, 5000);
+    assert.equal(snap.totalReplayBars, 25);
+    assert.equal(snap.currentStepIndex, 0);
+
+    // Fast-forward +10 bar
+    session.step(10);
+    snap = session.getSnapshot();
+    assert.equal(snap.cursorTime, 15000);
+    assert.equal(snap.remainingBars, 15);
+    assert.equal(snap.currentStepIndex, 10);
+
+    // Fast-backward -10 bar
+    session.stepBack(10);
+    snap = session.getSnapshot();
+    assert.equal(snap.cursorTime, 5000);
+    assert.equal(snap.remainingBars, 25);
+    assert.equal(snap.currentStepIndex, 0);
+
+    // seekTo tidak mengubah cutoffTime awal (untuk Rewind)
+    await session.seekTo(20000);
+    snap = session.getSnapshot();
+    assert.equal(snap.cutoffTime, 5000);
+    assert.equal(snap.cursorTime, 20000);
+    assert.equal(snap.remainingBars, 10);
+    assert.equal(snap.currentStepIndex, 15);
+
+    // skipToEnd membuka seluruh bar tanpa menutup sesi Replay
+    await session.skipToEnd();
+    snap = session.getSnapshot();
+    assert.equal(snap.active, true);
+    assert.equal(snap.status, 'ended');
+    assert.equal(snap.remainingBars, 0);
+    assert.equal(snap.cursorTime, 30000);
+
+    // Rewind masih kembali ke cutoffTime awal (5000)
+    await session.rewind();
+    snap = session.getSnapshot();
+    assert.equal(snap.cursorTime, 5000);
+    assert.equal(snap.remainingBars, 25);
+    assert.equal(snap.status, 'ready');
+  });
+
+  await t.test('7. Error handling: driver start() gagal tidak membuat status tersangkut di loading', async () => {
+    const mockDriver = new MockReplayDriver([1000]); // Kurang dari 2 bar -> start() mengembalikan false
+    const session = new ReplaySession();
+    session.bindDriver(mockDriver);
+
+    session.open();
+    const ok = await session.setCutoff(1000);
+    assert.equal(ok, false);
+
+    const snap = session.getSnapshot();
+    assert.notEqual(snap.status, 'loading');
+    assert.ok(snap.errorMessage && snap.errorMessage.length > 0);
+
+    session.clearError();
+    assert.equal(session.getSnapshot().errorMessage, null);
+  });
 });

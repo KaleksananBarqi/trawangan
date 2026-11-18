@@ -147,13 +147,13 @@ export class IndodaxProvider {
     else if (tf === '1W') secondsPerBar = 604800;
     else if (tf === '1M') secondsPerBar = 2592000;
 
-    const fromSec = range?.from && range.from > 0
-      ? (range.from > 1e11 ? Math.floor(range.from / 1000) : range.from)
-      : nowSec - countBack * secondsPerBar;
-
     const toSec = range?.to && range.to > 0
       ? (range.to > 1e11 ? Math.floor(range.to / 1000) : range.to)
       : nowSec;
+
+    const fromSec = range?.from && range.from > 0
+      ? (range.from > 1e11 ? Math.floor(range.from / 1000) : range.from)
+      : toSec - countBack * secondsPerBar;
 
     const url = `https://indodax.com/tradingview/history_v2?symbol=${pair}&tf=${tf}&from=${fromSec}&to=${toSec}`;
     const timeoutMs = this.options.timeoutMs ?? 8000;

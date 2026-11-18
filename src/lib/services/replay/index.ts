@@ -1,4 +1,3 @@
-// Modul Deep Replay Session: Mengenkapsulasi State Machine Replay, Kontrol Playback, dan Seam Chart
 import type {
   IReplaySession,
   ReplayBounds,
@@ -7,6 +6,8 @@ import type {
   ReplaySnapshot,
   ReplayStatus,
 } from './types';
+
+export const REPLAY_SPEED_OPTIONS = [0.5, 1, 2, 5, 10, 20] as const;
 
 export class ReplaySession implements IReplaySession {
   private active = false;
@@ -17,12 +18,12 @@ export class ReplaySession implements IReplaySession {
   private cutoffTime: number | null = null;
   private cursorTime: number | null = null;
   private remainingBars = 0;
+  private totalReplayBars = 0;
   private bounds: ReplayBounds | null = null;
+  private errorMessage: string | null = null;
 
   private driver: ReplayDriver | null = null;
   private listeners = new Set<ReplayListener>();
-
-  // ─── Driver Binding ───
 
   public bindDriver(driver: ReplayDriver | null): void {
     this.driver = driver;
@@ -31,7 +32,6 @@ export class ReplaySession implements IReplaySession {
       if (b) {
         this.bounds = b;
       }
-      // Jika session sedang dalam pemilihan bar saat driver baru terpasang
       if (this.isSelectingBar) {
         this.driver.enableCutoffVisual();
       }
@@ -45,8 +45,14 @@ export class ReplaySession implements IReplaySession {
     cursorTime?: number | null;
     remaining?: number;
     bounds?: ReplayBounds | null;
+    errorMessage?: string | null;
   }): void {
-    if (state.active !== undefined) this.active = state.active;
+    if (state.active !== undefined) {
+      this.active = state.active;
+      if (!state.active && !this.isSelectingBar && this.status !== 'loading') {
+        this.isPlaying = false;
+      }
+    }
     if (state.playing !== undefined) {
       this.isPlaying = state.playing;
       if (this.isPlaying) {
@@ -57,23 +63,26 @@ export class ReplaySession implements IReplaySession {
     }
     if (state.cursorTime !== undefined) this.cursorTime = state.cursorTime;
     if (state.remaining !== undefined) {
-      this.remainingBars = state.remaining;
+      this.remainingBars = Math.max(0, state.remaining);
+      if (this.remainingBars > this.totalReplayBars) {
+        this.totalReplayBars = this.remainingBars;
+      }
       if (this.remainingBars <= 0 && this.status === 'playing') {
         this.status = 'ended';
         this.isPlaying = false;
       }
     }
     if (state.bounds !== undefined) this.bounds = state.bounds;
+    if (state.errorMessage !== undefined) this.errorMessage = state.errorMessage;
 
     this.emit();
   }
-
-  // ─── Lifecycle & Mode Controls ───
 
   public open(): void {
     this.active = true;
     this.isPlaying = false;
     this.isSelectingBar = true;
+    this.errorMessage = null;
     this.status = 'selecting_cutoff';
 
     if (this.driver) {
@@ -92,6 +101,8 @@ export class ReplaySession implements IReplaySession {
     this.cutoffTime = null;
     this.cursorTime = null;
     this.remainingBars = 0;
+    this.totalReplayBars = 0;
+    this.errorMessage = null;
 
     if (this.driver) {
       this.driver.stop();
@@ -102,7 +113,11 @@ export class ReplaySession implements IReplaySession {
 
   public enableBarSelection(): void {
     if (!this.active) this.active = true;
+    if (this.isPlaying) {
+      this.pause();
+    }
     this.isSelectingBar = true;
+    this.errorMessage = null;
     this.status = 'selecting_cutoff';
 
     if (this.driver) {
@@ -113,10 +128,11 @@ export class ReplaySession implements IReplaySession {
 
   public cancelBarSelection(): void {
     this.isSelectingBar = false;
-    if (this.cutoffTime) {
-      this.status = this.isPlaying ? 'playing' : 'paused';
+    if (this.cutoffTime !== null) {
+      this.status = this.remainingBars <= 0 ? 'ended' : this.isPlaying ? 'playing' : 'paused';
     } else {
       this.status = 'idle';
+      this.active = false;
     }
 
     if (this.driver) {
@@ -125,41 +141,141 @@ export class ReplaySession implements IReplaySession {
     this.emit();
   }
 
-  public async setCutoff(timestamp: number): Promise<boolean> {
+  public clearError(): void {
+    if (this.errorMessage !== null) {
+      this.errorMessage = null;
+      this.emit();
+    }
+  }
+
+  private async applyTargetTimestamp(timestamp: number, mode: 'cutoff' | 'seek'): Promise<boolean> {
+    const isCutoff = mode === 'cutoff';
+    if (!isCutoff && !this.active) return false;
+    if (this.isPlaying) {
+      this.pause();
+    }
+
+    this.active = true;
     this.isSelectingBar = false;
-    this.cutoffTime = timestamp;
-    this.cursorTime = timestamp;
+    this.isPlaying = false;
+    this.errorMessage = null;
+
+    const prevCutoff = this.cutoffTime;
+    const prevCursor = this.cursorTime;
+    if (isCutoff) {
+      this.cutoffTime = timestamp;
+      this.cursorTime = timestamp;
+    }
     this.status = 'loading';
     this.emit();
 
-    if (this.driver) {
-      this.driver.cancelCutoffVisual();
-      const ok = await this.driver.start(timestamp);
-      if (ok) {
-        this.status = 'ready';
-        const state = this.driver.getState();
-        if (state) {
-          this.cursorTime = state.cursorTime ?? timestamp;
-          this.remainingBars = state.remaining;
-          this.isPlaying = state.playing;
+    if (!this.driver) {
+      this.cursorTime = timestamp;
+      this.status = isCutoff ? 'ready' : 'paused';
+      this.emit();
+      return true;
+    }
+
+    this.driver.cancelCutoffVisual();
+    const ok = !isCutoff && this.driver.seekTo
+      ? await this.driver.seekTo(timestamp)
+      : await this.driver.start(timestamp);
+    const driverBounds = this.driver.getBounds();
+    if (driverBounds) this.bounds = driverBounds;
+
+    if (ok) {
+      const state = this.driver.getState();
+      if (state) {
+        this.cursorTime = state.cursorTime ?? timestamp;
+        if (isCutoff) {
+          this.cutoffTime = state.cursorTime ?? timestamp;
+        }
+        this.remainingBars = Math.max(0, state.remaining);
+        if (isCutoff) {
+          this.totalReplayBars = this.remainingBars;
+        } else if (this.remainingBars > this.totalReplayBars) {
+          this.totalReplayBars = this.remainingBars;
+        }
+        this.isPlaying = state.playing;
+      }
+      this.status = this.remainingBars <= 0 ? 'ended' : isCutoff ? 'ready' : 'paused';
+    } else {
+      if (isCutoff) {
+        this.cutoffTime = prevCutoff;
+        this.cursorTime = prevCursor;
+        this.status = prevCutoff !== null ? 'paused' : 'selecting_cutoff';
+        if (prevCutoff === null) {
+          this.isSelectingBar = true;
+          this.driver.enableCutoffVisual();
         }
       } else {
-        this.status = 'idle';
+        this.status = this.remainingBars <= 0 ? 'ended' : 'paused';
       }
+      if (!this.errorMessage) {
+        this.errorMessage = isCutoff
+          ? 'Gagal memuat candle pada tanggal tersebut.'
+          : 'Gagal melompat ke posisi waktu tersebut.';
+      }
+    }
+
+    this.emit();
+    return ok;
+  }
+
+  public setCutoff(timestamp: number): Promise<boolean> {
+    return this.applyTargetTimestamp(timestamp, 'cutoff');
+  }
+
+  public seekTo(timestamp: number): Promise<boolean> {
+    return this.applyTargetTimestamp(timestamp, 'seek');
+  }
+
+  public async skipToEnd(): Promise<boolean> {
+    if (!this.active) return false;
+    if (this.isPlaying) {
+      this.pause();
+    }
+    this.isSelectingBar = false;
+    this.errorMessage = null;
+
+    if (this.driver) {
+      this.driver.cancelCutoffVisual();
+      const ok = this.driver.skipToEnd
+        ? await this.driver.skipToEnd()
+        : this.bounds
+          ? await this.driver.start(this.bounds.last)
+          : false;
+
+      const state = this.driver.getState();
+      if (state) {
+        this.cursorTime = state.cursorTime ?? this.bounds?.last ?? this.cursorTime;
+        this.remainingBars = Math.max(0, state.remaining);
+      } else if (this.bounds) {
+        this.cursorTime = this.bounds.last;
+        this.remainingBars = 0;
+      }
+      this.isPlaying = false;
+      this.status = this.remainingBars <= 0 ? 'ended' : 'paused';
       this.emit();
       return ok;
     }
 
-    this.status = 'ready';
+    if (this.bounds) {
+      this.cursorTime = this.bounds.last;
+    }
+    this.remainingBars = 0;
+    this.isPlaying = false;
+    this.status = 'ended';
     this.emit();
     return true;
   }
 
-  // ─── Playback Controls ───
-
   public play(speed?: number): void {
     if (speed !== undefined) {
       this.playbackSpeed = speed;
+    }
+    if (this.remainingBars <= 0 && this.status === 'ended') {
+      return;
     }
     this.isPlaying = true;
     this.status = 'playing';
@@ -173,7 +289,9 @@ export class ReplaySession implements IReplaySession {
 
   public pause(): void {
     this.isPlaying = false;
-    this.status = 'paused';
+    if (this.active && this.cutoffTime !== null) {
+      this.status = this.remainingBars <= 0 ? 'ended' : 'paused';
+    }
 
     if (this.driver) {
       this.driver.pause();
@@ -189,36 +307,45 @@ export class ReplaySession implements IReplaySession {
     }
   }
 
-  public step(): void {
+  private syncStateFromDriver(isStepBack = false): void {
+    const state = this.driver?.getState();
+    if (!state) return;
+    this.cursorTime = state.cursorTime;
+    this.remainingBars = Math.max(0, state.remaining);
+    if (this.remainingBars > this.totalReplayBars) {
+      this.totalReplayBars = this.remainingBars;
+    }
+    if (!isStepBack && this.remainingBars <= 0) {
+      this.status = 'ended';
+      this.isPlaying = false;
+    } else if (isStepBack && this.status === 'ended' && this.remainingBars > 0) {
+      this.status = 'paused';
+    }
+  }
+
+  public step(count = 1): void {
+    const steps = Math.max(1, Math.floor(count));
     if (this.driver) {
-      this.driver.step();
-      const state = this.driver.getState();
-      if (state) {
-        this.cursorTime = state.cursorTime;
-        this.remainingBars = state.remaining;
-        if (this.remainingBars <= 0) {
-          this.status = 'ended';
-          this.isPlaying = false;
-        }
-      }
+      void Promise.resolve(this.driver.step(steps)).then(() => {
+        this.syncStateFromDriver(false);
+        this.emit();
+      });
+      this.syncStateFromDriver(false);
     }
     this.emit();
   }
 
-  public stepBack(): void {
+  public stepBack(count = 1): void {
+    const steps = Math.max(1, Math.floor(count));
     if (this.isPlaying) {
       this.pause();
     }
     if (this.driver) {
-      this.driver.stepBack();
-      const state = this.driver.getState();
-      if (state) {
-        this.cursorTime = state.cursorTime;
-        this.remainingBars = state.remaining;
-        if (this.status === 'ended') {
-          this.status = 'paused';
-        }
-      }
+      void Promise.resolve(this.driver.stepBack(steps)).then(() => {
+        this.syncStateFromDriver(true);
+        this.emit();
+      });
+      this.syncStateFromDriver(true);
     }
     this.emit();
   }
@@ -243,8 +370,6 @@ export class ReplaySession implements IReplaySession {
     return false;
   }
 
-  // ─── Subscription & Snapshot ───
-
   public subscribe(listener: ReplayListener): () => void {
     this.listeners.add(listener);
     listener(this.getSnapshot());
@@ -255,6 +380,7 @@ export class ReplaySession implements IReplaySession {
   }
 
   public getSnapshot(): ReplaySnapshot {
+    const currentStepIndex = Math.max(0, this.totalReplayBars - this.remainingBars);
     return {
       active: this.active,
       status: this.status,
@@ -264,7 +390,10 @@ export class ReplaySession implements IReplaySession {
       cutoffTime: this.cutoffTime,
       cursorTime: this.cursorTime,
       remainingBars: this.remainingBars,
+      totalReplayBars: this.totalReplayBars,
+      currentStepIndex,
       bounds: this.bounds ? { ...this.bounds } : null,
+      errorMessage: this.errorMessage,
     };
   }
 
@@ -280,8 +409,15 @@ export class ReplaySession implements IReplaySession {
   }
 }
 
-// Singleton Service Instance
 export const replaySession = new ReplaySession();
 
-export type { IReplaySession, ReplayBounds, ReplayDriver, ReplayListener, ReplaySnapshot, ReplayStatus } from './types';
+export type {
+  IReplaySession,
+  ReplayBounds,
+  ReplayDriver,
+  ReplayDriverState,
+  ReplayListener,
+  ReplaySnapshot,
+  ReplayStatus,
+} from './types';
 export { MockReplayDriver } from './mockDriver';

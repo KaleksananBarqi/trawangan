@@ -1,4 +1,3 @@
-// Mock Driver Replay untuk Unit Test Headless Tanpa WebGL / Canvas DOM
 import type { ReplayDriver, ReplayBounds } from './types';
 
 export class MockReplayDriver implements ReplayDriver {
@@ -14,7 +13,6 @@ export class MockReplayDriver implements ReplayDriver {
     if (candleTimestamps.length > 0) {
       this.timeline = [...candleTimestamps].sort((a, b) => a - b);
     } else {
-      // Default 100 candle per 1 menit
       const now = 1700000000000;
       for (let i = 0; i < 100; i++) {
         this.timeline.push(now + i * 60000);
@@ -31,6 +29,7 @@ export class MockReplayDriver implements ReplayDriver {
   }
 
   public async start(targetTime: number): Promise<boolean> {
+    if (this.timeline.length < 2) return false;
     const idx = this.timeline.findIndex((t) => t >= targetTime);
     if (idx === -1) {
       this.currentIndex = Math.max(0, this.timeline.length - 2);
@@ -43,12 +42,35 @@ export class MockReplayDriver implements ReplayDriver {
     return true;
   }
 
+  public async seekTo(targetTime: number): Promise<boolean> {
+    if (this.timeline.length === 0) return false;
+    const idx = this.timeline.findIndex((t) => t >= targetTime);
+    if (idx === -1) {
+      this.currentIndex = this.timeline.length - 1;
+    } else {
+      this.currentIndex = idx;
+    }
+    this.isPlaying = false;
+    this.isSelectingVisual = false;
+    this.onStateChanged?.();
+    return true;
+  }
+
+  public async skipToEnd(): Promise<boolean> {
+    if (this.timeline.length === 0) return false;
+    this.pause();
+    this.currentIndex = this.timeline.length - 1;
+    this.isSelectingVisual = false;
+    this.onStateChanged?.();
+    return true;
+  }
+
   public play(intervalMs: number): void {
     if (this.currentIndex >= this.timeline.length - 1) return;
     this.isPlaying = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => {
-      this.step();
+      this.step(1);
       if (this.currentIndex >= this.timeline.length - 1) {
         this.pause();
       }
@@ -65,16 +87,18 @@ export class MockReplayDriver implements ReplayDriver {
     this.onStateChanged?.();
   }
 
-  public step(): void {
+  public step(count = 1): void {
+    const steps = Math.max(1, Math.floor(count));
     if (this.currentIndex < this.timeline.length - 1) {
-      this.currentIndex++;
+      this.currentIndex = Math.min(this.timeline.length - 1, this.currentIndex + steps);
       this.onStateChanged?.();
     }
   }
 
-  public stepBack(): void {
+  public stepBack(count = 1): void {
+    const steps = Math.max(1, Math.floor(count));
     if (this.currentIndex > 0) {
-      this.currentIndex--;
+      this.currentIndex = Math.max(0, this.currentIndex - steps);
       this.onStateChanged?.();
     }
   }

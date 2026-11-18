@@ -431,7 +431,18 @@ export class BitunixProvider {
       console.warn('BitunixProvider getBars gagal, coba fallback Binance Futures:', lastError);
       try {
         const binanceLimit = Math.min(wantLimit, 500);
-        const binanceUrl = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${binanceLimit}`;
+        const binanceParams = new URLSearchParams({
+          symbol,
+          interval,
+          limit: String(binanceLimit),
+        });
+        if (range?.from != null && range.from > 0) {
+          binanceParams.set('startTime', String(Math.floor(range.from)));
+        }
+        if (range?.to != null && range.to > 0) {
+          binanceParams.set('endTime', String(Math.floor(range.to)));
+        }
+        const binanceUrl = `https://fapi.binance.com/fapi/v1/klines?${binanceParams.toString()}`;
         const bRes = await universalFetch(binanceUrl, { timeoutMs: 5000 });
         if (bRes.ok) {
           const bData = await bRes.json();

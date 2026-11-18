@@ -27,6 +27,7 @@
   import { dataWindowService } from '../services/dataWindowService';
   import { marketFeed } from '../services/market';
   import { replaySession } from '../services/replay';
+  import { getTimeframeDurationMs } from '../services/replay/historicalRange';
   import { findNearestOhlcPoint } from '../services/priceSnapService';
   import { isEditableElement } from '../services/commandDispatcher';
   import { isTradingPlanText } from '../services/planParserService';
@@ -127,6 +128,10 @@
   let cutlineX = $state<number | null>(null);
   let cutlineY = $state<number | null>(null);
   let hoveredBarDateText = $state('');
+  let hoveredBarPriceText = $state('');
+  let snappedBarTime = $state<number | null>(null);
+  let isSkippingToEnd = false;
+  let isLoadingHistoricalContext = false;
   let isHandpullActive = $state(false);
   let isGestureActive = $state(false);
   let gestureCreationState = $state<GestureCreationState | null>(null);
@@ -169,6 +174,7 @@
   let unsubAttachDataWindow: (() => void) | null = null;
   let unsubOverlay: (() => void) | null = null;
   let unsubFeedConnection: (() => void) | null = null;
+  let unsubReplayEvents: Array<() => void> = [];
   let dblClickPaneCaptureTimer: ReturnType<typeof setTimeout> | null = null;
   let lastPointerClientY: number | null = null;
   let currentActiveDrawingTool: DrawingToolType | null = null;
@@ -277,6 +283,24 @@
       }
       lastLoadedWorkspaceId = wsId;
 
+      if (prevOverlaySymbol !== null && s !== prevOverlaySymbol && replaySession.getSnapshot().active) {
+        replaySession.close();
+      } else if (prevOverlayTimeframe !== null && tf !== prevOverlayTimeframe && replaySession.getSnapshot().active) {
+        const savedCursor = replaySession.getSnapshot().cursorTime;
+        const { chart } = getActiveChartContext();
+        if (chart?.historyComplete) {
+          void chart.historyComplete().then(() => {
+            if (!replaySession.getSnapshot().active) return;
+            const ws = controller.getWorkspace();
+            if (!ws?.replay?.state?.active && savedCursor !== null) {
+              void startReplay(savedCursor, true);
+            } else {
+              emitReplayState();
+            }
+          });
+        }
+      }
+
       if (s !== prevOverlaySymbol || tf !== prevOverlayTimeframe) {
         prevOverlayTimeframe = tf;
         refreshCachedCandles();
@@ -317,22 +341,33 @@
         );
         unsubAttachOverlay = priceScaleOverlayController.attachChart(chartContainer, ws);
         unsubAttachDataWindow = dataWindowService.attachWorkspace(ws, chartContainer);
+        attachReplayWorkspaceEvents(ws);
       }
+      chartContainer.addEventListener('pointermove', handleCutoffPointerMove);
+      chartContainer.addEventListener('mouseleave', handleCutoffPointerLeave);
+      chartContainer.addEventListener('pointerdown', handleCutoffPointerDownCapture, true);
+      chartContainer.addEventListener('click', handleCutoffClickCapture, true);
     }
     replaySession.bindDriver({
       getBounds: () => getReplayBounds(),
-      start: async (targetTime: number) => startReplay(targetTime),
+      start: async (targetTime: number) => startReplay(targetTime, false),
+      seekTo: async (targetTime: number) => startReplay(targetTime, true),
+      skipToEnd: async () => skipToEndReplay(),
       play: (speedMs: number) => { controller.getWorkspace()?.replay?.play?.(speedMs); },
       pause: () => { controller.getWorkspace()?.replay?.pause?.(); },
-      step: () => { controller.getWorkspace()?.replay?.step?.(); },
-      stepBack: () => {},
-      stop: () => stopReplay(),
-      getState: () => {
-        const r = controller.getWorkspace()?.replay;
-        return r ? { active: Boolean(r.active), playing: Boolean(r.playing), cursorTime: r.cursorTime ?? null, remaining: r.remainingBars ?? 0 } : null;
+      step: (count = 1) => {
+        const replay = controller.getWorkspace()?.replay;
+        if (!replay) return;
+        for (let i = 0; i < count; i++) {
+          if (!replay.step()) break;
+        }
+        emitReplayState();
       },
-      enableCutoffVisual: () => {},
-      cancelCutoffVisual: () => {}
+      stepBack: (count = 1) => stepBackReplay(count),
+      stop: () => stopReplay(),
+      getState: () => readWorkspaceReplayState(),
+      enableCutoffVisual: () => enableCutoffSelection(),
+      cancelCutoffVisual: () => cancelCutoffSelection()
     });
     unsubController = controller.subscribe((snap) => {
       onSessionStateChange?.({ session: snap.session, sessionAvailable: snap.sessionAvailable });
@@ -408,28 +443,335 @@
     }
     unsubController?.(); unsubAlerts?.(); unsubDrawingDraft?.(); unsubDrawingState?.(); unsubOverlay?.(); unsubFeedConnection?.();
     unsubAttachWorkspace?.(); unsubAttachOverlay?.(); unsubAttachDataWindow?.();
+    for (const off of unsubReplayEvents) off();
+    unsubReplayEvents = [];
+    if (chartContainer) {
+      chartContainer.removeEventListener('pointermove', handleCutoffPointerMove);
+      chartContainer.removeEventListener('mouseleave', handleCutoffPointerLeave);
+      chartContainer.removeEventListener('pointerdown', handleCutoffPointerDownCapture, true);
+      chartContainer.removeEventListener('click', handleCutoffClickCapture, true);
+    }
     window.removeEventListener('paste', handleCanvasPaste);
     replaySession.bindDriver(null); sessionController = null; controller.destroy();
   });
 
-  function cancelCutoffSelection(): void {
-    isSelectingCutoff = false; cutlineX = null; cutlineY = null; onCutoffCancelled?.();
+  function getActiveChartContext(): { ws: any; cell: any; chart: any; renderer: any; coords: any; bars: any[] } {
+    const ws = controller.getWorkspace();
+    const cell = ws?.active || controller.getAllCells()[0] || null;
+    const chart = (cell?.chart as any) ?? null;
+    const renderer = chart?.renderer?.renderer || chart?.renderer || null;
+    const coords = renderer?.coords || chart?.coords || null;
+    const bars = chart?.rawBars || renderer?.bars || [];
+    return { ws, cell, chart, renderer, coords, bars };
   }
+
+  function formatCutlineDate(epochMs: number): string {
+    return new Date(epochMs).toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+
+  function updateCutlineFromPointer(clientX: number, clientY: number): void {
+    if (!chartContainer) return;
+    const rect = chartContainer.getBoundingClientRect();
+    const localX = Math.max(0, Math.min(clientX - rect.left, rect.width));
+    const localY = Math.max(0, Math.min(clientY - rect.top, rect.height));
+    cutlineY = localY;
+
+    const { coords, bars } = getActiveChartContext();
+    if (coords && typeof coords.xToLogical === 'function' && bars.length > 0) {
+      const rawLogical = Math.round(coords.xToLogical(localX));
+      const idx = Math.max(0, Math.min(bars.length - 1, rawLogical));
+      const snappedX = typeof coords.logicalToX === 'function' ? coords.logicalToX(idx) : localX;
+      cutlineX = Number.isFinite(snappedX) ? Math.max(0, Math.min(snappedX, rect.width)) : localX;
+
+      const bar = bars[idx];
+      if (bar && typeof bar.time === 'number') {
+        snappedBarTime = bar.time;
+        hoveredBarDateText = formatCutlineDate(bar.time);
+        hoveredBarPriceText = typeof bar.close === 'number' ? formatPrice(bar.close) : '';
+        return;
+      }
+    }
+
+    cutlineX = localX;
+    snappedBarTime = null;
+    hoveredBarDateText = 'Klik lilin untuk potong';
+    hoveredBarPriceText = '';
+  }
+
+  function handleCutoffPointerMove(e: PointerEvent): void {
+    if (!isSelectingCutoff) return;
+    updateCutlineFromPointer(e.clientX, e.clientY);
+  }
+
+  function handleCutoffPointerLeave(): void {
+    if (!isSelectingCutoff) return;
+    cutlineX = null;
+    cutlineY = null;
+    snappedBarTime = null;
+  }
+
+  function isCutoffEventIgnored(eventTarget: EventTarget | null): boolean {
+    const el = eventTarget as HTMLElement | null;
+    return Boolean(el?.closest('button') || el?.closest('.floating-thesis-card'));
+  }
+
+  function handleCutoffPointerDownCapture(e: PointerEvent): void {
+    if (!isSelectingCutoff || e.button !== 0 || isCutoffEventIgnored(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    updateCutlineFromPointer(e.clientX, e.clientY);
+    const chosenTime = snappedBarTime ?? getReplayBounds()?.last ?? null;
+    if (chosenTime !== null) {
+      void replaySession.setCutoff(chosenTime);
+    }
+  }
+
+  function handleCutoffClickCapture(e: MouseEvent): void {
+    if (!isSelectingCutoff || isCutoffEventIgnored(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function enableCutoffSelection(): void {
+    isSelectingCutoff = true;
+    cutlineX = null;
+    cutlineY = null;
+    snappedBarTime = null;
+    hoveredBarDateText = '';
+    hoveredBarPriceText = '';
+  }
+
+  function cancelCutoffSelection(): void {
+    isSelectingCutoff = false;
+    cutlineX = null;
+    cutlineY = null;
+    snappedBarTime = null;
+    onCutoffCancelled?.();
+  }
+
+  function readWorkspaceReplayState() {
+    const s = controller.getWorkspace()?.replay?.state;
+    if (!s) return null;
+    return {
+      active: Boolean(s.active),
+      playing: Boolean(s.playing),
+      cursorTime: s.cursorTime ?? null,
+      remaining: s.remaining ?? 0,
+    };
+  }
+
+  function emitReplayState(ev?: { reason?: string }): void {
+    if (isLoadingHistoricalContext) return;
+    const ws = controller.getWorkspace();
+    if (!ws?.replay) return;
+    const s = ws.replay.state;
+    const b = ws.replay.bounds;
+
+    if (ev?.reason === 'finished' || (isSkippingToEnd && ev?.reason === 'stopped')) {
+      isSkippingToEnd = false;
+      replaySession.notifyDriverState({
+        active: true,
+        playing: false,
+        cursorTime: b?.last ?? s?.cursorTime ?? null,
+        remaining: 0,
+        bounds: b ?? null,
+      });
+      return;
+    }
+
+    replaySession.notifyDriverState({
+      active: Boolean(s?.active) || replaySession.getSnapshot().isSelectingBar,
+      playing: Boolean(s?.playing),
+      cursorTime: s?.cursorTime ?? null,
+      remaining: s?.remaining ?? 0,
+      bounds: b ?? null,
+    });
+  }
+
+  function attachReplayWorkspaceEvents(ws: any): void {
+    for (const off of unsubReplayEvents) off();
+    unsubReplayEvents = [];
+    const r = ws?.replay;
+    if (!r || typeof r.on !== 'function') return;
+    const events = ['replay:start', 'replay:step', 'replay:play', 'replay:pause'] as const;
+    for (const evName of events) {
+      const off = r.on(evName, () => {
+        emitReplayState();
+        priceScaleOverlayController.scheduleUpdate();
+      });
+      if (typeof off === 'function') unsubReplayEvents.push(off);
+    }
+    const offEnd = r.on('replay:end', (payload: any) => {
+      emitReplayState(payload);
+      priceScaleOverlayController.scheduleUpdate();
+    });
+    if (typeof offEnd === 'function') unsubReplayEvents.push(offEnd);
+  }
+
   function getReplayBounds(): { first: number; last: number } | null {
     return controller.getWorkspace()?.replay?.bounds || null;
   }
-  async function startReplay(fromTimestamp?: number): Promise<boolean> {
+
+  function focusCameraOnTimestamp(targetTime: number): void {
+    const { chart, renderer, bars } = getActiveChartContext();
+    if (!chart || bars.length === 0) return;
+
+    let cutIdx = bars.findIndex((b: any) => b.time >= targetTime);
+    if (cutIdx === -1) cutIdx = bars.length - 1;
+
+    const leftIdx = Math.max(0, cutIdx - 90);
+    const barMs = getTimeframeDurationMs(timeframe);
+    const rightPad = barMs * 18;
+    const fromTime = bars[leftIdx].time;
+    const toTime = bars[cutIdx].time + rightPad;
+
+    try {
+      if (typeof renderer?.setVisibleRange === 'function') {
+        renderer.setVisibleRange({ from: fromTime, to: toTime });
+      } else if (typeof chart?.setMarket === 'function') {
+        void chart.setMarket({ visibleRange: { from: fromTime, to: toTime } });
+      }
+      priceScaleOverlayController.scheduleContinuousSync(200);
+    } catch (_) {}
+  }
+
+  async function ensureHistoricalContext(targetTime: number): Promise<boolean> {
+    const { chart, bars: initialBars } = getActiveChartContext();
+    if (!chart) return false;
+
+    const barMs = getTimeframeDurationMs(timeframe);
+    const contextBars = 350;
+    const desiredOldest = targetTime - contextBars * barMs;
+
+    if (initialBars.length === 0 || desiredOldest < initialBars[0].time) {
+      const spanBars = Math.ceil((Date.now() - desiredOldest) / barMs) + 120;
+      const neededBars = Math.min(25000, Math.max(800, initialBars.length + 500, spanBars));
+      if (typeof chart.setMarket === 'function') {
+        isLoadingHistoricalContext = true;
+        try {
+          await chart.setMarket({ bars: neededBars });
+          if (typeof chart.historyComplete === 'function') {
+            await chart.historyComplete();
+          }
+        } finally {
+          isLoadingHistoricalContext = false;
+        }
+      }
+    }
+
+    const { bars } = getActiveChartContext();
+    if (bars.length < 2) {
+      replaySession.notifyDriverState({
+        errorMessage: 'Data candle tidak mencukupi untuk memulai replay.',
+      });
+      return false;
+    }
+
+    if (targetTime < bars[0].time - barMs * 5) {
+      const earliestLabel = formatCutlineDate(bars[0].time);
+      replaySession.notifyDriverState({
+        errorMessage: `Histori bursa hanya tersedia mulai ${earliestLabel}.`,
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  async function startReplay(fromTimestamp?: number, isSeek = false): Promise<boolean> {
     const ws = controller.getWorkspace();
     if (!ws?.replay) return false;
     try {
-      if (fromTimestamp) ws.replay.start({ from: fromTimestamp }); else ws.replay.start();
+      const targetTime = fromTimestamp ?? Date.now() - 3 * 3600 * 1000;
+      const hasContext = await ensureHistoricalContext(targetTime);
+      if (!hasContext) return false;
+
+      const { bars } = getActiveChartContext();
+      if (bars.length < 2) return false;
+
+      if (isSeek && targetTime >= bars[bars.length - 1].time) {
+        return skipToEndReplay();
+      }
+
+      const maxCutoff = bars[bars.length - 2].time;
+      const effectiveTarget = Math.min(Math.max(targetTime, bars[0].time), maxCutoff);
+
+      await ws.replay.start({ from: effectiveTarget });
+      focusCameraOnTimestamp(effectiveTarget);
+      emitReplayState();
       return true;
-    } catch (_) { return false; }
+    } catch (err) {
+      console.warn('[Chart] Gagal memulai Bar Replay:', err);
+      replaySession.notifyDriverState({
+        errorMessage: 'Gagal memuat sesi Bar Replay pada waktu tersebut.',
+      });
+      return false;
+    }
   }
-  function stopReplay(): void {
+
+  async function stepBackReplay(count = 1): Promise<void> {
     const ws = controller.getWorkspace();
-    if (ws?.replay?.active) ws.replay.stop();
-    replaySession.close();
+    if (!ws?.replay) return;
+    const state = ws.replay.state;
+    const cursor = state?.cursorTime;
+    const { bars } = getActiveChartContext();
+    if (bars.length === 0) return;
+
+    let targetTime: number;
+    if (cursor != null) {
+      const curIdx = bars.findIndex((b: any) => b.time >= cursor);
+      const safeIdx = curIdx === -1 ? bars.length - 1 : curIdx;
+      const prevIdx = Math.max(0, safeIdx - Math.max(1, count));
+      targetTime = bars[prevIdx].time;
+    } else {
+      const prevIdx = Math.max(0, bars.length - 1 - Math.max(1, count));
+      targetTime = bars[prevIdx].time;
+    }
+
+    await ws.replay.start({ from: targetTime });
+    emitReplayState();
+    priceScaleOverlayController.scheduleUpdate();
+  }
+
+  async function skipToEndReplay(): Promise<boolean> {
+    const ws = controller.getWorkspace();
+    if (!ws?.replay) return false;
+    try {
+      if (ws.replay.state?.active) {
+        isSkippingToEnd = true;
+        ws.replay.stop();
+      }
+      const b = getReplayBounds();
+      replaySession.notifyDriverState({
+        active: true,
+        playing: false,
+        cursorTime: b?.last ?? null,
+        remaining: 0,
+        bounds: b ?? null,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      isSkippingToEnd = false;
+    }
+  }
+
+  function stopReplay(): void {
+    isSkippingToEnd = false;
+    isSelectingCutoff = false;
+    cutlineX = null;
+    cutlineY = null;
+    snappedBarTime = null;
+    const ws = controller.getWorkspace();
+    if (ws?.replay?.state?.active) ws.replay.stop();
   }
 
   let cachedCandles = $state<Candle[]>([]);
@@ -1017,20 +1359,17 @@
 
   {#if isSelectingCutoff}
     {#if cutlineX !== null}
+      <div class="replay-future-curtain" style="left: {cutlineX}px;"></div>
       <div class="vertical-cutline" style="left: {cutlineX}px;">
         <div class="cutline-scissors-badge obsidian-card mono-nums" style="top: {Math.max(48, Math.min((cutlineY ?? 80) - 28, 420))}px;">
           <Scissors size={12} class="badge-cut-icon" />
           <span>{hoveredBarDateText || 'Klik lilin untuk potong'}</span>
+          {#if hoveredBarPriceText}
+            <span class="cutline-price-tag">{hoveredBarPriceText}</span>
+          {/if}
         </div>
       </div>
     {/if}
-    <div class="cutoff-overlay-hint">
-      <div class="hint-pill obsidian-card">
-        <Scissors size={13} class="hint-icon" />
-        <span class="hint-text mono-nums">KLIK LILIN DI GRAFIK UNTUK MEMULAI REPLAY DARI TITIK TERSEBUT</span>
-        <button type="button" class="cancel-hint-btn" onclick={cancelCutoffSelection}>Batal (Esc)</button>
-      </div>
-    </div>
   {/if}
 
   {#if showThesisCards}

@@ -3,6 +3,8 @@ import { storage } from './persistence';
 import type { DrawingScope, IPersistenceService, PersistedDrawingDocument } from './persistence/types';
 import type { CommandDispatcher } from './commandDispatcher';
 import { roundToTickSize, getAdaptiveTickSize } from './priceSnapService';
+import { replaySession } from './replay';
+import { safeClone } from '../utils/safeClone';
 import { type ParsedTradingPlan } from './planParserService';
 import {
   TradingPlanLifecycle,
@@ -364,7 +366,18 @@ export function resolveCandleMetrics(
 ): { latestCandleTime: number; deltaT: number } {
   let candles: any[] | null = null;
   if (activeChart) {
-    if (typeof activeChart.data === 'function') {
+    if (Array.isArray(activeChart.rawBars) && activeChart.rawBars.length > 0) {
+      candles = activeChart.rawBars;
+    } else if (Array.isArray(activeChart.renderer?.renderer?.bars) && activeChart.renderer.renderer.bars.length > 0) {
+      candles = activeChart.renderer.renderer.bars;
+    } else if (Array.isArray(activeChart.renderer?.bars) && activeChart.renderer.bars.length > 0) {
+      candles = activeChart.renderer.bars;
+    } else if (typeof activeChart.getBars === 'function') {
+      try {
+        const d = activeChart.getBars();
+        if (Array.isArray(d)) candles = d;
+      } catch (_) {}
+    } else if (typeof activeChart.data === 'function') {
       try {
         const d = activeChart.data();
         if (Array.isArray(d)) candles = d;
@@ -412,6 +425,17 @@ export function resolveCandleMetrics(
         deltaT = t - prevT;
       }
     }
+  }
+
+  // Prioritaskan posisi waktu replay aktif agar proyeksi plan muncul di lilin replay
+  const replaySnap = replaySession.getSnapshot();
+  const chartReplayCursor = activeChart?.replay?.state?.active
+    ? activeChart.replay.state.cursorTime
+    : null;
+  if (replaySnap.active && typeof replaySnap.cursorTime === 'number' && replaySnap.cursorTime > 0) {
+    latestCandleTime = replaySnap.cursorTime;
+  } else if (typeof chartReplayCursor === 'number' && chartReplayCursor > 0) {
+    latestCandleTime = chartReplayCursor;
   }
 
   if (deltaT <= 0) {
@@ -1705,11 +1729,7 @@ export class ChartDrawingController {
     for (const rawDrawing of drawings) {
       let d = rawDrawing;
       if (clone) {
-        try {
-          d = structuredClone(rawDrawing);
-        } catch {
-          d = { ...rawDrawing };
-        }
+        d = safeClone(rawDrawing);
       }
       if (typeof activeChart.drawings.create === 'function') {
         activeChart.drawings.create(d);
@@ -1753,9 +1773,9 @@ export class ChartDrawingController {
           if (lastAction.plan) {
             this.planLifecycle.reconcileUndoTransition('undo', {
               action: 'create',
-              plan: structuredClone(lastAction.plan),
+              plan: safeClone(lastAction.plan),
               drawingIds: [...ids],
-              drawings: structuredClone(lastAction.drawings),
+              drawings: safeClone(lastAction.drawings),
               autoCreateAlerts: Boolean(lastAction.autoCreateAlerts)
             });
           }
@@ -1774,13 +1794,13 @@ export class ChartDrawingController {
           this.restoreDrawingsToChart(lastAction.previousDrawings || []);
           this.planLifecycle.reconcileUndoTransition('undo', {
             action: 'update',
-            plan: structuredClone(lastAction.plan),
+            plan: safeClone(lastAction.plan),
             drawingIds: [...newIds],
-            drawings: structuredClone(lastAction.drawings),
+            drawings: safeClone(lastAction.drawings),
             autoCreateAlerts: Boolean(lastAction.autoCreateAlerts),
-            previousPlan: structuredClone(lastAction.previousPlan),
+            previousPlan: safeClone(lastAction.previousPlan),
             previousDrawingIds: [...(lastAction.previousDrawingIds || [])],
-            previousDrawings: structuredClone(lastAction.previousDrawings || []),
+            previousDrawings: safeClone(lastAction.previousDrawings || []),
             previousAlertsEnabled: Boolean(lastAction.previousAlertsEnabled)
           });
           if (this.selectedDrawingId && newIds.includes(this.selectedDrawingId)) {
@@ -1834,9 +1854,9 @@ export class ChartDrawingController {
             const ids = lastAction.drawingIds || lastAction.drawings.map((d: any) => d.id).filter(Boolean);
             this.planLifecycle.reconcileUndoTransition('redo', {
               action: 'create',
-              plan: structuredClone(lastAction.plan),
+              plan: safeClone(lastAction.plan),
               drawingIds: [...ids],
-              drawings: structuredClone(lastAction.drawings),
+              drawings: safeClone(lastAction.drawings),
               autoCreateAlerts: Boolean(lastAction.autoCreateAlerts)
             });
           }
@@ -1852,13 +1872,13 @@ export class ChartDrawingController {
           this.restoreDrawingsToChart(lastAction.drawings);
           this.planLifecycle.reconcileUndoTransition('redo', {
             action: 'update',
-            plan: structuredClone(lastAction.plan),
+            plan: safeClone(lastAction.plan),
             drawingIds: [...(lastAction.drawingIds || [])],
-            drawings: structuredClone(lastAction.drawings),
+            drawings: safeClone(lastAction.drawings),
             autoCreateAlerts: Boolean(lastAction.autoCreateAlerts),
-            previousPlan: structuredClone(lastAction.previousPlan),
+            previousPlan: safeClone(lastAction.previousPlan),
             previousDrawingIds: [...prevIds],
-            previousDrawings: structuredClone(lastAction.previousDrawings || []),
+            previousDrawings: safeClone(lastAction.previousDrawings || []),
             previousAlertsEnabled: Boolean(lastAction.previousAlertsEnabled)
           });
           if (this.selectedDrawingId && prevIds.includes(this.selectedDrawingId)) {

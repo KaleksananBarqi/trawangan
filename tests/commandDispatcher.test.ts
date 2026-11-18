@@ -1023,7 +1023,66 @@ test('Deep Command Dispatcher Seam Suite', async (t) => {
     const grouped = getShortcutsByCategory();
     assert.ok(Object.keys(grouped).length >= 6);
     assert.ok(grouped['Navigasi & Simbol'].length >= 3);
-    assert.ok(grouped['Bar Replay (Simulasi)'].length >= 4);
+    assert.ok(grouped['Bar Replay (Simulasi)'].length >= 5);
+  });
+
+  await t.test('23. Replay Shortcuts Guard: Space, ArrowLeft/Right, Shift+Arrow hanya aktif saat Replay menyala', async () => {
+    const { replaySession, MockReplayDriver } = await import('../src/lib/services/replay');
+    const dispatcher = createDefaultCommandDispatcher();
+
+    let navSpaceCount = 0;
+    let playPauseCount = 0;
+    let stepFwdCount = 0;
+    let stepBackCount = 0;
+    let fastFwdCount = 0;
+    let fastBackCount = 0;
+
+    dispatcher.bindHandler('nav-watchlist-space', () => { navSpaceCount++; });
+    dispatcher.bindHandler('replay-play-pause', () => { playPauseCount++; });
+    dispatcher.bindHandler('replay-step-forward', () => { stepFwdCount++; });
+    dispatcher.bindHandler('replay-step-backward', () => { stepBackCount++; });
+    dispatcher.bindHandler('replay-fast-forward', () => { fastFwdCount++; });
+    dispatcher.bindHandler('replay-fast-backward', () => { fastBackCount++; });
+
+    const makeKeyEv = (key: string, code: string, shiftKey = false) =>
+      ({
+        key,
+        code,
+        shiftKey,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        target: { tagName: 'BODY' },
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      }) as unknown as KeyboardEvent;
+
+    // 1. Saat Replay idle, Space memicu nav-watchlist-space dan Arrow tidak dicegat
+    replaySession.close();
+    assert.equal(dispatcher.dispatch(makeKeyEv(' ', 'Space')), true);
+    assert.equal(navSpaceCount, 1);
+    assert.equal(dispatcher.dispatch(makeKeyEv('ArrowRight', 'ArrowRight')), false);
+    assert.equal(dispatcher.dispatch(makeKeyEv('ArrowLeft', 'ArrowLeft')), false);
+    assert.equal(playPauseCount, 0);
+
+    // 2. Saat Replay aktif, Space memicu replay-play-pause (BUKAN nav-watchlist-space)
+    replaySession.bindDriver(new MockReplayDriver());
+    replaySession.open();
+    assert.equal(dispatcher.dispatch(makeKeyEv(' ', 'Space')), true);
+    assert.equal(navSpaceCount, 1);
+    assert.equal(dispatcher.dispatch(makeKeyEv('ArrowRight', 'ArrowRight')), true);
+    assert.equal(dispatcher.dispatch(makeKeyEv('ArrowLeft', 'ArrowLeft')), true);
+    assert.equal(dispatcher.dispatch(makeKeyEv('ArrowRight', 'ArrowRight', true)), true);
+    assert.equal(dispatcher.dispatch(makeKeyEv('ArrowLeft', 'ArrowLeft', true)), true);
+
+    assert.equal(playPauseCount, 1);
+    assert.equal(stepFwdCount, 1);
+    assert.equal(stepBackCount, 1);
+    assert.equal(fastFwdCount, 1);
+    assert.equal(fastBackCount, 1);
+
+    replaySession.close();
+    replaySession.bindDriver(null);
   });
 });
 
