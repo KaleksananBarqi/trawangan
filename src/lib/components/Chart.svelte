@@ -12,6 +12,7 @@
       thesisLayout?: SnapshotThesisLayout
     ): HTMLCanvasElement | null;
     openChartSettings(section?: string): void;
+    focusTimestamp?(timestampMs: number): void;
   }
 </script>
 
@@ -969,6 +970,10 @@
     const r = cell?.chart?.renderer?.renderer || cell?.chart?.renderer;
     if (r?.openSettings) r.openSettings(section);
     else if (r?.openSettingsDialog) r.openSettingsDialog(section);
+  }
+
+  export function focusTimestamp(timestampMs: number): void {
+    focusCameraOnTimestamp(timestampMs);
   }
 
   function syncInkCanvasSize() {
