@@ -19,6 +19,7 @@ describe('Root Shell & Chart.svelte Session Controller Contract (#218)', () => {
       'getLastHoveredPrice',
       'getChartScreenshotCanvas',
       'openChartSettings',
+      'focusTimestamp',
     ]);
 
     const redundantExports = exportedFns.filter((name) => !allowedExports.has(name));

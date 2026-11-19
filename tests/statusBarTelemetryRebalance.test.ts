@@ -134,14 +134,13 @@ describe('Tiket #168: StatusBar Simplification and Left-Cluster Live Telemetry R
       );
     });
 
-    test('.right-cluster mempertahankan Local Clock, World Clocks, Buy Me Coffee, dan Terminal Logs [CTRL+`]', () => {
+    test('.right-cluster mempertahankan Jam Aktif, Market Sessions Pill, Events Pill, Buy Me Coffee, dan Terminal Logs [CTRL+`]', () => {
       const source = readStatusBarSource();
       const rightCluster = extractClusterBlock(source, 'right-cluster');
 
-      assert.match(rightCluster, /\{localClock\.time\}\s*\{localClock\.tzLabel\}/, 'Local Clock harus tetap berada di .right-cluster');
-      assert.match(rightCluster, /class="world-clocks-desktop"/, 'World Clocks desktop harus tetap berada di .right-cluster');
-      assert.match(rightCluster, /class="world-clocks-mobile"/, 'World Clocks mobile popover harus tetap berada di .right-cluster');
-      assert.match(rightCluster, /World Clocks \(\{worldClocks\.length\}\)/, 'Label World Clocks harus tetap berada di .right-cluster');
+      assert.match(rightCluster, /\{activeClock\.time\}\s*\{isUtcMode \? 'UTC' : activeClock\.tzLabel\}/, 'Jam aktif harus tetap berada di .right-cluster');
+      assert.match(rightCluster, /<NextEventPill\b/, 'NextEventPill harus berada di .right-cluster');
+      assert.match(rightCluster, /<MarketSessionsPill\b/, 'MarketSessionsPill harus berada di .right-cluster');
       assert.match(
         rightCluster,
         /openExternalUrl\(['"]https:\/\/saweria\.co\/arthex1204['"]\)/,

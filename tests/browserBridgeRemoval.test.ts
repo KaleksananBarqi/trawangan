@@ -58,7 +58,7 @@ describe('Penghapusan End-to-End Browser Bridge & Smart Clipboard Watcher (#169)
 
     const systemTabSrc = readRepoFile('src/lib/components/settings/SystemTab.svelte');
     assert.doesNotMatch(systemTabSrc, /BrowserBridgeGuide/);
-    assert.doesNotMatch(systemTabSrc, /\.bridge-header|\.copy-script-btn|\.tutorial-card|\.btn-test-link/);
+    assert.match(systemTabSrc, /127\.0\.0\.1:47831/);
     assert.match(systemTabSrc, /telemetryService/);
     assert.match(systemTabSrc, /Target Rendering/);
 
@@ -90,7 +90,7 @@ describe('Penghapusan End-to-End Browser Bridge & Smart Clipboard Watcher (#169)
     assert.match(pageSrc, /@keyframes slideUp/);
   });
 
-  test('4. Backend Rust Tauri mencabut deep-link dan rust-ini sambil menjaga single_instance focus & unminimize', () => {
+  test('4. Backend Rust Tauri tetap mencabut deep-link dan rust-ini sambil menjaga single_instance focus & unminimize', () => {
     const cargoToml = readRepoFile('src-tauri/Cargo.toml');
     assert.doesNotMatch(cargoToml, /tauri-plugin-deep-link/);
     assert.doesNotMatch(cargoToml, /rust-ini/);
@@ -102,6 +102,7 @@ describe('Penghapusan End-to-End Browser Bridge & Smart Clipboard Watcher (#169)
     assert.equal(tauriConf.productName, 'trawangan');
     assert.equal(tauriConf.plugins?.['deep-link'], undefined);
     assert.ok(Array.isArray(tauriConf.app?.windows));
+    assert.equal(tauriConf.app?.windows?.[0]?.label, 'main');
 
     const libRs = readRepoFile('src-tauri/src/lib.rs');
     assert.doesNotMatch(libRs, /DeepLinkExt/);
@@ -111,11 +112,13 @@ describe('Penghapusan End-to-End Browser Bridge & Smart Clipboard Watcher (#169)
     assert.doesNotMatch(libRs, /trawangan:\/\//);
     assert.doesNotMatch(libRs, /\bEmitter\b/);
 
-    // Pastikan perilaku single-instance focus & unminimize tetap terjaga ketat
+    // Pastikan perilaku single-instance focus & unminimize tetap terjaga via bridge::focus_main_window
+    const bridgeRs = readRepoFile('src-tauri/src/bridge.rs');
     assert.match(libRs, /tauri_plugin_single_instance::init/);
-    assert.match(libRs, /get_webview_window\("main"\)/);
-    assert.match(libRs, /main_win\.set_focus\(\)/);
-    assert.match(libRs, /main_win\.unminimize\(\)/);
+    assert.match(libRs, /bridge::focus_main_window/);
+    assert.match(bridgeRs, /get_webview_window\("main"\)/);
+    assert.match(bridgeRs, /main_win\.set_focus\(\)/);
+    assert.match(bridgeRs, /main_win\.unminimize\(\)/);
   });
 
   test('5. Dokumentasi domain (GLOSSARY & ADR-0007) menandai Bridge/Watcher deprecated sambil mempertahankan Unified Object Tree', () => {

@@ -157,10 +157,13 @@ describe('Tiket #148: System Theme Bridge and Header Color Mode Switcher Suite',
     const headerPath = path.resolve(process.cwd(), 'src/lib/components/Header.svelte');
     const headerContent = fs.readFileSync(headerPath, 'utf8');
 
-    test('Header.svelte mengimpor ikon Moon, Sun, dan Monitor dari @lucide/svelte', () => {
-      assert.match(headerContent, /Moon/, 'Header harus mengimpor ikon Moon');
-      assert.match(headerContent, /Sun/, 'Header harus mengimpor ikon Sun');
-      assert.match(headerContent, /Monitor/, 'Header harus mengimpor ikon Monitor');
+    const topTabBarPath = path.resolve(process.cwd(), 'src/lib/components/header/TopTabBar.svelte');
+    const topTabBarContent = fs.readFileSync(topTabBarPath, 'utf8');
+
+    test('Header.svelte / TopTabBar.svelte mengimpor ikon Moon, Sun, dan Monitor dari @lucide/svelte', () => {
+      assert.match(topTabBarContent, /Moon/, 'TopTabBar harus mengimpor ikon Moon');
+      assert.match(topTabBarContent, /Sun/, 'TopTabBar harus mengimpor ikon Sun');
+      assert.match(topTabBarContent, /Monitor/, 'TopTabBar harus mengimpor ikon Monitor');
     });
 
     test('Header.svelte mendefinisikan prop colorModePreference dan handler pergantian mode', () => {
@@ -176,29 +179,29 @@ describe('Tiket #148: System Theme Bridge and Header Color Mode Switcher Suite',
       );
     });
 
-    test('Header.svelte merender tombol switcher dengan kelas .color-mode-btn', () => {
+    test('Header.svelte / TopTabBar.svelte merender tombol switcher dengan kelas .color-mode-btn', () => {
       assert.match(
-        headerContent,
+        topTabBarContent,
         /class="[^"]*color-mode-btn[^"]*"/,
-        'Header harus menyertakan tombol dengan class color-mode-btn'
+        'TopTabBar harus menyertakan tombol dengan class color-mode-btn'
       );
     });
 
-    test('Header.svelte menampilkan ikon Moon pada mode dark, Sun pada mode light, dan Monitor pada mode system', () => {
+    test('Header.svelte / TopTabBar.svelte menampilkan ikon Moon pada mode dark, Sun pada mode light, dan Monitor pada mode system', () => {
       assert.match(
-        headerContent,
+        topTabBarContent,
         /<Moon/,
-        'Header harus merender Moon saat mode dark'
+        'TopTabBar harus merender Moon saat mode dark'
       );
       assert.match(
-        headerContent,
+        topTabBarContent,
         /<Sun/,
-        'Header harus merender Sun saat mode light'
+        'TopTabBar harus merender Sun saat mode light'
       );
       assert.match(
-        headerContent,
+        topTabBarContent,
         /<Monitor/,
-        'Header harus merender Monitor saat mode system'
+        'TopTabBar harus merender Monitor saat mode system'
       );
     });
   });

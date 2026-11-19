@@ -194,7 +194,7 @@
 
     <button
       type="button"
-      class="top-action-btn icon-only"
+      class="top-action-btn icon-only color-mode-btn"
       title={colorModeTooltip}
       aria-label="Ganti mode warna tema"
       onclick={() => onCycleColorMode?.()}

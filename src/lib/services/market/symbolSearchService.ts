@@ -632,10 +632,22 @@ export class SymbolSearchEngine {
       } else {
         // Kuotasi implisit / koin tunggal (misal 'SOL') -> fallback USDT & IDR
         const cleanBase = parsedQuery.baseAsset;
+        const hasExplicitExchangePrefix = query.includes(':');
+        const insertFallback = (item: MarketSearchResult) => {
+          if (hasExplicitExchangePrefix || deduplicated.length === 0) {
+            deduplicated.unshift(item);
+          } else {
+            deduplicated.push(item);
+          }
+        };
         if (cleanBase.length >= 2) {
-          if (isBitunixAllowed && (quoteAsset === 'all' || quoteAsset === 'USDT')) {
+          if (
+            isBitunixAllowed &&
+            (hasExplicitExchangePrefix || deduplicated.length === 0) &&
+            (quoteAsset === 'all' || quoteAsset === 'USDT')
+          ) {
             if (filterType === 'all' || filterType === 'perp') {
-              deduplicated.unshift({
+              insertFallback({
                 symbol: `${cleanBase}USDT.P`,
                 baseAsset: cleanBase,
                 quoteAsset: 'USDT',
@@ -647,7 +659,7 @@ export class SymbolSearchEngine {
           }
           if (isBinanceAllowed && (quoteAsset === 'all' || quoteAsset === 'USDT')) {
             if (filterType === 'all' || filterType === 'perp') {
-              deduplicated.unshift({
+              insertFallback({
                 symbol: `${cleanBase}USDT.P`,
                 baseAsset: cleanBase,
                 quoteAsset: 'USDT',
@@ -657,7 +669,7 @@ export class SymbolSearchEngine {
               });
             }
             if (filterType === 'all' || filterType === 'spot') {
-              deduplicated.unshift({
+              insertFallback({
                 symbol: `${cleanBase}USDT`,
                 baseAsset: cleanBase,
                 quoteAsset: 'USDT',

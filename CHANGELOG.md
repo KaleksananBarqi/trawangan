@@ -5,6 +5,27 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.54.0] - 2026-11-19
+
+### 🚀 Ditambahkan (Added)
+- **Local Loopback TradingView Bridge & Dynamic Multi-Exchange Fallback (`bridge.rs`, `tradingViewBridgeService.ts`, `trawangan-tradingview-bridge.user.js`):**
+  - Menambahkan HTTP loopback listener ringan di `127.0.0.1:47831` (`GET /ping`, `GET /open`) di backend Rust Tauri lengkap dengan header CORS dan fokus otomatis jendela aplikasi, serta userscript `@run-at document-start` (`@grant GM_xmlhttpRequest`, `@grant window.close`) untuk Firefox/Chrome yang melempar link TradingView (`?symbol=BITUNIX%3AMMTUSDT.P`) langsung ke `trawangan` tanpa dialog konfirmasi browser.
+  - Menambahkan dynamic symbol probe ke bursa asal (tanpa dibatasi daftar 40 koin statis) beserta rantai fallback otomatis (`binance` → `bitunix` → `hyperliquid` → spot) dan kartu status + tombol salin/simpan userscript di `Settings -> System`.
+- **Header 2 Baris OpenMarket, Quick Chart Tabs, & Derivatives Telemetry Strip (`TopTabBar.svelte`, `DerivativesTelemetryStrip.svelte`, `chartTabsService.ts`, `derivativesTelemetryService.ts`):**
+  - Menambahkan **Quick Chart Tabs** persisten di baris teratas (`[Logo] [Simbol] [Timeframe] [×]`, drag-to-reorder, *middle-click* tutup tab, tombol `+`) serta kotak pencarian visual `Ctrl+K`.
+  - Menambahkan **Derivatives Telemetry Strip** untuk kontrak Perpetual (`.P`) di Binance Futures, Bitunix Futures, dan Hyperliquid yang menampilkan harga live + `% 24h`, `24H VOLUME`, `OPEN INTEREST` (USD), dan `FUNDING / COUNTDOWN`.
+- **Market Sessions Pill Interaktif di StatusBar (`MarketSessionsPill.svelte`, `worldClockService.ts`):**
+  - Mengganti deretan pill jam lama dengan 1 pill ringkas berisi progress bar dan countdown sesi terdekat (`LDN opens 5m` / `LDN closes 4h 12m`) untuk 3 sesi utama global (**New York**, **London**, **Tokyo**; Jakarta IDX & Sydney ASX opsional di Settings).
+  - Mendukung *hover* untuk melihat **timeline bar 24 jam** dan *click* untuk membuka popover `MARKET SESSIONS` (jam Local/UTC, countdown, sinkronisasi timezone chart, serta opsi `Hide from footer`).
+- **Live Economic Events Countdown Pill & Tab Events (`macroEventsService.ts`, `NextEventPill.svelte`, `EventsTab.svelte`):**
+  - Menambahkan pengambil kalender ekonomi mingguan live via Rust `universalFetch` + cache SQLite TTL 30 menit + fallback katalog statis yang otomatis sinkron dengan *Timeline Marks* di chart.
+  - Menambahkan `NextEventPill` + ikon kalender di `StatusBar` dengan *hover* banner detail dan tab `Events` baru di `RightDockRail` (`IMP | TIME | EVENT | EXP | ACT`, filter `US & Crypto` / `All markets` / `Major only`, serta sinkronisasi penuh ke zona waktu pilihan pengguna seperti WIB/UTC).
+
+### 🔄 Diubah (Changed)
+- **Restrukturisasi Header & Penanda Event Chart (`Header.svelte`, `StatusBar.svelte`, `timelineMarksController.ts`, `ChartTab.svelte`):**
+  - Mengubah penanda peristiwa makroekonomi pada sumbu waktu chart menjadi **titik putih minimalis** tanpa label huruf negara serta menambahkan toggle persisten **"Hanya High Impact di Chart"** di `EventsTab` dan `Settings -> Chart`.
+  - Menyertakan kandidat dinamis `Bitunix Futures` pada fallback pencarian `SymbolSearchEngine`.
+
 ## [0.53.0] - 2026-11-18
 
 ### 🚀 Ditambahkan (Added)

@@ -31,9 +31,10 @@ describe('Tiket #165: Header Chrome Pruning, ActionsMenu, HelpTab & Pelestarian 
       assert.doesNotMatch(headerContent, /Toggle Layar Penuh/);
       assert.doesNotMatch(headerContent, /<Maximize2\b/);
 
-      // Brand badge utama dan divider tetap terjaga
-      assert.match(headerContent, /class="brand-badge"/);
-      assert.match(headerContent, /class="brand-title">trawangan<\/span>/);
+      // Brand badge utama tetap terjaga di TopTabBar (sub-komponen Header)
+      const topTabBarContent = readProjectFile('src/lib/components/header/TopTabBar.svelte');
+      assert.match(topTabBarContent, /class="brand-badge"/);
+      assert.match(topTabBarContent, /class="brand-title">trawangan<\/span>/);
     });
 
     test('Header.svelte menghapus props mati, impor ikon tak terpakai, dan aturan CSS symbol-section duplikat sambil menjaga .active-sym-title', () => {
@@ -57,7 +58,6 @@ describe('Tiket #165: Header Chrome Pruning, ActionsMenu, HelpTab & Pelestarian 
       assert.doesNotMatch(headerContent, /\bonRequestCreateAlert\??:/);
       assert.doesNotMatch(headerContent, /\bticker\??:/);
 
-      // Tidak ada duplikasi aturan CSS .symbol-section atau selector mati .search-icon/.provider-pill
       const symbolSectionMatches = headerContent.match(/\.symbol-section\s*\{/g) ?? [];
       assert.equal(symbolSectionMatches.length, 1, 'Harus hanya ada satu definisi CSS .symbol-section');
       const symbolBadgeMatches = headerContent.match(/\.symbol-badge-btn\s*\{/g) ?? [];
@@ -70,7 +70,8 @@ describe('Tiket #165: Header Chrome Pruning, ActionsMenu, HelpTab & Pelestarian 
       assert.match(headerContent, /\bactiveIndicators\??:/);
       assert.match(headerContent, /\bonOpenIndicatorModal:/);
       assert.match(headerContent, /class="action-btn indicator-header-btn/);
-      assert.match(headerContent, /color-mode-btn/);
+      const topTabBarContent = readProjectFile('src/lib/components/header/TopTabBar.svelte');
+      assert.match(topTabBarContent, /color-mode-btn/);
     });
 
     test('+page.svelte tidak meneruskan props yang dihapus ke <Header> sambil tetap menjaga activeIndicators & onOpenIndicatorModal', () => {
