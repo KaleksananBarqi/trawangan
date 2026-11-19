@@ -182,7 +182,7 @@
 
     <div class="divider"></div>
 
-    <NextEventPill {onOpenEventsTab} />
+    <NextEventPill timezone={settings?.timezone} {onOpenEventsTab} />
   </div>
 
   <!-- Kluster Kanan: Jam Lokal/UTC, Market Sessions Pill, Toggle Sesi RTH/ETH, Dukungan & Terminal Logs -->

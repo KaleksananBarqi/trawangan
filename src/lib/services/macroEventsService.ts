@@ -260,7 +260,26 @@ export function formatShortEventName(title: string): string {
   return `${stripped.slice(0, 14).trimEnd()}…`;
 }
 
-function getDayKey(ms: number): string {
+function resolveSafeTimeZone(timeZone?: string): string | undefined {
+  if (!timeZone || typeof timeZone !== 'string') return undefined;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date(0));
+    return timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+export function getDayKey(ms: number, timeZone?: string): string {
+  const tz = resolveSafeTimeZone(timeZone);
+  if (tz) {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(ms));
+  }
   const d = new Date(ms);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -268,14 +287,10 @@ function getDayKey(ms: number): string {
   return `${y}-${m}-${day}`;
 }
 
-function getStartOfDayMs(ms: number): number {
-  const d = new Date(ms);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
-
-function formatDayGroupLabel(ms: number, prefix?: string): string {
+function formatDayGroupLabel(ms: number, prefix?: string, timeZone?: string): string {
+  const tz = resolveSafeTimeZone(timeZone);
   const formatted = new Date(ms).toLocaleDateString('en-US', {
+    ...(tz ? { timeZone: tz } : {}),
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -283,40 +298,90 @@ function formatDayGroupLabel(ms: number, prefix?: string): string {
   return prefix ? `${prefix} · ${formatted}` : formatted;
 }
 
+export function formatEventTimeInTimezone(
+  timestampMs: number,
+  timeZone?: string,
+  includeDate: boolean = false
+): string {
+  const tz = resolveSafeTimeZone(timeZone);
+  const d = new Date(timestampMs);
+  if (includeDate) {
+    return d.toLocaleDateString('en-US', {
+      ...(tz ? { timeZone: tz } : {}),
+      day: '2-digit',
+      month: 'short',
+    });
+  }
+  return d.toLocaleTimeString('en-US', {
+    ...(tz ? { timeZone: tz } : {}),
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+export function formatEventDateTimeInTimezone(timestampMs: number, timeZone?: string): string {
+  const tz = resolveSafeTimeZone(timeZone);
+  return new Date(timestampMs).toLocaleString('en-US', {
+    ...(tz ? { timeZone: tz } : {}),
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+export function getTimezoneShortLabel(timeZone?: string): string {
+  const tz = resolveSafeTimeZone(timeZone);
+  if (!tz) return 'Local';
+  if (tz === 'Asia/Jakarta') return 'WIB';
+  if (tz === 'UTC') return 'UTC';
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'short',
+    }).formatToParts(new Date());
+    return parts.find((p) => p.type === 'timeZoneName')?.value ?? tz;
+  } catch {
+    return tz;
+  }
+}
+
 /**
- * Mengelompokkan event ke grup `Earlier this week`, `Today`, dan tanggal mendatang.
+ * Mengelompokkan event ke grup `Earlier this week`, `Today`, dan tanggal mendatang sesuai zona waktu user.
  */
 export function groupEventsBySchedule(
   events: readonly MacroCalendarEvent[],
   nowMs: number = Date.now(),
-  filter: MacroEventsFilter = {}
+  filter: MacroEventsFilter = {},
+  timeZone?: string
 ): MacroScheduleGroup[] {
   const filtered = filterMacroEvents(events, filter).sort((a, b) => a.timestamp - b.timestamp);
-  const todayStart = getStartOfDayMs(nowMs);
-  const tomorrowStart = todayStart + 86_400_000;
-  const sevenDaysAgo = todayStart - 7 * 86_400_000;
+  const todayKey = getDayKey(nowMs, timeZone);
+  const sevenDaysAgo = nowMs - 7 * 86_400_000;
 
   const earlier: MacroCalendarEvent[] = [];
   const today: MacroCalendarEvent[] = [];
   const upcomingMap = new Map<string, { label: string; events: MacroCalendarEvent[] }>();
 
   for (const ev of filtered) {
-    if (ev.timestamp < todayStart) {
+    const evKey = getDayKey(ev.timestamp, timeZone);
+    if (evKey < todayKey) {
       if (ev.timestamp >= sevenDaysAgo) {
         earlier.push(ev);
       }
       continue;
     }
-    if (ev.timestamp < tomorrowStart) {
+    if (evKey === todayKey) {
       today.push(ev);
       continue;
     }
 
-    const key = getDayKey(ev.timestamp);
-    let bucket = upcomingMap.get(key);
+    let bucket = upcomingMap.get(evKey);
     if (!bucket) {
-      bucket = { label: formatDayGroupLabel(ev.timestamp), events: [] };
-      upcomingMap.set(key, bucket);
+      bucket = { label: formatDayGroupLabel(ev.timestamp, undefined, timeZone), events: [] };
+      upcomingMap.set(evKey, bucket);
     }
     bucket.events.push(ev);
   }
@@ -334,7 +399,7 @@ export function groupEventsBySchedule(
   if (today.length > 0) {
     groups.push({
       key: 'today',
-      label: formatDayGroupLabel(todayStart, 'Today'),
+      label: formatDayGroupLabel(nowMs, 'Today', timeZone),
       kind: 'today',
       defaultCollapsed: false,
       events: today,

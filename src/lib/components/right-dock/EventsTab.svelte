@@ -5,18 +5,25 @@
     macroEventsService,
     groupEventsBySchedule,
     formatEventCountdown,
+    formatEventTimeInTimezone,
+    getTimezoneShortLabel,
     type MacroScopeFilter,
     type MacroCategoryFilter,
     type MacroEventsState,
   } from '../../services/macroEventsService';
-  import type { MacroCalendarEvent, MacroImpact } from '../../services/timelineMarksController';
+  import {
+    timelineMarksController,
+    type MacroCalendarEvent,
+    type MacroImpact,
+  } from '../../services/timelineMarksController';
 
   interface Props {
     activeSymbol?: string;
+    timezone?: string;
     onFocusEventTimestamp?: (timestampMs: number) => void;
   }
 
-  let { activeSymbol = 'BTCUSDT', onFocusEventTimestamp }: Props = $props();
+  let { activeSymbol = 'BTCUSDT', timezone, onFocusEventTimestamp }: Props = $props();
 
   let eventsState = $state<MacroEventsState>(macroEventsService.getSnapshot());
   let scopeFilter = $state<MacroScopeFilter>('us_crypto');
@@ -26,11 +33,13 @@
   let collapsedGroupKeys = $state<Record<string, boolean>>({ earlier: true });
   let expandedGroupRows = $state<Record<string, boolean>>({});
   let nowMs = $state(Date.now());
+  let chartHighImpactOnly = $state(timelineMarksController.isMacroHighImpactOnly());
 
   let unsubEvents: (() => void) | null = null;
   let tickTimer: ReturnType<typeof setInterval> | null = null;
 
   const MAX_ROWS_PER_GROUP = 6;
+  const tzLabel = $derived(getTimezoneShortLabel(timezone));
 
   const CATEGORY_PILLS: Array<{ id: MacroCategoryFilter; label: string }> = [
     { id: 'all', label: 'All' },
@@ -41,11 +50,22 @@
   ];
 
   const scheduleGroups = $derived.by(() =>
-    groupEventsBySchedule(eventsState.events, nowMs, {
-      scope: scopeFilter,
-      category: categoryFilter,
-    })
+    groupEventsBySchedule(
+      eventsState.events,
+      nowMs,
+      {
+        scope: scopeFilter,
+        category: categoryFilter,
+      },
+      timezone
+    )
   );
+
+  function toggleChartHighImpactOnly() {
+    const next = !chartHighImpactOnly;
+    chartHighImpactOnly = next;
+    timelineMarksController.setMacroHighImpactOnly(next);
+  }
 
   function isGroupCollapsed(key: string, defaultCollapsed: boolean): boolean {
     return key in collapsedGroupKeys ? collapsedGroupKeys[key] : defaultCollapsed;
@@ -66,15 +86,7 @@
   }
 
   function formatTimeCell(timestampMs: number): string {
-    const d = new Date(timestampMs);
-    if (showDateInTimeCol) {
-      return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
-    }
-    return d.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    return formatEventTimeInTimezone(timestampMs, timezone, showDateInTimeCol);
   }
 
   function parseNumericValue(raw: string | number | undefined): number | null {
@@ -125,7 +137,15 @@
   <header class="events-header">
     <div class="header-top">
       <span class="panel-title">Events</span>
-      <span class="symbol-context mono-nums" title="Instrumen aktif">{activeSymbol}</span>
+      <span class="symbol-context mono-nums" title="Instrumen & Zona Waktu Aktif">{activeSymbol} · {tzLabel}</span>
+      <button
+        type="button"
+        class="chart-filter-pill {chartHighImpactOnly ? 'active' : ''}"
+        title="Tampilkan hanya titik event High Impact di sumbu waktu chart"
+        onclick={toggleChartHighImpactOnly}
+      >
+        {chartHighImpactOnly ? 'Chart: High' : 'Chart: All'}
+      </button>
       <button
         type="button"
         class="refresh-btn {eventsState.isLoading ? 'spinning' : ''}"
@@ -340,8 +360,31 @@
     border: 1px solid var(--border-hairline);
   }
 
-  .refresh-btn {
+  .chart-filter-pill {
     margin-left: auto;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border-hairline);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 9.5px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .chart-filter-pill:hover {
+    color: var(--text-main);
+    background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  }
+
+  .chart-filter-pill.active {
+    color: var(--brand-cyan, #38bdf8);
+    border-color: color-mix(in srgb, var(--brand-cyan, #38bdf8) 45%, transparent);
+    background: color-mix(in srgb, var(--brand-cyan, #38bdf8) 12%, transparent);
+  }
+
+  .refresh-btn {
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-dim);

@@ -61,6 +61,7 @@
   let currentGridMode = $derived(settings.gridMode || (settings.showGrid === false ? 'hidden' : 'normal'));
 
   let isMacroMarksVisible = $state(timelineMarksController.isGroupVisible('macro'));
+  let isMacroHighImpactOnly = $state(timelineMarksController.isMacroHighImpactOnly());
   let isTradesMarksVisible = $state(timelineMarksController.isGroupVisible('trades'));
   let isJournalMarksVisible = $state(timelineMarksController.isGroupVisible('journal'));
   let currentMarketSession = $derived(sessionState?.session ?? settings.marketSession ?? 'regular');
@@ -70,6 +71,12 @@
     const next = !isMacroMarksVisible;
     timelineMarksController.setGroupVisible('macro', next);
     isMacroMarksVisible = next;
+  }
+
+  function toggleMacroHighImpactOnly() {
+    const next = !isMacroHighImpactOnly;
+    timelineMarksController.setMacroHighImpactOnly(next);
+    isMacroHighImpactOnly = next;
   }
 
   function toggleTradesMarks() {
@@ -351,7 +358,7 @@
   <div class="setting-row">
     <div class="setting-info">
       <span class="setting-label">Acara Kalender Makroekonomi (FOMC, CPI, NFP)</span>
-      <span class="setting-desc">Tampilkan badge rilis ekonomi berdampak tinggi/sedang pada sumbu waktu</span>
+      <span class="setting-desc">Tampilkan titik penanda rilis ekonomi pada sumbu waktu chart</span>
     </div>
     <button
       type="button"
@@ -361,6 +368,22 @@
       {isMacroMarksVisible ? 'Aktif' : 'Nonaktif'}
     </button>
   </div>
+
+  {#if isMacroMarksVisible}
+    <div class="setting-row">
+      <div class="setting-info">
+        <span class="setting-label">Hanya High Impact di Chart</span>
+        <span class="setting-desc">Sembunyikan penanda event Medium dan Low Impact dari sumbu waktu chart</span>
+      </div>
+      <button
+        type="button"
+        class="toggle-btn {isMacroHighImpactOnly ? 'active' : ''}"
+        onclick={toggleMacroHighImpactOnly}
+      >
+        {isMacroHighImpactOnly ? 'Aktif' : 'Nonaktif'}
+      </button>
+    </div>
+  {/if}
 
   <!-- Eksekusi Trading Plan -->
   <div class="setting-row">

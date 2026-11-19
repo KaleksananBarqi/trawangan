@@ -6,15 +6,18 @@
     getNextUpcomingEvent,
     formatEventCountdown,
     formatShortEventName,
+    formatEventDateTimeInTimezone,
+    getTimezoneShortLabel,
     type MacroEventsState,
   } from '../../services/macroEventsService';
   import { workspaceShellService } from '../../services/workspaceShellService';
 
   interface Props {
+    timezone?: string;
     onOpenEventsTab?: () => void;
   }
 
-  let { onOpenEventsTab }: Props = $props();
+  let { timezone, onOpenEventsTab }: Props = $props();
 
   let eventsState = $state<MacroEventsState>(macroEventsService.getSnapshot());
   let nowMs = $state(Date.now());
@@ -33,13 +36,7 @@
 
   const formattedHoverDate = $derived.by(() => {
     if (!nextEvent) return '';
-    return new Date(nextEvent.timestamp).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    return `${formatEventDateTimeInTimezone(nextEvent.timestamp, timezone)} ${getTimezoneShortLabel(timezone)}`;
   });
 
   function handleClick() {

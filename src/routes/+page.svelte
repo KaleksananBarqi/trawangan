@@ -2149,6 +2149,7 @@
           activeTab={shellState.activeRightDockTab || shellState.lastOpenedRightDockTab}
           {activeSymbol}
           {activeProviderId}
+          timezone={appSettings.timezone}
           {watchlistSymbols}
           {activeIndicators}
           {activeDrawings}

@@ -31,6 +31,7 @@
     activeTab?: RightDockTab;
     activeSymbol: string;
     activeProviderId?: string;
+    timezone?: string;
     watchlistSymbols?: string[];
     activeIndicators?: { id: string; title: string; visible: boolean; source?: string; inputs?: any }[];
     activeDrawings?: any[];
@@ -73,6 +74,7 @@
     activeTab: propActiveTab,
     activeSymbol,
     activeProviderId = 'binance',
+    timezone,
     watchlistSymbols: propSymbols,
     activeIndicators = [],
     activeDrawings = [],
@@ -378,7 +380,7 @@
     {:else if activeTab === 'datawindow'}
       <DataWindow {activeSymbol} />
     {:else if activeTab === 'events'}
-      <EventsTab {activeSymbol} {onFocusEventTimestamp} />
+      <EventsTab {activeSymbol} {timezone} {onFocusEventTimestamp} />
     {/if}
 
     <!-- Trade Plan tetap ter-mount agar draft form dan teks tidak hilang saat pindah tab -->
