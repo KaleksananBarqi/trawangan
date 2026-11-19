@@ -1,19 +1,22 @@
 // ==UserScript==
 // @name         Trawangan TradingView Bridge
 // @namespace    https://github.com/KaleksananBarqi/trawangan
-// @version      1.0.0
+// @version      1.1.0
 // @description  Membuka tautan simbol TradingView langsung ke aplikasi desktop trawangan via local loopback bridge.
-// @match        *://*.tradingview.com/chart/*
+// @match        *://*.tradingview.com/chart*
 // @match        *://*.tradingview.com/symbols/*
 // @run-at       document-start
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        window.close
+// @connect      127.0.0.1
+// @connect      localhost
 // ==/UserScript==
 
 (function () {
   'use strict';
 
   const BRIDGE_OPEN_URL = 'http://127.0.0.1:47831/open';
-  const TIMEOUT_MS = 600;
+  const TIMEOUT_MS = 800;
 
   const currentUrl = new URL(window.location.href);
   if (
@@ -57,41 +60,64 @@
     }
   }
 
+  function onBridgeAccepted() {
+    try {
+      window.stop();
+    } catch {
+      // Abaikan jika browser membatasi window.stop() sebelum dokumen siap
+    }
+
+    try {
+      window.close();
+    } catch {
+      // Fallback jika window.close() dibatasi oleh browser
+    }
+
+    window.setTimeout(() => {
+      if (!window.closed) {
+        if (window.history.length > 1) {
+          window.history.back();
+        }
+        renderRedirectedFallback();
+      }
+    }, 80);
+  }
+
+  const targetUrl = `${BRIDGE_OPEN_URL}?url=${encodeURIComponent(window.location.href)}`;
+
+  // Gunakan GM_xmlhttpRequest agar kebal terhadap CSP & Mixed Content halaman TradingView
+  if (typeof GM_xmlhttpRequest === 'function') {
+    GM_xmlhttpRequest({
+      method: 'GET',
+      url: targetUrl,
+      timeout: TIMEOUT_MS,
+      onload: (res) => {
+        if (res.status >= 200 && res.status < 300) {
+          onBridgeAccepted();
+        }
+      },
+      onerror: () => {
+        // Biarkan halaman TradingView terbuka normal saat aplikasi trawangan tidak aktif
+      },
+      ontimeout: () => {
+        // Biarkan halaman TradingView terbuka normal saat aplikasi trawangan tidak aktif
+      },
+    });
+    return;
+  }
+
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  fetch(`${BRIDGE_OPEN_URL}?url=${encodeURIComponent(window.location.href)}`, {
+  fetch(targetUrl, {
     method: 'GET',
     mode: 'cors',
     signal: controller.signal,
   })
     .then((res) => {
       window.clearTimeout(timer);
-      if (!res.ok) return;
-
-      try {
-        window.stop();
-      } catch {
-        // Abaikan jika browser membatasi window.stop() sebelum dokumen siap
-      }
-
-      try {
-        window.close();
-      } catch {
-        // Browser modern menolak window.close() untuk tab yang tidak dibuka via window.open()
-      }
-
-      window.setTimeout(() => {
-        if (!window.closed) {
-          if (window.history.length > 1) {
-            window.history.back();
-          }
-          renderRedirectedFallback();
-        }
-      }, 80);
+      if (res.ok) onBridgeAccepted();
     })
     .catch(() => {
       window.clearTimeout(timer);
-      // Biarkan halaman TradingView terbuka normal saat aplikasi trawangan tidak aktif
     });
 })();
