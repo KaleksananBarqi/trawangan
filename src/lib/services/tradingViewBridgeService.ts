@@ -238,8 +238,8 @@ export async function resolveExternalSymbolWithFallback(
   const pairBase = `${parsed.baseAsset}${parsed.quoteAsset}`;
   const perpSymbol = `${pairBase}.P`;
   const spotSymbol = pairBase;
-  const coinbaseSymbol = `${parsed.baseAsset}-${parsed.quoteAsset === 'USDT' ? 'USD' : parsed.quoteAsset}`;
-  const indodaxSymbol = `${parsed.baseAsset}IDR`;
+  const coinbaseSymbol = formatNativeSymbol('coinbase', parsed);
+  const indodaxSymbol = formatNativeSymbol('indodax', parsed);
 
   const fallbackQueue: Array<{ providerId: string; symbol: string }> = parsed.isPerp
     ? [

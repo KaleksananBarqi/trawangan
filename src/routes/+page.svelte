@@ -560,6 +560,7 @@
         telemetryService.setActiveProvider(bootActiveTab.providerId);
       }
 
+      timelineMarksController.hydrateFromPersistence();
       detachMacroTimeline = macroEventsService.attachTimelineController(timelineMarksController);
       void macroEventsService.refresh();
 
@@ -1983,6 +1984,7 @@
     onSelectChartTab={handleSelectChartTab}
     onAddChartTab={handleAddChartTab}
     onCloseChartTab={handleCloseChartTab}
+    onReorderChartTabs={(fromIdx, toIdx) => chartTabsService.reorderTabs(fromIdx, toIdx)}
     livePrice={ticker?.price ?? null}
     liveChange24h={ticker?.change24h ?? null}
   />

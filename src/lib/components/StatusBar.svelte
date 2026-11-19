@@ -11,7 +11,8 @@
     Coffee,
     Sparkles,
     Download,
-    RefreshCw
+    RefreshCw,
+    Calendar
   } from '@lucide/svelte';
   import { telemetryService, type TelemetryData } from '../services/telemetryService';
   import {
@@ -67,7 +68,7 @@
   let unsubFeed: (() => void) | null = null;
 
   const isUtcMode = $derived(settings?.timezone === 'UTC');
-  const activeClock = $derived(formatLocalClockTime(nowDate, isUtcMode ? 'UTC' : undefined));
+  const activeClock = $derived(formatLocalClockTime(nowDate, settings?.timezone));
 
   function handleSessionToggleClick() {
     onToggleSession?.();
@@ -179,25 +180,21 @@
       <span class="icon-dim"><HardDrive size={11} /></span>
       <span class="pill-text">RAM: {telemetry.memoryMb.toFixed(1)}MB</span>
     </div>
-
-    <div class="divider"></div>
-
-    <NextEventPill timezone={settings?.timezone} {onOpenEventsTab} />
   </div>
 
-  <!-- Kluster Kanan: Jam Lokal/UTC, Market Sessions Pill, Toggle Sesi RTH/ETH, Dukungan & Terminal Logs -->
+  <!-- Kluster Kanan: Next Event Pill, Ikon Kalender, Market Sessions Pill, Jam Aktif, Toggle Sesi RTH/ETH, Dukungan & Terminal Logs -->
   <div class="right-cluster">
     <div class="clocks-cluster">
+      <NextEventPill timezone={settings?.timezone} {onOpenEventsTab} />
+
       <button
         type="button"
-        class="telemetry-pill world-clock-pill interactive mono-nums {isUtcMode ? 'active-timezone' : ''}"
-        title={isUtcMode
-          ? `Waktu UTC: ${activeClock.time} • Klik untuk beralih ke waktu lokal`
-          : `Waktu Lokal: ${activeClock.time} ${activeClock.tzLabel} • Klik untuk beralih ke UTC`}
-        onclick={handleToggleClockTimezone}
+        class="telemetry-pill calendar-icon-btn interactive"
+        title="Buka tab Events & Kalender Makroekonomi"
+        aria-label="Buka tab Events"
+        onclick={() => onOpenEventsTab?.()}
       >
-        <span class="icon-dim"><Clock size={11} /></span>
-        <span class="pill-text">{activeClock.time} {isUtcMode ? 'UTC' : activeClock.tzLabel}</span>
+        <Calendar size={11} />
       </button>
 
       {#if settings?.showWorldClocks !== false && marketSessionsFooterHidden !== true}
@@ -211,6 +208,18 @@
           onHideFromFooter={onHideMarketSessionsFooter}
         />
       {/if}
+
+      <button
+        type="button"
+        class="telemetry-pill world-clock-pill interactive mono-nums {isUtcMode ? 'active-timezone' : ''}"
+        title={isUtcMode
+          ? `Waktu UTC: ${activeClock.time} • Klik untuk beralih ke waktu lokal`
+          : `Waktu Zona (${activeClock.tzLabel}): ${activeClock.time} • Klik untuk beralih ke UTC`}
+        onclick={handleToggleClockTimezone}
+      >
+        <span class="icon-dim"><Clock size={11} /></span>
+        <span class="pill-text">{activeClock.time} {isUtcMode ? 'UTC' : activeClock.tzLabel}</span>
+      </button>
     </div>
 
     {#if sessionAvailable}
@@ -438,6 +447,25 @@
     display: flex;
     align-items: center;
     gap: 5px;
+  }
+
+  .calendar-icon-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-xs);
+    padding: 2px 4px;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+  }
+
+  .calendar-icon-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+    border-color: var(--border-hairline);
   }
 
   .world-clock-pill {

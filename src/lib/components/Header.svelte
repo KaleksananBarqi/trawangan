@@ -87,6 +87,7 @@
     onSelectChartTab?: (tabId: string) => void;
     onAddChartTab?: () => void;
     onCloseChartTab?: (tabId: string) => void;
+    onReorderChartTabs?: (fromIndex: number, toIndex: number) => void;
     telemetrySnapshot?: DerivativesTelemetrySnapshot | null;
     livePrice?: number | null;
     liveChange24h?: number | null;
@@ -146,6 +147,7 @@
     onSelectChartTab,
     onAddChartTab,
     onCloseChartTab,
+    onReorderChartTabs,
     telemetrySnapshot,
     livePrice = null,
     liveChange24h = null,
@@ -233,6 +235,7 @@
     onSelectTab={onSelectChartTab}
     onAddTab={onAddChartTab ?? onOpenSymbolSearch}
     onCloseTab={onCloseChartTab}
+    onReorderTabs={onReorderChartTabs}
     {onOpenSymbolSearch}
     {updateState}
     {colorModePreference}

@@ -23,7 +23,8 @@ export type UiPreferenceKey =
   | 'dismissed_update_version'
   | 'chart_tabs_state'
   | 'market_sessions_footer_hidden'
-  | 'macro_events_cache';
+  | 'macro_events_cache'
+  | 'macro_marks_high_impact_only';
 
 export type AppPreferenceKey =
   | 'app_settings'

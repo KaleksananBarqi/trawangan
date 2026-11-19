@@ -27,6 +27,7 @@
     onSelectTab?: (tabId: string) => void;
     onAddTab?: () => void;
     onCloseTab?: (tabId: string) => void;
+    onReorderTabs?: (fromIndex: number, toIndex: number) => void;
     onOpenSymbolSearch?: () => void;
     updateState?: UpdateState;
     colorModePreference?: ColorModePreference;
@@ -43,6 +44,7 @@
     onSelectTab,
     onAddTab,
     onCloseTab,
+    onReorderTabs,
     onOpenSymbolSearch,
     updateState,
     colorModePreference = 'system',
@@ -52,6 +54,37 @@
   }: Props = $props();
 
   const canCloseTabs = $derived(tabs.length > 1);
+  let draggedTabIndex = $state<number | null>(null);
+  let dragOverTabIndex = $state<number | null>(null);
+
+  function handleTabDragStart(e: DragEvent, index: number) {
+    draggedTabIndex = index;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(index));
+    }
+  }
+
+  function handleTabDragOver(e: DragEvent, index: number) {
+    if (draggedTabIndex === null) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dragOverTabIndex = index;
+  }
+
+  function handleTabDrop(e: DragEvent, toIndex: number) {
+    e.preventDefault();
+    if (draggedTabIndex !== null && draggedTabIndex !== toIndex) {
+      onReorderTabs?.(draggedTabIndex, toIndex);
+    }
+    draggedTabIndex = null;
+    dragOverTabIndex = null;
+  }
+
+  function handleTabDragEnd() {
+    draggedTabIndex = null;
+    dragOverTabIndex = null;
+  }
 </script>
 
 <div class="top-tab-bar">
@@ -62,16 +95,21 @@
     </div>
 
     <div class="tabs-strip" role="tablist" aria-label="Quick Chart Tabs">
-      {#each tabs as tab (tab.id)}
+      {#each tabs as tab, idx (tab.id)}
         {@const parsed = parseAdaptiveSymbol(tab.symbol)}
         {@const isActive = tab.id === activeTabId}
         <div
-          class="chart-tab {isActive ? 'active' : ''}"
+          class="chart-tab {isActive ? 'active' : ''} {dragOverTabIndex === idx && draggedTabIndex !== idx ? 'drag-over' : ''}"
           role="tab"
           tabindex="0"
+          draggable={true}
           aria-selected={isActive}
           title="{tab.providerId.toUpperCase()}:{tab.symbol} · {tab.timeframe}"
           onclick={() => onSelectTab?.(tab.id)}
+          ondragstart={(e) => handleTabDragStart(e, idx)}
+          ondragover={(e) => handleTabDragOver(e, idx)}
+          ondrop={(e) => handleTabDrop(e, idx)}
+          ondragend={handleTabDragEnd}
           onkeydown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();

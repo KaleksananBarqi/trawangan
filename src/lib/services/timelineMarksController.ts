@@ -16,6 +16,7 @@ import type { ParsedTradingPlan } from './planParserService';
 import type { PriceAlert } from '../types/market';
 import { isSameSymbol } from './instrumentIdentity';
 import { STANDARD_MACRO_CALENDAR_EVENTS } from './macroCalendarCatalog';
+import { storage } from './persistence';
 
 export type StandardMarkGroupId = 'macro' | 'trades' | 'journal';
 export type MacroImpact = 'high' | 'medium' | 'low';
@@ -737,13 +738,28 @@ export class TimelineMarksController {
     this.syncForMarket(this.currentSymbol, this.currentProviderId);
   }
 
-  public setMacroHighImpactOnly(highOnly: boolean): void {
+  public hydrateFromPersistence(): void {
+    try {
+      const saved = storage.getUiPreferenceSync<boolean | string>('macro_marks_high_impact_only');
+      if (saved === true || saved === 'true') {
+        this.setMacroHighImpactOnly(true, false);
+      }
+    } catch {
+      // Abaikan jika persistence belum ter-bootstrap pada unit test terisolasi
+    }
+  }
+
+  public setMacroHighImpactOnly(highOnly: boolean, persist: boolean = true): void {
     const next = Boolean(highOnly);
-    if (this.macroHighImpactOnly === next) return;
-    this.macroHighImpactOnly = next;
-    this.setGroupVisible('macro.medium', !next);
-    this.setGroupVisible('macro.low', !next);
-    this.syncForMarket(this.currentSymbol, this.currentProviderId);
+    if (this.macroHighImpactOnly !== next) {
+      this.macroHighImpactOnly = next;
+      this.setGroupVisible('macro.medium', !next);
+      this.setGroupVisible('macro.low', !next);
+      this.syncForMarket(this.currentSymbol, this.currentProviderId);
+    }
+    if (persist) {
+      void storage.setUiPreference('macro_marks_high_impact_only', next).catch(() => {});
+    }
   }
 
   public isMacroHighImpactOnly(): boolean {
