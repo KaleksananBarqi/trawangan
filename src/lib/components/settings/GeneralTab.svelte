@@ -29,6 +29,10 @@
     DEFAULT_WORLD_CLOCK_CITIES
   } from '../../services/worldClockService';
   import {
+    readMarketSessionsFooterHidden,
+    setMarketSessionsFooterHidden
+  } from '../../services/persistence/uiPreferencesHelper';
+  import {
     openSnapshotFolder,
     pickSnapshotDirectory
   } from '../../services/chartSnapshotService';
@@ -49,6 +53,13 @@
   let discordTestFeedback = $state<{ ok: boolean; text: string } | null>(null);
   let isTestingDiscord = $state(false);
   let showDiscordWebhook = $state(false);
+  let isMarketSessionsFooterHidden = $state(readMarketSessionsFooterHidden());
+
+  async function handleToggleMarketSessionsFooter() {
+    const nextHidden = !isMarketSessionsFooterHidden;
+    isMarketSessionsFooterHidden = nextHidden;
+    await setMarketSessionsFooterHidden(nextHidden);
+  }
 
   const isTelegramConfigValid = $derived(
     isValidTelegramConfig(settings.telegramBotToken, settings.telegramChatId)
@@ -180,11 +191,29 @@
     </button>
   </div>
 
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Market Sessions di Footer (StatusBar)</span>
+      <span class="setting-desc">Tampilkan pill interaktif Market Sessions dengan timeline 24 jam & countdown di bilah status</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {!isMarketSessionsFooterHidden ? 'active' : ''}"
+      onclick={handleToggleMarketSessionsFooter}
+    >
+      {#if !isMarketSessionsFooterHidden}
+        <Eye size={14} /> Tampil
+      {:else}
+        <EyeOff size={14} /> Disembunyikan
+      {/if}
+    </button>
+  </div>
+
   {#if settings.showWorldClocks !== false}
     <div class="setting-sub-row">
       <div class="setting-info">
-        <span class="setting-label-sub">Pilihan Bursa Aktif</span>
-        <span class="setting-desc">Pilih kota bursa dunia yang ingin ditampilkan di bilah status</span>
+        <span class="setting-label-sub">Pilihan Sesi Bursa Aktif</span>
+        <span class="setting-desc">Bawaan: New York, London, Tokyo. Opsional: Jakarta (IDX) & Sydney (ASX)</span>
       </div>
       <div class="city-chips-group">
         {#each SUPPORTED_WORLD_CITIES as city (city.id)}

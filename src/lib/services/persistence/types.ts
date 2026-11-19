@@ -21,7 +21,9 @@ export type UiPreferenceKey =
   | 'fav_indicators'
   | 'recent_searches'
   | 'dismissed_update_version'
-  | 'chart_tabs_state';
+  | 'chart_tabs_state'
+  | 'market_sessions_footer_hidden'
+  | 'macro_events_cache';
 
 export type AppPreferenceKey =
   | 'app_settings'
