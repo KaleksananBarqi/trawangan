@@ -20,7 +20,8 @@ export type UiPreferenceKey =
   | 'drawings_fav_pos'
   | 'fav_indicators'
   | 'recent_searches'
-  | 'dismissed_update_version';
+  | 'dismissed_update_version'
+  | 'chart_tabs_state';
 
 export type AppPreferenceKey =
   | 'app_settings'

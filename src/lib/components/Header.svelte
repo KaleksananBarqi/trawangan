@@ -1,35 +1,25 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import {
-    Settings,
-    Layers,
-    Sparkles,
-    ChevronDown,
-    Check,
-    Moon,
-    Sun,
-    Monitor,
-    Star,
-    Download,
-    RefreshCw
-  } from '@lucide/svelte';
+  import { Layers, ChevronDown, Check, Star } from '@lucide/svelte';
   import type {
     Timeframe,
     MultiChartSyncConfig,
     SavedWorkspace,
     ProviderConfig,
-    ColorModePreference
+    ColorModePreference,
+    PriceStyle,
   } from '../types/market';
-  import {
-    updateService,
-    shouldShowUpdateBadge,
-    getUpdatePillContent,
-    type UpdateState
-  } from '../services/updateService';
+  import { updateService, type UpdateState } from '../services/updateService';
   import { marketFeed } from '../services/market';
   import { getNextColorMode } from '../constants/themes';
+  import type { ChartTabItem } from '../services/chartTabsService';
+  import {
+    DerivativesTelemetryService,
+    type DerivativesTelemetrySnapshot,
+  } from '../services/market/derivativesTelemetryService';
 
-  // Subkomponen modular header baru yang ringkas dan terpadu
+  import TopTabBar from './header/TopTabBar.svelte';
+  import DerivativesTelemetryStrip from './header/DerivativesTelemetryStrip.svelte';
   import WorkspaceLayoutMenu from './header/WorkspaceLayoutMenu.svelte';
   import ActionsMenu from './header/ActionsMenu.svelte';
   import TimeframeSelector from './header/TimeframeSelector.svelte';
@@ -37,7 +27,6 @@
   import SnapshotMenu from './header/SnapshotMenu.svelte';
   import SymbolLogo from './common/SymbolLogo.svelte';
   import { parseAdaptiveSymbol } from '../services/market/symbolSearchService';
-  import type { PriceStyle } from '../types/market';
 
   interface Props {
     activeSymbol: string;
@@ -71,26 +60,36 @@
     onToggleDrawingToolbar?: () => void;
     onToggleReplay?: () => void;
     onOpenIndicatorModal: () => void;
-    onOpenSettingsModal?: (tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help') => void;
+    onOpenSettingsModal?: (
+      tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'
+    ) => void;
     onOpenSymbolSearch?: () => void;
     onRequestQuickCopySnapshot?: () => void;
     onRequestQuickDownloadSnapshot?: () => void;
     onOpenSnapshotPreview?: () => void;
     snapshotScaleMultiplier?: import('../types/market').SnapshotScaleMultiplier;
-    onSnapshotScaleMultiplierChange?: (scale: import('../types/market').SnapshotScaleMultiplier) => void;
+    onSnapshotScaleMultiplierChange?: (
+      scale: import('../types/market').SnapshotScaleMultiplier
+    ) => void;
     isSnapshotProcessing?: boolean;
     chartDimensions?: { width: number; height: number };
-    // Mode Warna & System Theme Bridge (#148)
     colorModePreference?: ColorModePreference;
     systemIsDark?: boolean;
     onCycleColorMode?: () => void;
     onColorModeChange?: (mode: ColorModePreference) => void;
-    // Quick Watchlist Toggle pada grup simbol Header (#166)
     isWatchlisted?: boolean;
     onToggleActiveWatchlist?: () => void;
-    // Header Price Style Selector (#193)
     activePriceStyle?: PriceStyle | string;
     onPriceStyleChange?: (style: PriceStyle) => void;
+    // Props opsional baru untuk Quick Chart Tabs & Derivatives Telemetry (#227)
+    chartTabs?: ChartTabItem[];
+    activeChartTabId?: string;
+    onSelectChartTab?: (tabId: string) => void;
+    onAddChartTab?: () => void;
+    onCloseChartTab?: (tabId: string) => void;
+    telemetrySnapshot?: DerivativesTelemetrySnapshot | null;
+    livePrice?: number | null;
+    liveChange24h?: number | null;
   }
 
   let {
@@ -141,7 +140,15 @@
     isWatchlisted = false,
     onToggleActiveWatchlist,
     activePriceStyle = 'candles',
-    onPriceStyleChange
+    onPriceStyleChange,
+    chartTabs,
+    activeChartTabId,
+    onSelectChartTab,
+    onAddChartTab,
+    onCloseChartTab,
+    telemetrySnapshot,
+    livePrice = null,
+    liveChange24h = null,
   }: Props = $props();
 
   function handleCycleColorMode() {
@@ -167,343 +174,303 @@
   let isProviderDropdownOpen = $state(false);
   let availableProviders = $state<ProviderConfig[]>([]);
 
+  const localTelemetryService = new DerivativesTelemetryService();
+  let localTelemetrySnapshot = $state<DerivativesTelemetrySnapshot | null>(null);
+  let unsubTelemetry: (() => void) | null = null;
+
   const activeParsedSymbol = $derived(parseAdaptiveSymbol(activeSymbol));
+
+  const resolvedTabs = $derived.by<ChartTabItem[]>(() => {
+    if (chartTabs && chartTabs.length > 0) return chartTabs;
+    return [
+      {
+        id: 'active-fallback',
+        symbol: activeSymbol,
+        providerId: activeProviderId,
+        timeframe: activeTimeframe,
+      },
+    ];
+  });
+
+  const resolvedActiveTabId = $derived(
+    activeChartTabId && resolvedTabs.some((t) => t.id === activeChartTabId)
+      ? activeChartTabId
+      : resolvedTabs[0]?.id || 'active-fallback'
+  );
+
+  const resolvedTelemetry = $derived(
+    telemetrySnapshot !== undefined ? telemetrySnapshot : localTelemetrySnapshot
+  );
+
+  $effect(() => {
+    if (telemetrySnapshot !== undefined) {
+      localTelemetryService.stopPolling();
+      return;
+    }
+    localTelemetryService.startPolling(activeSymbol, activeProviderId);
+  });
 
   onMount(() => {
     unsubUpdate = updateService.subscribe((s) => {
       updateState = s;
     });
+    unsubTelemetry = localTelemetryService.subscribe((snap) => {
+      localTelemetrySnapshot = snap;
+    });
   });
 
   onDestroy(() => {
     if (unsubUpdate) unsubUpdate();
+    if (unsubTelemetry) unsubTelemetry();
+    localTelemetryService.stopPolling();
   });
 </script>
 
-<header class="header">
-  <!-- Brand & Logo -->
-  <div class="brand-section">
-    <div class="brand-badge" title="trawangan · Professional Crypto Charting Terminal">
-      <img src="/no background.svg" alt="trawangan logo" class="brand-logo-img" />
-      <span class="brand-title">trawangan</span>
-    </div>
-  </div>
+<header class="header-shell">
+  <TopTabBar
+    tabs={resolvedTabs}
+    activeTabId={resolvedActiveTabId}
+    onSelectTab={onSelectChartTab}
+    onAddTab={onAddChartTab ?? onOpenSymbolSearch}
+    onCloseTab={onCloseChartTab}
+    {onOpenSymbolSearch}
+    {updateState}
+    {colorModePreference}
+    {colorModeTooltip}
+    onCycleColorMode={handleCycleColorMode}
+    {onOpenSettingsModal}
+  />
 
-  <div class="divider"></div>
-
-  <!-- Simbol Aktif Minimalis & Quick Provider Switcher -->
-  <div class="symbol-section">
-    <button
-      class="symbol-badge-btn"
-      title="Klik atau tekan Ctrl+K untuk mencari simbol koin & pair"
-      onclick={() => onOpenSymbolSearch?.()}
-    >
-      <SymbolLogo baseAsset={activeParsedSymbol.baseAsset} quoteAsset={activeParsedSymbol.quoteAsset} symbol={activeSymbol} provider={activeProviderId} size="sm" />
-      <span class="active-sym-title mono-nums">{activeSymbol}</span>
-      <span class="kbd-hint mono-nums">Ctrl+K</span>
-    </button>
-
-    <!-- Tombol Bintang 1-Klik Quick Watchlist Toggle (#166) -->
-    <button
-      type="button"
-      class="watchlist-star-btn {isWatchlisted ? 'active' : ''}"
-      aria-pressed={isWatchlisted}
-      aria-label={isWatchlisted ? `Hapus ${activeSymbol} dari Watchlist Aktif` : `Tambahkan ${activeSymbol} ke Watchlist Aktif`}
-      title={isWatchlisted ? 'Hapus dari Watchlist Aktif' : 'Tambahkan ke Watchlist Aktif'}
-      onclick={() => onToggleActiveWatchlist?.()}
-    >
-      <Star size={13} fill={isWatchlisted ? 'currentColor' : 'none'} />
-    </button>
-
-    <div class="provider-dropdown-container">
+  <div class="chart-sub-header">
+    <!-- Simbol Aktif, Quick Watchlist & Provider Switcher -->
+    <div class="symbol-section">
       <button
         type="button"
-        class="provider-pill-btn {activeProviderId}"
-        title="Ganti Bursa / Data Feed Aktif"
-        onclick={(e) => {
-          e.stopPropagation();
-          isProviderDropdownOpen = !isProviderDropdownOpen;
-          if (isProviderDropdownOpen) {
-            marketFeed.getSavedProviders().then((res) => (availableProviders = res));
-          }
-        }}
+        class="symbol-badge-btn"
+        title="Klik atau tekan Ctrl+K untuk mencari simbol koin & pair"
+        onclick={() => onOpenSymbolSearch?.()}
       >
-        <span>{activeProviderId.toUpperCase()}</span>
-        <ChevronDown size={10} />
+        <SymbolLogo
+          baseAsset={activeParsedSymbol.baseAsset}
+          quoteAsset={activeParsedSymbol.quoteAsset}
+          symbol={activeSymbol}
+          provider={activeProviderId}
+          size="sm"
+        />
+        <span class="active-sym-title mono-nums">{activeSymbol}</span>
       </button>
 
-      {#if activeProviderId === 'yahoo'}
-        <span class="delayed-badge mono-nums" title="Data Yahoo Finance (Saham Indo IDX & US) mengalami jeda waktu ~15 menit sesuai regulasi bursa">
-          DELAYED 15M
-        </span>
-      {:else if activeProviderId === 'macro'}
-        <span class="synthetic-badge mono-nums" title="Indeks makro dihitung lokal dari basket terkalibrasi (CoinGecko + DefiLlama + Binance/Coinbase) hanya saat grafik ini aktif">
-          SYNTHETIC (~1Y)
-        </span>
-      {/if}
+      <button
+        type="button"
+        class="watchlist-star-btn {isWatchlisted ? 'active' : ''}"
+        aria-pressed={isWatchlisted}
+        aria-label={isWatchlisted
+          ? `Hapus ${activeSymbol} dari Watchlist Aktif`
+          : `Tambahkan ${activeSymbol} ke Watchlist Aktif`}
+        title={isWatchlisted ? 'Hapus dari Watchlist Aktif' : 'Tambahkan ke Watchlist Aktif'}
+        onclick={() => onToggleActiveWatchlist?.()}
+      >
+        <Star size={13} fill={isWatchlisted ? 'currentColor' : 'none'} />
+      </button>
 
-      {#if isProviderDropdownOpen}
-        <!-- Backdrop klik luar -->
-        <div
-          class="provider-backdrop"
-          onclick={() => (isProviderDropdownOpen = false)}
-          role="presentation"
-        ></div>
-        <div
-          class="provider-dropdown-menu obsidian-panel"
-          onclick={(e) => e.stopPropagation()}
-          role="menu"
+      <div class="provider-dropdown-container">
+        <button
+          type="button"
+          class="provider-pill-btn {activeProviderId}"
+          title="Ganti Bursa / Data Feed Aktif"
+          onclick={(e) => {
+            e.stopPropagation();
+            isProviderDropdownOpen = !isProviderDropdownOpen;
+            if (isProviderDropdownOpen) {
+              marketFeed.getSavedProviders().then((res) => (availableProviders = res));
+            }
+          }}
         >
-          <div class="provider-dropdown-header">
-            <span>BURSA / DATA FEED</span>
-          </div>
-          {#if activeProviderId === 'macro'}
-            <div class="provider-macro-note">
-              Indeks makro selalu dirutekan otomatis ke Synthetic Basket lokal saat grafik dibuka.
+          <span>{activeProviderId.toUpperCase()}</span>
+          <ChevronDown size={10} />
+        </button>
+
+        {#if activeProviderId === 'yahoo'}
+          <span
+            class="delayed-badge mono-nums"
+            title="Data Yahoo Finance (Saham Indo IDX & US) mengalami jeda waktu ~15 menit sesuai regulasi bursa"
+          >
+            DELAYED 15M
+          </span>
+        {:else if activeProviderId === 'macro'}
+          <span
+            class="synthetic-badge mono-nums"
+            title="Indeks makro dihitung lokal dari basket terkalibrasi (CoinGecko + DefiLlama + Binance/Coinbase) hanya saat grafik ini aktif"
+          >
+            SYNTHETIC (~1Y)
+          </span>
+        {/if}
+
+        {#if isProviderDropdownOpen}
+          <div
+            class="provider-backdrop"
+            onclick={() => (isProviderDropdownOpen = false)}
+            role="presentation"
+          ></div>
+          <div
+            class="provider-dropdown-menu obsidian-panel"
+            role="menu"
+            tabindex="-1"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => {
+              if (e.key === 'Escape') isProviderDropdownOpen = false;
+            }}
+          >
+            <div class="provider-dropdown-header">
+              <span>BURSA / DATA FEED</span>
             </div>
-          {/if}
-          <div class="provider-list">
-            {#each availableProviders as prov (prov.id)}
+            {#if activeProviderId === 'macro'}
+              <div class="provider-macro-note">
+                Indeks makro selalu dirutekan otomatis ke Synthetic Basket lokal saat grafik dibuka.
+              </div>
+            {/if}
+            <div class="provider-list">
+              {#each availableProviders as prov (prov.id)}
+                <button
+                  type="button"
+                  class="provider-menu-item {activeProviderId === prov.id ? 'active' : ''}"
+                  onclick={() => {
+                    onProviderChange?.(prov.id);
+                    isProviderDropdownOpen = false;
+                  }}
+                >
+                  <div class="prov-name-col">
+                    <span class="prov-name">{prov.name}</span>
+                    <span class="prov-id mono-nums">{prov.id}</span>
+                  </div>
+                  {#if activeProviderId === prov.id}
+                    <Check size={12} class="check-icon" />
+                  {/if}
+                </button>
+              {/each}
+            </div>
+            <div class="provider-dropdown-footer">
               <button
                 type="button"
-                class="provider-menu-item {activeProviderId === prov.id ? 'active' : ''}"
+                class="add-custom-feed-link"
                 onclick={() => {
-                  onProviderChange?.(prov.id);
                   isProviderDropdownOpen = false;
+                  onOpenSettingsModal?.('feed');
                 }}
               >
-                <div class="prov-name-col">
-                  <span class="prov-name">{prov.name}</span>
-                  <span class="prov-id mono-nums">{prov.id}</span>
-                </div>
-                {#if activeProviderId === prov.id}
-                  <Check size={12} class="check-icon" />
-                {/if}
+                + Pengaturan Feed & Custom Node...
               </button>
-            {/each}
+            </div>
           </div>
-          <div class="provider-dropdown-footer">
-            <button
-              type="button"
-              class="add-custom-feed-link"
-              onclick={() => {
-                isProviderDropdownOpen = false;
-                onOpenSettingsModal?.('feed');
-              }}
-            >
-              + Pengaturan Feed & Custom Node...
-            </button>
-          </div>
-        </div>
-      {/if}
+        {/if}
+      </div>
     </div>
-  </div>
 
-  <div class="divider"></div>
+    <div class="divider"></div>
 
-  <!-- Timeframe Selector & Favorit Bar -->
-  <TimeframeSelector
-    {activeTimeframe}
-    {favoriteTimeframes}
-    {customTimeframes}
-    {onTimeframeChange}
-    {onFavoriteTimeframesChange}
-    {onCustomTimeframesChange}
-  />
-
-  <div class="divider"></div>
-
-  <!-- Price Style Selector (#193) -->
-  <PriceStylePicker
-    {activePriceStyle}
-    onPriceStyleChange={(style) => onPriceStyleChange?.(style)}
-  />
-
-  <div class="spacer"></div>
-
-  <!-- Multi-Chart Layout & Manajemen Workspace Terpadu -->
-  <WorkspaceLayoutMenu
-    {currentLayout}
-    {onLayoutChange}
-    {activeWorkspace}
-    {isAutoSaveWorkspace}
-    {onToggleAutoSaveWorkspace}
-    {onSaveWorkspace}
-    {onLoadWorkspace}
-    {onNewWorkspace}
-    {onLog}
-  />
-
-  <div class="divider"></div>
-
-  <!-- Actions Terpadu (Replay, Draw, Sinkronisasi Multi-Chart) -->
-  <ActionsMenu
-    {isReplayActive}
-    {isDrawingToolbarVisible}
-    {currentLayout}
-    {syncConfig}
-    {onToggleReplay}
-    {onToggleDrawingToolbar}
-    {onToggleSyncCrosshair}
-    {onToggleSyncViewport}
-    {onToggleSyncSymbol}
-    {onToggleSyncDrawings}
-    {onToggleSyncIndicators}
-    {onToggleSyncStyle}
-  />
-
-  <div class="divider"></div>
-
-  <!-- Quick Utility Actions (Kanan Header) -->
-  <div class="actions-section">
-    <!-- Tombol Langsung Indikator Modal -->
-    <button
-      class="action-btn indicator-header-btn {activeIndicators && activeIndicators.length > 0 ? 'has-active' : ''}"
-      title="Buka Perpustakaan Indikator Teknikal (Pine Script v6)"
-      onclick={onOpenIndicatorModal}
-    >
-      <Layers size={13} class={activeIndicators && activeIndicators.length > 0 ? 'text-brand' : 'text-cyan-accent'} />
-      <span>Indikator</span>
-      {#if activeIndicators && activeIndicators.length > 0}
-        <span class="count-badge mono-nums">{activeIndicators.length}</span>
-      {/if}
-    </button>
-
-    <!-- Snapshot Camera Action & Popover Menu (#125) -->
-    <SnapshotMenu
-      {onRequestQuickCopySnapshot}
-      {onRequestQuickDownloadSnapshot}
-      {onOpenSnapshotPreview}
-      currentScaleMultiplier={snapshotScaleMultiplier}
-      onScaleMultiplierChange={onSnapshotScaleMultiplierChange}
-      isProcessing={isSnapshotProcessing}
-      {chartDimensions}
+    <TimeframeSelector
+      {activeTimeframe}
+      {favoriteTimeframes}
+      {customTimeframes}
+      {onTimeframeChange}
+      {onFavoriteTimeframesChange}
+      {onCustomTimeframesChange}
     />
 
+    <div class="divider"></div>
 
-    <!-- Update Notification Pill (Muncul saat rilis baru tersedia atau progres unduh aktif) -->
-    {#if shouldShowUpdateBadge(updateState) && updateState.updateInfo}
-      {@const pill = getUpdatePillContent(updateState)}
+    <PriceStylePicker
+      {activePriceStyle}
+      onPriceStyleChange={(style) => onPriceStyleChange?.(style)}
+    />
+
+    <div class="divider"></div>
+
+    <DerivativesTelemetryStrip
+      snapshot={resolvedTelemetry}
+      {livePrice}
+      {liveChange24h}
+    />
+
+    <div class="spacer"></div>
+
+    <WorkspaceLayoutMenu
+      {currentLayout}
+      {onLayoutChange}
+      {activeWorkspace}
+      {isAutoSaveWorkspace}
+      {onToggleAutoSaveWorkspace}
+      {onSaveWorkspace}
+      {onLoadWorkspace}
+      {onNewWorkspace}
+      {onLog}
+    />
+
+    <div class="divider"></div>
+
+    <ActionsMenu
+      {isReplayActive}
+      {isDrawingToolbarVisible}
+      {currentLayout}
+      {syncConfig}
+      {onToggleReplay}
+      {onToggleDrawingToolbar}
+      {onToggleSyncCrosshair}
+      {onToggleSyncViewport}
+      {onToggleSyncSymbol}
+      {onToggleSyncDrawings}
+      {onToggleSyncIndicators}
+      {onToggleSyncStyle}
+    />
+
+    <div class="divider"></div>
+
+    <div class="actions-section">
       <button
-        class="action-btn update-pill mono-nums"
-        title="Versi baru {updateState.updateInfo.latestTag} — klik untuk mengelola pembaruan."
-        onclick={() => onOpenSettingsModal?.('about')}
+        type="button"
+        class="action-btn indicator-header-btn {activeIndicators && activeIndicators.length > 0 ? 'has-active' : ''}"
+        title="Buka Perpustakaan Indikator Teknikal (Pine Script v6)"
+        onclick={onOpenIndicatorModal}
       >
-        {#if pill.icon === 'download'}
-          <Download size={12} />
-        {:else if pill.icon === 'spin'}
-          <RefreshCw size={12} class="spin" />
-        {:else}
-          <Sparkles size={13} class="update-sparkle-icon" />
+        <Layers
+          size={13}
+          class={activeIndicators && activeIndicators.length > 0 ? 'text-brand' : 'text-cyan-accent'}
+        />
+        <span>Indikator</span>
+        {#if activeIndicators && activeIndicators.length > 0}
+          <span class="count-badge mono-nums">{activeIndicators.length}</span>
         {/if}
-        <span>{pill.label}</span>
       </button>
-    {/if}
 
-    <!-- Mode Warna Switcher Button (#148) -->
-    <button
-      type="button"
-      class="action-btn icon-only color-mode-btn"
-      title={colorModeTooltip}
-      aria-label="Ganti mode warna tema"
-      onclick={handleCycleColorMode}
-    >
-      {#if colorModePreference === 'dark'}
-        <Moon size={13} />
-      {:else if colorModePreference === 'light'}
-        <Sun size={13} />
-      {:else}
-        <Monitor size={13} />
-      {/if}
-    </button>
-
-    <!-- Settings & Help Modal -->
-    <button
-      class="action-btn"
-      title="Buka Pengaturan & Panduan Bantuan"
-      onclick={() => onOpenSettingsModal?.('general')}
-    >
-      <Settings size={13} />
-      <span>Setting</span>
-    </button>
+      <SnapshotMenu
+        {onRequestQuickCopySnapshot}
+        {onRequestQuickDownloadSnapshot}
+        {onOpenSnapshotPreview}
+        currentScaleMultiplier={snapshotScaleMultiplier}
+        onScaleMultiplierChange={onSnapshotScaleMultiplierChange}
+        isProcessing={isSnapshotProcessing}
+        {chartDimensions}
+      />
+    </div>
   </div>
 </header>
 
 <style>
-  .header {
-    height: 40px;
+  .header-shell {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-surface);
+    border-bottom: 1px solid var(--border-hairline);
+    z-index: 100;
+  }
+
+  .chart-sub-header {
+    height: 36px;
     background-color: var(--bg-surface);
     display: flex;
     align-items: center;
     padding: 0 10px;
     gap: 7px;
-    border-bottom: 1px solid var(--border-hairline);
-    z-index: 100;
-  }
-
-  .update-pill {
-    background: rgba(255, 105, 180, 0.15) !important;
-    border-color: rgba(255, 105, 180, 0.5) !important;
-    color: var(--brand-primary) !important;
-    font-weight: 700 !important;
-    box-shadow: 0 0 10px rgba(255, 105, 180, 0.25);
-    animation: headerPulse 2.5s infinite;
-  }
-
-  .update-pill:hover {
-    background: rgba(255, 105, 180, 0.25) !important;
-    border-color: var(--brand-primary) !important;
-    transform: translateY(-1px);
-    box-shadow: 0 0 15px rgba(255, 105, 180, 0.45);
-  }
-
-  :global(.update-sparkle-icon) {
-    animation: sparkleSpin 3s linear infinite;
-  }
-
-  @keyframes headerPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.75; }
-  }
-
-  @keyframes sparkleSpin {
-    0% { transform: rotate(0deg); }
-    50% { transform: rotate(180deg) scale(1.15); }
-    100% { transform: rotate(360deg); }
-  }
-
-  .brand-section {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    flex-shrink: 0;
-  }
-
-  .brand-badge {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    background-color: var(--bg-container);
-    border: 1px solid var(--border-hairline);
-    padding: 3px 6px;
-    border-radius: var(--radius-xs);
-  }
-
-  .brand-logo-img {
-    width: 15px;
-    height: 15px;
-    object-fit: contain;
-    display: block;
-    filter: drop-shadow(0 0 5px rgba(255, 105, 180, 0.4));
-  }
-
-  .brand-title {
-    font-family: var(--font-brand);
-    font-size: 12.5px;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    color: var(--text-main);
-    text-transform: lowercase;
   }
 
   .divider {
@@ -518,6 +485,7 @@
     align-items: center;
     gap: 4px;
     position: relative;
+    flex-shrink: 0;
   }
 
   .symbol-badge-btn {
@@ -580,6 +548,9 @@
 
   .provider-dropdown-container {
     position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .provider-pill-btn {
@@ -765,23 +736,16 @@
     text-decoration: underline;
   }
 
-  .kbd-hint {
-    font-size: var(--font-size-xs, 9px);
-    color: var(--text-dim);
-    background-color: var(--bg-container);
-    border: 1px solid var(--border-hairline);
-    padding: 1px 4px;
-    border-radius: 2px;
-  }
-
   .spacer {
     flex: 1;
+    min-width: 8px;
   }
 
   .actions-section {
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-shrink: 0;
   }
 
   .action-btn {
@@ -803,16 +767,6 @@
     background-color: var(--bg-hover);
     color: var(--text-main);
     border-color: var(--border-bright);
-  }
-
-  .action-btn.active {
-    color: var(--brand-primary);
-    border-color: var(--brand-primary);
-    background-color: rgba(0, 240, 144, 0.08);
-  }
-
-  .action-btn.icon-only {
-    padding: 3px 6px;
   }
 
   .indicator-header-btn {
