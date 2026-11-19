@@ -148,10 +148,10 @@ test.describe('TimelineMarksController & Event Markers Suite (#198)', () => {
     assert.equal(mark.title, 'US Consumer Price Index (CPI YoY)');
     assert.equal(mark.group, 'macro.high');
 
-    // Validasi glyph: high impact warna merah, shape circle
+    // Validasi glyph: titik putih minimalis tanpa teks huruf
     assert.equal(mark.glyph.shape, 'circle');
-    assert.equal(mark.glyph.color, '#ef4444');
-    assert.equal(mark.glyph.letter, 'US');
+    assert.equal(mark.glyph.color, '#f3f4f6');
+    assert.equal(mark.glyph.letter, undefined);
 
     // Validasi tooltip informatif
     assert.ok(mark.tooltip?.includes('US'));

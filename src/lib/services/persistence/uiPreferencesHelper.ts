@@ -90,3 +90,23 @@ export async function clearRecentSymbolSearches(
   await persistence.removeUiPreference('recent_searches');
   return [];
 }
+
+/**
+ * Membaca status visibilitas pill Market Sessions di footer dari cache PersistenceService.
+ */
+export function readMarketSessionsFooterHidden(
+  persistence: Pick<IPersistenceService, 'getUiPreferenceSync'> = storage
+): boolean {
+  return persistence.getUiPreferenceSync<boolean>('market_sessions_footer_hidden') === true;
+}
+
+/**
+ * Menyimpan preferensi sembunyikan/tampilkan pill Market Sessions di footer.
+ */
+export async function setMarketSessionsFooterHidden(
+  hidden: boolean,
+  persistence: Pick<IPersistenceService, 'setUiPreference'> = storage
+): Promise<boolean> {
+  await persistence.setUiPreference('market_sessions_footer_hidden', hidden);
+  return hidden;
+}

@@ -5,6 +5,7 @@ import {
   formatLocalClockTime,
   formatMarketHours,
   formatWorldClockTime,
+  getMarketSessionsSummary,
   getWorldClockSnapshot,
   isMarketSessionOpen,
   SUPPORTED_WORLD_CITIES,
@@ -138,6 +139,90 @@ test('World Clock Service & Settings Persistence Suite', async (t) => {
 
     assert.equal(local.time, '08:30:45');
     assert.ok(local.tzLabel.length > 0);
+  });
+
+  await t.test('10. Jakarta (IDX) dan Sydney (ASX) tersedia sebagai kota opsional tanpa CME Globex', () => {
+    const cme = SUPPORTED_WORLD_CITIES.find((c) => c.id.includes('cme') || c.marketName.includes('CME'));
+    assert.equal(cme, undefined, 'CME Globex tidak boleh ada');
+
+    const jakarta = SUPPORTED_WORLD_CITIES.find((c) => c.timezone === 'Asia/Jakarta');
+    const sydney = SUPPORTED_WORLD_CITIES.find((c) => c.timezone === 'Australia/Sydney');
+
+    assert.ok(jakarta, 'Jakarta IDX harus terdaftar');
+    assert.equal(jakarta.marketName, 'IDX');
+    assert.equal(jakarta.optional, true);
+    assert.equal(DEFAULT_WORLD_CLOCK_CITIES.includes('Asia/Jakarta'), false);
+
+    assert.ok(sydney, 'Sydney ASX harus terdaftar');
+    assert.equal(sydney.marketName, 'ASX');
+    assert.equal(sydney.optional, true);
+    assert.equal(DEFAULT_WORLD_CLOCK_CITIES.includes('Australia/Sydney'), false);
+  });
+
+  await t.test('11. getMarketSessionsSummary menghitung featuredPillText LDN opens 5m saat mendekati pembukaan', () => {
+    // 2026-11-19 (Kamis, London sudah GMT UTC+0): 07:55 UTC = 07:55 London (5 menit sebelum LSE buka 08:00)
+    const fiveMinBeforeLondon = new Date('2026-11-19T07:55:00Z');
+    const summary = getMarketSessionsSummary(fiveMinBeforeLondon, 'UTC');
+
+    assert.equal(summary.sessions.length, 3);
+    assert.equal(summary.featuredPillText, 'LDN opens 5m');
+
+    const ldn = summary.sessions.find((s) => s.id === 'london')!;
+    assert.equal(ldn.isOpen, false);
+    assert.equal(ldn.statusText, 'CLOSED');
+    assert.equal(ldn.countdownText, 'Opens in 5m');
+    assert.ok(ldn.sessionProgressRatio > 0.9 && ldn.sessionProgressRatio < 1);
+  });
+
+  await t.test('12. getMarketSessionsSummary menghitung status OPEN, Closes in ..., dan progress ratio', () => {
+    // 2026-11-19 (Kamis, GMT UTC+0): 12:18 UTC = 12:18 London (4h 12m sebelum LSE tutup 16:30)
+    const londonMidSession = new Date('2026-11-19T12:18:00Z');
+    const summary = getMarketSessionsSummary(londonMidSession, 'UTC');
+
+    assert.equal(summary.featuredPillText, 'LDN closes 4h 12m');
+
+    const ldn = summary.sessions.find((s) => s.id === 'london')!;
+    assert.equal(ldn.isOpen, true);
+    assert.equal(ldn.statusText, 'OPEN');
+    assert.equal(ldn.countdownText, 'Closes in 4h 12m');
+    assert.ok(ldn.sessionProgressRatio > 0.45 && ldn.sessionProgressRatio < 0.55);
+  });
+
+  await t.test('13. getMarketSessionsSummary menangani timelineSegments24h termasuk wrap-around tengah malam', () => {
+    // 2026-11-19 12:00 UTC:
+    // Dalam zona waktu Asia/Jakarta (UTC+7), NY (EST UTC-5, 09:30-16:00) = 21:30 - 04:00 WIB (wrap-around!)
+    const date = new Date('2026-11-19T12:00:00Z');
+    const summaryJkt = getMarketSessionsSummary(date, 'Asia/Jakarta');
+
+    const ny = summaryJkt.sessions.find((s) => s.id === 'new_york')!;
+    assert.equal(ny.timelineSegments24h.length, 2, 'Sesi NY di WIB harus terpecah menjadi 2 segmen karena melewati 00:00');
+    assert.equal(ny.timelineSegments24h[0].startPct, 0);
+    assert.ok(Math.abs(ny.timelineSegments24h[0].endPct - (4 / 24) * 100) < 0.5);
+    assert.ok(Math.abs(ny.timelineSegments24h[1].startPct - (21.5 / 24) * 100) < 0.5);
+    assert.equal(ny.timelineSegments24h[1].endPct, 100);
+    assert.equal(ny.referenceHoursText, '21:30 - 04:00');
+
+    // nowCursorPct pada 12:00 UTC = 19:00 WIB (~79.17%)
+    assert.ok(Math.abs(summaryJkt.nowCursorPct - (19 / 24) * 100) < 0.5);
+  });
+
+  await t.test('14. getMarketSessionsSummary menghitung countdown melewati akhir pekan dan mendukung kota opsional', () => {
+    // Sabtu 2026-11-21 12:00 UTC
+    const saturday = new Date('2026-11-21T12:00:00Z');
+    const summary = getMarketSessionsSummary(saturday, 'UTC', [
+      'Asia/Tokyo',
+      'Europe/London',
+      'America/New_York',
+      'Asia/Jakarta',
+    ]);
+
+    assert.equal(summary.sessions.length, 4);
+    for (const s of summary.sessions) {
+      assert.equal(s.isOpen, false);
+      assert.equal(s.statusText, 'CLOSED');
+      assert.ok(s.minutesUntilNextTransition > 24 * 60, 'Countdown akhir pekan harus > 24 jam');
+    }
+    assert.ok(summary.featuredPillText.includes('opens'));
   });
 });
 

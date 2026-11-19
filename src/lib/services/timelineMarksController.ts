@@ -16,6 +16,7 @@ import type { ParsedTradingPlan } from './planParserService';
 import type { PriceAlert } from '../types/market';
 import { isSameSymbol } from './instrumentIdentity';
 import { STANDARD_MACRO_CALENDAR_EVENTS } from './macroCalendarCatalog';
+import { storage } from './persistence';
 
 export type StandardMarkGroupId = 'macro' | 'trades' | 'journal';
 export type MacroImpact = 'high' | 'medium' | 'low';
@@ -153,9 +154,8 @@ function formatNumberWithCommas(val: number): string {
 export function formatMacroTimelineMark(event: MacroCalendarEvent): TimelineMark {
   const isHigh = event.impact === 'high';
   const isMedium = event.impact === 'medium';
-  const color = isHigh ? MARK_COLORS.macroHigh : isMedium ? MARK_COLORS.macroMedium : MARK_COLORS.macroLow;
+  const color = isHigh ? '#f3f4f6' : isMedium ? '#d1d5db' : '#9ca3af';
   const group = isHigh ? 'macro.high' : isMedium ? 'macro.medium' : 'macro.low';
-  const letter = (event.country || 'M').slice(0, 2).toUpperCase();
 
   const tooltipParts: string[] = [];
   if (event.country) tooltipParts.push(`[${event.country}]`);
@@ -192,10 +192,10 @@ export function formatMacroTimelineMark(event: MacroCalendarEvent): TimelineMark
     time: event.timestamp,
     title: event.title,
     group,
+    // Render sebagai titik putih bersih tanpa teks agar selaras dengan gaya OpenMarket
     glyph: {
       shape: 'circle',
-      color,
-      letter
+      color
     },
     tooltip: tooltipParts.join(' '),
     content: {
@@ -407,6 +407,7 @@ export class TimelineMarksController {
 
   private currentSymbol: string = 'BTCUSDT';
   private currentProviderId: string = 'binance';
+  private macroHighImpactOnly: boolean = false;
 
   private clickListeners = new Set<(event: MarkClickEvent) => void>();
   private changeSubscribers = new Set<(marks: TimelineMark[]) => void>();
@@ -737,6 +738,34 @@ export class TimelineMarksController {
     this.syncForMarket(this.currentSymbol, this.currentProviderId);
   }
 
+  public hydrateFromPersistence(): void {
+    try {
+      const saved = storage.getUiPreferenceSync<boolean | string>('macro_marks_high_impact_only');
+      if (saved === true || saved === 'true') {
+        this.setMacroHighImpactOnly(true, false);
+      }
+    } catch {
+      // Abaikan jika persistence belum ter-bootstrap pada unit test terisolasi
+    }
+  }
+
+  public setMacroHighImpactOnly(highOnly: boolean, persist: boolean = true): void {
+    const next = Boolean(highOnly);
+    if (this.macroHighImpactOnly !== next) {
+      this.macroHighImpactOnly = next;
+      this.setGroupVisible('macro.medium', !next);
+      this.setGroupVisible('macro.low', !next);
+      this.syncForMarket(this.currentSymbol, this.currentProviderId);
+    }
+    if (persist) {
+      void storage.setUiPreference('macro_marks_high_impact_only', next).catch(() => {});
+    }
+  }
+
+  public isMacroHighImpactOnly(): boolean {
+    return this.macroHighImpactOnly;
+  }
+
   /**
    * Menyelaraskan penanda untuk pasar / simbol tertentu
    * Membersihkan penanda usang (stale marks) dan memuat penanda yang relevan untuk pasar baru
@@ -750,6 +779,7 @@ export class TimelineMarksController {
 
     // 1. Filter Acara Makroekonomi (Mendukung Wildcard * / ALL atau array kosong untuk peristiwa menyeluruh)
     for (const evt of this.macroEvents) {
+      if (this.macroHighImpactOnly && evt.impact !== 'high') continue;
       if (
         !evt.relevantSymbols ||
         evt.relevantSymbols.length === 0 ||

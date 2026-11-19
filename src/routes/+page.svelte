@@ -96,7 +96,17 @@
     computeWorkspaceFingerprint,
     flushDrawings
   } from '../lib/services/persistence';
-  import { readClampedPanelWidth } from '../lib/services/persistence/uiPreferencesHelper';
+  import {
+    readClampedPanelWidth,
+    readMarketSessionsFooterHidden
+  } from '../lib/services/persistence/uiPreferencesHelper';
+  import { chartTabsService, type ChartTabItem } from '../lib/services/chartTabsService';
+  import { macroEventsService } from '../lib/services/macroEventsService';
+  import { timelineMarksController } from '../lib/services/timelineMarksController';
+  import {
+    parseTradingViewUrl,
+    resolveExternalSymbolWithFallback
+  } from '../lib/services/tradingViewBridgeService';
   import {
     THEME_PRESETS,
     UI_FONT_OPTIONS,
@@ -224,9 +234,15 @@
     sessionAvailable: false,
   });
   let allAlerts = $state<PriceAlert[]>(alertService.getAlerts());
+  let chartTabs = $state<ChartTabItem[]>(chartTabsService.getTabs());
+  let activeChartTabId = $state<string>(chartTabsService.getActiveTab()?.id || '');
+  let marketSessionsFooterHidden = $state<boolean>(false);
   let unsubShell: (() => void) | null = null;
   let unsubAlertsList: (() => void) | null = null;
   let unsubWatchlistRegistry: (() => void) | null = null;
+  let unsubChartTabs: (() => void) | null = null;
+  let detachMacroTimeline: (() => void) | null = null;
+  let unlistenTvBridge: (() => void) | null = null;
   let stopPeriodicUpdateChecks: (() => void) | null = null;
   const pageManagedTimers = new Set<ReturnType<typeof setTimeout>>();
   let resizeDispatchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -518,9 +534,35 @@
           marketFeed.setActiveProviderContext(activeBootProvider.id);
           telemetryService.setActiveProvider(activeBootProvider.id);
         }
+
+        marketSessionsFooterHidden = readMarketSessionsFooterHidden(storage);
       } catch (e) {
         console.warn('Gagal memuat pengaturan tersimpan:', e);
       }
+
+      // Bootstrap Quick Chart Tabs dan sinkronkan ke tab aktif tersimpan
+      unsubChartTabs = chartTabsService.subscribe((tabState) => {
+        chartTabs = tabState.tabs;
+        activeChartTabId = tabState.activeTabId;
+      });
+      const bootTabsState = await chartTabsService.bootstrap({
+        symbol: activeSymbol,
+        providerId: activeProviderId,
+        timeframe: activeTimeframe,
+      });
+      if (!isPageActive) return;
+      const bootActiveTab = bootTabsState.tabs.find((t) => t.id === bootTabsState.activeTabId);
+      if (bootActiveTab) {
+        activeSymbol = bootActiveTab.symbol;
+        activeProviderId = bootActiveTab.providerId;
+        activeTimeframe = bootActiveTab.timeframe;
+        marketFeed.setActiveProviderContext(bootActiveTab.providerId);
+        telemetryService.setActiveProvider(bootActiveTab.providerId);
+      }
+
+      timelineMarksController.hydrateFromPersistence();
+      detachMacroTimeline = macroEventsService.attachTimelineController(timelineMarksController);
+      void macroEventsService.refresh();
 
       isPersistenceBootstrapped = true;
       isPageMounted = true;
@@ -610,6 +652,27 @@
     };
 
     void runStartupHydration();
+
+    import('@tauri-apps/api/event')
+      .then(({ listen }) => {
+        if (!isPageActive) return null;
+        return listen<{ url?: string; symbol?: string | null; timeframe?: string | null }>(
+          'tradingview-bridge-open',
+          (event) => {
+            if (!isPageActive) return;
+            void handleTradingViewBridgeOpen(event.payload);
+          }
+        );
+      })
+      .then((unsub) => {
+        if (!unsub) return;
+        if (!isPageActive) {
+          unsub();
+          return;
+        }
+        unlistenTvBridge = unsub;
+      })
+      .catch(() => {});
 
     // Auto-Flush gambar dan simpan pending backup + workspace sebelum aplikasi ditutup (beforeunload & Tauri onCloseRequested)
     const runExitFlush = () =>
@@ -942,8 +1005,113 @@
     if (unsubShell) unsubShell();
     if (unsubAlertsList) unsubAlertsList();
     if (unsubWatchlistRegistry) unsubWatchlistRegistry();
+    if (unsubChartTabs) unsubChartTabs();
+    if (detachMacroTimeline) detachMacroTimeline();
+    if (unlistenTvBridge) unlistenTvBridge();
     if (stopPeriodicUpdateChecks) stopPeriodicUpdateChecks();
   });
+
+  $effect(() => {
+    if (!isPersistenceBootstrapped) return;
+    chartTabsService.syncActiveTab({
+      symbol: activeSymbol,
+      providerId: activeProviderId,
+      timeframe: activeTimeframe,
+    });
+  });
+
+  async function handleTradingViewBridgeOpen(payload?: {
+    url?: string;
+    symbol?: string | null;
+    timeframe?: string | null;
+  }) {
+    const rawInput = payload?.url || payload?.symbol;
+    if (!rawInput) return;
+
+    const parsed = parseTradingViewUrl(rawInput, payload?.timeframe ?? null);
+    if (!parsed) {
+      addSystemLog(`TradingView Bridge: gagal mengurai target "${rawInput}".`, 'warn');
+      return;
+    }
+
+    const resolved = await resolveExternalSymbolWithFallback(parsed, marketFeed);
+    if (!resolved) {
+      addSystemLog(
+        `TradingView Bridge: instrumen ${parsed.normalizedSymbol} tidak tersedia di bursa terhubung.`,
+        'warn'
+      );
+      snapshotToast = {
+        visible: true,
+        type: 'error',
+        message: `Simbol ${parsed.normalizedSymbol} tidak tersedia di provider aktif.`,
+        timestamp: Date.now(),
+      };
+      return;
+    }
+
+    const nextTimeframe = (parsed.timeframe as Timeframe | undefined) || activeTimeframe;
+    chartTabsService.openOrFocusTab({
+      symbol: resolved.symbol,
+      providerId: resolved.providerId,
+      timeframe: nextTimeframe,
+    });
+
+    await handleSymbolChange(resolved.symbol, resolved.providerId);
+    if (parsed.timeframe && parsed.timeframe !== activeTimeframe) {
+      handleTimeframeChange(parsed.timeframe as Timeframe);
+    }
+
+    if (resolved.redirectedFrom) {
+      const notice = `${resolved.redirectedFrom} tidak tersedia; dialihkan ke ${resolved.providerId.toUpperCase()} (${resolved.symbol}).`;
+      addSystemLog(`TradingView Bridge: ${notice}`, 'info');
+      snapshotToast = {
+        visible: true,
+        type: 'saved',
+        message: notice,
+        timestamp: Date.now(),
+      };
+    } else {
+      addSystemLog(
+        `TradingView Bridge membuka ${resolved.symbol} (${resolved.providerId.toUpperCase()})`,
+        'success'
+      );
+    }
+  }
+
+  async function handleSelectChartTab(tabId: string) {
+    const focused = chartTabsService.focusTab(tabId);
+    if (!focused) return;
+    await handleSymbolChange(focused.symbol, focused.providerId);
+    if (focused.timeframe !== activeTimeframe) {
+      handleTimeframeChange(focused.timeframe);
+    }
+  }
+
+  function handleAddChartTab() {
+    chartTabsService.addNewTab({
+      symbol: activeSymbol,
+      providerId: activeProviderId,
+      timeframe: activeTimeframe,
+    });
+    symbolSearchInitialQuery = '';
+    symbolSearchTriggerSource = 'explicit';
+    isSymbolSearchOpen = true;
+  }
+
+  async function handleCloseChartTab(tabId: string) {
+    const prevActiveId = activeChartTabId;
+    const closed = chartTabsService.closeTab(tabId);
+    if (!closed) return;
+    if (prevActiveId === tabId) {
+      const nextActive = chartTabsService.getActiveTab();
+      if (nextActive) {
+        await handleSymbolChange(nextActive.symbol, nextActive.providerId);
+        if (nextActive.timeframe !== activeTimeframe) {
+          handleTimeframeChange(nextActive.timeframe);
+        }
+      }
+    }
+  }
 
   async function flushDrawingsWithLog(context: string): Promise<void> {
     try {
@@ -1811,6 +1979,14 @@
     onCycleColorMode={handleCycleColorMode}
     {activePriceStyle}
     onPriceStyleChange={handlePriceStyleChange}
+    {chartTabs}
+    {activeChartTabId}
+    onSelectChartTab={handleSelectChartTab}
+    onAddChartTab={handleAddChartTab}
+    onCloseChartTab={handleCloseChartTab}
+    onReorderChartTabs={(fromIdx, toIdx) => chartTabsService.reorderTabs(fromIdx, toIdx)}
+    livePrice={ticker?.price ?? null}
+    liveChange24h={ticker?.change24h ?? null}
   />
 
   <!-- Main Viewport Area -->
@@ -1975,6 +2151,7 @@
           activeTab={shellState.activeRightDockTab || shellState.lastOpenedRightDockTab}
           {activeSymbol}
           {activeProviderId}
+          timezone={appSettings.timezone}
           {watchlistSymbols}
           {activeIndicators}
           {activeDrawings}
@@ -2006,6 +2183,7 @@
           onUpdatePlan={handleUpdatePlanFromTab}
           onEditPlan={(planId) => openRightPlanTab({ subMode: 'form', planId })}
           onOpenPlanTab={(subMode = 'form') => openRightPlanTab({ subMode })}
+          onFocusEventTimestamp={(ts) => chartView?.focusTimestamp?.(ts)}
           onLog={(msg, level) => addSystemLog(msg, level || 'info')}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
@@ -2079,6 +2257,11 @@
     settings={appSettings}
     session={chartSessionState.session}
     sessionAvailable={chartSessionState.sessionAvailable}
+    {marketSessionsFooterHidden}
+    onHideMarketSessionsFooter={() => {
+      marketSessionsFooterHidden = true;
+    }}
+    onOpenEventsTab={() => workspaceShellService.openRightDockTab('events')}
     onSelectTimezone={(tz) => handleUpdateSettings({ timezone: tz })}
     onToggleSession={() => {
       const next = sessionController?.toggleSession() ?? ((appSettings.marketSession ?? 'regular') === 'regular' ? 'extended' : 'regular');
@@ -2102,7 +2285,10 @@
       sessionController?.setSession(mode);
       handleUpdateSettings({ marketSession: mode });
     }}
-    onClose={() => (isSettingsModalOpen = false)}
+    onClose={() => {
+      isSettingsModalOpen = false;
+      marketSessionsFooterHidden = readMarketSessionsFooterHidden(storage);
+    }}
     onUpdateSettings={handleUpdateSettings}
     onProviderChange={handleProviderChange}
     onOpenChartSettings={(sec?: string) => chartView?.openChartSettings(sec)}

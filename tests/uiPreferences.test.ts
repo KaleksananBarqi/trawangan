@@ -9,6 +9,8 @@ import {
   loadRecentSymbolSearches,
   recordRecentSymbolSearch,
   clearRecentSymbolSearches,
+  readMarketSessionsFooterHidden,
+  setMarketSessionsFooterHidden,
 } from '../src/lib/services/persistence/uiPreferencesHelper';
 
 describe('UI Preferences Helper Seam Suite (#184: Panel Widths, Fav Indicators & Recent Searches)', () => {
@@ -65,5 +67,17 @@ describe('UI Preferences Helper Seam Suite (#184: Panel Widths, Fav Indicators &
     assert.deepEqual(cleared, []);
     assert.equal(persistence.getUiPreferenceSync<string[]>('recent_searches'), null);
     assert.equal(await adapter.getPreference('recent_searches'), null);
+  });
+
+  it('market_sessions_footer_hidden: membaca dan menyimpan status sembunyi pill Market Sessions', async () => {
+    await persistence.bootstrap();
+    assert.equal(readMarketSessionsFooterHidden(persistence), false);
+
+    await setMarketSessionsFooterHidden(true, persistence);
+    assert.equal(readMarketSessionsFooterHidden(persistence), true);
+    assert.equal(await adapter.getPreference('market_sessions_footer_hidden'), 'true');
+
+    await setMarketSessionsFooterHidden(false, persistence);
+    assert.equal(readMarketSessionsFooterHidden(persistence), false);
   });
 });

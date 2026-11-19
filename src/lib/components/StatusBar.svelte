@@ -10,9 +10,9 @@
     Zap,
     Coffee,
     Sparkles,
-    Globe,
     Download,
-    RefreshCw
+    RefreshCw,
+    Calendar
   } from '@lucide/svelte';
   import { telemetryService, type TelemetryData } from '../services/telemetryService';
   import {
@@ -26,19 +26,19 @@
   import type { MarketSession } from '../services/marketSessionService';
   import type { FeedConnectionStatus } from '../services/market/types';
   import type { AppSettings } from '../types/market';
-  import {
-    getWorldClockSnapshot,
-    formatLocalClockTime,
-    DEFAULT_WORLD_CLOCK_CITIES,
-    type WorldClockItem
-  } from '../services/worldClockService';
+  import { formatLocalClockTime } from '../services/worldClockService';
+  import NextEventPill from './statusbar/NextEventPill.svelte';
+  import MarketSessionsPill from './statusbar/MarketSessionsPill.svelte';
 
   interface Props {
     isConsoleOpen: boolean;
     onToggleConsole: () => void;
     onOpenAbout?: () => void;
+    onOpenEventsTab?: () => void;
     settings?: AppSettings;
     onSelectTimezone?: (tz: string) => void;
+    marketSessionsFooterHidden?: boolean;
+    onHideMarketSessionsFooter?: () => void;
     session?: MarketSession;
     sessionAvailable?: boolean;
     onToggleSession?: () => void;
@@ -48,17 +48,18 @@
     isConsoleOpen,
     onToggleConsole,
     onOpenAbout,
+    onOpenEventsTab,
     settings,
     onSelectTimezone,
+    marketSessionsFooterHidden = false,
+    onHideMarketSessionsFooter,
     session = 'regular',
     sessionAvailable = false,
     onToggleSession
   }: Props = $props();
 
-  let localClock = $state(formatLocalClockTime(new Date()));
-  let worldClocks = $state<WorldClockItem[]>([]);
-  let isWorldClocksDropdownOpen = $state(false);
-  let timeInterval: any = null;
+  let nowDate = $state(new Date());
+  let timeInterval: ReturnType<typeof setInterval> | null = null;
   let telemetry = $state<TelemetryData>(telemetryService.getSnapshot());
   let unsubTelemetry: (() => void) | null = null;
   let updateState = $state<UpdateState>(updateService.getSnapshot());
@@ -66,22 +67,25 @@
   let feedStatus = $state<FeedConnectionStatus>(marketFeed.getConnectionStatus());
   let unsubFeed: (() => void) | null = null;
 
+  const isUtcMode = $derived(settings?.timezone === 'UTC');
+  const activeClock = $derived(formatLocalClockTime(nowDate, settings?.timezone));
+
   function handleSessionToggleClick() {
     onToggleSession?.();
   }
 
   function updateClock() {
-    const now = new Date();
-    localClock = formatLocalClockTime(now);
-    const activeCities = settings?.worldClockCities ?? DEFAULT_WORLD_CLOCK_CITIES;
-    worldClocks = getWorldClockSnapshot(now, activeCities);
+    nowDate = new Date();
   }
 
-  function handleSelectTimezone(tz: string) {
-    if (onSelectTimezone) {
-      onSelectTimezone(tz);
+  function handleToggleClockTimezone() {
+    if (!onSelectTimezone) return;
+    if (isUtcMode) {
+      const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta';
+      onSelectTimezone(localTz);
+    } else {
+      onSelectTimezone('UTC');
     }
-    isWorldClocksDropdownOpen = false;
   }
 
   onMount(() => {
@@ -178,93 +182,44 @@
     </div>
   </div>
 
-  <!-- Kluster Kanan: Jam Lokal, Jam Bursa Dunia, Toggle Sesi RTH/ETH, Dukungan & Terminal Logs -->
+  <!-- Kluster Kanan: Next Event Pill, Ikon Kalender, Market Sessions Pill, Jam Aktif, Toggle Sesi RTH/ETH, Dukungan & Terminal Logs -->
   <div class="right-cluster">
-    <!-- Kluster Jam: Jam Lokal + Jam Bursa Dunia -->
     <div class="clocks-cluster">
-      <!-- Jam Lokal Pengguna (Selalu Tampil) -->
+      <NextEventPill timezone={settings?.timezone} {onOpenEventsTab} />
+
       <button
         type="button"
-        class="telemetry-pill world-clock-pill interactive mono-nums {(!settings?.timezone || settings?.timezone === 'Asia/Jakarta') ? 'active-timezone' : ''}"
-        title="Waktu Lokal Sistem: {localClock.time} {localClock.tzLabel} • Klik untuk sinkronkan timezone chart ke waktu lokal"
-        onclick={() => handleSelectTimezone('Asia/Jakarta')}
+        class="telemetry-pill calendar-icon-btn interactive"
+        title="Buka tab Events & Kalender Makroekonomi"
+        aria-label="Buka tab Events"
+        onclick={() => onOpenEventsTab?.()}
       >
-        <span class="icon-dim"><Clock size={11} /></span>
-        <span class="pill-text">{localClock.time} {localClock.tzLabel}</span>
+        <Calendar size={11} />
       </button>
 
-      {#if settings?.showWorldClocks !== false}
-        <!-- Mode Desktop (>= 1080px): Deretan Horizontal Pill Jam Dunia -->
-        <div class="world-clocks-desktop">
-          {#each worldClocks as clock (clock.id)}
-            <button
-              type="button"
-              class="telemetry-pill world-clock-pill interactive mono-nums {settings?.timezone === clock.timezone ? 'active-timezone' : ''}"
-              title="{clock.label} ({clock.marketName}): {clock.fullTime} • {clock.dateStr}&#10;Status Pasar: {clock.marketStatusText} (Jam Bursa: {clock.marketHoursDesc})&#10;Klik untuk sinkronkan timezone chart"
-              onclick={() => handleSelectTimezone(clock.timezone)}
-            >
-              <span class="session-pip {clock.isOpen ? 'pip-open' : 'pip-closed'}"></span>
-              <span class="city-code">{clock.shortCode}</span>
-              <span class="pill-text">{clock.time}</span>
-            </button>
-          {/each}
-        </div>
-
-        <!-- Mode Responsif / Layar Sempit (< 1080px): Tombol Popover Dropdown -->
-        <div class="world-clocks-mobile">
-          <button
-            type="button"
-            class="telemetry-pill world-clock-btn interactive mono-nums {isWorldClocksDropdownOpen ? 'active' : ''}"
-            title="Buka status jam bursa dunia (Tokyo, London, New York)"
-            onclick={() => (isWorldClocksDropdownOpen = !isWorldClocksDropdownOpen)}
-          >
-            <span class="icon-dim"><Globe size={11} /></span>
-            <span class="pill-text">World Clocks ({worldClocks.length})</span>
-            {#if isWorldClocksDropdownOpen}
-              <ChevronDown size={10} />
-            {:else}
-              <ChevronUp size={10} />
-            {/if}
-          </button>
-
-          {#if isWorldClocksDropdownOpen}
-            <button
-              type="button"
-              class="popover-backdrop"
-              onclick={() => (isWorldClocksDropdownOpen = false)}
-              aria-label="Tutup menu jam dunia"
-            ></button>
-
-            <div class="world-clocks-popover">
-              <div class="popover-header">
-                <span class="popover-title">JAM BURSA DUNIA</span>
-                <span class="popover-hint">Klik untuk sinkronkan chart</span>
-              </div>
-              <div class="popover-list">
-                {#each worldClocks as clock (clock.id)}
-                  <button
-                    type="button"
-                    class="popover-item {settings?.timezone === clock.timezone ? 'active-timezone' : ''}"
-                    onclick={() => handleSelectTimezone(clock.timezone)}
-                  >
-                    <div class="popover-item-left">
-                      <span class="session-pip {clock.isOpen ? 'pip-open' : 'pip-closed'}"></span>
-                      <span class="popover-city">{clock.label}</span>
-                      <span class="popover-market">({clock.marketName})</span>
-                    </div>
-                    <div class="popover-item-right">
-                      <span class="popover-time mono-nums">{clock.time}</span>
-                      <span class="status-badge {clock.isOpen ? 'badge-open' : 'badge-closed'}">
-                        {clock.marketStatusText}
-                      </span>
-                    </div>
-                  </button>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        </div>
+      {#if settings?.showWorldClocks !== false && marketSessionsFooterHidden !== true}
+        <MarketSessionsPill
+          now={nowDate}
+          referenceTz={settings?.timezone || 'UTC'}
+          activeTimezones={settings?.worldClockCities}
+          selectedTimezone={settings?.timezone}
+          hidden={marketSessionsFooterHidden}
+          {onSelectTimezone}
+          onHideFromFooter={onHideMarketSessionsFooter}
+        />
       {/if}
+
+      <button
+        type="button"
+        class="telemetry-pill world-clock-pill interactive mono-nums {isUtcMode ? 'active-timezone' : ''}"
+        title={isUtcMode
+          ? `Waktu UTC: ${activeClock.time} • Klik untuk beralih ke waktu lokal`
+          : `Waktu Zona (${activeClock.tzLabel}): ${activeClock.time} • Klik untuk beralih ke UTC`}
+        onclick={handleToggleClockTimezone}
+      >
+        <span class="icon-dim"><Clock size={11} /></span>
+        <span class="pill-text">{activeClock.time} {isUtcMode ? 'UTC' : activeClock.tzLabel}</span>
+      </button>
     </div>
 
     {#if sessionAvailable}
@@ -488,23 +443,29 @@
     transform: rotate(-10deg) scale(1.1);
   }
 
-  /* Gaya Kluster Jam Dunia & Popover Responsif */
   .clocks-cluster {
     display: flex;
     align-items: center;
     gap: 5px;
   }
 
-  .world-clocks-desktop {
-    display: flex;
+  .calendar-icon-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-xs);
+    padding: 2px 4px;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: inline-flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
+    transition: all 0.12s ease;
   }
 
-  .world-clocks-mobile {
-    display: none;
-    position: relative;
-    align-items: center;
+  .calendar-icon-btn:hover {
+    color: var(--text-main);
+    background-color: var(--bg-hover);
+    border-color: var(--border-hairline);
   }
 
   .world-clock-pill {
@@ -575,186 +536,5 @@
     background-color: rgba(255, 105, 180, 0.1) !important;
     border-color: rgba(255, 105, 180, 0.5) !important;
     box-shadow: 0 0 6px rgba(255, 105, 180, 0.2);
-  }
-
-  .city-code {
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--text-muted);
-  }
-
-  .session-pip {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    display: inline-block;
-    flex-shrink: 0;
-  }
-
-  .pip-open {
-    background-color: var(--bull-color, #22c55e);
-    box-shadow: 0 0 5px rgba(34, 197, 94, 0.6);
-  }
-
-  .pip-closed {
-    background-color: var(--text-dim, #666);
-    opacity: 0.5;
-  }
-
-  .world-clock-btn {
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 1px 6px;
-    border-radius: var(--radius-xs);
-    font-size: 10px;
-    font-family: var(--font-mono);
-    color: var(--text-muted);
-    transition: all 0.15s ease;
-  }
-
-  .world-clock-btn:hover,
-  .world-clock-btn.active {
-    color: var(--text-main);
-    background-color: var(--bg-hover);
-    border-color: rgba(255, 105, 180, 0.4);
-  }
-
-  /* Panel Popover Mengambang */
-  .popover-backdrop {
-    position: fixed;
-    inset: 0;
-    background: transparent;
-    border: none;
-    cursor: default;
-    z-index: 99;
-  }
-
-  .world-clocks-popover {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    right: 0;
-    min-width: 240px;
-    background-color: #121212;
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm, 4px);
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.7);
-    padding: 6px;
-    z-index: 100;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .popover-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 4px 6px;
-    border-bottom: 1px solid var(--border-hairline);
-    font-size: 9px;
-    color: var(--text-muted);
-  }
-
-  .popover-title {
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: var(--text-main);
-  }
-
-  .popover-hint {
-    font-size: 8px;
-    color: var(--text-dim);
-  }
-
-  .popover-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .popover-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 5px 8px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-xs);
-    cursor: pointer;
-    font-size: 10px;
-    font-family: var(--font-mono);
-    color: var(--text-main);
-    transition: all 0.12s ease;
-    text-align: left;
-    width: 100%;
-  }
-
-  .popover-item:hover {
-    background-color: var(--bg-hover);
-    border-color: var(--border-hairline);
-  }
-
-  .popover-item.active-timezone {
-    background-color: rgba(255, 105, 180, 0.1);
-    border-color: rgba(255, 105, 180, 0.4);
-    color: #ff69b4;
-  }
-
-  .popover-item-left {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .popover-city {
-    font-weight: 600;
-  }
-
-  .popover-market {
-    font-size: 9px;
-    color: var(--text-dim);
-  }
-
-  .popover-item-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .popover-time {
-    font-weight: 600;
-  }
-
-  .status-badge {
-    font-size: 8px;
-    padding: 1px 4px;
-    border-radius: 2px;
-    font-weight: 700;
-  }
-
-  .badge-open {
-    background-color: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.3);
-  }
-
-  .badge-closed {
-    background-color: rgba(255, 255, 255, 0.05);
-    color: var(--text-dim);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  /* Breakpoint Media Query Responsif (< 1080px) */
-  @media (max-width: 1079px) {
-    .world-clocks-desktop {
-      display: none;
-    }
-    .world-clocks-mobile {
-      display: flex;
-    }
   }
 </style>
