@@ -5,6 +5,7 @@
   import WatchlistTab from './right-dock/WatchlistTab.svelte';
   import AlertsTab from './right-dock/AlertsTab.svelte';
   import LayersTab from './right-dock/LayersTab.svelte';
+  import EventsTab from './right-dock/EventsTab.svelte';
   import DataWindow from './DataWindow.svelte';
   import { watchlistRegistry } from '../services/watchlistRegistryService';
   import {
@@ -63,6 +64,7 @@
     onUpdatePlan?: (planId: string, plan: ParsedTradingPlan, options?: UpdatePlanFromTabOptions) => Promise<any> | any;
     onEditPlan?: (planId: string) => void;
     onOpenPlanTab?: (subMode?: TradePlanTabSubMode) => void;
+    onFocusEventTimestamp?: (timestampMs: number) => void;
     onLog?: (msg: string, level?: 'info' | 'success' | 'warn') => void;
   }
 
@@ -104,6 +106,7 @@
     onUpdatePlan,
     onEditPlan,
     onOpenPlanTab,
+    onFocusEventTimestamp,
     onLog,
   }: Props = $props();
 
@@ -374,6 +377,8 @@
       />
     {:else if activeTab === 'datawindow'}
       <DataWindow {activeSymbol} />
+    {:else if activeTab === 'events'}
+      <EventsTab {activeSymbol} {onFocusEventTimestamp} />
     {/if}
 
     <!-- Trade Plan tetap ter-mount agar draft form dan teks tidak hilang saat pindah tab -->

@@ -5,6 +5,7 @@
     Layers,
     TableProperties,
     Sparkles,
+    Calendar,
     Code,
     ChevronRight,
     ChevronLeft
@@ -97,6 +98,16 @@
       {#if activePlansCount > 0}
         <span class="dock-badge count-cyan mono-nums">{activePlansCount}</span>
       {/if}
+    </button>
+
+    <!-- 6. Macro Events Calendar -->
+    <button
+      type="button"
+      class="dock-btn {isOpen && activeTab === 'events' && workspaceMode !== 'pine' ? 'active' : ''}"
+      title="Events & Kalender Makroekonomi"
+      onclick={() => onToggleTab('events')}
+    >
+      <Calendar size={16} class="dock-icon" />
     </button>
 
     <div class="dock-divider"></div>
