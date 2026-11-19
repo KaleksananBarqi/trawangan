@@ -1,3 +1,4 @@
+pub mod bridge;
 pub mod db;
 pub mod market;
 pub mod commands;
@@ -11,10 +12,13 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(main_win) = app.get_webview_window("main") {
-                let _ = main_win.set_focus();
-                let _ = main_win.unminimize();
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            bridge::focus_main_window(app);
+            for arg in argv.into_iter().skip(1) {
+                if arg.contains("tradingview.com") {
+                    bridge::emit_bridge_open(app, arg, None, None);
+                    break;
+                }
             }
         }))
         .plugin(tauri_plugin_opener::init())
@@ -30,6 +34,8 @@ pub fn run() {
                 conn: Mutex::new(conn),
             });
             app.manage(MarketService::new());
+            app.manage(bridge::BridgeState::new());
+            bridge::spawn_loopback_bridge(app.handle().clone());
 
             Ok(())
         })
@@ -73,7 +79,8 @@ pub fn run() {
             updater::detect_install_environment,
             updater::download_and_verify_linux_package,
             updater::install_linux_package_and_relaunch,
-            updater::open_local_installer_fallback
+            updater::open_local_installer_fallback,
+            bridge::get_bridge_status
         ])
         .run(tauri::generate_context!())
         .expect("Terjadi error saat menjalankan aplikasi desktop Trawangan");

@@ -483,8 +483,22 @@ export class SymbolSearchEngine {
       if (options.quoteAsset) quoteAsset = options.quoteAsset;
     }
 
-    // Normalisasi dan parsing adaptif query
-    const rawQ = query.trim();
+    // Normalisasi dan parsing adaptif query (termasuk prefix bursa opsional seperti BITUNIX:MMTUSDT.P)
+    let rawQ = query.trim();
+    const colonIdx = rawQ.indexOf(':');
+    if (colonIdx > 0) {
+      const prefix = rawQ.slice(0, colonIdx).trim().toLowerCase();
+      const rest = rawQ.slice(colonIdx + 1).trim();
+      if (rest) {
+        if (
+          exchange === 'all' &&
+          ['binance', 'bitunix', 'indodax', 'hyperliquid', 'coinbase', 'yahoo'].includes(prefix)
+        ) {
+          exchange = prefix;
+        }
+        rawQ = rest;
+      }
+    }
     const parsedQuery = parseAdaptiveSymbol(rawQ);
     let effectiveQuery = parsedQuery.isQuoteExplicit ? parsedQuery.cleanSymbol : rawQ;
     if (parsedQuery.isQuoteExplicit && quoteAsset === 'all') {
@@ -555,6 +569,7 @@ export class SymbolSearchEngine {
       !deduplicated.some((r) => r.baseAsset === cleanQ || r.symbol === cleanQ || r.symbol === parsedQuery.cleanSymbol)
     ) {
       const isBinanceAllowed = exchange === 'all' || exchange === 'binance';
+      const isBitunixAllowed = exchange === 'all' || exchange === 'bitunix';
       const isIndodaxAllowed = exchange === 'all' || exchange === 'indodax';
 
       if (parsedQuery.isQuoteExplicit) {
@@ -582,8 +597,18 @@ export class SymbolSearchEngine {
               provider: 'Indodax Spot',
             });
           }
-        } else if (parsedQuery.quoteAsset === 'USDT' && isBinanceAllowed) {
-          if (filterType === 'all' || filterType === 'perp') {
+        } else if (parsedQuery.quoteAsset === 'USDT' && (isBinanceAllowed || isBitunixAllowed)) {
+          if (isBitunixAllowed && (filterType === 'all' || filterType === 'perp')) {
+            deduplicated.unshift({
+              symbol: `${parsedQuery.baseAsset}USDT.P`,
+              baseAsset: parsedQuery.baseAsset,
+              quoteAsset: 'USDT',
+              displayName: `${parsedQuery.baseAsset} Perpetual Contract`,
+              type: 'perp',
+              provider: 'Bitunix Futures',
+            });
+          }
+          if (isBinanceAllowed && (filterType === 'all' || filterType === 'perp')) {
             deduplicated.unshift({
               symbol: `${parsedQuery.baseAsset}USDT.P`,
               baseAsset: parsedQuery.baseAsset,
@@ -593,7 +618,7 @@ export class SymbolSearchEngine {
               provider: 'Binance Futures',
             });
           }
-          if (filterType === 'all' || filterType === 'spot') {
+          if (isBinanceAllowed && (filterType === 'all' || filterType === 'spot')) {
             deduplicated.unshift({
               symbol: `${parsedQuery.baseAsset}USDT`,
               baseAsset: parsedQuery.baseAsset,
@@ -608,6 +633,18 @@ export class SymbolSearchEngine {
         // Kuotasi implisit / koin tunggal (misal 'SOL') -> fallback USDT & IDR
         const cleanBase = parsedQuery.baseAsset;
         if (cleanBase.length >= 2) {
+          if (isBitunixAllowed && (quoteAsset === 'all' || quoteAsset === 'USDT')) {
+            if (filterType === 'all' || filterType === 'perp') {
+              deduplicated.unshift({
+                symbol: `${cleanBase}USDT.P`,
+                baseAsset: cleanBase,
+                quoteAsset: 'USDT',
+                displayName: `${cleanBase} Perpetual Contract`,
+                type: 'perp',
+                provider: 'Bitunix Futures',
+              });
+            }
+          }
           if (isBinanceAllowed && (quoteAsset === 'all' || quoteAsset === 'USDT')) {
             if (filterType === 'all' || filterType === 'perp') {
               deduplicated.unshift({
