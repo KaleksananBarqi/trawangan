@@ -271,8 +271,8 @@
 <style>
   .system-status-bar {
     height: 26px;
-    background-color: var(--bg-darkest);
-    border-top: 1px solid var(--border-hairline);
+    background-color: var(--bg-container);
+    border: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -282,7 +282,6 @@
     color: var(--text-dim);
     z-index: 50;
     flex-shrink: 0;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.4);
   }
 
   .left-cluster, .right-cluster {

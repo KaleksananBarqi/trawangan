@@ -3490,10 +3490,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 12px;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm);
+    padding: 11px 14px;
+    background-color: var(--bg-panel);
+    border: none;
+    border-radius: var(--radius-md);
   }
 
   .setting-info {

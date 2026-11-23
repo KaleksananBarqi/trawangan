@@ -262,9 +262,26 @@ describe('Deep Theme Engine Suite (Reducer, Headless Token Compiler, & DOM Seam)
       assert.ok(bundle.rootCssVariables['--vela-fg']);
       assert.ok(bundle.rootCssVariables['--vela-surface-elev']);
 
+      // Neo-Quant Deep Shell Token (ADR-0029)
+      assert.ok(bundle.rootCssVariables['--bg-shell']);
+      assert.notEqual(bundle.rootCssVariables['--bg-shell'], '#0F0F0F');
+
       // Preset resmi: menyertakan removeCssVariables untuk membersihkan override
       assert.ok(bundle.removeCssVariables.includes('--bg-darkest'));
       assert.ok(bundle.removeCssVariables.includes('--brand-primary'));
+    });
+
+    it('menghasilkan --bg-shell yang lebih gelap lembut untuk tema terang seperti red_folder', () => {
+      const settings: AppSettings = {
+        ...DEFAULT_APP_SETTINGS,
+        themePreset: 'red_folder',
+        chartThemePreset: 'red_folder',
+        colorModePreference: 'light'
+      };
+      const bundle = assembleThemeCssBundle(settings, { systemIsDark: false });
+      assert.equal(bundle.dataThemeMode, 'light');
+      assert.ok(bundle.rootCssVariables['--bg-shell']);
+      assert.notEqual(bundle.rootCssVariables['--bg-shell'], '#EAEAE5');
     });
 
     it('menyuntikkan variabel UI Shell saat tema pengguna kustom aktif', () => {

@@ -1136,32 +1136,29 @@
     align-items: flex-start;
     justify-content: space-between;
     padding: 8px 10px;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
+    background-color: var(--bg-panel);
+    border: none;
+    border-radius: var(--radius-md, 6px);
     position: relative;
-    transition: all 0.15s ease;
+    transition: background-color 0.14s ease, box-shadow 0.14s ease;
     cursor: pointer;
-    /* Aksen garis kiri default transparan */
-    border-left: 2.5px solid transparent;
+    box-shadow: inset 2.5px 0 0 transparent;
   }
 
   .alert-card:hover {
-    background-color: var(--bg-hover);
-    border-color: var(--border-medium);
-    border-left-color: color-mix(in srgb, var(--brand-primary) 50%, transparent);
+    background-color: var(--bg-elevated);
+    box-shadow: inset 2.5px 0 0 color-mix(in srgb, var(--brand-primary) 50%, transparent);
   }
 
-  /* Kartu yang koinnya sedang aktif di chart → aksen cyan tegas */
+  /* Kartu yang koinnya sedang aktif di chart -> aksen cyan tegas */
   .alert-card.is-active-coin {
-    border-left-color: var(--brand-cyan);
-    background-color: color-mix(in srgb, var(--brand-cyan) 5%, transparent);
+    box-shadow: inset 2.5px 0 0 var(--brand-cyan);
+    background-color: color-mix(in srgb, var(--brand-cyan) 7%, var(--bg-panel));
   }
 
   .alert-card.is-active-coin:hover {
-    background-color: color-mix(in srgb, var(--brand-cyan) 9%, transparent);
-    border-color: color-mix(in srgb, var(--brand-cyan) 35%, transparent);
-    border-left-color: var(--brand-cyan);
+    background-color: color-mix(in srgb, var(--brand-cyan) 12%, var(--bg-panel));
+    box-shadow: inset 2.5px 0 0 var(--brand-cyan);
   }
 
   .alert-card.triggered {

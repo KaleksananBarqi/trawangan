@@ -11,6 +11,7 @@
   } from '@lucide/svelte';
   import type { AppSettings, UserProfileConfig, SecurityWatermarkConfig, SnapshotScaleMultiplier } from '../../types/market';
   import { resolveSecurityWatermarkText } from '../../services/chartSnapshotService';
+  import ToggleSwitch from '../common/ToggleSwitch.svelte';
 
   interface Props {
     settings: AppSettings;
@@ -378,15 +379,11 @@
       <span class="setting-label">Aktifkan Watermark Keamanan</span>
       <span class="setting-desc">Sematkan tanda air diagonal pada snapshot dan tangkapan layar grafik</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {currentWatermark.enabled ? 'active' : ''}"
-      onclick={() => updateWatermark({ enabled: !currentWatermark.enabled })}
-      aria-pressed={currentWatermark.enabled}
-    >
-      <span class="toggle-dot"></span>
-      <span>{currentWatermark.enabled ? 'Aktif' : 'Nonaktif'}</span>
-    </button>
+    <ToggleSwitch
+      checked={Boolean(currentWatermark.enabled)}
+      ariaLabel="Aktifkan Watermark Keamanan"
+      onchange={(next) => updateWatermark({ enabled: next })}
+    />
   </div>
 
   <!-- 2. Input Field Teks Kustom -->
@@ -444,16 +441,12 @@
       <span class="setting-label">Tampilkan di Kanvas Kerja Aktif</span>
       <span class="setting-desc">Munculkan tanda air langsung di kanvas kerja grafik (cocok untuk live stream & presentasi)</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {currentWatermark.showOnLiveCanvas && currentWatermark.enabled ? 'active' : ''}"
+    <ToggleSwitch
+      checked={Boolean(currentWatermark.showOnLiveCanvas && currentWatermark.enabled)}
       disabled={!currentWatermark.enabled}
-      onclick={() => updateWatermark({ showOnLiveCanvas: !currentWatermark.showOnLiveCanvas })}
-      aria-pressed={currentWatermark.showOnLiveCanvas && currentWatermark.enabled}
-    >
-      <span class="toggle-dot"></span>
-      <span>{currentWatermark.showOnLiveCanvas && currentWatermark.enabled ? 'Tampil di Live' : 'Hanya Snapshot'}</span>
-    </button>
+      ariaLabel="Tampilkan Watermark di Kanvas Kerja Aktif"
+      onchange={(next) => updateWatermark({ showOnLiveCanvas: next })}
+    />
   </div>
 
   <!-- 5. Pratinjau Tampilan Teks Watermark Miring (Live Preview) -->
@@ -537,15 +530,11 @@
       <span class="setting-label">Bingkai Branded Frame Bawaan</span>
       <span class="setting-desc">Sematkan kartu showcase dengan Attribution Bar (identitas trader, logo, harga) atau kanvas murni</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {currentIncludeFrame ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ snapshotIncludeFrame: !currentIncludeFrame })}
-      aria-pressed={currentIncludeFrame}
-    >
-      <span class="toggle-dot"></span>
-      <span>{currentIncludeFrame ? 'Branded Frame' : 'Clean Chart'}</span>
-    </button>
+    <ToggleSwitch
+      checked={currentIncludeFrame}
+      label="Bingkai Branded Frame Bawaan"
+      onchange={(next) => onUpdateSettings({ snapshotIncludeFrame: next })}
+    />
   </div>
 
   <!-- 3. Toggle Switch snapshotIncludePrice (Sertakan Harga Terakhir) -->
@@ -554,15 +543,11 @@
       <span class="setting-label">Sertakan Harga Terakhir</span>
       <span class="setting-desc">Tampilkan nilai harga pasar aktif di Attribution Bar snapshot</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {currentIncludePrice ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ snapshotIncludePrice: !currentIncludePrice })}
-      aria-pressed={currentIncludePrice}
-    >
-      <span class="toggle-dot"></span>
-      <span>{currentIncludePrice ? 'Sertakan' : 'Sembunyikan'}</span>
-    </button>
+    <ToggleSwitch
+      checked={currentIncludePrice}
+      ariaLabel="Sertakan Harga Terakhir"
+      onchange={(next) => onUpdateSettings({ snapshotIncludePrice: next })}
+    />
   </div>
 
   <!-- 4. Toggle Switch snapshotIncludeTimestamp (Sertakan Stempel Waktu Lokal) -->
@@ -571,15 +556,11 @@
       <span class="setting-label">Sertakan Stempel Waktu Lokal</span>
       <span class="setting-desc">Tampilkan informasi tanggal dan jam analisis lokal saat grafik diambil</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {currentIncludeTimestamp ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ snapshotIncludeTimestamp: !currentIncludeTimestamp })}
-      aria-pressed={currentIncludeTimestamp}
-    >
-      <span class="toggle-dot"></span>
-      <span>{currentIncludeTimestamp ? 'Sertakan' : 'Sembunyikan'}</span>
-    </button>
+    <ToggleSwitch
+      checked={currentIncludeTimestamp}
+      ariaLabel="Sertakan Stempel Waktu Lokal"
+      onchange={(next) => onUpdateSettings({ snapshotIncludeTimestamp: next })}
+    />
   </div>
 </div>
 
@@ -587,7 +568,7 @@
   .section-group {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 3px;
   }
 
   .section-title {
@@ -741,10 +722,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 14px;
-    background-color: var(--bg-surface, #141414);
-    border: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.05));
-    border-radius: var(--radius-xs, 4px);
+    padding: 11px 14px;
+    background-color: var(--bg-panel, #171717);
+    border: none;
+    border-radius: var(--radius-md, 6px);
     gap: 16px;
   }
 

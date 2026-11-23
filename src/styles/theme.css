@@ -18,6 +18,7 @@
   --font-size-xl: calc(14px * var(--font-scale, 1));
 
   /* Default Signature Palette (#0F0F0F + White Bull + Hot Pink Bear) */
+  --bg-shell: #08080A;          /* Neo-Quant Deep Shell Foundation (celah tonal 2px) */
   --bg-darkest: #0F0F0F;        /* True Dark Canvas Foundation */
   --bg-base: #121212;           /* Surface Container Lowest */
   --bg-surface: #0F0F0F;        /* Primary Working Panel & Chart Surface */
@@ -28,7 +29,7 @@
   --bg-hover: #262626;          /* Interactive Item Hover */
   --bg-active: #2E2E2E;         /* Selected Tab / Depressed Element */
   
-  /* Hairline Borders (1px Precision Division) */
+  /* Hairline Borders (Hanya untuk fokus/overlay modal, bukan box-in-box) */
   --border-hairline: #222222;   /* 1px Structural Divider */
   --border-subtle: #202020;     /* Default Pane Separation */
   --border-medium: #2C2C2C;     /* Secondary Outlines */
@@ -39,7 +40,7 @@
   --text-main: #F7F7F7;         /* High-contrast Pure White */
   --text-primary: #F7F7F7;      /* Primary Typography */
   --text-muted: #A3A3A3;        /* Standard Labels & Inactive Tabs */
-  --text-dim: #737373;          /* Muted Telemetry / Units / Captions */
+  --text-dim: #808080;          /* Muted Telemetry / Units / Captions (WCAG AA >= 4.5:1) */
   --text-disabled: #525252;     /* Disabled / Comments */
   
   /* Signature Signals: White Bull & Hot Pink Bear */
@@ -62,11 +63,12 @@
   --status-warn: #FBBF24;
   --status-danger: #FF4466;
   
-  /* Micro-Mechanical Radii (Max 4px) */
-  --radius-xs: 2px;
-  --radius-sm: 3px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
+  /* Neo-Quant Tonal Shell Radii (ADR-0029) */
+  --radius-xs: 4px;
+  --radius-sm: 5px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
 
   /* ─── Vela WebGL2 UI Kit CSS Variables Bridge ─── */
   --vela-font: var(--font-ui);
@@ -1483,16 +1485,48 @@ html, body {
   background: var(--border-bright);
 }
 
-/* Utilitas Tonal Stacking */
+/* Utilitas Tonal Stacking & Neo-Quant Primitives (ADR-0029) */
 .obsidian-panel {
-  background-color: var(--bg-surface);
-  border: 1px solid var(--border-hairline);
+  background-color: var(--bg-panel);
+  border: none;
+  border-radius: var(--radius-lg);
 }
 
 .obsidian-card {
-  background-color: var(--bg-base);
-  border: 1px solid var(--border-hairline);
+  background-color: var(--bg-panel);
+  border: none;
+  border-radius: var(--radius-md);
+}
+
+.nq-setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nq-setting-row {
+  background-color: var(--bg-panel);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 11px 14px;
+}
+
+.nq-active-item {
+  background-color: var(--bg-elevated);
+  box-shadow: inset 2.5px 0 0 var(--brand-primary);
+}
+
+.nq-btn-tonal {
+  background-color: var(--bg-elevated);
+  border: none;
   border-radius: var(--radius-sm);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background-color 0.14s ease;
+}
+
+.nq-btn-tonal:hover:not(:disabled) {
+  background-color: var(--bg-hover);
 }
 
 .glow-bull {

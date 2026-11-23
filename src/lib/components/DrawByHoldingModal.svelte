@@ -378,10 +378,10 @@
     max-height: 88vh;
     display: flex;
     flex-direction: column;
-    background-color: var(--bg-surface, #0f121a);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.12));
-    border-radius: var(--radius-md, 8px);
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 24px rgba(56, 189, 248, 0.1);
+    background-color: var(--bg-surface, #0F0F0F);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: var(--radius-xl, 10px);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85);
     overflow: hidden;
     animation: scaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   }

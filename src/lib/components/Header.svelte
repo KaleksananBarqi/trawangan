@@ -468,14 +468,14 @@
   .header-shell {
     display: flex;
     flex-direction: column;
-    background-color: var(--bg-surface);
-    border-bottom: 1px solid var(--border-hairline);
+    background-color: var(--bg-container);
+    border: none;
     z-index: 100;
   }
 
   .chart-sub-header {
     height: 36px;
-    background-color: var(--bg-surface);
+    background-color: var(--bg-container);
     display: flex;
     align-items: center;
     padding: 0 10px;
@@ -484,8 +484,8 @@
 
   .divider {
     width: 1px;
-    height: 16px;
-    background-color: var(--border-hairline);
+    height: 14px;
+    background-color: var(--border-subtle);
     flex-shrink: 0;
   }
 
@@ -501,18 +501,17 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 3px 8px;
+    padding: 3px 9px;
     height: 26px;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
+    background-color: var(--bg-elevated);
+    border: none;
+    border-radius: var(--radius-sm, 5px);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.14s ease;
   }
 
   .symbol-badge-btn:hover {
     background-color: var(--bg-hover);
-    border-color: var(--border-bright);
   }
 
   .active-sym-title {
@@ -529,30 +528,27 @@
     width: 26px;
     height: 26px;
     padding: 0;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
+    background-color: var(--bg-elevated);
+    border: none;
+    border-radius: var(--radius-sm, 5px);
     color: var(--text-muted);
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.15s ease;
+    transition: background-color 0.14s ease, color 0.14s ease;
   }
 
   .watchlist-star-btn:hover {
     background-color: var(--bg-hover);
     color: var(--text-main);
-    border-color: var(--border-bright);
   }
 
   .watchlist-star-btn.active {
     color: var(--status-warn);
-    border-color: color-mix(in srgb, var(--status-warn) 40%, transparent);
-    background-color: color-mix(in srgb, var(--status-warn) 12%, transparent);
+    background-color: color-mix(in srgb, var(--status-warn) 14%, transparent);
   }
 
   .watchlist-star-btn.active:hover {
-    background-color: color-mix(in srgb, var(--status-warn) 20%, transparent);
-    border-color: color-mix(in srgb, var(--status-warn) 65%, transparent);
+    background-color: color-mix(in srgb, var(--status-warn) 22%, transparent);
   }
 
   .provider-dropdown-container {
@@ -568,14 +564,14 @@
     gap: 4px;
     font-size: var(--font-size-xs, 9px);
     font-weight: 700;
-    padding: 3px 6px;
+    padding: 3px 7px;
     height: 26px;
-    border-radius: var(--radius-xs);
+    border-radius: var(--radius-sm, 5px);
     letter-spacing: 0.03em;
     cursor: pointer;
-    transition: all 0.15s ease;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
+    transition: background-color 0.14s ease, color 0.14s ease;
+    background-color: var(--bg-elevated);
+    border: none;
     color: var(--text-muted);
   }
 
@@ -719,13 +715,13 @@
   }
 
   :global(.check-icon) {
-    color: var(--brand-primary, #00f090);
+    color: var(--brand-primary);
   }
 
   .provider-dropdown-footer {
     padding: 6px 10px;
-    border-top: 1px solid var(--border-hairline, #1f2733);
-    background-color: var(--bg-panel, #0f141c);
+    border-top: 1px solid var(--border-subtle);
+    background-color: var(--bg-panel);
   }
 
   .add-custom-feed-link {
@@ -733,7 +729,7 @@
     border: none;
     font-size: var(--font-size-sm, 10px);
     font-weight: 600;
-    color: var(--brand-primary, #00f090);
+    color: var(--brand-primary);
     cursor: pointer;
     padding: 0;
     display: block;
@@ -761,43 +757,39 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 3px 7px;
+    padding: 3px 9px;
     height: 26px;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
+    background-color: var(--bg-elevated);
+    border: none;
+    border-radius: var(--radius-sm, 5px);
     color: var(--text-muted);
     font-size: var(--font-size-base, 11px);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.14s ease, color 0.14s ease;
   }
 
   .action-btn:hover {
     background-color: var(--bg-hover);
     color: var(--text-main);
-    border-color: var(--border-bright);
   }
 
   .indicator-header-btn {
-    color: #38bdf8;
-    border-color: rgba(56, 189, 248, 0.25);
+    color: var(--brand-cyan);
   }
 
   .indicator-header-btn:hover {
-    background-color: rgba(56, 189, 248, 0.12);
-    color: #ffffff;
-    box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+    background-color: color-mix(in srgb, var(--brand-cyan) 14%, transparent);
+    color: var(--text-main);
   }
 
   .indicator-header-btn.has-active {
-    color: var(--brand-primary, #00f090);
-    border-color: rgba(0, 240, 144, 0.35);
-    background-color: rgba(0, 240, 144, 0.08);
+    color: var(--brand-primary);
+    background-color: color-mix(in srgb, var(--brand-primary) 12%, transparent);
   }
 
   .indicator-header-btn .count-badge {
-    background: var(--brand-primary, #00f090);
-    color: var(--on-brand-primary, #000000);
+    background: var(--brand-primary);
+    color: var(--on-brand-primary);
     font-size: 9px;
     font-weight: 700;
     padding: 0 4.5px;
@@ -811,10 +803,10 @@
   }
 
   .text-brand {
-    color: var(--brand-primary, #00f090);
+    color: var(--brand-primary);
   }
 
   .text-cyan-accent {
-    color: #38bdf8;
+    color: var(--brand-cyan);
   }
 </style>

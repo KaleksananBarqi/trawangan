@@ -973,8 +973,8 @@
     width: 44px;
     min-width: 44px;
     height: 100%;
-    background-color: var(--bg-surface, #121721);
-    border-right: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.08));
+    background-color: var(--bg-container, #141414);
+    border: none;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1046,22 +1046,22 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-xs, 4px);
-    transition: all 0.12s ease;
+    border-radius: var(--radius-sm, 5px);
+    transition: background-color 0.12s ease;
   }
 
   .tool-btn-wrapper.active {
-    background: rgba(0, 240, 255, 0.12);
-    border: 1px solid rgba(0, 240, 255, 0.5);
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+    background: var(--bg-elevated);
+    border: none;
+    box-shadow: inset 2.5px 0 0 var(--brand-cyan);
   }
 
   .tool-btn-wrapper.active .tool-btn {
-    color: #00f0ff;
+    color: var(--brand-cyan);
   }
 
   .tool-btn-wrapper.flyout-open {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-hover);
   }
 
   .tool-btn {
@@ -1071,25 +1071,24 @@
     align-items: center;
     justify-content: center;
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-xs, 4px);
-    color: var(--text-muted, #888888);
+    border: none;
+    border-radius: var(--radius-sm, 5px);
+    color: var(--text-muted);
     cursor: pointer;
-    transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: background-color 0.12s cubic-bezier(0.16, 1, 0.3, 1), color 0.12s ease;
     position: relative;
     padding: 0;
   }
 
   .tool-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--text-main, #eeeeee);
+    background: var(--bg-hover);
+    color: var(--text-main);
   }
 
   .tool-btn.active {
-    background: rgba(0, 240, 255, 0.12);
-    color: #00f0ff;
-    border-color: rgba(0, 240, 255, 0.5);
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+    background: var(--bg-elevated);
+    color: var(--brand-cyan);
+    box-shadow: inset 2.5px 0 0 var(--brand-cyan);
   }
 
   .sub-arrow-btn {
@@ -1137,14 +1136,12 @@
 
   /* Snap and Tool Variations */
   .tool-btn.snap-weak {
-    color: #00f090;
-    border-color: rgba(0, 240, 144, 0.4);
-    background: rgba(0, 240, 144, 0.12);
+    color: var(--brand-primary);
+    background: color-mix(in srgb, var(--brand-primary) 14%, transparent);
   }
 
   .tool-btn.snap-strong {
     color: #818cf8;
-    border-color: rgba(129, 140, 248, 0.4);
     background: rgba(129, 140, 248, 0.15);
   }
 
@@ -1158,7 +1155,7 @@
   }
 
   .action-btn:hover {
-    color: #00f0ff;
+    color: var(--brand-cyan);
   }
 
   .delete-btn:hover {

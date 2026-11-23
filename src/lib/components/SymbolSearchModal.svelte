@@ -649,10 +649,10 @@
   .search-modal-card {
     width: 580px;
     max-width: 92vw;
-    background-color: var(--bg-surface, #121820);
-    border: 1px solid var(--border-medium, #2a3441);
-    border-radius: var(--radius-md, 8px);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    background-color: var(--bg-surface, #0F0F0F);
+    border: 1px solid var(--border-subtle, #202020);
+    border-radius: var(--radius-xl, 10px);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.04);
     display: flex;
     flex-direction: column;
     overflow: hidden;

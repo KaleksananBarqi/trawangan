@@ -610,22 +610,21 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 6px;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    transition: all 0.12s ease;
+    padding: 5px 7px;
+    background-color: var(--bg-panel);
+    border: none;
+    border-radius: var(--radius-sm, 5px);
+    transition: background-color 0.12s ease;
     gap: 4px;
   }
 
   .layer-item.drawing-item:hover {
-    background-color: var(--bg-hover);
-    border-color: var(--border-medium);
+    background-color: var(--bg-elevated);
   }
 
   .layer-item.drawing-item.selected {
-    background-color: color-mix(in srgb, var(--bull-text) 10%, transparent);
-    border-color: color-mix(in srgb, var(--bull-text) 45%, transparent);
+    background-color: var(--bg-elevated);
+    box-shadow: inset 2.5px 0 0 var(--bull-text);
   }
 
   .layer-select-btn {

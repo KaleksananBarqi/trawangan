@@ -14,6 +14,7 @@
   import type { AppSettings } from '../../types/market';
   import { timelineMarksController } from '../../services/timelineMarksController';
   import type { MarketSession } from '../../services/marketSessionService';
+  import ToggleSwitch from '../common/ToggleSwitch.svelte';
 
   interface Props {
     settings: AppSettings;
@@ -199,12 +200,11 @@
       <span class="setting-label">Watermark Simbol Besar</span>
       <span class="setting-desc">Tampilkan watermark samar di belakang candlestick</span>
     </div>
-    <button
-      class="toggle-btn {settings.showWatermark ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showWatermark: !settings.showWatermark })}
-    >
-      {settings.showWatermark ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={Boolean(settings.showWatermark)}
+      ariaLabel="Watermark Simbol Besar"
+      onchange={(next) => onUpdateSettings({ showWatermark: next })}
+    />
   </div>
 
   <div class="setting-row">
@@ -212,13 +212,11 @@
       <span class="setting-label">Histogram Volume Pasar (Native Overlay)</span>
       <span class="setting-desc">Tampilkan bar volume WebGL2 di dasar panel candlestick harga utama</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.showVolume !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showVolume: settings.showVolume === false })}
-    >
-      {settings.showVolume !== false ? 'Tampilkan' : 'Sembunyikan'}
-    </button>
+    <ToggleSwitch
+      checked={settings.showVolume !== false}
+      ariaLabel="Histogram Volume Pasar"
+      onchange={(next) => onUpdateSettings({ showVolume: next })}
+    />
   </div>
 
   <div class="setting-row">
@@ -226,13 +224,11 @@
       <span class="setting-label">Hollow Candles (Body Bullish Transparan)</span>
       <span class="setting-desc">Kosongkan isian body lilin naik (bullish) dengan garis tepi &amp; sumbu mengikuti warna tema</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.hollowCandles ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ hollowCandles: !settings.hollowCandles })}
-    >
-      {settings.hollowCandles ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={Boolean(settings.hollowCandles)}
+      ariaLabel="Hollow Candles"
+      onchange={(next) => onUpdateSettings({ hollowCandles: next })}
+    />
   </div>
 
   <div class="setting-row">
@@ -262,12 +258,11 @@
       <span class="setting-label">Bar Replay Controller</span>
       <span class="setting-desc">Tampilkan toolbar replay candle historis di atas grafik</span>
     </div>
-    <button
-      class="toggle-btn {settings.showReplayBar ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showReplayBar: !settings.showReplayBar })}
-    >
-      {settings.showReplayBar ? 'Tampil' : 'Sembunyi'}
-    </button>
+    <ToggleSwitch
+      checked={Boolean(settings.showReplayBar)}
+      ariaLabel="Bar Replay Controller"
+      onchange={(next) => onUpdateSettings({ showReplayBar: next })}
+    />
   </div>
 
   <!-- Sesi Pasar RTH / ETH (Yahoo Finance Equities & Indices) -->
@@ -328,13 +323,11 @@
       <span class="setting-label">Garis Harga Terakhir (Current Price Line)</span>
       <span class="setting-desc">Tampilkan garis horizontal dinamis yang membentang dari harga lilin aktif ke skala kanan</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.showCurrentPriceLine !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showCurrentPriceLine: settings.showCurrentPriceLine === false })}
-    >
-      {settings.showCurrentPriceLine !== false ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={settings.showCurrentPriceLine !== false}
+      label="Garis Harga Terakhir"
+      onchange={(next) => onUpdateSettings({ showCurrentPriceLine: next })}
+    />
   </div>
 
   <!-- Hitung Mundur Penutupan Lilin (Countdown to Bar Close) -->
@@ -343,13 +336,11 @@
       <span class="setting-label">Hitung Mundur Penutupan Lilin</span>
       <span class="setting-desc">Tampilkan hitung mundur waktu penutupan lilin aktif pada sumbu harga kanan</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.showPriceScaleCountdown ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showPriceScaleCountdown: !settings.showPriceScaleCountdown })}
-    >
-      {settings.showPriceScaleCountdown ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={Boolean(settings.showPriceScaleCountdown)}
+      label="Hitung Mundur Penutupan Lilin"
+      onchange={(next) => onUpdateSettings({ showPriceScaleCountdown: next })}
+    />
   </div>
 
   <!-- Label Nilai Indikator di Skala Harga -->
@@ -358,13 +349,11 @@
       <span class="setting-label">Label Nilai Indikator di Skala Kanan</span>
       <span class="setting-desc">Tampilkan badge angka nilai terakhir dari indikator teknikal aktif pada sumbu harga kanan</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.showIndicatorPriceLabels !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showIndicatorPriceLabels: settings.showIndicatorPriceLabels === false })}
-    >
-      {settings.showIndicatorPriceLabels !== false ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={settings.showIndicatorPriceLabels !== false}
+      label="Label Nilai Indikator di Skala Kanan"
+      onchange={(next) => onUpdateSettings({ showIndicatorPriceLabels: next })}
+    />
   </div>
 
   <!-- Label Harga Posisi Long/Short & Gambar -->
@@ -373,13 +362,11 @@
       <span class="setting-label">Label Harga Posisi Long/Short & Gambar</span>
       <span class="setting-desc">Tampilkan badge harga entry, target keuntungan (TP), dan batas rugi (SL) di sumbu kanan</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.showDrawingPriceLabels !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showDrawingPriceLabels: settings.showDrawingPriceLabels === false })}
-    >
-      {settings.showDrawingPriceLabels !== false ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={settings.showDrawingPriceLabels !== false}
+      label="Label Harga Posisi Long/Short & Gambar"
+      onchange={(next) => onUpdateSettings({ showDrawingPriceLabels: next })}
+    />
   </div>
 
   <!-- Garis Price Alert pada Grafik -->
@@ -388,13 +375,11 @@
       <span class="setting-label">Garis Price Alert di Grafik</span>
       <span class="setting-desc">Tampilkan garis &amp; label alert pada kanvas (notifikasi latar belakang tetap berjalan saat disembunyikan)</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.showAlertLines !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showAlertLines: settings.showAlertLines === false })}
-    >
-      {settings.showAlertLines !== false ? 'Tampil' : 'Sembunyi'}
-    </button>
+    <ToggleSwitch
+      checked={settings.showAlertLines !== false}
+      label="Garis Price Alert di Grafik"
+      onchange={(next) => onUpdateSettings({ showAlertLines: next })}
+    />
   </div>
 </div>
 
@@ -411,13 +396,11 @@
       <span class="setting-label">Acara Kalender Makroekonomi (FOMC, CPI, NFP)</span>
       <span class="setting-desc">Tampilkan titik penanda rilis ekonomi pada sumbu waktu chart</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {isMacroMarksVisible ? 'active' : ''}"
-      onclick={toggleMacroMarks}
-    >
-      {isMacroMarksVisible ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={isMacroMarksVisible}
+      label="Acara Kalender Makroekonomi"
+      onchange={() => toggleMacroMarks()}
+    />
   </div>
 
   {#if isMacroMarksVisible}
@@ -426,13 +409,11 @@
         <span class="setting-label">Hanya High Impact di Chart</span>
         <span class="setting-desc">Sembunyikan penanda event Medium dan Low Impact dari sumbu waktu chart</span>
       </div>
-      <button
-        type="button"
-        class="toggle-btn {isMacroHighImpactOnly ? 'active' : ''}"
-        onclick={toggleMacroHighImpactOnly}
-      >
-        {isMacroHighImpactOnly ? 'Aktif' : 'Nonaktif'}
-      </button>
+      <ToggleSwitch
+        checked={isMacroHighImpactOnly}
+        label="Hanya High Impact di Chart"
+        onchange={() => toggleMacroHighImpactOnly()}
+      />
     </div>
   {/if}
 
@@ -442,13 +423,11 @@
       <span class="setting-label">Titik Eksekusi Rencana Trading (Entry, TP, SL)</span>
       <span class="setting-desc">Tampilkan penanda glyph visual pada lilin di mana order plan terisi atau tersentuh</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {isTradesMarksVisible ? 'active' : ''}"
-      onclick={toggleTradesMarks}
-    >
-      {isTradesMarksVisible ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={isTradesMarksVisible}
+      label="Titik Eksekusi Rencana Trading"
+      onchange={() => toggleTradesMarks()}
+    />
   </div>
 
   <!-- Catatan Jurnal & Tesis -->
@@ -457,13 +436,11 @@
       <span class="setting-label">Catatan Jurnal & Tesis Trader</span>
       <span class="setting-desc">Sematkan anotasi personal dan catatan evaluasi pada timestamp candle tertentu</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {isJournalMarksVisible ? 'active' : ''}"
-      onclick={toggleJournalMarks}
-    >
-      {isJournalMarksVisible ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={isJournalMarksVisible}
+      label="Catatan Jurnal & Tesis Trader"
+      onchange={() => toggleJournalMarks()}
+    />
   </div>
 
   <!-- Tombol Dialog Events Bawaan Vela -->
@@ -633,13 +610,11 @@
           </div>
           <span class="sync-card-desc">Sinkronkan koordinat kursor mouse serempak antar panel grafik</span>
         </div>
-        <button
-          type="button"
-          class="toggle-btn {(settings.syncConfig?.crosshair ?? true) ? 'active' : ''}"
-          onclick={() => handleToggleSync('crosshair')}
-        >
-          {(settings.syncConfig?.crosshair ?? true) ? 'Aktif' : 'Nonaktif'}
-        </button>
+        <ToggleSwitch
+          checked={settings.syncConfig?.crosshair ?? true}
+          ariaLabel="Sinkronisasi Kursor Crosshair"
+          onchange={() => handleToggleSync('crosshair')}
+        />
       </div>
 
       <!-- 2. Viewport / Scroll Sync -->
@@ -651,13 +626,11 @@
           </div>
           <span class="sync-card-desc">Penyelarasan zoom dan pan horizontal rentang waktu candle</span>
         </div>
-        <button
-          type="button"
-          class="toggle-btn {(settings.syncConfig?.viewport ?? true) ? 'active' : ''}"
-          onclick={() => handleToggleSync('viewport')}
-        >
-          {(settings.syncConfig?.viewport ?? true) ? 'Aktif' : 'Nonaktif'}
-        </button>
+        <ToggleSwitch
+          checked={settings.syncConfig?.viewport ?? true}
+          ariaLabel="Sinkronisasi Viewport"
+          onchange={() => handleToggleSync('viewport')}
+        />
       </div>
 
       <!-- 3. Symbol Sync -->
@@ -669,13 +642,11 @@
           </div>
           <span class="sync-card-desc">Ganti simbol di satu chart otomatis mengganti semua chart</span>
         </div>
-        <button
-          type="button"
-          class="toggle-btn {(settings.syncConfig?.symbol ?? false) ? 'active' : ''}"
-          onclick={() => handleToggleSync('symbol')}
-        >
-          {(settings.syncConfig?.symbol ?? false) ? 'Aktif' : 'Independen'}
-        </button>
+        <ToggleSwitch
+          checked={settings.syncConfig?.symbol ?? false}
+          ariaLabel="Sinkronisasi Simbol Pasar"
+          onchange={() => handleToggleSync('symbol')}
+        />
       </div>
 
       <!-- 4. Drawings Sync -->
@@ -687,13 +658,11 @@
           </div>
           <span class="sync-card-desc">Garis tren, horizontal line, dan anotasi gambar tersinkron</span>
         </div>
-        <button
-          type="button"
-          class="toggle-btn {(settings.syncConfig?.drawings ?? true) ? 'active' : ''}"
-          onclick={() => handleToggleSync('drawings')}
-        >
-          {(settings.syncConfig?.drawings ?? true) ? 'Aktif' : 'Nonaktif'}
-        </button>
+        <ToggleSwitch
+          checked={settings.syncConfig?.drawings ?? true}
+          ariaLabel="Sinkronisasi Objek Gambar"
+          onchange={() => handleToggleSync('drawings')}
+        />
       </div>
 
       <!-- 5. Indicators Sync (Auto-Clone) -->
@@ -705,13 +674,11 @@
           </div>
           <span class="sync-card-desc">Duplikasi indikator aktif ke seluruh cell layout baru secara otomatis</span>
         </div>
-        <button
-          type="button"
-          class="toggle-btn {(settings.syncConfig?.indicators ?? true) ? 'active' : ''}"
-          onclick={() => handleToggleSync('indicators')}
-        >
-          {(settings.syncConfig?.indicators ?? true) ? 'Auto-Clone' : 'Manual'}
-        </button>
+        <ToggleSwitch
+          checked={settings.syncConfig?.indicators ?? true}
+          ariaLabel="Sinkronisasi Indikator Teknikal"
+          onchange={() => handleToggleSync('indicators')}
+        />
       </div>
     </div>
   </div>
@@ -719,25 +686,25 @@
 
 <style>
   .section-group {
-    margin-bottom: 24px;
+    margin-bottom: 22px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 3px;
   }
 
   .section-title {
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 700;
-    color: var(--text-base, #ffffff);
-    margin: 0;
+    color: var(--text-dim, #808080);
+    margin: 0 0 6px 2px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
 
   .section-subtitle {
     font-size: 11px;
-    color: var(--text-dim, #6e7681);
-    margin: -4px 0 6px 0;
+    color: var(--text-muted, #A3A3A3);
+    margin: -2px 0 8px 2px;
     line-height: 1.4;
   }
 
@@ -746,10 +713,10 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 10px 14px;
-    background: var(--bg-surface, #161b22);
-    border: 1px solid var(--border-subtle, #30363d);
-    border-radius: 6px;
+    padding: 11px 14px;
+    background: var(--bg-panel, #171717);
+    border: none;
+    border-radius: var(--radius-md, 6px);
   }
 
   .setting-info {
@@ -920,18 +887,18 @@
 
   .multichart-sync-settings-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 4px;
   }
 
   .sync-setting-card {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 10px;
-    background: var(--bg-subtle, #0d1117);
-    border: 1px solid var(--border-subtle, #30363d);
-    border-radius: 4px;
+    padding: 10px 12px;
+    background: var(--bg-panel, #171717);
+    border: none;
+    border-radius: var(--radius-md, 6px);
   }
 
   .sync-card-info {

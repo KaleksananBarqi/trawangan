@@ -36,6 +36,7 @@
     openSnapshotFolder,
     pickSnapshotDirectory
   } from '../../services/chartSnapshotService';
+  import ToggleSwitch from '../common/ToggleSwitch.svelte';
 
   interface Props {
     settings: AppSettings;
@@ -178,17 +179,11 @@
       <span class="setting-label">Jam Bursa Dunia (StatusBar)</span>
       <span class="setting-desc">Tampilkan jam bursa New York, London, dan Tokyo beserta status sesi pasar di bilah status</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.showWorldClocks !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ showWorldClocks: settings.showWorldClocks === false ? true : false })}
-    >
-      {#if settings.showWorldClocks !== false}
-        <Clock size={14} /> Aktif
-      {:else}
-        <Clock size={14} /> Nonaktif
-      {/if}
-    </button>
+    <ToggleSwitch
+      checked={settings.showWorldClocks !== false}
+      ariaLabel="Jam Bursa Dunia"
+      onchange={(next) => onUpdateSettings({ showWorldClocks: next })}
+    />
   </div>
 
   <div class="setting-row">
@@ -196,17 +191,11 @@
       <span class="setting-label">Market Sessions di Footer (StatusBar)</span>
       <span class="setting-desc">Tampilkan pill interaktif Market Sessions dengan timeline 24 jam & countdown di bilah status</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {!isMarketSessionsFooterHidden ? 'active' : ''}"
-      onclick={handleToggleMarketSessionsFooter}
-    >
-      {#if !isMarketSessionsFooterHidden}
-        <Eye size={14} /> Tampil
-      {:else}
-        <EyeOff size={14} /> Disembunyikan
-      {/if}
-    </button>
+    <ToggleSwitch
+      checked={!isMarketSessionsFooterHidden}
+      ariaLabel="Market Sessions di Footer"
+      onchange={() => handleToggleMarketSessionsFooter()}
+    />
   </div>
 
   {#if settings.showWorldClocks !== false}
@@ -237,17 +226,11 @@
       <span class="setting-label">Efek Suara Notifikasi (Audio Chime)</span>
       <span class="setting-desc">Bunyikan nada kristal sintetis saat harga menembus level Alert</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.soundEnabled ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ soundEnabled: !settings.soundEnabled })}
-    >
-      {#if settings.soundEnabled}
-        <Volume2 size={14} /> Aktif
-      {:else}
-        <VolumeX size={14} /> Senyap
-      {/if}
-    </button>
+    <ToggleSwitch
+      checked={Boolean(settings.soundEnabled)}
+      ariaLabel="Efek Suara Notifikasi"
+      onchange={(next) => onUpdateSettings({ soundEnabled: next })}
+    />
   </div>
 
   <!-- Notifikasi Desktop Sistem -->
@@ -269,17 +252,11 @@
         <Bell size={12} />
         <span>Tes Desktop</span>
       </button>
-      <button
-        type="button"
-        class="toggle-btn {settings.systemNotificationEnabled !== false ? 'active' : ''}"
-        onclick={() => onUpdateSettings({ systemNotificationEnabled: settings.systemNotificationEnabled === false })}
-      >
-        {#if settings.systemNotificationEnabled !== false}
-          <Bell size={14} /> Aktif
-        {:else}
-          <BellOff size={14} /> Nonaktif
-        {/if}
-      </button>
+      <ToggleSwitch
+        checked={settings.systemNotificationEnabled !== false}
+        ariaLabel="Notifikasi Desktop Sistem"
+        onchange={(next) => onUpdateSettings({ systemNotificationEnabled: next })}
+      />
     </div>
   </div>
 
@@ -305,17 +282,11 @@
         <Send size={12} />
         <span>{isTestingTelegram ? 'Mengirim...' : 'Tes Telegram'}</span>
       </button>
-      <button
-        type="button"
-        class="toggle-btn {settings.telegramNotificationEnabled ? 'active' : ''}"
-        onclick={() => onUpdateSettings({ telegramNotificationEnabled: !settings.telegramNotificationEnabled })}
-      >
-        {#if settings.telegramNotificationEnabled}
-          <Send size={13} /> Aktif
-        {:else}
-          <BellOff size={13} /> Nonaktif
-        {/if}
-      </button>
+      <ToggleSwitch
+        checked={Boolean(settings.telegramNotificationEnabled)}
+        ariaLabel="Notifikasi Bot Telegram"
+        onchange={(next) => onUpdateSettings({ telegramNotificationEnabled: next })}
+      />
     </div>
   </div>
 
@@ -391,17 +362,11 @@
         <MessageSquare size={12} />
         <span>{isTestingDiscord ? 'Mengirim...' : 'Tes Discord'}</span>
       </button>
-      <button
-        type="button"
-        class="toggle-btn {settings.discordNotificationEnabled ? 'active' : ''}"
-        onclick={() => onUpdateSettings({ discordNotificationEnabled: !settings.discordNotificationEnabled })}
-      >
-        {#if settings.discordNotificationEnabled}
-          <MessageSquare size={13} /> Aktif
-        {:else}
-          <BellOff size={13} /> Nonaktif
-        {/if}
-      </button>
+      <ToggleSwitch
+        checked={Boolean(settings.discordNotificationEnabled)}
+        ariaLabel="Notifikasi Webhook Discord"
+        onchange={(next) => onUpdateSettings({ discordNotificationEnabled: next })}
+      />
     </div>
   </div>
 
@@ -545,13 +510,11 @@
       <span class="setting-label">Sertakan Harga Terakhir (Attribution Bar)</span>
       <span class="setting-desc">Tampilkan badge harga pasar aktif di bilah footer snapshot</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.snapshotIncludePrice !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ snapshotIncludePrice: settings.snapshotIncludePrice === false })}
-    >
-      {settings.snapshotIncludePrice !== false ? 'Sertakan' : 'Sembunyikan'}
-    </button>
+    <ToggleSwitch
+      checked={settings.snapshotIncludePrice !== false}
+      ariaLabel="Sertakan Harga Terakhir"
+      onchange={(next) => onUpdateSettings({ snapshotIncludePrice: next })}
+    />
   </div>
 
   <div class="setting-row">
@@ -559,18 +522,16 @@
       <span class="setting-label">Sertakan Waktu Analisis</span>
       <span class="setting-desc">Tampilkan stempel tanggal dan jam lokal saat grafik ditangkap</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.snapshotIncludeTimestamp !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ snapshotIncludeTimestamp: settings.snapshotIncludeTimestamp === false })}
-    >
-      {settings.snapshotIncludeTimestamp !== false ? 'Sertakan' : 'Sembunyikan'}
-    </button>
+    <ToggleSwitch
+      checked={settings.snapshotIncludeTimestamp !== false}
+      ariaLabel="Sertakan Waktu Analisis"
+      onchange={(next) => onUpdateSettings({ snapshotIncludeTimestamp: next })}
+    />
   </div>
 </div>
 
 <!-- Timeframe & Workspace Persistence -->
-<div class="section-group">
+<div class="section-group" style="margin-top: 16px;">
   <h4 class="section-title">Timeframe & Penyimpanan Workspace</h4>
 
   <div class="setting-row">
@@ -611,13 +572,11 @@
       <span class="setting-label">Penyimpanan Otomatis Workspace (Auto-Save)</span>
       <span class="setting-desc">Simpan otomatis tata letak grid, simbol, dan perubahan workspace saat bekerja</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.autoSaveWorkspace !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ autoSaveWorkspace: settings.autoSaveWorkspace === false })}
-    >
-      {settings.autoSaveWorkspace !== false ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={settings.autoSaveWorkspace !== false}
+      ariaLabel="Penyimpanan Otomatis Workspace"
+      onchange={(next) => onUpdateSettings({ autoSaveWorkspace: next })}
+    />
   </div>
 
   <div class="setting-row">
@@ -625,13 +584,11 @@
       <span class="setting-label">Muat Workspace Terakhir saat Startup</span>
       <span class="setting-desc">Otomatis memuat workspace, simbol, indikator, dan tata letak terakhir saat aplikasi dibuka</span>
     </div>
-    <button
-      type="button"
-      class="toggle-btn {settings.autoLoadLastWorkspace !== false ? 'active' : ''}"
-      onclick={() => onUpdateSettings({ autoLoadLastWorkspace: settings.autoLoadLastWorkspace === false })}
-    >
-      {settings.autoLoadLastWorkspace !== false ? 'Aktif' : 'Nonaktif'}
-    </button>
+    <ToggleSwitch
+      checked={settings.autoLoadLastWorkspace !== false}
+      ariaLabel="Muat Workspace Terakhir saat Startup"
+      onchange={(next) => onUpdateSettings({ autoLoadLastWorkspace: next })}
+    />
   </div>
 </div>
 
@@ -639,26 +596,27 @@
   .section-group {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 3px;
   }
 
   .section-title {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-muted);
-    margin: 0 0 4px 0;
+    color: var(--text-dim);
+    margin: 0 0 6px 2px;
   }
 
   .setting-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 12px;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm);
+    gap: 12px;
+    padding: 11px 14px;
+    background-color: var(--bg-panel);
+    border: none;
+    border-radius: var(--radius-md, 6px);
   }
 
   .setting-info {
@@ -680,13 +638,14 @@
 
   .select-input {
     background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    border: 1px solid transparent;
     color: var(--text-main);
     font-size: 11.5px;
-    padding: 5px 8px;
-    border-radius: var(--radius-xs);
+    padding: 6px 10px;
+    border-radius: var(--radius-md, 6px);
     outline: none;
     cursor: pointer;
+    transition: border-color 0.14s ease;
   }
 
   .select-input:focus {
@@ -697,15 +656,15 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    background-color: var(--bg-elevated);
+    border: none;
     color: var(--text-muted);
     font-size: 11.5px;
     font-weight: 500;
-    padding: 5px 10px;
-    border-radius: var(--radius-xs);
+    padding: 6px 11px;
+    border-radius: var(--radius-sm, 5px);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.14s ease, color 0.14s ease;
   }
 
   .toggle-btn:hover {
@@ -714,35 +673,33 @@
   }
 
   .toggle-btn.active {
-    background-color: rgba(255, 105, 180, 0.12);
-    border-color: var(--brand-primary);
+    background-color: color-mix(in srgb, var(--brand-primary) 14%, transparent);
     color: var(--brand-primary);
   }
 
   .setting-action-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
   }
 
   .btn-test-notification {
     display: flex;
     align-items: center;
     gap: 5px;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    background-color: var(--bg-elevated);
+    border: none;
     color: var(--text-muted);
     font-size: 11px;
-    padding: 5px 8px;
-    border-radius: var(--radius-xs);
+    padding: 6px 10px;
+    border-radius: var(--radius-sm, 5px);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.14s ease, color 0.14s ease;
   }
 
   .btn-test-notification:hover:not(:disabled) {
     background-color: var(--bg-hover);
     color: var(--text-main);
-    border-color: var(--border-subtle);
   }
 
   .btn-test-notification:disabled {
@@ -792,13 +749,13 @@
     flex: 1;
     min-width: 0;
     background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    border: 1px solid transparent;
     color: var(--text-main);
     font-size: 11px;
-    padding: 6px 9px;
-    border-radius: var(--radius-xs);
+    padding: 6px 10px;
+    border-radius: var(--radius-md, 6px);
     outline: none;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.14s ease;
   }
 
   .channel-input:focus {
@@ -813,14 +770,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    background-color: var(--bg-elevated);
+    border: none;
     color: var(--text-muted);
     padding: 6px 8px;
-    border-radius: var(--radius-xs);
+    border-radius: var(--radius-sm, 5px);
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.12s ease;
+    transition: background-color 0.12s ease, color 0.12s ease;
   }
 
   .secret-toggle-btn:hover {
@@ -833,11 +790,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 12px 8px 20px;
-    background-color: rgba(255, 255, 255, 0.02);
-    border: 1px dashed var(--border-hairline);
-    border-radius: var(--radius-sm);
-    margin-top: -6px;
+    padding: 10px 14px 10px 18px;
+    background-color: var(--bg-container);
+    border: none;
+    border-radius: var(--radius-md, 6px);
   }
 
   .setting-label-sub {
@@ -857,26 +813,25 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    background-color: var(--bg-elevated);
+    border: none;
     color: var(--text-muted);
     font-size: 11px;
     font-family: var(--font-mono);
-    padding: 3px 8px;
-    border-radius: var(--radius-xs);
+    padding: 4px 9px;
+    border-radius: var(--radius-sm, 5px);
     cursor: pointer;
-    transition: all 0.12s ease;
+    transition: background-color 0.12s ease, color 0.12s ease;
   }
 
   .chip-toggle:hover {
+    background-color: var(--bg-hover);
     color: var(--text-main);
-    border-color: rgba(255, 255, 255, 0.2);
   }
 
   .chip-toggle.active {
-    color: #ff69b4;
-    border-color: rgba(255, 105, 180, 0.5);
-    background-color: rgba(255, 105, 180, 0.1);
+    color: var(--brand-primary);
+    background-color: color-mix(in srgb, var(--brand-primary) 14%, transparent);
   }
 
   .chip-dot {
@@ -887,20 +842,18 @@
   }
 
   .chip-toggle.active .chip-dot {
-    background-color: #ff69b4;
-    box-shadow: 0 0 5px rgba(255, 105, 180, 0.6);
+    background-color: var(--brand-primary);
+    box-shadow: 0 0 5px color-mix(in srgb, var(--brand-primary) 60%, transparent);
   }
 
   .section-divider {
-    height: 1px;
-    background-color: var(--border-hairline);
-    margin: 8px 0;
+    height: 10px;
   }
 
   .directory-setting-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: auto;
     max-width: 440px;
   }
@@ -909,13 +862,13 @@
     flex: 1;
     min-width: 130px;
     background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    border: 1px solid transparent;
     color: var(--text-main);
     font-size: 11px;
     padding: 6px 10px;
-    border-radius: var(--radius-xs);
+    border-radius: var(--radius-md, 6px);
     outline: none;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.14s ease;
   }
 
   .directory-input:focus {
@@ -931,22 +884,21 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    background-color: var(--bg-elevated);
+    border: none;
     color: var(--text-muted);
     font-size: 11px;
     padding: 6px 10px;
-    border-radius: var(--radius-xs);
+    border-radius: var(--radius-sm, 5px);
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.15s ease;
+    transition: background-color 0.14s ease, color 0.14s ease;
   }
 
   .btn-pick-folder:hover,
   .btn-open-folder:hover {
     background-color: var(--bg-hover);
     color: var(--text-main);
-    border-color: var(--brand-primary);
   }
 
   .dir-chips-group {

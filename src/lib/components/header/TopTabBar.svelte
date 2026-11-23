@@ -223,8 +223,8 @@
 <style>
   .top-tab-bar {
     height: 32px;
-    background-color: var(--bg-panel, var(--bg-surface));
-    border-bottom: 1px solid var(--border-hairline);
+    background-color: var(--bg-container, var(--bg-surface));
+    border-bottom: 1px solid var(--border-subtle);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -245,10 +245,10 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    background-color: var(--bg-container);
-    border: 1px solid var(--border-hairline);
-    padding: 2px 6px;
-    border-radius: var(--radius-xs);
+    background-color: var(--bg-elevated);
+    border: none;
+    padding: 3px 7px;
+    border-radius: var(--radius-sm, 5px);
     flex-shrink: 0;
   }
 
@@ -287,14 +287,14 @@
     align-items: center;
     gap: 5px;
     height: 24px;
-    padding: 0 7px;
-    border-radius: var(--radius-xs);
-    border: 1px solid transparent;
+    padding: 0 8px;
+    border-radius: var(--radius-sm, 5px);
+    border: none;
     background-color: transparent;
     color: var(--text-muted);
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.12s ease;
+    transition: background-color 0.12s ease, color 0.12s ease;
     user-select: none;
   }
 
@@ -304,8 +304,8 @@
   }
 
   .chart-tab.active {
-    background-color: var(--bg-base);
-    border-color: var(--border-bright, var(--border-hairline));
+    background-color: var(--bg-elevated);
+    box-shadow: inset 2.5px 0 0 var(--brand-primary);
     color: var(--text-main);
   }
 
@@ -357,19 +357,18 @@
     width: 24px;
     height: 24px;
     padding: 0;
-    border-radius: var(--radius-xs);
-    border: 1px solid var(--border-hairline);
-    background-color: var(--bg-base);
+    border-radius: var(--radius-sm, 5px);
+    border: none;
+    background-color: var(--bg-elevated);
     color: var(--text-muted);
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.12s ease;
+    transition: background-color 0.12s ease, color 0.12s ease;
   }
 
   .add-tab-btn:hover {
     background-color: var(--bg-hover);
     color: var(--text-main);
-    border-color: var(--border-bright);
   }
 
   .top-bar-right {
@@ -385,18 +384,17 @@
     gap: 6px;
     height: 24px;
     min-width: 200px;
-    padding: 0 7px;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
+    padding: 0 8px;
+    background-color: var(--bg-surface);
+    border: none;
+    border-radius: var(--radius-sm, 5px);
     color: var(--text-dim);
     font-size: 11px;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.14s ease, color 0.14s ease;
   }
 
   .omni-search-box:hover {
-    border-color: var(--border-bright);
     color: var(--text-muted);
     background-color: var(--bg-hover);
   }
@@ -417,10 +415,10 @@
   .omni-kbd {
     font-size: 9px;
     color: var(--text-dim);
-    background-color: var(--bg-container);
-    border: 1px solid var(--border-hairline);
+    background-color: var(--bg-elevated);
+    border: none;
     padding: 0 4px;
-    border-radius: 2px;
+    border-radius: var(--radius-xs, 4px);
     line-height: 15px;
   }
 
@@ -429,20 +427,19 @@
     align-items: center;
     gap: 4px;
     height: 24px;
-    padding: 0 7px;
-    background-color: var(--bg-base);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
+    padding: 0 8px;
+    background-color: var(--bg-elevated);
+    border: none;
+    border-radius: var(--radius-sm, 5px);
     color: var(--text-muted);
     font-size: 11px;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.14s ease, color 0.14s ease;
   }
 
   .top-action-btn:hover {
     background-color: var(--bg-hover);
     color: var(--text-main);
-    border-color: var(--border-bright);
   }
 
   .top-action-btn.icon-only {
@@ -458,18 +455,10 @@
   }
 
   :global(.update-sparkle-icon) {
-    animation: sparkleSpin 3s linear infinite;
+    transition: transform 0.2s ease;
   }
 
-  @keyframes sparkleSpin {
-    0% {
-      transform: rotate(0deg);
-    }
-    50% {
-      transform: rotate(180deg) scale(1.15);
-    }
-    100% {
-      transform: rotate(360deg);
-    }
+  .update-pill:hover :global(.update-sparkle-icon) {
+    transform: rotate(20deg) scale(1.08);
   }
 </style>

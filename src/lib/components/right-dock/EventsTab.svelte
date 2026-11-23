@@ -554,8 +554,8 @@
     margin-left: auto;
     font-size: 9.5px;
     color: var(--text-dim);
-    background: var(--bg-surface);
-    border: 1px solid var(--border-hairline);
+    background: var(--bg-elevated);
+    border: none;
     border-radius: 999px;
     padding: 0 6px;
   }
@@ -563,11 +563,10 @@
   .event-row {
     width: 100%;
     min-height: 30px;
-    padding-top: 5px;
-    padding-bottom: 5px;
+    padding: 5px 6px;
     background: transparent;
     border: none;
-    border-bottom: 1px solid color-mix(in srgb, var(--border-hairline) 55%, transparent);
+    border-radius: var(--radius-sm, 5px);
     color: var(--text-primary);
     cursor: pointer;
     text-align: left;

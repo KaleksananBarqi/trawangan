@@ -145,8 +145,8 @@
     width: 38px;
     min-width: 38px;
     height: 100%;
-    background-color: var(--bg-surface);
-    border-left: 1px solid var(--border-hairline);
+    background-color: var(--bg-container);
+    border: none;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -168,7 +168,7 @@
   .dock-divider {
     width: 20px;
     height: 1px;
-    background-color: var(--border-hairline);
+    background-color: var(--border-subtle);
     margin: 4px 0;
   }
 
@@ -180,11 +180,11 @@
     align-items: center;
     justify-content: center;
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-xs);
+    border: none;
+    border-radius: var(--radius-sm, 5px);
     color: var(--text-muted);
     cursor: pointer;
-    transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: background-color 0.12s cubic-bezier(0.16, 1, 0.3, 1), color 0.12s ease;
     padding: 0;
   }
 
@@ -199,15 +199,13 @@
   }
 
   .dock-btn.active {
-    background-color: color-mix(in srgb, var(--brand-cyan) 14%, transparent);
+    background-color: var(--bg-elevated);
     color: var(--brand-cyan);
-    border-color: color-mix(in srgb, var(--brand-cyan) 38%, transparent);
   }
 
   .dock-btn.pine-active {
-    background-color: color-mix(in srgb, var(--brand-primary) 16%, transparent);
+    background-color: var(--bg-elevated);
     color: var(--brand-primary);
-    border-color: color-mix(in srgb, var(--brand-primary) 42%, transparent);
   }
 
   .dock-btn.active::before {

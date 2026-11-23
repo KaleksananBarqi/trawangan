@@ -186,6 +186,16 @@ export function deriveSurfaceColor(background: string, elevationRatio = 0.07): s
 }
 
 /**
+ * Menurunkan warna lapisan shell paling dalam (--bg-shell) untuk celah tonal 2px Neo-Quant (ADR-0029):
+ * - Pada latar gelap: diperdalam ke arah hitam (#000000) agar panel di atasnya menonjol tanpa border 1px.
+ * - Pada latar terang: digelapkan lembut agar celah antar-panel tetap terdefinisi bersih.
+ */
+export function deriveShellColor(background: string): string {
+  const dark = isDarkColor(background);
+  return mixColors(background, '#000000', dark ? 0.42 : 0.075);
+}
+
+/**
  * Menjamin warna teks memiliki polaritas kontras yang terbaca terhadap warna latar belakang.
  * Jika latar gelap tetapi kandidat teks juga gelap (atau sebaliknya latar terang & teks terang),
  * otomatis mengembalikan warna teks kontras yang aman.

@@ -2542,7 +2542,9 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background-color: var(--bg-darkest);
+    gap: 2px;
+    padding: 2px;
+    background-color: var(--bg-shell, #08080A);
     color: var(--text-main);
     overflow: hidden;
     position: relative;
@@ -2553,6 +2555,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
+    gap: 2px;
     min-height: 0;
     overflow: hidden;
     position: relative;
@@ -2560,20 +2563,10 @@
 
   /* WORKSPACE UNIFIED VIEWPORT STYLING */
   .workspace-viewport {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .workspace-viewport {
     display: flex;
     flex-direction: row;
     flex: 1;
+    gap: 2px;
     width: 100%;
     height: 100%;
     min-height: 0;
@@ -2595,11 +2588,10 @@
 
   /* Draggable Splitter Handle between Chart and Pine IDE */
   .side-panel-resizer {
-    width: 5px;
+    width: 4px;
     height: 100%;
-    background-color: var(--bg-container, #0E121A);
-    border-left: 1px solid var(--border-hairline, #1E293B);
-    border-right: 1px solid var(--border-hairline, #1E293B);
+    background-color: var(--bg-shell, #08080A);
+    border: none;
     cursor: col-resize;
     display: flex;
     align-items: center;

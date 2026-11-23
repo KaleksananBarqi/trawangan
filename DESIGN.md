@@ -1,7 +1,7 @@
 # Design System: trawangan
 
 > **penerawangan (ꦠꦿꦮꦔꦤ꧀): Presisi Cyber-Monochrome untuk Observasi Pasar Tanpa Paywall.**
-> Dokumen ini menetapkan arah visual, token desain, hierarki permukaan, serta pagar batas anti-slop untuk seluruh antarmuka **trawangan**, baik pada aplikasi desktop native berbasis Tauri v2 (`src/`) maupun etalase web dan dokumentasi (`docs/`). Filosofi desainnya bertumpu pada keheningan visual: latar hitam arang matte (`#0F0F0F` / `#0E0E10`), candlestick Putih Tulang (`#F7F7F7`) vs Merah Muda Tajam (`#FF69B4`), penumpukan tonal hairline `1px`, dan disiplin satu aksen terfokus tanpa noise dekoratif.
+> Dokumen ini menetapkan arah visual, token desain, hierarki permukaan, serta pagar batas anti-slop untuk seluruh antarmuka **trawangan**, baik pada aplikasi desktop native berbasis Tauri v2 (`src/`) maupun etalase web dan dokumentasi (`docs/`). Filosofi desainnya bertumpu pada keheningan visual: latar hitam arang matte (`#0F0F0F` / `#0E0E10`), candlestick Putih Tulang (`#F7F7F7`) vs Merah Muda Tajam (`#FF69B4`), pemisahan blok permukaan **Neo-Quant Tonal Shell (ADR-0029)** tanpa border kotak-dalam-kotak, dan disiplin satu aksen terfokus tanpa noise dekoratif.
 
 **Atribut Arah & Dial (/antislop Reference Fields):**
 - **Product Identity:** `trawangan` (selalu ditulis huruf kecil), terminal charting desktop multi-aset murni (**Pure Charting Scope**, tanpa fitur eksekusi order maupun dompet).
@@ -27,7 +27,7 @@ Sistem ini menyatukan **dua permukaan kerja yang berbagi satu jiwa visual**:
 ### Visual Character
 
 - **Penolakan Hijau/Merah Retail Default:** Tema *Signature* memilih Putih Murni (`#F7F7F7`) untuk *Bullish* dan Hot Pink (`#FF69B4`) untuk *Bearish* demi memutus bias psikologis "untung vs rugi" konvensional menjadi pembacaan struktur harga yang netral.
-- **Tonal Stacking Matte + Garis Hairline 1px:** Kedalaman antar-modul di terminal desktop dicapai lewat pergeseran luminansi abu-abu arang yang rapat (`#0F0F0F` -> `#141414` -> `#171717` -> `#1E1E1E`) dan pemisah `1px solid #222222`, bukan bayangan mengambang tebal atau efek kaca buram di semua tempat.
+- **Neo-Quant Tonal Contrast (ADR-0029):** Kedalaman dan pemisahan antar-modul di terminal desktop dicapai lewat kontras blok permukaan matte yang tegas di atas lapisan dasar `--bg-shell` (`#08080A` -> `#0F0F0F` -> `#141414` -> `#171717` -> `#1E1E1E`) dengan celah struktural `2px`, bukan garis border `1px` keras di setiap tombol dan baris pengaturan (*anti box-in-box fatigue*).
 - **Satu Aksen Dominan Terkendali:** Hot Pink (`#FF69B4`) bertindak sebagai penanda fokus primer: tombol aksi utama (`Selesai`, `+ Pasang`, `+ Tambah ke Chart`, `.btn-cta-main`), timeframe aktif, indikator `:focus-visible` keyboard, serta garis kuotasi aktif.
 
 ### Design Rationale (R-31)
@@ -45,7 +45,8 @@ Palet inti **trawangan** mematuhi batasan ketat maksimal 2 hingga 3 warna peran 
 
 | Role | Name | Hex / Value | CSS Variable (`app` / `docs`) | Kegunaan |
 | :--- | :--- | :--- | :--- | :--- |
-| Primary App Canvas | Obsidian True Dark | `#0F0F0F` | `--bg-darkest`, `--bg-surface` | Latar kanvas chart WebGL2, StatusBar, Header |
+| Shell Foundation (App) | Neo-Quant Deep Shell | `#08080A` | `--bg-shell` | Lapisan paling dalam di balik celah struktural `2px` antar-panel Docked Shell (diturunkan otomatis di 37 preset & palet 9D via `themeEngine.ts`) |
+| Primary App Canvas | Obsidian True Dark | `#0F0F0F` | `--bg-darkest`, `--bg-surface` | Latar kanvas chart WebGL2 |
 | Primary Web Canvas | Deep Charcoal Ink | `#0E0E10` | `--bg-canvas` | Latar utama halaman landing & dokumentasi |
 | Surface Level 1 | Terminal Base | `#121212` / `#141414` | `--bg-base`, `--bg-container` | Latar sidebar navigasi modal, badge hint, container rendah |
 | Surface Level 2 (App) | Structural Panel Matte | `#171717` | `--bg-panel`, `--bg-secondary` | Kartu menu, panel pengaturan, Floating Thesis Card |
@@ -181,7 +182,7 @@ Skala editorial responsif untuk keterbacaan jarak jauh dan komposisi naratif.
 
 ## 4. Component Stylings
 
-Komponen di **trawangan** menggunakan pendekatan fungsional berjenjang: kontrol mekanis beradius micro-sharp (`2px - 6px`) di terminal desktop, dan hierarki radius bertingkat (`4px -> 8px -> 12px -> 16px`) di halaman web. Setiap komponen wajib menjaga `:focus-visible`, `cursor: pointer`, serta status hover/active/disabled yang nyata (`R-32`, `R-39`).
+Komponen di **trawangan** menggunakan pendekatan fungsional berjenjang: **Neo-Quant Tonal Shell (ADR-0029)** di terminal desktop (`0px` perimeter shell *full-bleed*, `5px - 6px` kontrol/baris daftar, `8px` kartu/popover, `10px` modal utama) tanpa border `1px` berisik pada setiap tombol/baris, dan hierarki radius bertingkat (`4px -> 8px -> 12px -> 16px`) di halaman web. Setiap komponen wajib menjaga `:focus-visible`, `cursor: pointer`, serta status hover/active/disabled yang nyata (`R-32`, `R-39`).
 
 ### Primary CTA & Action Buttons
 
@@ -207,7 +208,7 @@ Komponen di **trawangan** menggunakan pendekatan fungsional berjenjang: kontrol 
      box-shadow: 0 12px 32px rgba(255, 105, 180, 0.42);
    }
    ```
-2. **Desktop Terminal Primary Button (`.primary-btn`, e.g., `Selesai`, `+ Pasang`, `+ Tambah ke Chart`):** Padat tanpa glow berlebih, warna adaptif antar-tema.
+2. **Desktop Terminal Primary Button (`.primary-btn`, e.g., `Selesai`, `+ Pasang`, `+ Tambah ke Chart`):** Padat tanpa glow berlebih, warna adaptif antar-tema, radius modern tegas `6px`.
    ```css
    .primary-btn {
      display: inline-flex;
@@ -218,24 +219,29 @@ Komponen di **trawangan** menggunakan pendekatan fungsional berjenjang: kontrol 
      color: var(--on-brand-primary, #0F0F0F);   /* Adaptif WCAG AA */
      font-weight: 600;
      font-size: var(--font-size-base, 11px);
-     border-radius: var(--radius-xs, 2px);
+     border-radius: var(--radius-md, 6px);
      border: none;
      cursor: pointer;
    }
    ```
-3. **Header & Rail Controls (Desktop):**
-   - Header `.action-btn`: tinggi fix `26px`, `padding: 3px 7px`, `background: var(--bg-base)`, `border: 1px solid var(--border-hairline)`, `border-radius: 2px`.
-   - Right Dock `.dock-btn`: `32px x 32px`, transparan default; kondisi aktif memakai latar `color-mix(in srgb, currentColor 14%, transparent)` dan bilah indikator vertikal kanan `2.5px` (`::before`).
-4. **Secondary & Sub-Action Buttons (Web `.btn-github` / `.btn-sub-download`):** `min-height: 44px`, `border-radius: 8px`, latar `rgba(255,255,255,0.05)`, batas `1px solid rgba(255,255,255,0.08)`, tanpa panah dekoratif (`R-08`).
+3. **Header & Rail Controls (Desktop Neo-Quant):**
+   - Header `.action-btn`: tinggi fix `26px`, `padding: 3px 9px`, `background: var(--bg-elevated)` (atau `transparent` untuk aksi sekunder dengan hover `--bg-hover`), **tanpa border keras**, `border-radius: var(--radius-sm, 5px)`.
+   - Right Dock `.dock-btn`: `32px x 32px`, transparan default, `border-radius: var(--radius-sm, 5px)`; kondisi aktif memakai latar `var(--bg-elevated)` dan bilah indikator aksen vertikal `2.5px`.
+4. **Modern Toggle Switch & Active Item Indicator (Desktop Primitives, ADR-0029):**
+   - **Toggle Biner (On/Off):** Pengaturan biner di modal Settings dan panel wajib menggunakan *Modern Toggle Switch* (pill track `36px x 20px`, latar `--bg-hover` saat off dan `--brand-primary` saat on, thumb bundar putih `14px`) menggantikan tombol kotak teks `Aktif`/`Nonaktif`.
+   - **Active Item Indicator:** Item terpilih pada sidebar modal, baris Watchlist, dan tab daftar memakai latar `var(--bg-elevated)`, `border-radius: var(--radius-sm, 5px)`, dan garis aksen kiri `box-shadow: inset 2.5px 0 0 var(--brand-primary)`.
+5. **Secondary & Sub-Action Buttons (Web `.btn-github` / `.btn-sub-download`):** `min-height: 44px`, `border-radius: 8px`, latar `rgba(255,255,255,0.05)`, batas `1px solid rgba(255,255,255,0.08)`, tanpa panah dekoratif (`R-08`).
 
 ### Cards, Panels & Asymmetric Showcase Hierarchy
 
+- **Desktop Neo-Quant Settings & List Rows (Anti Box-in-Box, ADR-0029):**
+  Baris pengaturan di dalam modal disusun sebagai **blok tonal tanpa border** (`display: flex; flex-direction: column; gap: 3px;`), di mana setiap baris memakai `background-color: var(--bg-panel)`, `border: none`, `border-radius: var(--radius-md, 6px)`, dan `padding: 11px 14px`. Pembatas keras `1px solid` hanya dipakai pada batas luar modal (`border-radius: var(--radius-xl, 10px)`) atau elemen input saat fokus.
 - **Desktop Structural Panels (`.obsidian-panel`, kartu indikator/tema di `indicator.png` & `theme.png`):**
   ```css
   .obsidian-panel {
-    background-color: var(--bg-surface);       /* #0F0F0F / #171717 */
-    border: 1px solid var(--border-hairline);  /* #222222 */
-    border-radius: var(--radius-md, 4px);
+    background-color: var(--bg-panel);
+    border: none;
+    border-radius: var(--radius-lg, 8px);
   }
   ```
   Kartu preset tema menyertakan **4 swatch kotak tajam** (`LATAR`, `BULL`, `BEAR`, `AKSEN`) dengan border tipis agar warna latar yang mirip tetap terlihat batasnya, serta badge mode pojok kanan (`DARK` / `LIGHT`).
@@ -279,7 +285,7 @@ Komponen di **trawangan** menggunakan pendekatan fungsional berjenjang: kontrol 
 
 ### Component Rationale (R-31)
 
-- **Mengapa Radius Micro (`2px - 6px`) di Desktop vs bertingkat (`4px - 16px`) di Web:** Terminal finansial memerlukan ketegasan kotak piksel agar sumbu harga, input order/plan, dan sel grid sejajar sempurna tanpa ruang mati. Sebaliknya, etalase web memakai skala `4px -> 8px -> 12px -> 16px` agar kontrol kecil dan frame screenshot asli (`1920x1036`) terbaca hierarkis tanpa gaya "serba kapsul".
+- **Mengapa Neo-Quant Tonal (`0px` shell / `5px - 10px` controls & modals) di Desktop vs bertingkat (`4px - 16px`) di Web:** Terminal finansial modern membutuhkan perimeter kanvas *full-bleed* (`0px`) tanpa celah tebal agar area grafik tetap maksimal, tetapi komponen di dalamnya (tombol, baris daftar, kartu grup, modal) memakai radius `5px - 10px` dan pemisahan blok tonal tanpa border `1px` agar bebas dari kelelahan visual *box-in-box* sambil tetap terasa tajam khas instrumen quant.
 
 ---
 
@@ -297,9 +303,9 @@ Komponen di **trawangan** menggunakan pendekatan fungsional berjenjang: kontrol 
   - Margin bawah heading seksi: `44px`.
   - Gap grid kartu fitur & metrik: `16px - 20px`.
 
-### Desktop Workspace Architecture: Docked Structural Shell (ADR-0004)
+### Desktop Workspace Architecture: Docked Structural Shell + Neo-Quant Tonal Gap (ADR-0004, ADR-0029)
 
-Tata letak aplikasi desktop dikunci ke struktur fleksibel perimeter tanpa overlap:
+Tata letak aplikasi desktop dikunci ke struktur fleksibel perimeter tanpa overlap di atas latar dasar `--bg-shell` dengan celah tonal `2px` (`gap: 2px; padding: 2px;`) dan tanpa garis border `1px` keras antar-panel:
 1. **Top Bar (`40px`)** terbentang penuh di atas.
 2. **Middle Workband (`flex: 1`)** dibagi horizontal menjadi:
    - **Left `DrawingToolbar` (`44px`, collapsible via `Alt+T`):** Alat gambar teknikal terkelompok rapi, dengan opsi strip *Favorites* mengambang ringkas yang dapat ditutup.
@@ -333,8 +339,8 @@ Alih-alih membuat setiap elemen mengambang dengan bayangan kabur besar (`R-12`),
 
 | Layer / Elevation | Desktop App Implementation | Web Showcase Implementation | Aturan Ketat (Purpose-Gate) |
 | :--- | :--- | :--- | :--- |
-| **Level 0: Canvas Base** | `#0F0F0F` + WebGL grid `0.05` alpha | `#0E0E10` solid bersih (`R-07`, nol grid dekoratif) | Fondasi diam untuk data dan keterbacaan |
-| **Level 1: Docked & Content Cards** | `#141414` - `#171717` + `1px solid #222222`, **tanpa drop shadow** | `#151518` + `1px solid rgba(255,255,255,0.08)`, `--shadow-card` (`0 4px 20px rgba(0,0,0,0.35)`) | Kartu membedakan konten lewat langkah tonal, bukan bayangan tebal |
+| **Level 0: Shell & Canvas Base** | `--bg-shell` (`#08080A` untuk celah `2px`) + `--bg-surface` (`#0F0F0F` kanvas WebGL2) | `#0E0E10` solid bersih (`R-07`, nol grid dekoratif) | Fondasi diam untuk data dan keterbacaan |
+| **Level 1: Docked & Content Blocks** | `--bg-panel` (`#171717`), **tanpa border 1px keras dan tanpa drop shadow** | `#151518` + `1px solid rgba(255,255,255,0.08)`, `--shadow-card` (`0 4px 20px rgba(0,0,0,0.35)`) | Kontras blok tonal memisahkan modul secara bersih tanpa *box-in-box* |
 | **Level 2: Popovers & Sticky Chrome** | `#1E1E1E`, border `#2C2C2C`, shadow terfokus (`0 8px 24px rgba(0,0,0,0.6)`) | `.site-header`: `rgba(14,14,16,0.92)` + `backdrop-filter: blur(16px)` | **Cap `R-10`:** Glass blur maksimal 1 elemen utama di halaman web |
 | **Level 3: Modals & Hero Frame** | `SettingsModal` / `IndicatorModal` (`920px`, `z-index: 1000`, backdrop `rgba(11,14,20,0.82)` + `blur(5px)`, shadow `0 20px 48px rgba(0,0,0,0.75)`) | `.hero-visual-frame`: `--shadow-elevated` (`0 12px 36px rgba(0,0,0,0.5)`) | Memisahkan tugas modal penuh dari chart aktif di belakangnya |
 | **Level 4: Focal Glow** | Dipakai hemat pada bar/badge sinyal kritis (`var(--bear-glow)` `6px`) | **Hanya `.btn-cta-main`** (`0 8px 24px rgba(255,105,180,0.28)`) | **Cap `R-13`:** Maksimal 1-2 titik glow di layar; dilarang menyala di kartu + badge + ikon bersamaan |
@@ -411,17 +417,17 @@ Bagian ini merangkum referensi cepat token serta templat brief visual untuk kons
 ### Quick Reference
 
 - **Brand Name:** `trawangan` (wajib lowercase; aksara pendamping opsional `ꦠꦿꦮꦔꦤ꧀`).
-- **Palette Signature (App):** Canvas `#0F0F0F`, Panel `#171717`, Elevated `#1E1E1E`, Border `1px solid #222222`, Ink Utama `#F7F7F7` (17.89:1), Muted `#A3A3A3` (7.60:1), Dim Aman min `#808080` / `#8A8A8A` (>=4.54:1), Bull `#F7F7F7`, Bear & Brand Primary `#FF69B4` (7.24:1), Ink di atas Pink `#0F0F0F` (7.24:1), Aux Info `#38BDF8` (8.95:1).
+- **Palette Signature (App):** Shell `--bg-shell` (`#08080A`, celah tonal `2px`), Canvas `#0F0F0F`, Panel `#171717`, Elevated `#1E1E1E`, Tanpa border 1px keras antar-panel/baris (*Neo-Quant Tonal Shell*, ADR-0029), Ink Utama `#F7F7F7` (17.89:1), Muted `#A3A3A3` (7.60:1), Dim Aman min `#808080` / `#8A8A8A` (>=4.54:1), Bull `#F7F7F7`, Bear & Brand Primary `#FF69B4` (7.24:1), Ink di atas Pink `#0F0F0F` (7.24:1), Aux Info `#38BDF8` (8.95:1).
 - **Palette Signature (Web):** Canvas `#0E0E10`, Surface `#151518`, Elevated `#1C1C22`, Ink `#F7F7F8` (18.01:1), Muted `#B4B4C0` (9.39:1), Dim `#8E8EA0` (5.99:1), Single Focal Accent `#FF69B4` (7.28:1).
 - **Fonts:** `'Plus Jakarta Sans'` (UI & brand weight `800`) + `'JetBrains Mono'` (`tabular-nums` untuk semua harga, R-multiple, waktu, dan kode).
-- **Radii:** Desktop `2px` (`xs`) / `3px` (`sm`) / `4px` (`md`) / `6px` (`lg`); Web `4px` (`kbd`/badge) / `8px` (button/tab) / `12px` (card) / `16px` (showcase frame).
+- **Radii:** Desktop `0px` (perimeter shell) / `5px` (`sm`, tombol & baris daftar) / `6px` (`md`, input & baris setting) / `8px` (`lg`, kartu & popover) / `10px` (`xl`, modal); Web `4px` (`kbd`/badge) / `8px` (button/tab) / `12px` (card) / `16px` (showcase frame).
 - **Liveliness Dials:** Web Showcase `ENERGY 2 / RHYTHM 2 / MOTION 1`; Desktop Cockpit `ENERGY 2 / RHYTHM 1 / MOTION 1`.
 - **Dose Caps:** Glassmorphism maks 1 elemen (`.site-header` di web atau backdrop modal di desktop); Glow hanya pada 1 CTA utama; tanpa karakter em dash; tanpa green/red default di Signature; tanpa eksekusi trading/order.
 
 ### Ready-to-Use Design Read Formats
 
 - **Untuk komponen atau panel Aplikasi Desktop (`src/`):**
-  > `Reading this as: desktop financial charting cockpit module for sovereign technical analysts, in trawangan Signature Cyber-Monochrome Docked Structural Shell style, dial ENERGY 2 / RHYTHM 1 / MOTION 1.`
+  > `Reading this as: desktop financial charting cockpit module for sovereign technical analysts, in trawangan Signature Neo-Quant Tonal Shell style (ADR-0029), dial ENERGY 2 / RHYTHM 1 / MOTION 1.`
 - **Untuk halaman Web, Docs, atau Showcase (`docs/`):**
   > `Reading this as: technical open-source product showcase for quantitative & price-action traders, in trawangan Signature Dark Editorial Matte style, dial ENERGY 2 / RHYTHM 2 / MOTION 1.`
 
@@ -429,11 +435,11 @@ Bagian ini merangkum referensi cepat token serta templat brief visual untuk kons
 
 ```text
 Konteks Desain: Antarmuka untuk terminal charting desktop open-source trawangan (Pure Charting Scope, tanpa fitur eksekusi order atau wallet).
-Arah Visual (DESIGN.md):
-- Tema Signature Cyber-Monochrome: kanvas gelap matte #0F0F0F (app) atau #0E0E10 (web), permukaan panel #171717 / #151518 dengan pemisah presisi hairline 1px (#222222 atau rgba(255,255,255,0.08)).
-- Penekanan polaritas & aksen: White Bull (#F7F7F7) dan Hot Pink Bear / Primary Accent (#FF69B4) dengan teks #0F0F0F di atas tombol pink; hindari warna hijau/merah default maupun gradasi biru-ungu AI.
+Arah Visual (DESIGN.md & ADR-0029):
+- Tema Signature Cyber-Monochrome + Neo-Quant Tonal Shell: lapisan shell --bg-shell (#08080A) dengan celah tonal 2px antar-panel full-bleed (0px), kanvas gelap matte #0F0F0F (app) atau #0E0E10 (web), permukaan panel #171717 / #151518 tanpa garis border 1px keras pada setiap tombol/baris pengaturan.
+- Penekanan polaritas & aksen: White Bull (#F7F7F7) dan Hot Pink Bear / Primary Accent (#FF69B4) dengan teks #0F0F0F di atas tombol pink; item aktif memakai latar --bg-elevated + bilah aksen kiri 2.5px; status biner memakai Modern Toggle Switch.
 - Tipografi: Plus Jakarta Sans untuk UI & wordmark lowercase "trawangan", JetBrains Mono dengan tabular-nums (.mono-nums) untuk angka harga, persentase, timeframe, R-multiple, dan telemetri.
-- Hierarki permukaan & dosis: [untuk Desktop Shell: radius 2px-4px, Docked Structural Shell tanpa overlap candle, dial ENERGY 2 / RHYTHM 1 / MOTION 1] / [untuk Web: radius bertingkat 4px/8px/12px/16px, asymmetric sections, maksimal 1 elemen glass blur dan 1 CTA glow utama, dial ENERGY 2 / RHYTHM 2 / MOTION 1].
+- Hierarki permukaan & dosis: [untuk Desktop Shell: radius 0px shell / 5px-6px kontrol & baris / 8px popover / 10px modal, Docked Structural Shell tanpa overlap candle, dial ENERGY 2 / RHYTHM 1 / MOTION 1] / [untuk Web: radius bertingkat 4px/8px/12px/16px, asymmetric sections, maksimal 1 elemen glass blur dan 1 CTA glow utama, dial ENERGY 2 / RHYTHM 2 / MOTION 1].
 - Batasan kualitas: Kontras WCAG AA >= 4.5:1 di seluruh teks normal (min #808080/#8A8A8A app, #8E8EA0 web), navigasi keyboard lengkap dengan :focus-visible 2px solid #FF69B4, state empty/loading/error nyata, dukung @media (prefers-reduced-motion: reduce), serta nol karakter em dash dan nol statistik/testimoni fiktif.
 ```
 

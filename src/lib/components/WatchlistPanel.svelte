@@ -1,30 +1,30 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { isSectionToken } from '../services/watchlistUtils';
-  import TradePlanTab from './TradePlanTab.svelte';
-  import WatchlistTab from './right-dock/WatchlistTab.svelte';
-  import AlertsTab from './right-dock/AlertsTab.svelte';
-  import LayersTab from './right-dock/LayersTab.svelte';
-  import EventsTab from './right-dock/EventsTab.svelte';
-  import DataWindow from './DataWindow.svelte';
-  import { watchlistRegistry } from '../services/watchlistRegistryService';
+  import { onMount, onDestroy } from "svelte";
+  import { isSectionToken } from "../services/watchlistUtils";
+  import TradePlanTab from "./TradePlanTab.svelte";
+  import WatchlistTab from "./right-dock/WatchlistTab.svelte";
+  import AlertsTab from "./right-dock/AlertsTab.svelte";
+  import LayersTab from "./right-dock/LayersTab.svelte";
+  import EventsTab from "./right-dock/EventsTab.svelte";
+  import DataWindow from "./DataWindow.svelte";
+  import { watchlistRegistry } from "../services/watchlistRegistryService";
   import {
     adjustPanelWidthByKeyboard,
     startEdgeResizeSession,
-    type EdgeResizeSession
-  } from '../services/panelResizeHelper';
-  import { storage, onPersistenceReady } from '../services/persistence';
-  import { readClampedPanelWidth } from '../services/persistence/uiPreferencesHelper';
-  import type { RightDockTab } from '../services/workspaceShellService';
-  import type { ParsedTradingPlan } from '../services/planParserService';
+    type EdgeResizeSession,
+  } from "../services/panelResizeHelper";
+  import { storage, onPersistenceReady } from "../services/persistence";
+  import { readClampedPanelWidth } from "../services/persistence/uiPreferencesHelper";
+  import type { RightDockTab } from "../services/workspaceShellService";
+  import type { ParsedTradingPlan } from "../services/planParserService";
   import type {
     ApplyPlanFromTabOptions,
     TradePlanActivationRequest,
     TradePlanTabSubMode,
-    UpdatePlanFromTabOptions
-  } from '../services/tradePlanFormService';
-  import type { ActiveTradingPlan } from '../services/tradingPlanLifecycle';
-  import type { PriceAlert, WatchlistRecord } from '../types/market';
+    UpdatePlanFromTabOptions,
+  } from "../services/tradePlanFormService";
+  import type { ActiveTradingPlan } from "../services/tradingPlanLifecycle";
+  import type { PriceAlert, WatchlistRecord } from "../types/market";
 
   interface Props {
     isOpen: boolean;
@@ -33,7 +33,13 @@
     activeProviderId?: string;
     timezone?: string;
     watchlistSymbols?: string[];
-    activeIndicators?: { id: string; title: string; visible: boolean; source?: string; inputs?: any }[];
+    activeIndicators?: {
+      id: string;
+      title: string;
+      visible: boolean;
+      source?: string;
+      inputs?: any;
+    }[];
     activeDrawings?: any[];
     selectedDrawingId?: string | null;
     showVolume?: boolean;
@@ -63,19 +69,26 @@
     tickSize?: number;
     planActivationRequest?: TradePlanActivationRequest | null;
     onConsumePlanActivation?: (nonce: number) => void;
-    onApplyPlan?: (plan: ParsedTradingPlan, options?: ApplyPlanFromTabOptions) => Promise<any> | any;
-    onUpdatePlan?: (planId: string, plan: ParsedTradingPlan, options?: UpdatePlanFromTabOptions) => Promise<any> | any;
+    onApplyPlan?: (
+      plan: ParsedTradingPlan,
+      options?: ApplyPlanFromTabOptions,
+    ) => Promise<any> | any;
+    onUpdatePlan?: (
+      planId: string,
+      plan: ParsedTradingPlan,
+      options?: UpdatePlanFromTabOptions,
+    ) => Promise<any> | any;
     onEditPlan?: (planId: string) => void;
     onOpenPlanTab?: (subMode?: TradePlanTabSubMode) => void;
     onFocusEventTimestamp?: (timestampMs: number) => void;
-    onLog?: (msg: string, level?: 'info' | 'success' | 'warn') => void;
+    onLog?: (msg: string, level?: "info" | "success" | "warn") => void;
   }
 
   let {
     isOpen,
     activeTab: propActiveTab,
     activeSymbol,
-    activeProviderId = 'binance',
+    activeProviderId = "binance",
     timezone,
     watchlistSymbols: propSymbols,
     activeIndicators = [],
@@ -116,39 +129,53 @@
     onLog,
   }: Props = $props();
 
-  const PREF_KEY_STANDARD_WIDTH = 'right_panel_width' as const;
-  const PREF_KEY_PLAN_WIDTH = 'right_plan_width' as const;
+  const PREF_KEY_STANDARD_WIDTH = "right_panel_width" as const;
+  const PREF_KEY_PLAN_WIDTH = "right_plan_width" as const;
   const STANDARD_BOUNDS = { min: 270, max: 620 };
   const PLAN_BOUNDS = { min: 310, max: 680 };
 
-  const activeTab = $derived<RightDockTab>(propActiveTab ?? 'watchlist');
-  const activeBounds = $derived(activeTab === 'plan' ? PLAN_BOUNDS : STANDARD_BOUNDS);
+  const activeTab = $derived<RightDockTab>(propActiveTab ?? "watchlist");
+  const activeBounds = $derived(
+    activeTab === "plan" ? PLAN_BOUNDS : STANDARD_BOUNDS,
+  );
 
   let standardPanelWidth = $state(300);
   let planPanelWidth = $state(360);
   let isResizingPanel = $state(false);
-  const effectivePanelWidth = $derived(activeTab === 'plan' ? planPanelWidth : standardPanelWidth);
+  const effectivePanelWidth = $derived(
+    activeTab === "plan" ? planPanelWidth : standardPanelWidth,
+  );
 
   let lastTrackedWidthForResize: number | null = null;
   let resizeDispatchTimer: ReturnType<typeof setTimeout> | null = null;
   let activeResizeSession: EdgeResizeSession | null = null;
 
   let registryWatchlists = $state<WatchlistRecord[]>([]);
-  let registryActiveId = $state<string>('default');
+  let registryActiveId = $state<string>("default");
   let unsubRegistry: (() => void) | null = null;
   let symbols = $state<string[]>([
-    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
-    'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT'
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "XRPUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+    "SUIUSDT",
   ]);
-  let lastSyncedHash = '';
-  const availableSymbolList = $derived(symbols.filter((s) => Boolean(s && !isSectionToken(s))));
+  let lastSyncedHash = "";
+  const availableSymbolList = $derived(
+    symbols.filter((s) => Boolean(s && !isSectionToken(s))),
+  );
 
   const activeWatchlist = $derived.by<WatchlistRecord>(() => {
     const found = registryWatchlists.find((w) => w.id === registryActiveId);
     if (found) return found;
     return {
       id: registryActiveId,
-      name: 'Daftar Utama',
+      name: "Daftar Utama",
       items: symbols,
       isPreset: false,
     };
@@ -156,16 +183,29 @@
 
   function persistPanelWidth(isPlan: boolean, width: number) {
     void storage
-      .setUiPreference(isPlan ? PREF_KEY_PLAN_WIDTH : PREF_KEY_STANDARD_WIDTH, width)
+      .setUiPreference(
+        isPlan ? PREF_KEY_PLAN_WIDTH : PREF_KEY_STANDARD_WIDTH,
+        width,
+      )
       .catch(() => {});
   }
 
   function hydratePanelWidths() {
-    const savedStd = readClampedPanelWidth(PREF_KEY_STANDARD_WIDTH, STANDARD_BOUNDS.min, STANDARD_BOUNDS.max, storage);
+    const savedStd = readClampedPanelWidth(
+      PREF_KEY_STANDARD_WIDTH,
+      STANDARD_BOUNDS.min,
+      STANDARD_BOUNDS.max,
+      storage,
+    );
     if (savedStd !== null) {
       standardPanelWidth = savedStd;
     }
-    const savedPlan = readClampedPanelWidth(PREF_KEY_PLAN_WIDTH, PLAN_BOUNDS.min, PLAN_BOUNDS.max, storage);
+    const savedPlan = readClampedPanelWidth(
+      PREF_KEY_PLAN_WIDTH,
+      PLAN_BOUNDS.min,
+      PLAN_BOUNDS.max,
+      storage,
+    );
     if (savedPlan !== null) {
       planPanelWidth = savedPlan;
     }
@@ -178,11 +218,15 @@
       if (!open) lastTrackedWidthForResize = null;
       return;
     }
-    if (lastTrackedWidthForResize !== null && lastTrackedWidthForResize !== width) {
+    if (
+      lastTrackedWidthForResize !== null &&
+      lastTrackedWidthForResize !== width
+    ) {
       if (resizeDispatchTimer !== null) clearTimeout(resizeDispatchTimer);
       resizeDispatchTimer = setTimeout(() => {
         resizeDispatchTimer = null;
-        if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
+        if (typeof window !== "undefined")
+          window.dispatchEvent(new Event("resize"));
       }, 40);
     }
     lastTrackedWidthForResize = width;
@@ -199,9 +243,11 @@
     if (e.button !== 0) return;
     e.preventDefault();
     activeResizeSession?.cancel();
-    const isPlan = activeTab === 'plan';
+    const isPlan = activeTab === "plan";
     const bounds = isPlan ? PLAN_BOUNDS : STANDARD_BOUNDS;
-    const preferenceKey = isPlan ? PREF_KEY_PLAN_WIDTH : PREF_KEY_STANDARD_WIDTH;
+    const preferenceKey = isPlan
+      ? PREF_KEY_PLAN_WIDTH
+      : PREF_KEY_STANDARD_WIDTH;
     isResizingPanel = true;
 
     activeResizeSession = startEdgeResizeSession({
@@ -210,7 +256,7 @@
       minWidth: bounds.min,
       maxCap: bounds.max,
       viewportMaxRatio: 0.58,
-      edge: 'left-edge',
+      edge: "left-edge",
       preferenceKey,
       onResize: (nextWidth) => {
         if (isPlan) {
@@ -223,12 +269,12 @@
         isResizingPanel = false;
         activeResizeSession = null;
         lastTrackedWidthForResize = finalWidth;
-      }
+      },
     });
   }
 
   function handleResizerKeyDown(e: KeyboardEvent) {
-    const isPlan = activeTab === 'plan';
+    const isPlan = activeTab === "plan";
     const bounds = isPlan ? PLAN_BOUNDS : STANDARD_BOUNDS;
 
     const nextWidth = adjustPanelWidthByKeyboard(
@@ -237,8 +283,8 @@
       effectivePanelWidth,
       bounds.min,
       bounds.max,
-      'left-edge',
-      0.58
+      "left-edge",
+      0.58,
     );
 
     if (nextWidth === null) return;
@@ -251,8 +297,8 @@
     }
     persistPanelWidth(isPlan, nextWidth);
     lastTrackedWidthForResize = nextWidth;
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('resize'));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("resize"));
     }
   }
 
@@ -284,21 +330,23 @@
       }
     });
 
-    unsubRegistry = watchlistRegistry.subscribe(({ watchlists: list, activeId }) => {
-      registryWatchlists = list;
-      registryActiveId = activeId;
-      const current = list.find((w) => w.id === activeId);
-      if (current) {
-        symbols = [...current.items];
-        lastSyncedHash = JSON.stringify(symbols);
-        if (JSON.stringify(symbols) !== JSON.stringify(propSymbols)) {
-          onWatchlistChange?.(symbols);
+    unsubRegistry = watchlistRegistry.subscribe(
+      ({ watchlists: list, activeId }) => {
+        registryWatchlists = list;
+        registryActiveId = activeId;
+        const current = list.find((w) => w.id === activeId);
+        if (current) {
+          symbols = [...current.items];
+          lastSyncedHash = JSON.stringify(symbols);
+          if (JSON.stringify(symbols) !== JSON.stringify(propSymbols)) {
+            onWatchlistChange?.(symbols);
+          }
         }
-      }
-    });
+      },
+    );
 
     watchlistRegistry.load().catch((err) => {
-      console.warn('Gagal memuat awal multi-watchlist:', err);
+      console.warn("Gagal memuat awal multi-watchlist:", err);
     });
   });
 
@@ -336,8 +384,11 @@
     <div class="resizer-grip"></div>
   </div>
 
-  <aside class="right-panel obsidian-panel" style="width: {effectivePanelWidth}px;">
-    {#if activeTab === 'watchlist'}
+  <aside
+    class="right-panel obsidian-panel"
+    style="width: {effectivePanelWidth}px;"
+  >
+    {#if activeTab === "watchlist"}
       <WatchlistTab
         {symbols}
         {activeSymbol}
@@ -347,7 +398,7 @@
         {onSelectSymbol}
         onUpdateWatchlist={applyWatchlistUpdate}
       />
-    {:else if activeTab === 'alerts'}
+    {:else if activeTab === "alerts"}
       <AlertsTab
         {activeSymbol}
         availableSymbols={availableSymbolList}
@@ -357,7 +408,7 @@
         {showAlertLines}
         {onToggleAlertLines}
       />
-    {:else if activeTab === 'objects'}
+    {:else if activeTab === "objects"}
       <LayersTab
         {activeSymbol}
         {activeIndicators}
@@ -383,16 +434,16 @@
         {onEditPlan}
         {onOpenPlanTab}
       />
-    {:else if activeTab === 'datawindow'}
+    {:else if activeTab === "datawindow"}
       <DataWindow {activeSymbol} />
-    {:else if activeTab === 'events'}
+    {:else if activeTab === "events"}
       <EventsTab {activeSymbol} {timezone} {onFocusEventTimestamp} />
     {/if}
 
     <!-- Trade Plan tetap ter-mount agar draft form dan teks tidak hilang saat pindah tab -->
-    <div class="plan-tab-host" class:hidden={activeTab !== 'plan'}>
+    <div class="plan-tab-host" class:hidden={activeTab !== "plan"}>
       <TradePlanTab
-        isActive={isOpen && activeTab === 'plan'}
+        isActive={isOpen && activeTab === "plan"}
         {activeSymbol}
         availableSymbols={availableSymbolList}
         {currentPrice}
@@ -401,7 +452,8 @@
         activationRequest={planActivationRequest}
         onConsumeActivation={onConsumePlanActivation}
         onApplyPlan={(plan, options) => onApplyPlan?.(plan, options)}
-        onUpdatePlan={(planId, plan, options) => onUpdatePlan?.(planId, plan, options)}
+        onUpdatePlan={(planId, plan, options) =>
+          onUpdatePlan?.(planId, plan, options)}
         {onRemovePlan}
         {onLog}
       />
@@ -413,22 +465,21 @@
   .right-panel-resizer {
     width: 4px;
     height: 100%;
-    background-color: transparent;
-    border-left: 1px solid var(--border-hairline);
+    background-color: var(--bg-shell, #08080a);
+    border: none;
     cursor: col-resize;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     z-index: 32;
-    transition: background-color 0.14s ease, border-color 0.14s ease;
+    transition: background-color 0.14s ease;
   }
 
   .right-panel-resizer:hover,
   .right-panel-resizer.resizing,
   .right-panel-resizer:focus-visible {
     background-color: color-mix(in srgb, var(--brand-cyan) 26%, transparent);
-    border-left-color: color-mix(in srgb, var(--brand-cyan) 65%, transparent);
     outline: none;
   }
 
@@ -448,8 +499,8 @@
   .right-panel {
     width: 300px;
     height: 100%;
-    background-color: var(--bg-surface);
-    border-left: 1px solid var(--border-hairline);
+    background-color: var(--bg-container);
+    border: none;
     display: flex;
     flex-direction: column;
     z-index: 30;

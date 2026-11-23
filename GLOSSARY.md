@@ -316,5 +316,9 @@ _Avoid_: Scattered localStorage keys, Unbounded preference string
 Identitas cakupan terstruktur untuk lapisan coretan gambar pada kanvas `trawangan` yang mengikat workspace, bursa penyedia data, simbol instrumen, dan timeframe tanpa merangkai kunci penyimpanan secara manual.
 _Avoid_: Raw drawing key string, Unscoped symbol key, Timeframe-only drawing key
 
+**Neo-Quant Tonal Shell**:
+Bahasa visual antarmuka desktop `trawangan` yang memisahkan modul kerja secara murni melalui kontras blok permukaan tonal dan celah presisi tanpa garis batas keras di setiap komponen, dipadukan dengan sudut modern tegas dan penanda aktif bilah aksen kiri.
+_Avoid_: Box-in-box borders, 1px hairline everywhere, Retro wireframe UI, Heavy glassmorphism shell
+
 
 

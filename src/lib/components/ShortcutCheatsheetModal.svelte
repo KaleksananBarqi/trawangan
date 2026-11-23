@@ -1,11 +1,18 @@
 <script lang="ts">
-  import { X, Search, Keyboard, Sparkles, Command, Pencil } from '@lucide/svelte';
+  import {
+    X,
+    Search,
+    Keyboard,
+    Sparkles,
+    Command,
+    Pencil,
+  } from "@lucide/svelte";
   import {
     SHORTCUT_GLOSSARY,
     filterShortcuts,
     getShortcutsByCategory,
-    type ShortcutItem
-  } from '../services/commandDispatcher';
+    type ShortcutItem,
+  } from "../services/commandDispatcher";
 
   interface Props {
     isOpen: boolean;
@@ -15,23 +22,23 @@
 
   let { isOpen, onClose, onOpenGestureGuide }: Props = $props();
 
-  let searchQuery = $state('');
-  let selectedCategory = $state<string>('Semua');
+  let searchQuery = $state("");
+  let selectedCategory = $state<string>("Semua");
 
   const categories = [
-    'Semua',
-    'Navigasi & Simbol',
-    'Alat Gambar (Drawing Tools)',
-    'Bar Replay (Simulasi)',
-    'Analisis & Indikator',
-    'Skala & Tampilan Grafik',
-    'Timeframe Cepat',
-    'Sistem & Bantuan'
+    "Semua",
+    "Navigasi & Simbol",
+    "Alat Gambar (Drawing Tools)",
+    "Bar Replay (Simulasi)",
+    "Analisis & Indikator",
+    "Skala & Tampilan Grafik",
+    "Timeframe Cepat",
+    "Sistem & Bantuan",
   ];
 
   let displayedShortcuts = $derived.by(() => {
     let list = filterShortcuts(searchQuery);
-    if (selectedCategory !== 'Semua') {
+    if (selectedCategory !== "Semua") {
       list = list.filter((item) => item.category === selectedCategory);
     }
     return list;
@@ -39,7 +46,7 @@
 
   // Kelompokkan per kategori untuk tampilan terstruktur saat melihat "Semua"
   let groupedDisplay = $derived.by(() => {
-    if (selectedCategory !== 'Semua' || searchQuery.trim().length > 0) {
+    if (selectedCategory !== "Semua" || searchQuery.trim().length > 0) {
       return null;
     }
     return getShortcutsByCategory();
@@ -47,7 +54,7 @@
 
   function handleKeydown(e: KeyboardEvent) {
     if (!isOpen) return;
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       e.preventDefault();
       onClose();
     }
@@ -72,11 +79,20 @@
             <Keyboard size={18} class="accent-icon" />
           </div>
           <div>
-            <h2 id="shortcut-modal-title" class="modal-title">Pusat Pintasan Keyboard</h2>
-            <p class="modal-subtitle">Glosarium komprehensif navigasi & alat kerja terminal Trawangan</p>
+            <h2 id="shortcut-modal-title" class="modal-title">
+              Pusat Pintasan Keyboard
+            </h2>
+            <p class="modal-subtitle">
+              Glosarium komprehensif navigasi &amp; alat kerja terminal trawangan
+            </p>
           </div>
         </div>
-        <button type="button" class="close-btn" onclick={onClose} aria-label="Tutup Glosarium">
+        <button
+          type="button"
+          class="close-btn"
+          onclick={onClose}
+          aria-label="Tutup Glosarium"
+        >
           <X size={18} />
         </button>
       </div>
@@ -96,7 +112,7 @@
             <button
               type="button"
               class="clear-search-btn"
-              onclick={() => (searchQuery = '')}
+              onclick={() => (searchQuery = "")}
               aria-label="Bersihkan pencarian"
             >
               <X size={13} />
@@ -123,7 +139,9 @@
         <div class="gesture-banner-left">
           <Pencil size={14} class="banner-pencil-icon text-cyan" />
           <span class="banner-guide-text">
-            Tahan <kbd class="inline-kbd">~</kbd> atau tekan <kbd class="inline-kbd">Shift+D</kbd> di kanvas grafik untuk menggambar bebas.
+            Tahan <kbd class="inline-kbd">~</kbd> atau tekan
+            <kbd class="inline-kbd">Shift+D</kbd> di kanvas grafik untuk menggambar
+            bebas.
           </span>
         </div>
         <button
@@ -144,8 +162,17 @@
         {#if displayedShortcuts.length === 0}
           <div class="empty-state">
             <Command size={28} class="empty-icon" />
-            <p class="empty-text">Tidak ada shortcut yang cocok dengan "{searchQuery}"</p>
-            <button type="button" class="btn-reset-search" onclick={() => { searchQuery = ''; selectedCategory = 'Semua'; }}>
+            <p class="empty-text">
+              Tidak ada shortcut yang cocok dengan "{searchQuery}"
+            </p>
+            <button
+              type="button"
+              class="btn-reset-search"
+              onclick={() => {
+                searchQuery = "";
+                selectedCategory = "Semua";
+              }}
+            >
               Tampilkan Semua Shortcut
             </button>
           </div>
@@ -192,7 +219,11 @@
       <div class="modal-footer">
         <div class="footer-tip">
           <Sparkles size={13} class="tip-icon" />
-          <span>Tekan <kbd class="inline-kbd">?</kbd> atau <kbd class="inline-kbd">F1</kbd> kapan saja untuk membuka jendela ini kembali.</span>
+          <span
+            >Tekan <kbd class="inline-kbd">?</kbd> atau
+            <kbd class="inline-kbd">F1</kbd> kapan saja untuk membuka jendela ini
+            kembali.</span
+          >
         </div>
         <button type="button" class="btn-done" onclick={onClose}>
           Selesai (Esc)
@@ -222,10 +253,10 @@
     max-height: 85vh;
     display: flex;
     flex-direction: column;
-    background-color: var(--bg-surface, #0f121a);
-    border: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.1));
-    border-radius: var(--radius-md, 8px);
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 0, 0, 0.5);
+    background-color: var(--bg-surface, #0f0f0f);
+    border: 1px solid var(--border-subtle, #202020);
+    border-radius: var(--radius-xl, 10px);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8);
     overflow: hidden;
     animation: scaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   }

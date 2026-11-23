@@ -282,10 +282,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 12px;
+    padding: 11px 14px;
     background-color: var(--bg-panel);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm);
+    border: none;
+    border-radius: var(--radius-md);
     gap: 16px;
   }
 

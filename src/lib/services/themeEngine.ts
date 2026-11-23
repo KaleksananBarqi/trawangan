@@ -42,6 +42,7 @@ import {
 import {
   generateVelaThemeTokens,
   deriveSurfaceColor,
+  deriveShellColor,
   withAlpha,
   resolveContrastTextColor,
   resolveReadableBullText
@@ -506,7 +507,8 @@ export function assembleThemeCssBundle(
     '--font-ui': uiFont,
     '--font-code': monoFont,
     '--base-font-size': `${currentFontSize}px`,
-    '--font-scale': `${fontScale}`
+    '--font-scale': `${fontScale}`,
+    '--bg-shell': deriveShellColor(bg)
   };
   const removeCssVariables: string[] = [];
 

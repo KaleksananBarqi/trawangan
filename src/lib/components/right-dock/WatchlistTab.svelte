@@ -603,14 +603,17 @@
   .items-list {
     flex: 1;
     overflow-y: auto;
-    background-color: var(--bg-surface);
+    background-color: var(--bg-container);
+    padding: 3px 4px;
   }
 
   .watchlist-row {
     display: flex;
     align-items: center;
-    border-bottom: 1px solid color-mix(in srgb, var(--border-hairline) 75%, transparent);
+    border-radius: var(--radius-sm, 5px);
+    margin: 1px 0;
     position: relative;
+    transition: background-color 0.12s ease;
   }
 
   .watchlist-row:hover {
@@ -618,8 +621,8 @@
   }
 
   .watchlist-row.active-row {
-    background-color: color-mix(in srgb, var(--brand-blue) 12%, transparent);
-    border-left: 2px solid var(--brand-blue);
+    background-color: var(--bg-elevated);
+    box-shadow: inset 2.5px 0 0 var(--brand-primary);
   }
 
   .row-select-btn {
