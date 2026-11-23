@@ -5,6 +5,23 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.55.0] - 2026-11-23
+
+### 🚀 Ditambahkan (Added)
+- **Shortcut Navigasi & Quick Chart Tabs (`CommandDispatcher`, `ChartTabsService`, `ChartSessionController`):**
+  - Menambahkan pintasan manajemen *Chart Tabs* (`Ctrl+T` tab baru + modal simbol, `Ctrl+W` tutup tab aktif, `Ctrl+Tab`/`Ctrl+PageDown` & `Ctrl+Shift+Tab`/`Ctrl+PageUp` siklik, serta `Alt+1`–`Alt+9` dengan `Alt+9` ke tab terakhir).
+  - Menambahkan pintasan navigasi *Right Dock* (`Alt+Shift+A` Price Alerts, `Alt+D` Data Window, `Alt+C` Events, `Alt+\` Right Dock Hider), siklus *favorite timeframes* (`[` / `]`), gulir ke lilin terbaru (`Alt+Shift+→`), pindah sel Multi-Chart (`Alt+[` / `Alt+]`), serta toggle visibilitas garis alert (`Alt+Shift+H`).
+- **Mode Hollow Candles (`hollowCandles`, `ChartSessionController`, `PriceStylePicker`):**
+  - Menambahkan opsi **Hollow Candles** (body bullish transparan penuh dengan garis tepi & sumbu mengikuti warna tema, sambil menjaga `bars` dan garis/label harga berjalan tetap solid) yang tersinkron di `Settings -> Grafik`, `Settings -> Tampilan`, dan pemilih gaya harga pada *Header*.
+- **Kontrol Opasitas Global Objek Pane Utama (`mainPaneObjectsOpacity`, `mainPaneOpacityAdapter.ts`):**
+  - Menambahkan slider **Opasitas Objek Pane Utama (`10%`–`100%`)** di `Settings -> Grafik` untuk meredupkan indikator overlay, *Native Volume Overlay* (saat menempel di pane `price`), VPVR, Pine drawings, dan gambar pengguna/Trade Plan pada pane utama tanpa memengaruhi lilin candlestick atau sub-pane indikator terpisah.
+- **Toggle Visibilitas & Pewarnaan Tema Garis Price Alert (`showAlertLines`, `alertLineStyleHelper.ts`):**
+  - Menambahkan toggle tampil/sembunyi garis Price Alert di `AlertsTab`, `Settings -> Grafik`, dan `Alt+Shift+H` sementara evaluasi & notifikasi latar belakang tetap berjalan aktif.
+
+### 🔄 Diubah (Changed)
+- **Desain Garis & Badge Price Alert (`Chart.svelte`, `chart.css`):**
+  - Mengganti warna amber statis dengan token tema dinamis (`--bull-color`, `--bear-color`, `--brand-primary`) berdasarkan kondisi/peran alert (`resolveAlertLineTone`), memperramping garis putus-putus (`1px`) tanpa glow default, memperkecil badge (`16px`), serta menyembunyikan tombol sunting/hapus hingga *hover* atau fokus.
+
 ## [0.54.0] - 2026-11-19
 
 ### 🚀 Ditambahkan (Added)
