@@ -10,6 +10,8 @@
     Pencil,
     ChevronDown,
     ChevronRight,
+    Eye,
+    EyeOff,
   } from '@lucide/svelte';
   import { marketFeed } from '../../services/market';
   import { alertService } from '../../services/alertService';
@@ -31,6 +33,8 @@
     onSelectSymbol: (symbol: string, providerId?: string) => void;
     onRequestCreateAlert?: () => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
+    showAlertLines?: boolean;
+    onToggleAlertLines?: () => void;
   }
 
   let {
@@ -39,6 +43,8 @@
     onSelectSymbol,
     onRequestCreateAlert,
     onRequestEditAlert,
+    showAlertLines = true,
+    onToggleAlertLines,
   }: Props = $props();
 
   let alerts = $state<PriceAlert[]>(alertService.getAlerts());
@@ -375,8 +381,24 @@
     {/each}
   </div>
 
-  <!-- Tombol aksi kanan: menu hapus massal + tambah alert -->
+  <!-- Tombol aksi kanan: toggle garis chart + menu hapus massal + tambah alert -->
   <div class="toolbar-actions">
+    {#if onToggleAlertLines}
+      <button
+        type="button"
+        class="icon-toolbar-btn {!showAlertLines ? 'active' : ''}"
+        title={showAlertLines
+          ? 'Sembunyikan garis alert di grafik (Alt+Shift+H) — notifikasi tetap aktif'
+          : 'Tampilkan garis alert di grafik (Alt+Shift+H)'}
+        onclick={() => onToggleAlertLines?.()}
+      >
+        {#if showAlertLines}
+          <Eye size={12} />
+        {:else}
+          <EyeOff size={12} />
+        {/if}
+      </button>
+    {/if}
     <!-- Menu hapus massal -->
     {#if alerts.length > 0}
       <div class="bulk-menu-wrapper" bind:this={bulkMenuEl}>

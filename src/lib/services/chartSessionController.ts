@@ -14,6 +14,7 @@ import { MacroIndexProvider } from './macroIndexProvider';
 import { CustomFeedProvider } from './customProvider';
 import { isMacroIndexSymbol } from './macroIndexCatalog';
 import { resolveMacroAxisMode, syncCellMacroVelaAxis } from './macroVelaAxisAdapter';
+import { attachMainPaneOpacityAdapter, clampMainPaneOpacity } from './mainPaneOpacityAdapter';
 import { marketFeed } from './market';
 import {
   StreamGuardCoordinator,
@@ -137,6 +138,8 @@ export interface ChartSessionOptions {
   wallClock?: any;
   showVolume?: boolean;
   showWatermark?: boolean;
+  hollowCandles?: boolean;
+  mainPaneObjectsOpacity?: number;
   gridMode?: GridMode;
   syncConfig?: MultiChartSyncConfig;
   onActiveCellChange?: (cellInfo: { symbol: string; timeframe: Timeframe; providerId?: string }) => void;
@@ -178,6 +181,8 @@ export interface ChartReactiveProps {
   priceScaleCountdown?: boolean;
   showVolume?: boolean;
   showWatermark?: boolean;
+  hollowCandles?: boolean;
+  mainPaneObjectsOpacity?: number;
   priceStyle?: PriceStyle | string;
   rendererConfig?: Record<string, any>;
 }
@@ -199,6 +204,8 @@ export interface ChartSessionSnapshot {
   showCurrentPriceLine: boolean;
   priceScaleCountdown: boolean;
   showVolume: boolean;
+  hollowCandles: boolean;
+  mainPaneObjectsOpacity: number;
   gridMode: GridMode;
   priceStyle: PriceStyle | string;
   activeCell: { symbol: string; timeframe: Timeframe } | null;
@@ -575,6 +582,10 @@ export class ChartSessionController implements WorkspaceChartPort {
   private workspaceEventUnsubs: Array<() => void> = [];
   private isDestroyed = false;
   private gridMode: GridMode = 'normal';
+  private hollowCandles = false;
+  private preHollowBorderVisible: boolean | undefined = undefined;
+  private pendingRestoreBorderVisible: boolean | undefined = undefined;
+  private mainPaneObjectsOpacity = 1;
   private feedHealthSink: StreamHealthSink;
   private persistence: IPersistenceService;
   private hasCustomPersistence = false;
@@ -611,6 +622,8 @@ export class ChartSessionController implements WorkspaceChartPort {
     this.wallClock = options.wallClock ?? getSharedTerminalWallClock();
     this.showVolume = options.showVolume ?? true;
     this.showWatermark = options.showWatermark ?? true;
+    this.hollowCandles = Boolean(options.hollowCandles);
+    this.mainPaneObjectsOpacity = clampMainPaneOpacity(options.mainPaneObjectsOpacity);
     this.gridMode = options.gridMode || 'normal';
     this.customChartBackground = options.customChartBackground;
     this.customPalette = options.customPalette || null;
@@ -673,6 +686,8 @@ export class ChartSessionController implements WorkspaceChartPort {
       showCurrentPriceLine: this.showCurrentPriceLine,
       priceScaleCountdown: this.isPriceScaleCountdownEnabled(),
       showVolume: this.showVolume,
+      hollowCandles: this.hollowCandles,
+      mainPaneObjectsOpacity: this.mainPaneObjectsOpacity,
       gridMode: this.gridMode,
       priceStyle: this.getPriceStyle(),
       activeCell: this.activeCellInfo
@@ -863,9 +878,25 @@ export class ChartSessionController implements WorkspaceChartPort {
     const nextBg = 'customChartBackground' in next ? next.customChartBackground : this.customChartBackground;
     const bgChanged = !this.arePlainValuesEqual(this.customChartBackground, nextBg);
 
-    if (gridModeChanged || themePresetChanged || fontSizeChanged || candleColorsChanged || paletteChanged || bgChanged) {
+    const nextHollow = next.hollowCandles !== undefined ? Boolean(next.hollowCandles) : this.hollowCandles;
+    const hollowChanged = next.hollowCandles !== undefined && nextHollow !== this.hollowCandles;
+
+    if (gridModeChanged || themePresetChanged || fontSizeChanged || candleColorsChanged || paletteChanged || bgChanged || hollowChanged) {
       if (gridModeChanged) {
         this.gridMode = nextGridMode;
+      }
+      if (hollowChanged) {
+        if (nextHollow && !this.hollowCandles) {
+          this.preHollowBorderVisible =
+            typeof this.lastAppliedReactiveRendererConfig?.candles?.borderVisible === 'boolean'
+              ? this.lastAppliedReactiveRendererConfig.candles.borderVisible
+              : undefined;
+          this.pendingRestoreBorderVisible = undefined;
+        } else if (!nextHollow && this.hollowCandles) {
+          this.pendingRestoreBorderVisible = this.preHollowBorderVisible ?? true;
+          this.preHollowBorderVisible = undefined;
+        }
+        this.hollowCandles = nextHollow;
       }
       const nextCandleColors =
         nextBull !== undefined || nextBear !== undefined
@@ -897,6 +928,9 @@ export class ChartSessionController implements WorkspaceChartPort {
     }
     if (next.showWatermark !== undefined && Boolean(next.showWatermark) !== this.showWatermark) {
       this.setWatermarkVisible(Boolean(next.showWatermark));
+    }
+    if (next.mainPaneObjectsOpacity !== undefined) {
+      this.setMainPaneObjectsOpacity(next.mainPaneObjectsOpacity);
     }
     if (next.priceStyle !== undefined && isValidPriceStyle(next.priceStyle) && next.priceStyle !== this.getPriceStyle()) {
       this.setPriceStyle(next.priceStyle);
@@ -990,7 +1024,7 @@ export class ChartSessionController implements WorkspaceChartPort {
     if (existingInstance) {
       try {
         existingInstance.destroy?.();
-      } catch (_) {}
+      } catch (_) { }
       if (typeof velaFeed.unregisterProvider === 'function') {
         velaFeed.unregisterProvider(velaKey);
       }
@@ -1070,7 +1104,7 @@ export class ChartSessionController implements WorkspaceChartPort {
       const res = await this.persistence.loadProviders();
       if (epoch !== this.customHydrationEpoch) return;
       mergeList(res);
-    } catch (_) {}
+    } catch (_) { }
 
     const sinkAny = this.feedHealthSink as any;
     if (
@@ -1081,7 +1115,7 @@ export class ChartSessionController implements WorkspaceChartPort {
         const res = await sinkAny.getSavedProviders();
         if (epoch !== this.customHydrationEpoch) return;
         mergeList(res);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (epoch !== this.customHydrationEpoch) return;
@@ -1098,7 +1132,7 @@ export class ChartSessionController implements WorkspaceChartPort {
    * Mengaitkan elemen container kanvas WebGL2 dan menginisialisasi workspace
    */
   public attach(container: HTMLElement | null, options: Partial<ChartSessionOptions> = {}): () => void {
-    if (!container) return () => {};
+    if (!container) return () => { };
 
     if (options.symbol) this.symbol = options.symbol;
     if (options.timeframe) this.timeframe = options.timeframe;
@@ -1220,7 +1254,7 @@ export class ChartSessionController implements WorkspaceChartPort {
       console.warn('[ChartSessionController] Gagal inisialisasi VelaWorkspace:', err);
       this.workspace = null;
       this.isAttached = false;
-      return () => {};
+      return () => { };
     }
 
     // Pasang listener & price line guard ke seluruh cell awal, lalu terapkan warna candle/bars tema aktif ke WebGL2 renderer
@@ -1270,8 +1304,8 @@ export class ChartSessionController implements WorkspaceChartPort {
           typeof uCreated === 'function'
             ? uCreated
             : () => {
-                if (cellCreatedHandler) wsRef.off?.('cell:created', cellCreatedHandler);
-              }
+              if (cellCreatedHandler) wsRef.off?.('cell:created', cellCreatedHandler);
+            }
         );
 
         let cellActiveHandler: (() => void) | null = null;
@@ -1310,8 +1344,8 @@ export class ChartSessionController implements WorkspaceChartPort {
           typeof uActive === 'function'
             ? uActive
             : () => {
-                if (cellActiveHandler) wsRef.off?.('cell:active', cellActiveHandler);
-              }
+              if (cellActiveHandler) wsRef.off?.('cell:active', cellActiveHandler);
+            }
         );
 
         let stateChangedHandler: (() => void) | null = null;
@@ -1322,8 +1356,8 @@ export class ChartSessionController implements WorkspaceChartPort {
           typeof uState === 'function'
             ? uState
             : () => {
-                if (stateChangedHandler) wsRef.off?.('state:changed', stateChangedHandler);
-              }
+              if (stateChangedHandler) wsRef.off?.('state:changed', stateChangedHandler);
+            }
         );
 
         let scriptRunHandler: ((run: any) => void) | null = null;
@@ -1336,10 +1370,10 @@ export class ChartSessionController implements WorkspaceChartPort {
           typeof uScriptRun === 'function'
             ? uScriptRun
             : () => {
-                if (scriptRunHandler) wsRef.off?.('script:run', scriptRunHandler);
-              }
+              if (scriptRunHandler) wsRef.off?.('script:run', scriptRunHandler);
+            }
         );
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Pasang ResizeObserver agar kanvas adaptif terhadap perubahan ukuran window
@@ -1349,7 +1383,7 @@ export class ChartSessionController implements WorkspaceChartPort {
           this.workspace?.resize?.();
         });
         this.resizeObserver.observe(container);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Otomatis sambung ulang stream WebSocket & tambal celah candle ketika koneksi OS pulih (online)
@@ -1357,12 +1391,12 @@ export class ChartSessionController implements WorkspaceChartPort {
       if (this.onlineListener) {
         try {
           window.removeEventListener('online', this.onlineListener);
-        } catch (_) {}
+        } catch (_) { }
       }
       this.onlineListener = () => {
         if (this.feedHealthSink === marketFeed) {
           marketFeed.resetConnectionError();
-          void marketFeed.pollTick().catch(() => {});
+          void marketFeed.pollTick().catch(() => { });
         }
         void this.reconnectLiveFeed();
       };
@@ -1420,14 +1454,14 @@ export class ChartSessionController implements WorkspaceChartPort {
 
   private clearPendingWaiters(): void {
     for (const cleanup of Array.from(this.pendingWaitCleanups)) {
-      try { cleanup(); } catch (_) {}
+      try { cleanup(); } catch (_) { }
     }
     this.pendingWaitCleanups.clear();
   }
 
   private clearWorkspaceEventUnsubs(): void {
     for (const unsub of this.workspaceEventUnsubs) {
-      try { unsub(); } catch (_) {}
+      try { unsub(); } catch (_) { }
     }
     this.workspaceEventUnsubs = [];
   }
@@ -1455,7 +1489,7 @@ export class ChartSessionController implements WorkspaceChartPort {
           timer = null;
         }
         for (const u of unsubs) {
-          try { u?.(); } catch (_) {}
+          try { u?.(); } catch (_) { }
         }
         resolve();
       };
@@ -1473,7 +1507,7 @@ export class ChartSessionController implements WorkspaceChartPort {
           const ret = chart.on(ev, check);
           const unsub = typeof ret === 'function' ? ret : () => chart.off?.(ev, check);
           unsubs.push(unsub);
-        } catch (_) {}
+        } catch (_) { }
       }
 
       check();
@@ -1485,7 +1519,7 @@ export class ChartSessionController implements WorkspaceChartPort {
 
   private clearPendingVisibleRangeListeners(): void {
     for (const unsub of this.visibleRangeCleanupSet) {
-      try { unsub(); } catch (_) {}
+      try { unsub(); } catch (_) { }
     }
     this.visibleRangeCleanupSet.clear();
     this.pendingVisibleRangeUnsubs = new WeakMap();
@@ -1527,7 +1561,7 @@ export class ChartSessionController implements WorkspaceChartPort {
         } else if (typeof chart?.renderer?.applyConfig === 'function') {
           chart.renderer.applyConfig(config);
         }
-      } catch (_) {}
+      } catch (_) { }
     });
   }
 
@@ -1655,7 +1689,7 @@ export class ChartSessionController implements WorkspaceChartPort {
 
     const prevUnsub = this.pendingVisibleRangeUnsubs.get(targetCell);
     if (prevUnsub) {
-      try { prevUnsub(); } catch (_) {}
+      try { prevUnsub(); } catch (_) { }
       this.visibleRangeCleanupSet.delete(prevUnsub);
       this.pendingVisibleRangeUnsubs.delete(targetCell);
     }
@@ -1684,7 +1718,7 @@ export class ChartSessionController implements WorkspaceChartPort {
     const applyNow = () => {
       if (this.pendingVisibleRangeEpoch.get(targetCell) !== epoch) return;
       if (cleanupFn) {
-        try { cleanupFn(); } catch (_) {}
+        try { cleanupFn(); } catch (_) { }
         this.visibleRangeCleanupSet.delete(cleanupFn);
         this.pendingVisibleRangeUnsubs.delete(targetCell);
         cleanupFn = null;
@@ -1693,7 +1727,7 @@ export class ChartSessionController implements WorkspaceChartPort {
       this.withSuppressedPersistEvents(() => {
         try {
           chart.setVisibleRange({ from: vr.from, to: vr.to });
-        } catch (_) {}
+        } catch (_) { }
       });
     };
 
@@ -1787,7 +1821,7 @@ export class ChartSessionController implements WorkspaceChartPort {
           try {
             const listed = (chart.panes.list() || []).find((p: any) => p.id === pane.id);
             if (listed) sig = computePaneSignature(listed);
-          } catch (_) {}
+          } catch (_) { }
         }
         const existingScenePane = native.scene?.panes?.get?.(pane.id);
         const desiredWeight = sig && desiredMap ? desiredMap.get(sig) : undefined;
@@ -1795,8 +1829,8 @@ export class ChartSessionController implements WorkspaceChartPort {
           desiredWeight !== undefined && desiredWeight > 0
             ? desiredWeight
             : (typeof existingScenePane?.heightWeight === 'number' && existingScenePane.heightWeight > 0
-                ? existingScenePane.heightWeight
-                : undefined);
+              ? existingScenePane.heightWeight
+              : undefined);
 
         if (preservedWeight !== undefined) {
           effectivePane = { ...pane, heightWeight: preservedWeight };
@@ -1821,6 +1855,8 @@ export class ChartSessionController implements WorkspaceChartPort {
     this.enforcePriceScaleCountdown(cell);
     this.syncNativeVolumeColors(cell);
     this.syncCellMacroState(cell);
+    this.installHollowCandleChromeGuard(cell);
+    attachMainPaneOpacityAdapter(cell, this.mainPaneObjectsOpacity);
     attachPriceScaleInputGuard(cell);
 
     const chart = cell.chart || cell.inner;
@@ -1836,7 +1872,7 @@ export class ChartSessionController implements WorkspaceChartPort {
         chart.setSettingsVisibility({
           hidden: ['canvas.theme']
         });
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Terapkan konfigurasi garis grid langsung ke cell WebGL
@@ -1853,7 +1889,7 @@ export class ChartSessionController implements WorkspaceChartPort {
             sessions: buildSessionShadeConfig(),
           });
         });
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (!this.lastCapturedPaneLayoutByCell.has(cell)) {
@@ -1910,7 +1946,7 @@ export class ChartSessionController implements WorkspaceChartPort {
           this.scheduleViewportPersistChange();
         });
         chart.__trawanganChartEventsAttached = true;
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Dengarkan perubahan konfigurasi internal Vela renderer (candle/series/scale dialog settings)
@@ -1927,7 +1963,7 @@ export class ChartSessionController implements WorkspaceChartPort {
             this.configChangedUnsubs.push(unsub);
           }
           r.__trawanganConfigChangedAttached = true;
-        } catch (_) {}
+        } catch (_) { }
       }
     }
   }
@@ -2186,7 +2222,7 @@ export class ChartSessionController implements WorkspaceChartPort {
           if (ind?.nativeType === 'volume' || ind?.title === 'Volume') {
             try {
               if (typeof ind.setVisible === 'function') ind.setVisible(effectiveShow);
-            } catch (_) {}
+            } catch (_) { }
           }
         }
       }
@@ -2198,7 +2234,7 @@ export class ChartSessionController implements WorkspaceChartPort {
         if (typeof chart.renderer?.invalidate === 'function') {
           chart.renderer.invalidate(4);
         }
-      } catch (_) {}
+      } catch (_) { }
     }
   }
 
@@ -2383,7 +2419,7 @@ export class ChartSessionController implements WorkspaceChartPort {
    * Menambahkan indikator secara polimorfik (baik native study maupun Pine script)
    */
   public async addIndicator(
-    descriptor: UnifiedIndicatorDescriptor | { kind: 'native' | 'pine'; [key: string]: any },
+    descriptor: UnifiedIndicatorDescriptor | { kind: 'native' | 'pine';[key: string]: any },
     options?: any
   ): Promise<boolean> {
     if (!descriptor) return false;
@@ -2400,7 +2436,7 @@ export class ChartSessionController implements WorkspaceChartPort {
    * Menambahkan indikator secara polimorfik ke satu sel tertentu
    */
   public async addIndicatorToCell(
-    descriptor: UnifiedIndicatorDescriptor | { kind: 'native' | 'pine'; [key: string]: any },
+    descriptor: UnifiedIndicatorDescriptor | { kind: 'native' | 'pine';[key: string]: any },
     cell?: any,
     options?: any
   ): Promise<boolean> {
@@ -2691,7 +2727,7 @@ export class ChartSessionController implements WorkspaceChartPort {
             this.suppressAutoDrawingRestoreKey = null;
           } else {
             this.suppressAutoDrawingRestoreKey = null;
-            chartDrawingController.restoreDrawings(this.symbol, this.timeframe, this.providerId).catch(() => {});
+            chartDrawingController.restoreDrawings(this.symbol, this.timeframe, this.providerId).catch(() => { });
           }
         }
 
@@ -2798,8 +2834,11 @@ export class ChartSessionController implements WorkspaceChartPort {
         ? deriveBorderColor(this.customCandleColors.bearColor, 0.15)
         : cfg.chart.borderDownColor || cfg.chart.downColor;
 
+    const solidUpColor = effectiveUp;
+    const candleUpColor = this.hollowCandles ? 'rgba(0, 0, 0, 0)' : effectiveUp;
+
     const candleColors: ActiveThemeCandleColors = {
-      upColor: effectiveUp,
+      upColor: candleUpColor,
       downColor: effectiveDown,
       borderUpColor: effectiveBorderUp,
       borderDownColor: effectiveBorderDown,
@@ -2842,6 +2881,7 @@ export class ChartSessionController implements WorkspaceChartPort {
 
     return {
       candleColors,
+      solidUpColor,
       effectiveBg,
       effectiveText,
       effectiveGrid,
@@ -2870,6 +2910,46 @@ export class ChartSessionController implements WorkspaceChartPort {
   }
 
   /**
+   * Mengatur opasitas objek non-candle (indikator overlay, volume overlay, VPVR, dan gambar)
+   * khusus pada pane utama ('price') di seluruh sel aktif.
+   */
+  public setMainPaneObjectsOpacity(opacity: number): void {
+    const clamped = clampMainPaneOpacity(opacity);
+    if (clamped === this.mainPaneObjectsOpacity) return;
+    this.mainPaneObjectsOpacity = clamped;
+    for (const cell of this.getAllCells()) {
+      attachMainPaneOpacityAdapter(cell, clamped);
+    }
+  }
+
+  /**
+   * Menjaga agar garis harga berjalan & label sumbu Y pada candle bullish tetap solid
+   * saat mode Hollow Candles membuat candles.upColor transparan.
+   */
+  private installHollowCandleChromeGuard(cell: any): void {
+    const chart = cell?.chart || cell?.inner;
+    const renderer = chart?.renderer?.renderer || chart?.renderer;
+    const chrome = renderer?.chrome;
+    if (!chrome || typeof chrome.priceElementColor !== 'function') return;
+    if ((chrome.priceElementColor as any).__trawanganHollowGuard) return;
+
+    const orig = chrome.priceElementColor;
+    const controller = this;
+    const wrapped = function (this: any, scene: any, coords: any, theme: any, ...rest: any[]) {
+      const result = orig.call(this, scene, coords, theme, ...rest);
+      if (
+        controller.hollowCandles &&
+        (result === 'rgba(0, 0, 0, 0)' || result === 'rgba(0,0,0,0)' || result === 'transparent')
+      ) {
+        return controller.resolveActiveThemeVisualState().solidUpColor || result;
+      }
+      return result;
+    };
+    (wrapped as any).__trawanganHollowGuard = true;
+    chrome.priceElementColor = wrapped;
+  }
+
+  /**
    * Menyinkronkan domain visual global (tema background/teks, gridMode, timezone, currentPriceLine)
    * tanpa menimpa override gaya candle/margin spesifik sel (K3).
    */
@@ -2883,7 +2963,7 @@ export class ChartSessionController implements WorkspaceChartPort {
         const r = chart?.renderer?.renderer || chart?.renderer;
         if (r) {
           if (typeof r.applyConfig === 'function') {
-            try { r.applyConfig(cloneRendererConfigValue(visual.globalRendererPatch)); } catch (_) {}
+            try { r.applyConfig(cloneRendererConfigValue(visual.globalRendererPatch)); } catch (_) { }
           }
           if (r.scene) {
             r.scene.background = visual.isCustomBg ? 'transparent' : visual.effectiveBg;
@@ -2892,7 +2972,7 @@ export class ChartSessionController implements WorkspaceChartPort {
             r.scene.gridColor = visual.effectiveGrid;
           }
           if (typeof r.set === 'function') {
-            try { r.set('timezone', this.timezone); } catch (_) {}
+            try { r.set('timezone', this.timezone); } catch (_) { }
           }
           if (r.coords) {
             r.coords.timezone = this.timezone;
@@ -2906,6 +2986,13 @@ export class ChartSessionController implements WorkspaceChartPort {
   }
 
   private buildThemeCandleConfig(visual: ReturnType<ChartSessionController['resolveActiveThemeVisualState']>) {
+    const borderRestore =
+      !this.hollowCandles && this.pendingRestoreBorderVisible !== undefined
+        ? { borderVisible: this.pendingRestoreBorderVisible }
+        : {};
+    if (!this.hollowCandles) {
+      this.pendingRestoreBorderVisible = undefined;
+    }
     return {
       candles: {
         upColor: visual.candleColors.upColor,
@@ -2914,9 +3001,10 @@ export class ChartSessionController implements WorkspaceChartPort {
         borderDownColor: visual.candleColors.borderDownColor,
         wickUpColor: visual.candleColors.wickUpColor,
         wickDownColor: visual.candleColors.wickDownColor,
+        ...(this.hollowCandles ? { borderVisible: true } : borderRestore),
       },
       bars: {
-        upColor: visual.candleColors.upColor,
+        upColor: visual.solidUpColor,
         downColor: visual.candleColors.downColor,
       },
       grid: visual.globalRendererPatch.grid,
@@ -2965,15 +3053,15 @@ export class ChartSessionController implements WorkspaceChartPort {
           for (const cell of this.getAllCells()) {
             const chart = cell?.chart || cell?.inner;
             if (chart && typeof chart.setTheme === 'function') {
-              try { chart.setTheme(visual.themeObj); } catch (_) {}
+              try { chart.setTheme(visual.themeObj); } catch (_) { }
             }
             if (chart && typeof chart.setSurfaceBackground === 'function') {
-              try { chart.setSurfaceBackground(visual.effectiveBg); } catch (_) {}
+              try { chart.setSurfaceBackground(visual.effectiveBg); } catch (_) { }
             }
             const r = chart?.renderer?.renderer || chart?.renderer;
             if (r) {
               if (typeof r.setTheme === 'function') {
-                try { r.setTheme(visual.themeObj); } catch (_) {}
+                try { r.setTheme(visual.themeObj); } catch (_) { }
               }
               if (typeof r.applyConfig === 'function') {
                 r.applyConfig({
@@ -3085,7 +3173,7 @@ export class ChartSessionController implements WorkspaceChartPort {
           forceTransparent(child);
         }
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   /**
@@ -3282,7 +3370,7 @@ export class ChartSessionController implements WorkspaceChartPort {
         if (h?.title && !snapshotTitles.has(h.title)) {
           try {
             if (typeof h?.remove === 'function') h.remove();
-          } catch (_) {}
+          } catch (_) { }
         }
       }
 
@@ -3312,7 +3400,7 @@ export class ChartSessionController implements WorkspaceChartPort {
           if (ind?.nativeType === 'volume') continue;
           try {
             if (typeof ind?.remove === 'function') ind.remove();
-          } catch (_) {}
+          } catch (_) { }
         }
       }
 
@@ -3360,7 +3448,7 @@ export class ChartSessionController implements WorkspaceChartPort {
               }
             }
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       const list: NativeIndicatorSnapshot[] = [];
@@ -3373,7 +3461,7 @@ export class ChartSessionController implements WorkspaceChartPort {
             if (raw && typeof raw === 'object') {
               inputs = { ...raw };
             }
-          } catch (_) {}
+          } catch (_) { }
         }
         const regEntry = this.indicatorRegistry.findEntry(ind.id)?.entry;
         const mergedInputs = {
@@ -3435,7 +3523,7 @@ export class ChartSessionController implements WorkspaceChartPort {
             return true;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
       return false;
     };
 
@@ -3447,7 +3535,7 @@ export class ChartSessionController implements WorkspaceChartPort {
               return p?.kind === 'price' || p?.id === 'price' ? 'overlay' : 'own-pane';
             }
           }
-        } catch (_) {}
+        } catch (_) { }
       }
       return (handle as any)?.paneId && (handle as any).paneId !== 'price' ? 'own-pane' : 'overlay';
     };
@@ -3497,7 +3585,7 @@ export class ChartSessionController implements WorkspaceChartPort {
             if (handle) this.enrichNativeHandle(handle, entry.type);
             return Boolean(
               handle &&
-                (!entry.placement || entry.placement !== 'own-pane' || !handle.id || isHandleInPaneList(handle.id))
+              (!entry.placement || entry.placement !== 'own-pane' || !handle.id || isHandleInPaneList(handle.id))
             );
           },
           2000
@@ -3555,7 +3643,7 @@ export class ChartSessionController implements WorkspaceChartPort {
             if (entry.type === 'volume') {
               this.syncCellVolumeHiddenState(targetCell, !entry.visible);
             }
-          } catch (_) {}
+          } catch (_) { }
         }
 
         if (entry.placement && typeof chart.panes?.moveIndicator === 'function' && handle.id) {
@@ -3682,7 +3770,7 @@ export class ChartSessionController implements WorkspaceChartPort {
           this.withSuppressedPersistEvents(() => {
             chart.panes.collapse(paneInfo.id, Boolean(entry.collapsed));
           });
-        } catch (_) {}
+        } catch (_) { }
       } else if (entry.collapsed !== undefined && paneInfo.scenePane) {
         paneInfo.scenePane.collapsed = Boolean(entry.collapsed);
       }
@@ -4227,7 +4315,7 @@ export class ChartSessionController implements WorkspaceChartPort {
       const chart = targetCell?.chart || targetCell?.inner;
       const coords = getChartCoords(chart);
       return coords?.getViewport?.()?.barSpacing ?? 8;
-    } catch (_) {}
+    } catch (_) { }
     return 8;
   }
 
@@ -4247,7 +4335,7 @@ export class ChartSessionController implements WorkspaceChartPort {
         native?.scheduler?.invalidate?.(4);
         this.emitPersistableChange('viewport');
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   private toVelaIntervalString(tf?: string): string {
@@ -4318,7 +4406,7 @@ export class ChartSessionController implements WorkspaceChartPort {
       if (typeof this.workspace?.getState === 'function') {
         rawState = this.workspace.getState();
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const rawCharts = Array.isArray(rawState?.charts) ? rawState.charts : [];
 
@@ -4388,8 +4476,8 @@ export class ChartSessionController implements WorkspaceChartPort {
       const targetLayout = options?.layout || this.layout || '1';
       const activeIdx =
         typeof options?.activeCellIndex === 'number' &&
-        options.activeCellIndex >= 0 &&
-        options.activeCellIndex < liveCells.length
+          options.activeCellIndex >= 0 &&
+          options.activeCellIndex < liveCells.length
           ? options.activeCellIndex
           : 0;
       const targetActiveCell = liveCells[activeIdx] || liveCells[0];
@@ -4501,7 +4589,7 @@ export class ChartSessionController implements WorkspaceChartPort {
                   if (existingInd?.nativeType === 'volume') continue;
                   try {
                     if (typeof existingInd?.remove === 'function') existingInd.remove();
-                  } catch (_) {}
+                  } catch (_) { }
                 }
               }
             },
@@ -4590,12 +4678,12 @@ export class ChartSessionController implements WorkspaceChartPort {
     const rawIndicators = this.getActiveIndicators();
     const indicators: SavedWorkspaceIndicator[] = Array.isArray(rawIndicators)
       ? rawIndicators.map((i: any) => ({
-          title: i.title || 'Indicator',
-          source: i.source || '',
-          visible: i.visible !== false,
-          inputs: i.inputs,
-          props: i.props,
-        }))
+        title: i.title || 'Indicator',
+        source: i.source || '',
+        visible: i.visible !== false,
+        inputs: i.inputs,
+        props: i.props,
+      }))
       : [];
 
     return {
@@ -4883,14 +4971,14 @@ export class ChartSessionController implements WorkspaceChartPort {
         const list = Array.from(this.workspace.cells());
         if (list.length > 0) return list;
       }
-    } catch (_) {}
+    } catch (_) { }
     try {
       const cellMap = this.workspace.cellsById;
       if (cellMap && typeof cellMap.values === 'function') {
         const list = Array.from(cellMap.values());
         if (list.length > 0) return list;
       }
-    } catch (_) {}
+    } catch (_) { }
     return this.workspace.active ? [this.workspace.active] : [];
   }
 
@@ -4919,6 +5007,57 @@ export class ChartSessionController implements WorkspaceChartPort {
     } else if (typeof chart?.resetView === 'function') {
       chart.resetView();
     }
+  }
+
+  /**
+   * Geser viewport grafik aktif ke bar terbaru (Realtime) sambil menjaga zoom.
+   */
+  public scrollToRealtime(): void {
+    const cell = this.workspace?.active || this.getAllCells()[0];
+    if (!cell) return;
+
+    const chart = cell.chart || cell.inner || cell;
+    const renderer = chart?.renderer?.renderer || chart?.renderer;
+
+    if (typeof renderer?.scrollToRealtime === 'function') {
+      renderer.scrollToRealtime();
+      return;
+    }
+    if (typeof chart?.scrollToRealtime === 'function') {
+      chart.scrollToRealtime();
+      return;
+    }
+    this.fitChart();
+  }
+
+  /**
+   * Pindahkan fokus ke sel berikutnya (+1) atau sebelumnya (-1) pada grid Multi-Chart.
+   */
+  public focusCellByOffset(delta: 1 | -1): boolean {
+    const cells = this.getAllCells();
+    if (cells.length <= 1) return false;
+    const currentIdx = this.getActiveCellIndex();
+    const nextIdx = (currentIdx + delta + cells.length) % cells.length;
+    const targetCell = cells[nextIdx];
+    if (!targetCell) return false;
+
+    if (typeof this.workspace?.setActiveCell === 'function' && targetCell.id) {
+      this.workspace.setActiveCell(targetCell.id);
+    } else if (typeof targetCell.focus === 'function') {
+      targetCell.focus();
+    }
+    const { providerId: nextProv, symbol: nextSym } = getCellMarketIdentity(targetCell);
+    const nextTf = fromVelaTimeframe(targetCell.timeframe || this.timeframe) as Timeframe;
+    if (nextSym) {
+      this.activeCellInfo = { symbol: nextSym, timeframe: nextTf };
+      this.onActiveCellChange?.({
+        symbol: nextSym,
+        timeframe: nextTf,
+        providerId: nextProv || this.providerId,
+      });
+    }
+    this.notify();
+    return true;
   }
 
   /**
@@ -5111,14 +5250,14 @@ export class ChartSessionController implements WorkspaceChartPort {
     }
 
     for (const unsub of this.configChangedUnsubs) {
-      try { unsub(); } catch (_) {}
+      try { unsub(); } catch (_) { }
     }
     this.configChangedUnsubs = [];
 
     if (this.onlineListener && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       try {
         window.removeEventListener('online', this.onlineListener);
-      } catch (_) {}
+      } catch (_) { }
       this.onlineListener = null;
     }
 
@@ -5130,7 +5269,7 @@ export class ChartSessionController implements WorkspaceChartPort {
     if (this.resizeObserver) {
       try {
         this.resizeObserver.disconnect();
-      } catch (_) {}
+      } catch (_) { }
       this.resizeObserver = null;
     }
 

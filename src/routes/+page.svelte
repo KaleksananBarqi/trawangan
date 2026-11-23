@@ -721,6 +721,27 @@
       })
       .catch(() => {});
 
+    const openTerminalRightDockTab = (tab: 'objects' | 'alerts' | 'datawindow' | 'events', logMsg: string) => {
+      if (workspaceMode === 'pine') {
+        handleWorkspaceModeChange('terminal');
+      }
+      workspaceShellService.toggleRightDockTab(tab);
+      addSystemLog(logMsg, 'info');
+    };
+
+    const cycleFavoriteTimeframe = (direction: 1 | -1) => {
+      const favs = appSettings.favoriteTimeframes?.length
+        ? appSettings.favoriteTimeframes
+        : (['1m', '5m', '15m', '1h', '4h', '1D'] as Timeframe[]);
+      if (favs.length === 0) return;
+      const idx = favs.indexOf(activeTimeframe);
+      const baseIdx = idx < 0 ? 0 : idx;
+      const targetTf = favs[(baseIdx + direction + favs.length) % favs.length];
+      if (targetTf && targetTf !== activeTimeframe) {
+        handleTimeframeChange(targetTf);
+      }
+    };
+
     // ─── Daftarkan Binding Perintah Terminal ke Deep CommandDispatcher ───
     const commandUnbinds: (() => void)[] = [
       commandDispatcher.bindHandler('toggle-console', () => {
@@ -887,11 +908,64 @@
         });
       }),
       commandDispatcher.bindHandler('toggle-objects-tree', () => {
-        if (workspaceMode === 'pine') {
-          handleWorkspaceModeChange('terminal');
+        openTerminalRightDockTab('objects', 'Shortcut: Beralih panel Object Tree & Indikator (Alt+O)');
+      }),
+      commandDispatcher.bindHandler('toggle-alerts-dock', () => {
+        openTerminalRightDockTab('alerts', 'Shortcut: Beralih panel Price Alerts (Alt+Shift+A)');
+      }),
+      commandDispatcher.bindHandler('toggle-datawindow-dock', () => {
+        openTerminalRightDockTab('datawindow', 'Shortcut: Beralih panel Data Window Inspector (Alt+D)');
+      }),
+      commandDispatcher.bindHandler('toggle-events-dock', () => {
+        openTerminalRightDockTab('events', 'Shortcut: Beralih panel Events & Kalender Makro (Alt+C)');
+      }),
+      commandDispatcher.bindHandler('toggle-right-dock-hider', () => {
+        workspaceShellService.toggleRightDockHider();
+      }),
+      commandDispatcher.bindHandler('new-chart-tab', () => {
+        handleAddChartTab();
+      }),
+      commandDispatcher.bindHandler('close-chart-tab', () => {
+        if (activeChartTabId) {
+          void handleCloseChartTab(activeChartTabId);
         }
-        workspaceShellService.toggleRightDockTab('objects');
-        addSystemLog('Shortcut: Beralih panel Object Tree & Indikator (Alt+O)', 'info');
+      }),
+      commandDispatcher.bindHandler('next-chart-tab', () => {
+        const next = chartTabsService.cycleTab(1);
+        if (next) void handleSelectChartTab(next.id);
+      }),
+      commandDispatcher.bindHandler('prev-chart-tab', () => {
+        const prev = chartTabsService.cycleTab(-1);
+        if (prev) void handleSelectChartTab(prev.id);
+      }),
+      ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) =>
+        commandDispatcher.bindHandler(`jump-chart-tab-${n}`, () => {
+          const target = chartTabsService.focusTabByIndex(n);
+          if (target) void handleSelectChartTab(target.id);
+        })
+      ),
+      commandDispatcher.bindHandler('prev-chart-cell', () => {
+        sessionController?.focusCellByOffset(-1);
+      }),
+      commandDispatcher.bindHandler('next-chart-cell', () => {
+        sessionController?.focusCellByOffset(1);
+      }),
+      commandDispatcher.bindHandler('scroll-to-realtime', () => {
+        sessionController?.scrollToRealtime();
+      }),
+      commandDispatcher.bindHandler('toggle-alert-lines', () => {
+        const nextVal = !(appSettings.showAlertLines ?? true);
+        handleUpdateSettings({ showAlertLines: nextVal });
+        addSystemLog(
+          `Garis Price Alert di grafik: ${nextVal ? 'TAMPIL' : 'TERSEMBUNYI'} (Alt+Shift+H)`,
+          'info'
+        );
+      }),
+      commandDispatcher.bindHandler('prev-favorite-timeframe', () => {
+        cycleFavoriteTimeframe(-1);
+      }),
+      commandDispatcher.bindHandler('next-favorite-timeframe', () => {
+        cycleFavoriteTimeframe(1);
       }),
       commandDispatcher.bindHandler('invert-price-scale', () => {
         if (sessionController) {
@@ -1979,6 +2053,8 @@
     onCycleColorMode={handleCycleColorMode}
     {activePriceStyle}
     onPriceStyleChange={handlePriceStyleChange}
+    hollowCandles={appSettings.hollowCandles ?? false}
+    onToggleHollowCandles={() => handleUpdateSettings({ hollowCandles: !appSettings.hollowCandles })}
     {chartTabs}
     {activeChartTabId}
     onSelectChartTab={handleSelectChartTab}
@@ -2078,6 +2154,9 @@
           showVolume={appSettings.showVolume ?? true}
           showIndicatorPriceLabels={appSettings.showIndicatorPriceLabels ?? true}
           showDrawingPriceLabels={appSettings.showDrawingPriceLabels ?? true}
+          hollowCandles={appSettings.hollowCandles ?? false}
+          mainPaneObjectsOpacity={appSettings.mainPaneObjectsOpacity ?? 1}
+          showAlertLines={appSettings.showAlertLines ?? true}
           securityWatermark={appSettings.securityWatermark}
           userProfile={appSettings.userProfile}
           onActiveIndicatorsChange={(list) => (activeIndicators = list)}
@@ -2158,6 +2237,8 @@
           {selectedDrawingId}
           showVolume={appSettings.showVolume ?? true}
           onToggleVolumeVisibility={handleToggleVolumeVisibility}
+          showAlertLines={appSettings.showAlertLines ?? true}
+          onToggleAlertLines={() => handleUpdateSettings({ showAlertLines: appSettings.showAlertLines === false })}
           onSelectSymbol={handleSymbolChange}
           onWatchlistChange={handleWatchlistChange}
           onToggleIndicatorVisibility={handleToggleIndicatorVisibility}

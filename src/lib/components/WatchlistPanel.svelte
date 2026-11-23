@@ -53,6 +53,8 @@
     onWatchlistChange?: (symbols: string[]) => void;
     onRequestCreateAlert?: () => void;
     onRequestEditAlert?: (alert: PriceAlert) => void;
+    showAlertLines?: boolean;
+    onToggleAlertLines?: () => void;
     activePlans?: ActiveTradingPlan[];
     showThesisCards?: boolean;
     onToggleThesisCards?: () => void;
@@ -96,6 +98,8 @@
     onWatchlistChange,
     onRequestCreateAlert,
     onRequestEditAlert,
+    showAlertLines = true,
+    onToggleAlertLines,
     activePlans = [],
     showThesisCards = true,
     onToggleThesisCards,
@@ -350,6 +354,8 @@
         {onSelectSymbol}
         {onRequestCreateAlert}
         {onRequestEditAlert}
+        {showAlertLines}
+        {onToggleAlertLines}
       />
     {:else if activeTab === 'objects'}
       <LayersTab

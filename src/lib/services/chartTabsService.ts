@@ -157,6 +157,30 @@ export class ChartTabsService {
     return { ...target };
   }
 
+  /**
+   * Beralih ke tab berikutnya (+1) atau sebelumnya (-1) secara siklik.
+   */
+  public cycleTab(direction: 1 | -1): ChartTabItem | null {
+    const len = this.state.tabs.length;
+    if (len === 0) return null;
+    const currentIdx = this.state.tabs.findIndex((t) => t.id === this.state.activeTabId);
+    const baseIdx = currentIdx >= 0 ? currentIdx : 0;
+    const nextIdx = (baseIdx + direction + len) % len;
+    const target = this.state.tabs[nextIdx];
+    return this.focusTab(target.id);
+  }
+
+  /**
+   * Lompat ke tab berdasarkan indeks 1-based (1..8), atau tab terakhir untuk 9.
+   */
+  public focusTabByIndex(oneBasedIndex: number): ChartTabItem | null {
+    const len = this.state.tabs.length;
+    if (len === 0 || oneBasedIndex < 1) return null;
+    const targetIdx = oneBasedIndex >= 9 ? len - 1 : oneBasedIndex - 1;
+    if (targetIdx >= len) return null;
+    return this.focusTab(this.state.tabs[targetIdx].id);
+  }
+
   public openOrFocusTab(input: OpenChartTabInput): ChartTabItem {
     const symbol = normalizeSymbol(input.symbol);
     const providerId = normalizeProvider(input.providerId);

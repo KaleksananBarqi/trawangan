@@ -24,6 +24,7 @@
   import { chartDrawingController, isSameSymbol, type GestureCreationState } from '../services/chartDrawingController';
   import { priceScaleOverlayController } from '../services/priceScaleOverlayController';
   import { alertService } from '../services/alertService';
+  import { resolveAlertLineTone } from '../services/alertLineStyleHelper';
   import { dedupeByKey } from '../utils/dedupeByKey';
   import { dataWindowService } from '../services/dataWindowService';
   import { marketFeed } from '../services/market';
@@ -80,6 +81,9 @@
     customChartBackground?: CustomChartBackgroundConfig;
     securityWatermark?: SecurityWatermarkConfig;
     userProfile?: UserProfileConfig;
+    hollowCandles?: boolean;
+    mainPaneObjectsOpacity?: number;
+    showAlertLines?: boolean;
     sessionController?: ChartSessionController | null;
   }
 
@@ -91,7 +95,8 @@
     customPalette, customBullColor, customBearColor, customChartBackground,
     syncConfig = { crosshair: true, viewport: true, symbol: false, drawings: true, indicators: true },
     showWatermark = true, showCurrentPriceLine = true, showPriceScaleCountdown = false, showVolume = true, showIndicatorPriceLabels = true,
-    showDrawingPriceLabels = true, onActiveIndicatorsChange, onActiveCellChange,
+    showDrawingPriceLabels = true, hollowCandles = false, mainPaneObjectsOpacity = 1, showAlertLines = true,
+    onActiveIndicatorsChange, onActiveCellChange,
     onPriceStyleChange,
     onCutoffCancelled, onRequestCreateAlert, onRequestEditAlert, onOpenTradePlanPaste,
     onEditPlan, onVelaThemeSelect, onPersistableStateChange, onSessionStateChange, securityWatermark, userProfile,
@@ -104,7 +109,7 @@
   const controller = new ChartSessionController({
     symbol, timeframe, defaultTimeframe, layout, providerId, themePreset,
     fontSize, timezone, session: marketSession, gridMode, customPalette: customPalette || undefined, customBullColor, customBearColor, customChartBackground,
-    showCurrentPriceLine, showPriceScaleCountdown, showVolume, showWatermark, syncConfig, onActiveCellChange,
+    showCurrentPriceLine, showPriceScaleCountdown, showVolume, showWatermark, hollowCandles, mainPaneObjectsOpacity, syncConfig, onActiveCellChange,
     onPriceStyleChange,
     onActiveIndicatorsChange: (indicators) => {
       priceScaleOverlayController.updateIndicators(indicators, showIndicatorPriceLabels);
@@ -248,6 +253,8 @@
     const alerts = allAlerts;
     const v = showVolume;
     const wm = showWatermark;
+    const hc = hollowCandles;
+    const mpo = mainPaneObjectsOpacity;
     const showIndLabels = showIndicatorPriceLabels;
     const plans = scopedActivePlans;
 
@@ -277,6 +284,8 @@
         priceScaleCountdown: cd,
         showVolume: v,
         showWatermark: wm,
+        hollowCandles: hc,
+        mainPaneObjectsOpacity: mpo,
       });
 
       if (lastLoadedWorkspaceId !== null && lastLoadedWorkspaceId !== wsId && !controller.isRestoring()) {
@@ -1276,56 +1285,59 @@
     </div>
   {/if}
 
-  {#each activeSymbolAlerts as a (a.id)}
-    {@const isDragging = draggingAlertId === a.id}
-    {@const displayPrice = isDragging && draggingAlertPrice ? draggingAlertPrice : a.targetPrice}
-    {@const yPos = isDragging ? getPriceY(displayPrice) : (a.id in alertYPositions ? alertYPositions[a.id] : getPriceY(displayPrice))}
-    {#if yPos !== null && yPos >= 0}
-      <div class="chart-alert-line {a.triggered ? 'triggered' : ''} {a.active ? 'active' : 'paused'} {isDragging ? 'is-dragging' : ''}" style="top: {yPos}px;">
-        <div
-          class="alert-line-badge mono-nums {isDragging ? 'dragging' : ''}"
-          onpointerdown={(e) => handleAlertPointerDown(e, a)}
-          onpointermove={(e) => handleAlertPointerMove(e, a)}
-          onpointerup={(e) => handleAlertPointerUp(e, a)}
-          onpointercancel={(e) => handleAlertPointerUp(e, a)}
-          ondblclick={(e) => {
-            e.stopPropagation();
-            onRequestEditAlert?.(a);
-          }}
-          title="Tahan & geser untuk mengubah harga (Double-click untuk sunting)"
-        >
-          <Bell size={10} class="badge-bell" />
-          <span class="badge-price">{priceScaleOverlayController.formatPriceWithQuote(displayPrice)}</span>
-          {#if isDragging && snapInfo?.snapped}
-            <span class="badge-snap-tag mono-nums">MAGNET: {snapInfo.type?.toUpperCase()}</span>
-          {/if}
-          {#if a.label}<span class="badge-lbl">{a.label}</span>{/if}
-          <button
-            type="button"
-            class="badge-edit-btn"
-            title="Sunting Alert"
-            onclick={(e) => {
+  {#if showAlertLines}
+    {#each activeSymbolAlerts as a (a.id)}
+      {@const isDragging = draggingAlertId === a.id}
+      {@const displayPrice = isDragging && draggingAlertPrice ? draggingAlertPrice : a.targetPrice}
+      {@const yPos = isDragging ? getPriceY(displayPrice) : (a.id in alertYPositions ? alertYPositions[a.id] : getPriceY(displayPrice))}
+      {@const tone = resolveAlertLineTone(a)}
+      {#if yPos !== null && yPos >= 0}
+        <div class="chart-alert-line tone-{tone} {a.triggered ? 'triggered' : ''} {a.active ? 'active' : 'paused'} {isDragging ? 'is-dragging' : ''}" style="top: {yPos}px;">
+          <div
+            class="alert-line-badge mono-nums {isDragging ? 'dragging' : ''}"
+            onpointerdown={(e) => handleAlertPointerDown(e, a)}
+            onpointermove={(e) => handleAlertPointerMove(e, a)}
+            onpointerup={(e) => handleAlertPointerUp(e, a)}
+            onpointercancel={(e) => handleAlertPointerUp(e, a)}
+            ondblclick={(e) => {
               e.stopPropagation();
               onRequestEditAlert?.(a);
             }}
+            title="Tahan & geser untuk mengubah harga (Double-click untuk sunting)"
           >
-            <Edit3 size={10} />
-          </button>
-          <button
-            type="button"
-            class="badge-del-btn"
-            title="Hapus Alert"
-            onclick={(e) => {
-              e.stopPropagation();
-              alertService.deleteAlert(a.id);
-            }}
-          >
-            <X size={10} />
-          </button>
+            <Bell size={9} class="badge-bell" />
+            <span class="badge-price">{priceScaleOverlayController.formatPriceWithQuote(displayPrice)}</span>
+            {#if isDragging && snapInfo?.snapped}
+              <span class="badge-snap-tag mono-nums">MAGNET: {snapInfo.type?.toUpperCase()}</span>
+            {/if}
+            {#if a.label}<span class="badge-lbl">{a.label}</span>{/if}
+            <button
+              type="button"
+              class="badge-edit-btn"
+              title="Sunting Alert"
+              onclick={(e) => {
+                e.stopPropagation();
+                onRequestEditAlert?.(a);
+              }}
+            >
+              <Edit3 size={9} />
+            </button>
+            <button
+              type="button"
+              class="badge-del-btn"
+              title="Hapus Alert"
+              onclick={(e) => {
+                e.stopPropagation();
+                alertService.deleteAlert(a.id);
+              }}
+            >
+              <X size={9} />
+            </button>
+          </div>
         </div>
-      </div>
-    {/if}
-  {/each}
+      {/if}
+    {/each}
+  {/if}
 
   {#if draggingAlertId && snapInfo?.snapped && snapInfo.candleY !== undefined}
     <div

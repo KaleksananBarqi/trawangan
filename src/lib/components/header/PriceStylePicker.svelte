@@ -14,11 +14,15 @@
   interface Props {
     activePriceStyle?: PriceStyle | string;
     onPriceStyleChange: (style: PriceStyle) => void;
+    hollowCandles?: boolean;
+    onToggleHollowCandles?: () => void;
   }
 
   let {
     activePriceStyle = 'candles',
-    onPriceStyleChange
+    onPriceStyleChange,
+    hollowCandles = false,
+    onToggleHollowCandles
   }: Props = $props();
 
   let showMenu = $state(false);
@@ -112,6 +116,32 @@
           </button>
         {/each}
       </div>
+
+      {#if onToggleHollowCandles}
+        <div class="dropdown-divider"></div>
+        <button
+          type="button"
+          class="style-item-btn hollow-toggle-item {hollowCandles ? 'active' : ''}"
+          role="menuitemcheckbox"
+          aria-checked={hollowCandles}
+          onclick={() => onToggleHollowCandles?.()}
+        >
+          <div class="item-left">
+            <span class="item-icon-wrap {hollowCandles ? 'active-icon' : ''}">
+              <ChartCandlestick size={14} />
+            </span>
+            <div class="item-text">
+              <div class="item-title-row">
+                <span class="item-title">Hollow Candles</span>
+              </div>
+              <span class="item-desc">Body bullish transparan penuh</span>
+            </div>
+          </div>
+          {#if hollowCandles}
+            <Check size={12} class="check-icon" />
+          {/if}
+        </button>
+      {/if}
     </div>
   {/if}
 </div>
@@ -295,5 +325,11 @@
   .check-icon {
     color: var(--color-primary, #38bdf8);
     flex-shrink: 0;
+  }
+
+  .dropdown-divider {
+    height: 1px;
+    background: var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+    margin: 4px 2px;
   }
 </style>

@@ -356,43 +356,58 @@
   background-color: var(--bg-hover);
 }
 
-/* Garis Horizontal Visual Price Alert pada Grafik */
+/* Garis Horizontal Visual Price Alert pada Grafik (ramping & selaras tema) */
 .chart-alert-line {
+  --alert-accent: var(--brand-primary, #3b82f6);
+  --alert-text: var(--brand-primary, #3b82f6);
   position: absolute;
   left: 0;
   right: 0;
   height: 1px;
+  opacity: 0.65;
   background: repeating-linear-gradient(
     to right,
-    #f59e0b 0,
-    #f59e0b 5px,
-    transparent 5px,
-    transparent 10px
+    var(--alert-accent) 0,
+    var(--alert-accent) 3px,
+    transparent 3px,
+    transparent 7px
   );
   pointer-events: none;
   z-index: 18;
-  box-shadow: 0 0 6px rgba(245, 158, 11, 0.35);
+  box-shadow: none;
+}
+
+.chart-alert-line.tone-bull {
+  --alert-accent: var(--bull-color, #22c55e);
+  --alert-text: var(--bull-text, var(--bull-color, #22c55e));
+}
+
+.chart-alert-line.tone-bear {
+  --alert-accent: var(--bear-color, #ef4444);
+  --alert-text: var(--bear-color, #ef4444);
+}
+
+.chart-alert-line.tone-neutral {
+  --alert-accent: var(--brand-primary, #3b82f6);
+  --alert-text: var(--brand-primary, #3b82f6);
 }
 
 .chart-alert-line.triggered {
-  background: repeating-linear-gradient(
-    to right,
-    var(--bear-color) 0,
-    var(--bear-color) 5px,
-    transparent 5px,
-    transparent 10px
-  );
-  box-shadow: 0 0 8px var(--bear-glow);
+  --alert-accent: var(--bear-color, #ef4444);
+  --alert-text: var(--bear-color, #ef4444);
+  opacity: 0.55;
 }
 
 .chart-alert-line.paused {
-  opacity: 0.35;
+  opacity: 0.32;
+  --alert-accent: var(--text-dim);
+  --alert-text: var(--text-muted);
   background: repeating-linear-gradient(
     to right,
     var(--text-dim) 0,
-    var(--text-dim) 4px,
-    transparent 4px,
-    transparent 8px
+    var(--text-dim) 3px,
+    transparent 3px,
+    transparent 7px
   );
   box-shadow: none;
 }
@@ -403,47 +418,50 @@
   transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  background-color: rgba(20, 16, 10, 0.94);
+  gap: 4px;
+  height: 16px;
+  background-color: color-mix(in srgb, var(--bg-surface, #0f1115) 92%, transparent);
   backdrop-filter: blur(4px);
-  border: 1px solid #f59e0b;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.75), 0 0 8px rgba(245, 158, 11, 0.25);
-  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--alert-accent) 55%, transparent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  padding: 1px 4px;
   border-radius: var(--radius-xs);
-  font-size: 9px;
+  font-size: 8.5px;
   font-weight: 600;
-  color: #fbbf24;
+  line-height: 1;
+  color: var(--alert-text);
   pointer-events: auto;
   cursor: ns-resize;
   user-select: none;
   touch-action: none;
-  transition: background-color 0.12s ease, border-color 0.12s ease;
+  transition: background-color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
 .alert-line-badge.dragging {
-  background-color: #f59e0b;
-  color: #06090e;
+  background-color: var(--alert-accent);
+  color: #ffffff;
   font-weight: 700;
-  border-color: #fbbf24;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.9), 0 0 12px rgba(245, 158, 11, 0.7);
+  border-color: var(--alert-accent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--alert-accent) 45%, transparent);
   cursor: grabbing;
 }
 
 .chart-alert-line.is-dragging {
   z-index: 30;
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+  opacity: 1;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--alert-accent) 55%, transparent);
 }
 
 .alert-line-badge:hover {
-  background-color: rgba(28, 22, 12, 0.98);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.85), 0 0 10px rgba(245, 158, 11, 0.4);
+  background-color: var(--bg-surface, #0f1115);
+  border-color: var(--alert-accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
 .chart-alert-line.triggered .alert-line-badge {
-  background-color: rgba(30, 10, 15, 0.94);
-  border-color: var(--bear-color);
-  color: var(--bear-color);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.75), 0 0 8px var(--bear-glow);
+  background-color: color-mix(in srgb, var(--bg-surface, #0f1115) 92%, transparent);
+  border-color: color-mix(in srgb, var(--bear-color, #ef4444) 60%, transparent);
+  color: var(--bear-color, #ef4444);
 }
 
 .badge-bell {
@@ -458,34 +476,16 @@
 
 .badge-lbl {
   color: var(--text-muted);
-  font-size: 8.5px;
-  max-width: 90px;
+  font-size: 8px;
+  max-width: 84px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 1px solid color-mix(in srgb, var(--text-dim) 35%, transparent);
   padding-left: 4px;
 }
 
-.badge-del-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 1px;
-  border-radius: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 2px;
-  transition: color 0.1s ease;
-}
-
-.badge-del-btn:hover {
-  color: var(--bear-color);
-  background-color: rgba(255, 59, 105, 0.15);
-}
-
+.badge-del-btn,
 .badge-edit-btn {
   background: transparent;
   border: none;
@@ -493,16 +493,28 @@
   cursor: pointer;
   padding: 1px;
   border-radius: 2px;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
-  margin-left: 2px;
+  margin-left: 1px;
   transition: color 0.1s ease;
 }
 
+.alert-line-badge:hover .badge-del-btn,
+.alert-line-badge:hover .badge-edit-btn,
+.alert-line-badge:focus-within .badge-del-btn,
+.alert-line-badge:focus-within .badge-edit-btn {
+  display: inline-flex;
+}
+
+.badge-del-btn:hover {
+  color: var(--bear-color);
+  background-color: color-mix(in srgb, var(--bear-color) 15%, transparent);
+}
+
 .badge-edit-btn:hover {
-  color: var(--brand-cyan, #00f090);
-  background-color: rgba(0, 240, 144, 0.15);
+  color: var(--alert-accent);
+  background-color: color-mix(in srgb, var(--alert-accent) 15%, transparent);
 }
 
 .badge-snap-tag {

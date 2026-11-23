@@ -389,6 +389,110 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       match: { alt: true, ctrlOrMeta: false, key: 'o', code: 'KeyO' },
     },
     {
+      id: 'toggle-alerts-dock',
+      category: 'Navigasi & Simbol',
+      keys: ['Alt', 'Shift', 'A'],
+      desc: 'Buka atau sembunyikan tab Price Alerts di Right Dock',
+      allowInInput: false,
+      match: { alt: true, shift: true, ctrlOrMeta: false, key: 'a', code: 'KeyA' },
+    },
+    {
+      id: 'toggle-datawindow-dock',
+      category: 'Navigasi & Simbol',
+      keys: ['Alt', 'D'],
+      desc: 'Buka atau sembunyikan tab Data Window Inspector di Right Dock',
+      allowInInput: false,
+      match: { alt: true, shift: false, ctrlOrMeta: false, key: 'd', code: 'KeyD' },
+    },
+    {
+      id: 'toggle-events-dock',
+      category: 'Navigasi & Simbol',
+      keys: ['Alt', 'C'],
+      desc: 'Buka atau sembunyikan tab Events & Kalender Makroekonomi di Right Dock',
+      allowInInput: false,
+      match: { alt: true, shift: false, ctrlOrMeta: false, key: 'c', code: 'KeyC' },
+    },
+    {
+      id: 'toggle-right-dock-hider',
+      category: 'Navigasi & Simbol',
+      keys: ['Alt', '\\'],
+      desc: 'Sembunyikan atau tampilkan panel Right Dock secara keseluruhan',
+      allowInInput: false,
+      match: { alt: true, shift: false, ctrlOrMeta: false, key: '\\', code: 'Backslash' },
+    },
+    {
+      id: 'new-chart-tab',
+      category: 'Navigasi & Simbol',
+      keys: ['Ctrl', 'T'],
+      desc: 'Tambah Chart Tab baru dan buka pencarian simbol',
+      allowInInput: false,
+      match: { ctrlOrMeta: true, alt: false, shift: false, key: 't', code: 'KeyT' },
+    },
+    {
+      id: 'close-chart-tab',
+      category: 'Navigasi & Simbol',
+      keys: ['Ctrl', 'W'],
+      desc: 'Tutup Chart Tab aktif (minimal 1 tab tetap terbuka)',
+      allowInInput: false,
+      match: { ctrlOrMeta: true, alt: false, shift: false, key: 'w', code: 'KeyW' },
+    },
+    {
+      id: 'next-chart-tab',
+      category: 'Navigasi & Simbol',
+      keys: ['Ctrl', 'Tab'],
+      desc: 'Pindah ke Chart Tab berikutnya (Ctrl+Tab atau Ctrl+PageDown)',
+      allowInInput: true,
+      match: {
+        customMatch: (e) =>
+          Boolean(
+            (e.ctrlKey || e.metaKey) &&
+              !e.altKey &&
+              !e.shiftKey &&
+              (e.key === 'Tab' || e.code === 'Tab' || e.key === 'PageDown' || e.code === 'PageDown')
+          ),
+      },
+    },
+    {
+      id: 'prev-chart-tab',
+      category: 'Navigasi & Simbol',
+      keys: ['Ctrl', 'Shift', 'Tab'],
+      desc: 'Pindah ke Chart Tab sebelumnya (Ctrl+Shift+Tab atau Ctrl+PageUp)',
+      allowInInput: true,
+      match: {
+        customMatch: (e) =>
+          Boolean(
+            (e.ctrlKey || e.metaKey) &&
+              !e.altKey &&
+              ((e.shiftKey && (e.key === 'Tab' || e.code === 'Tab')) ||
+                (!e.shiftKey && (e.key === 'PageUp' || e.code === 'PageUp')))
+          ),
+      },
+    },
+    ...([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({
+      id: `jump-chart-tab-${n}`,
+      category: 'Navigasi & Simbol' as CommandCategory,
+      keys: ['Alt', String(n)],
+      desc: n === 9 ? 'Lompat ke Chart Tab terakhir' : `Lompat langsung ke Chart Tab ke-${n}`,
+      allowInInput: false,
+      match: { alt: true, shift: false, ctrlOrMeta: false, key: String(n), code: `Digit${n}` },
+    })),
+    {
+      id: 'prev-chart-cell',
+      category: 'Navigasi & Simbol',
+      keys: ['Alt', '['],
+      desc: 'Pindah fokus ke sel grafik sebelumnya di mode Multi-Chart',
+      allowInInput: false,
+      match: { alt: true, shift: false, ctrlOrMeta: false, key: '[', code: 'BracketLeft' },
+    },
+    {
+      id: 'next-chart-cell',
+      category: 'Navigasi & Simbol',
+      keys: ['Alt', ']'],
+      desc: 'Pindah fokus ke sel grafik berikutnya di mode Multi-Chart',
+      allowInInput: false,
+      match: { alt: true, shift: false, ctrlOrMeta: false, key: ']', code: 'BracketRight' },
+    },
+    {
       id: 'next-symbol',
       category: 'Navigasi & Simbol',
       keys: ['Alt', '↓'],
@@ -479,7 +583,7 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       category: 'Alat Gambar (Drawing Tools)',
       keys: ['Alt', 'H'],
       desc: 'Aktifkan alat Garis Horizontal (Horizontal Line)',
-      match: { alt: true, ctrlOrMeta: false, key: 'h', code: 'KeyH' },
+      match: { alt: true, shift: false, ctrlOrMeta: false, key: 'h', code: 'KeyH' },
     },
     {
       id: 'draw-vline',
@@ -545,7 +649,7 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
       category: 'Alat Gambar (Drawing Tools)',
       keys: ['Alt', 'A'],
       desc: 'Buat Price Alert pada harga posisi kursor saat ini',
-      match: { alt: true, ctrlOrMeta: false, key: 'a', code: 'KeyA' },
+      match: { alt: true, shift: false, ctrlOrMeta: false, key: 'a', code: 'KeyA' },
     },
     {
       id: 'draw-undo',
@@ -757,8 +861,40 @@ export const DEFAULT_COMMANDS: CommandDefinition[] = [
         code: ['KeyR'],
       },
     },
+    {
+      id: 'scroll-to-realtime',
+      category: 'Skala & Tampilan Grafik',
+      keys: ['Alt', 'Shift', '→'],
+      desc: 'Gulir grafik langsung ke lilin terbaru (Realtime)',
+      allowInInput: false,
+      match: { alt: true, shift: true, ctrlOrMeta: false, key: 'arrowright', code: 'ArrowRight' },
+    },
+    {
+      id: 'toggle-alert-lines',
+      category: 'Skala & Tampilan Grafik',
+      keys: ['Alt', 'Shift', 'H'],
+      desc: 'Tampilkan atau sembunyikan garis Price Alert di grafik (notifikasi tetap aktif)',
+      allowInInput: false,
+      match: { alt: true, shift: true, ctrlOrMeta: false, key: 'h', code: 'KeyH' },
+    },
 
     // --- Timeframe Cepat ---
+    {
+      id: 'prev-favorite-timeframe',
+      category: 'Timeframe Cepat',
+      keys: ['['],
+      desc: 'Beralih ke timeframe favorit sebelumnya',
+      allowInInput: false,
+      match: { ctrlOrMeta: false, alt: false, shift: false, key: '[', code: 'BracketLeft' },
+    },
+    {
+      id: 'next-favorite-timeframe',
+      category: 'Timeframe Cepat',
+      keys: [']'],
+      desc: 'Beralih ke timeframe favorit berikutnya',
+      allowInInput: false,
+      match: { ctrlOrMeta: false, alt: false, shift: false, key: ']', code: 'BracketRight' },
+    },
     {
       id: 'tf-quick',
       category: 'Timeframe Cepat',

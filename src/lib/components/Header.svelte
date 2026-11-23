@@ -81,6 +81,8 @@
     onToggleActiveWatchlist?: () => void;
     activePriceStyle?: PriceStyle | string;
     onPriceStyleChange?: (style: PriceStyle) => void;
+    hollowCandles?: boolean;
+    onToggleHollowCandles?: () => void;
     // Props opsional baru untuk Quick Chart Tabs & Derivatives Telemetry (#227)
     chartTabs?: ChartTabItem[];
     activeChartTabId?: string;
@@ -142,6 +144,8 @@
     onToggleActiveWatchlist,
     activePriceStyle = 'candles',
     onPriceStyleChange,
+    hollowCandles = false,
+    onToggleHollowCandles,
     chartTabs,
     activeChartTabId,
     onSelectChartTab,
@@ -385,6 +389,8 @@
     <PriceStylePicker
       {activePriceStyle}
       onPriceStyleChange={(style) => onPriceStyleChange?.(style)}
+      {hollowCandles}
+      {onToggleHollowCandles}
     />
 
     <div class="divider"></div>

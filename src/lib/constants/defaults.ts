@@ -1,5 +1,6 @@
 import type { AppSettings, MultiChartSyncConfig, UserProfileConfig, CustomChartBackgroundConfig, SecurityWatermarkConfig } from '../types/market';
 import { DEFAULT_WORLD_CLOCK_CITIES } from '../services/worldClockService';
+import { clampMainPaneOpacity } from '../services/mainPaneOpacityAdapter';
 
 /**
  * Konfigurasi bawaan sinkronisasi multi-chart Trawangan
@@ -34,6 +35,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showVolume: true,
   showIndicatorPriceLabels: true,
   showDrawingPriceLabels: true,
+  hollowCandles: false,
+  mainPaneObjectsOpacity: 1,
+  showAlertLines: true,
   theme: 'signature',
   themePreset: 'signature',
   chartThemePreset: 'signature',
@@ -152,6 +156,15 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
     showVolume: saved.showVolume ?? DEFAULT_APP_SETTINGS.showVolume ?? true,
     showIndicatorPriceLabels: saved.showIndicatorPriceLabels ?? DEFAULT_APP_SETTINGS.showIndicatorPriceLabels ?? true,
     showDrawingPriceLabels: saved.showDrawingPriceLabels ?? DEFAULT_APP_SETTINGS.showDrawingPriceLabels ?? true,
+    hollowCandles:
+      typeof saved.hollowCandles === 'boolean'
+        ? saved.hollowCandles
+        : (DEFAULT_APP_SETTINGS.hollowCandles ?? false),
+    mainPaneObjectsOpacity: clampMainPaneOpacity(saved.mainPaneObjectsOpacity),
+    showAlertLines:
+      typeof saved.showAlertLines === 'boolean'
+        ? saved.showAlertLines
+        : (DEFAULT_APP_SETTINGS.showAlertLines ?? true),
     colorModePreference:
       saved.colorModePreference === 'dark' ||
       saved.colorModePreference === 'light' ||

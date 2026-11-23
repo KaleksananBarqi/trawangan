@@ -1402,11 +1402,21 @@
 
     <!-- Kategori 1: Warna Candlestick -->
     <div class="studio-category">
-      <div class="category-header">
-        <span class="category-title">1. Warna Lilin Candlestick (Bullish & Bearish)</span>
-        <span class="category-sub">
-          Atur warna badan lilin (Body), sumbu (Wick), dan garis tepi (Border)
-        </span>
+      <div class="category-header" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div>
+          <span class="category-title">1. Warna Lilin Candlestick (Bullish & Bearish)</span>
+          <span class="category-sub">
+            Atur warna badan lilin (Body), sumbu (Wick), dan garis tepi (Border)
+          </span>
+        </div>
+        <button
+          type="button"
+          class="toggle-btn {settings.hollowCandles ? 'active' : ''}"
+          onclick={() => onUpdateSettings({ hollowCandles: !settings.hollowCandles })}
+          title="Kosongkan isian body candle bullish (Hollow Candles)"
+        >
+          Hollow Candles: {settings.hollowCandles ? 'Aktif' : 'Nonaktif'}
+        </button>
       </div>
 
       <div class="studio-pickers-grid">

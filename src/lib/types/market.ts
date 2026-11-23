@@ -410,6 +410,9 @@ export interface AppSettings {
   showVolume?: boolean;
   showIndicatorPriceLabels?: boolean;
   showDrawingPriceLabels?: boolean;
+  hollowCandles?: boolean;
+  mainPaneObjectsOpacity?: number;
+  showAlertLines?: boolean;
   theme?: ThemeId | 'obsidian';
   themePreset?: ThemeId;
   chartThemePreset?: ThemeId;

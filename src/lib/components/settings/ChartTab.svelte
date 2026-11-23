@@ -223,6 +223,42 @@
 
   <div class="setting-row">
     <div class="setting-info">
+      <span class="setting-label">Hollow Candles (Body Bullish Transparan)</span>
+      <span class="setting-desc">Kosongkan isian body lilin naik (bullish) dengan garis tepi &amp; sumbu mengikuti warna tema</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.hollowCandles ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ hollowCandles: !settings.hollowCandles })}
+    >
+      {settings.hollowCandles ? 'Aktif' : 'Nonaktif'}
+    </button>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Opasitas Objek Pane Utama ({Math.round((settings.mainPaneObjectsOpacity ?? 1) * 100)}%)</span>
+      <span class="setting-desc">Redupkan indikator overlay, volume overlay, VPVR, dan gambar pada pane harga utama tanpa memengaruhi lilin atau sub-pane lain</span>
+    </div>
+    <div class="opacity-slider-wrap" style="display: flex; align-items: center; gap: 8px; min-width: 150px;">
+      <input
+        type="range"
+        min="0.1"
+        max="1"
+        step="0.05"
+        aria-label="Opasitas Objek Pane Utama"
+        value={settings.mainPaneObjectsOpacity ?? 1}
+        oninput={(e) => onUpdateSettings({ mainPaneObjectsOpacity: parseFloat(e.currentTarget.value) })}
+        style="flex: 1; accent-color: var(--brand-primary);"
+      />
+      <span class="mono-nums" style="font-size: 11px; min-width: 36px; text-align: right;">
+        {Math.round((settings.mainPaneObjectsOpacity ?? 1) * 100)}%
+      </span>
+    </div>
+  </div>
+
+  <div class="setting-row">
+    <div class="setting-info">
       <span class="setting-label">Bar Replay Controller</span>
       <span class="setting-desc">Tampilkan toolbar replay candle historis di atas grafik</span>
     </div>
@@ -343,6 +379,21 @@
       onclick={() => onUpdateSettings({ showDrawingPriceLabels: settings.showDrawingPriceLabels === false })}
     >
       {settings.showDrawingPriceLabels !== false ? 'Aktif' : 'Nonaktif'}
+    </button>
+  </div>
+
+  <!-- Garis Price Alert pada Grafik -->
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">Garis Price Alert di Grafik</span>
+      <span class="setting-desc">Tampilkan garis &amp; label alert pada kanvas (notifikasi latar belakang tetap berjalan saat disembunyikan)</span>
+    </div>
+    <button
+      type="button"
+      class="toggle-btn {settings.showAlertLines !== false ? 'active' : ''}"
+      onclick={() => onUpdateSettings({ showAlertLines: settings.showAlertLines === false })}
+    >
+      {settings.showAlertLines !== false ? 'Tampil' : 'Sembunyi'}
     </button>
   </div>
 </div>
