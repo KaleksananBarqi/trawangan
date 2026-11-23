@@ -5,6 +5,20 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.56.0] - 2026-11-23
+
+### 🚀 Ditambahkan (Added)
+- **Neo-Quant Tonal Shell & Primitif Kontrol Modern (`ADR-0029`, `themeEngine.ts`, `colorUtils.ts`, `ToggleSwitch.svelte`):**
+  - Menetapkan arsitektur visual **Neo-Quant Tonal Shell** pada `DESIGN.md`, `GLOSSARY.md`, dan `ADR-0029` dengan pemisahan blok permukaan tonal `2px` di atas lapisan dasar `--bg-shell` (*full-bleed* `0px` pada perimeter shell).
+  - Menambahkan helper `deriveShellColor()` dan injeksi otomatis `--bg-shell` di `themeEngine.ts` untuk seluruh 37 preset tema bawaan (gelap & terang) serta palet kustom 9D.
+  - Membuat komponen primitif `ToggleSwitch.svelte` (`role="switch"`, dukungan keyboard & `prefers-reduced-motion`) untuk menggantikan tombol kotak teks `Aktif`/`Nonaktif`.
+
+### 🔄 Diubah (Changed)
+- **Skala Radius & Primitif Settings (`theme.css`, `SettingsModal.svelte`, tab `settings/`):**
+  - Memperbarui skala radius desktop (`4px` / `5px` / `6px` / `8px` / `10px`), menaikkan `--text-dim` ke `#808080` (WCAG AA), dan menghilangkan *box-in-box fatigue* dengan mengubah baris Settings (`GeneralTab`, `ChartTab`, `ProfileTab`, `TypographyTab`, `AppearanceTab`) menjadi blok tonal tanpa border `1px` serta bilah aksen kiri `2.5px` pada item aktif.
+- **Chrome Utama, Modal & Right Dock (`+page.svelte`, `Header.svelte`, `TopTabBar.svelte`, `DrawingToolbar.svelte`, `RightDockRail.svelte`, `StatusBar.svelte`, `WatchlistTab.svelte`, `AlertsTab.svelte`, `LayersTab.svelte`, `EventsTab.svelte`):**
+  - Mengganti garis pemisah border `1px` antar-panel utama dengan celah tonal `2px`, menyelaraskan radius modal `10px` (`IndicatorModal`, `SymbolSearchModal`, `CreateAlertModal`, `ShortcutCheatsheetModal`, `DrawByHoldingModal`), serta membersihkan fallback legacy `#00f090`/`#00f0ff` dan animasi berulang pada ikon update.
+
 ## [0.55.0] - 2026-11-23
 
 ### 🚀 Ditambahkan (Added)
