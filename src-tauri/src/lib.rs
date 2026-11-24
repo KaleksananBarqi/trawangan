@@ -1,4 +1,5 @@
 pub mod bridge;
+pub mod broker_bridge;
 pub mod db;
 pub mod market;
 pub mod commands;
@@ -35,6 +36,7 @@ pub fn run() {
             });
             app.manage(MarketService::new());
             app.manage(bridge::BridgeState::new());
+            app.manage(broker_bridge::Mt5BridgeState::new());
             bridge::spawn_loopback_bridge(app.handle().clone());
 
             Ok(())
@@ -80,8 +82,15 @@ pub fn run() {
             updater::download_and_verify_linux_package,
             updater::install_linux_package_and_relaunch,
             updater::open_local_installer_fallback,
-            bridge::get_bridge_status
+            bridge::get_bridge_status,
+            broker_bridge::list_broker_configs,
+            broker_bridge::save_broker_credentials,
+            broker_bridge::delete_broker_credentials,
+            broker_bridge::verify_broker_connection,
+            broker_bridge::get_broker_account_state,
+            broker_bridge::place_manual_broker_order,
+            broker_bridge::cancel_manual_broker_order
         ])
         .run(tauri::generate_context!())
-        .expect("Terjadi error saat menjalankan aplikasi desktop Trawangan");
+        .expect("Terjadi error saat menjalankan aplikasi desktop trawangan");
 }

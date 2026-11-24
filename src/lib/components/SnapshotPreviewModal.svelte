@@ -42,6 +42,7 @@
     type SnapshotOptions,
     type SnapshotMetadata
   } from '../services/chartSnapshotService';
+  import { tr } from '../i18n';
 
   interface Props {
     isOpen: boolean;
@@ -522,7 +523,7 @@
             <Camera size={15} />
           </div>
           <div class="header-titles">
-            <h3 id="snapshot-modal-title">Pratinjau Snapshot Grafik</h3>
+            <h3 id="snapshot-modal-title">{$tr('Preview Jepretan Snapshot Chart', 'Pratinjau Snapshot Grafik', 'Chart Snapshot Preview')}</h3>
             <span class="header-subtitle mono-nums">
               {#if snapshotScope === 'all'}
                 MULTI-CHART GRID · LAYOUT {currentLayout.toUpperCase()} · {activeProviderId.toUpperCase()}
@@ -674,7 +675,7 @@
           <!-- Pilihan Tata Letak Tesis (#132, #135) -->
           {#if hasActivePlans}
             <div class="sidebar-section">
-              <span class="section-title">TATA LETAK TESIS</span>
+              <span class="section-title">{$tr('POSISI KARTU TESIS', 'TATA LETAK TESIS', 'THESIS CARD LAYOUT')}</span>
               <div class="mode-toggle-group">
                 <button
                   type="button"
@@ -684,9 +685,9 @@
                 >
                   <div class="mode-btn-content">
                     <Columns2 size={13} class="icon-sparkle" />
-                    <span class="btn-title">Side Panel (Samping Kanan)</span>
+                    <span class="btn-title">{$tr('Panel Tengen (Side Panel)', 'Side Panel (Samping Kanan)', 'Side Panel (Right)')}</span>
                   </div>
-                  <span class="btn-desc">Berdampingan di samping kanan grafik (Bersih)</span>
+                  <span class="btn-desc">{$tr('Jejer nang sebelah tengen chart (Resik)', 'Berdampingan di samping kanan grafik (Bersih)', 'Cleanly docked beside the chart')}</span>
                 </button>
 
                 <button
@@ -697,9 +698,9 @@
                 >
                   <div class="mode-btn-content">
                     <Layers size={13} />
-                    <span class="btn-title">Overlay di Atas Grafik</span>
+                    <span class="btn-title">{$tr('Ngambang nang Dhuwur Grafik', 'Overlay di Atas Grafik', 'Overlay on Chart')}</span>
                   </div>
-                  <span class="btn-desc">Mengambang di atas lilin grafik</span>
+                  <span class="btn-desc">{$tr('Ngambang nang ndhuwur candle grafik', 'Mengambang di atas lilin grafik', 'Floating over candlesticks')}</span>
                 </button>
 
                 <button
@@ -710,9 +711,9 @@
                 >
                   <div class="mode-btn-content">
                     <EyeOff size={13} />
-                    <span class="btn-title">Sembunyikan</span>
+                    <span class="btn-title">{$tr('Singidno', 'Sembunyikan', 'Hide')}</span>
                   </div>
-                  <span class="btn-desc">Sembunyikan Tesis (Hanya grafik lilin)</span>
+                  <span class="btn-desc">{$tr('Singidno Tesis (Mung gambar candle tok)', 'Sembunyikan Tesis (Hanya grafik lilin)', 'Hide Thesis (Candles only)')}</span>
                 </button>
               </div>
             </div>

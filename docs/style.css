@@ -238,6 +238,39 @@ code {
   flex-shrink: 0;
 }
 
+.lang-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  min-height: 44px;
+}
+
+.lang-btn {
+  min-height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.lang-btn:hover {
+  color: var(--text-main);
+}
+
+.lang-btn.active {
+  background: var(--accent-pink);
+  color: var(--accent-pink-ink);
+}
+
 .btn-github {
   display: inline-flex;
   align-items: center;

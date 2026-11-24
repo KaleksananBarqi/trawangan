@@ -39,7 +39,6 @@
   } from '../services/chartSnapshotService';
   import { THEME_PRESETS, resolveThemeConfig } from '../constants/themes';
   import ChartContextMenu from './ChartContextMenu.svelte';
-  import FloatingThesisCard from './FloatingThesisCard.svelte';
   import RangePresetBar from './RangePresetBar.svelte';
   import type {
     Timeframe, ActiveIndicatorInfo, DrawingToolType, MultiChartSyncConfig,
@@ -1389,24 +1388,7 @@
     {/if}
   {/if}
 
-  {#if showThesisCards}
-    {#each scopedActivePlans as plan, idx (plan.id)}
-      {@const savedGeo = thesisCardGeometries[plan.id]}
-      <FloatingThesisCard
-        {plan}
-        initialX={savedGeo?.x ?? (16 + idx * 24)}
-        initialY={savedGeo?.y ?? (56 + idx * 24)}
-        initialWidth={savedGeo?.width ?? 340}
-        initialHeight={savedGeo?.height}
-        initialIsWideMode={savedGeo?.isWideMode ?? false}
-        initialIsMinimized={savedGeo?.isMinimized ?? false}
-        onClose={(id) => chartDrawingController.removePlan(id)}
-        onHide={() => chartDrawingController.setThesisCardsVisible(false)}
-        onEdit={(id) => onEditPlan?.(id)}
-        onGeometryChange={handleThesisCardGeometryChange}
-      />
-    {/each}
-  {/if}
+  <!-- Docked Thesis Preview (ADR-0032): Kartu tesis tidak lagi melayang di atas kanvas WebGL2 -->
 
   <ChartContextMenu
     isOpen={isContextMenuOpen}

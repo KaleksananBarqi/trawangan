@@ -392,7 +392,16 @@ export interface SecurityWatermarkConfig {
 
 export type GridMode = 'normal' | 'dimmed' | 'hidden';
 
+export type AppLanguage = 'jv' | 'id' | 'en';
+
+export type BrokerId = 'binance' | 'bitunix' | 'mt5';
+
 export interface AppSettings {
+  language?: AppLanguage;
+  hasCompletedOnboarding?: boolean;
+  executionBridgeEnabled?: boolean;
+  executionRiskAccepted?: boolean;
+  activeBrokerId?: BrokerId;
   timezone: string;
   soundEnabled: boolean;
   systemNotificationEnabled?: boolean;

@@ -2,7 +2,7 @@ import type { WorkspaceMode } from '../types/market';
 import { storage } from './persistence';
 import type { IPersistenceService } from './persistence/types';
 
-export type RightDockTab = 'watchlist' | 'alerts' | 'objects' | 'plan' | 'datawindow' | 'events';
+export type RightDockTab = 'watchlist' | 'alerts' | 'objects' | 'plan' | 'datawindow' | 'events' | 'order';
 export type { WorkspaceMode };
 
 interface PersistedRightDockState {
@@ -18,6 +18,7 @@ const VALID_RIGHT_DOCK_TABS: ReadonlySet<RightDockTab> = new Set([
   'plan',
   'datawindow',
   'events',
+  'order',
 ]);
 
 function isValidRightDockTab(tab: unknown): tab is RightDockTab {

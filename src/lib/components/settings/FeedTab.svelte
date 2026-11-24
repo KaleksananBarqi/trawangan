@@ -9,6 +9,7 @@
   } from '@lucide/svelte';
   import type { ProviderConfig } from '../../types/market';
   import { marketFeed } from '../../services/market';
+  import { tr, trInstant } from '../../i18n';
 
   interface Props {
     activeProviderId?: string;
@@ -77,7 +78,7 @@
 
   async function handleTestCustomConnection() {
     if (!customRestUrl.trim()) {
-      testFeedback = { success: false, message: 'Masukkan REST API Base URL terlebih dahulu.' };
+      testFeedback = { success: false, message: trInstant('Isien dhisik REST API Base URL-e, Rek.', 'Masukkan REST API Base URL terlebih dahulu.', 'Enter a REST API Base URL first.') };
       return;
     }
     isTestingConnection = true;
@@ -89,19 +90,19 @@
       if (res.ok || res.status < 400) {
         testFeedback = {
           success: true,
-          message: `Endpoint terjangkau! HTTP ${res.status} (${elapsed}ms latency)`
+          message: trInstant(`Sip nyambung! HTTP ${res.status} (${elapsed}ms latency)`, `Endpoint terjangkau! HTTP ${res.status} (${elapsed}ms latency)`, `Endpoint reachable! HTTP ${res.status} (${elapsed}ms latency)`)
         };
       } else {
         testFeedback = {
           success: false,
-          message: `Endpoint merespon status error HTTP ${res.status} (${elapsed}ms)`
+          message: trInstant(`Endpoint mbales error HTTP ${res.status} (${elapsed}ms)`, `Endpoint merespon status error HTTP ${res.status} (${elapsed}ms)`, `Endpoint returned error HTTP ${res.status} (${elapsed}ms)`)
         };
       }
     } catch (err: any) {
       const elapsed = Math.round(performance.now() - start);
       testFeedback = {
         success: false,
-        message: `Gagal ping endpoint (${elapsed}ms): ${err.message || 'CORS / Network Error'}`
+        message: trInstant(`Gagal nge-ping endpoint (${elapsed}ms): ${err.message || 'CORS / Network Error'}`, `Gagal ping endpoint (${elapsed}ms): ${err.message || 'CORS / Network Error'}`, `Failed to ping endpoint (${elapsed}ms): ${err.message || 'CORS / Network Error'}`)
       };
     } finally {
       isTestingConnection = false;
@@ -110,7 +111,7 @@
 
   async function handleSaveCustomProvider() {
     if (!customName.trim() || !customRestUrl.trim()) {
-      testFeedback = { success: false, message: 'Nama dan REST URL wajib diisi.' };
+      testFeedback = { success: false, message: trInstant('Jeneng karo REST URL wajib diisi!', 'Nama dan REST URL wajib diisi.', 'Provider name and REST URL are required.') };
       return;
     }
     const newConfig: ProviderConfig = {
@@ -128,7 +129,7 @@
     customRestUrl = '';
     customWsUrl = '';
     showCustomForm = false;
-    testFeedback = { success: true, message: 'Custom node berhasil disimpan dan diaktifkan!' };
+    testFeedback = { success: true, message: trInstant('Custom node beres disimpen lan langsung urip!', 'Custom node berhasil disimpan dan diaktifkan!', 'Custom node saved and activated!') };
   }
 
   async function handleDeleteCustomProvider(id: string) {
@@ -146,7 +147,7 @@
     <div class="feed-status-left">
       <span class="feed-pulsing-pip"></span>
       <div class="feed-status-text">
-        <span class="feed-eyebrow">FEED AKTIF SAAT INI</span>
+        <span class="feed-eyebrow">{$tr('SUMBER DATA SING URIP SAIKI', 'FEED AKTIF SAAT INI', 'CURRENT ACTIVE FEED')}</span>
         <span class="feed-current-name font-bold text-bull">{selectedProviderName}</span>
       </div>
     </div>
@@ -158,9 +159,9 @@
 
   <!-- Preset Bursa Resmi -->
   <div>
-    <h4 class="section-title">Bursa & Preset Resmi (Vela Native)</h4>
+    <h4 class="section-title">{$tr('Bursa & Preset Resmi (Vela Native)', 'Bursa & Preset Resmi (Vela Native)', 'Official Exchanges & Presets (Vela Native)')}</h4>
     <p class="section-desc">
-      Didukung secara langsung oleh renderer WebGL2 Vela tanpa perlu konfigurasi API key tambahan.
+      {$tr('Disangga langsung karo mesin WebGL2 Vela, gratis gak perlu ribet nyetel API key!', 'Didukung secara langsung oleh renderer WebGL2 Vela tanpa perlu konfigurasi API key tambahan.', 'Directly powered by the Vela WebGL2 engine with zero API key setup required.')}
     </p>
   </div>
 
@@ -180,17 +181,17 @@
           </div>
         </div>
         {#if selectedProviderId === 'binance'}
-          <span class="badge-active"><Check size={11} /> Aktif</span>
+          <span class="badge-active"><Check size={11} /> {$tr('Urip', 'Aktif', 'Active')}</span>
         {:else}
-          <span class="badge-choose">Pilih</span>
+          <span class="badge-choose">{$tr('Pilih', 'Pilih', 'Select')}</span>
         {/if}
       </div>
       <p class="card-caption">
-        Bursa crypto global dengan likuiditas nomor satu dan update tick kline milidetik.
+        {$tr('Bursa kripto nomer siji sak donya, likuiditas paling tebel lan update tick candle milidetik.', 'Bursa crypto global dengan likuiditas nomor satu dan update tick kline milidetik.', 'World #1 crypto liquidity exchange with millisecond real-time kline ticks.')}
       </p>
       <div class="card-meta">
         <span class="meta-pill">Global Liquid</span>
-        <span class="meta-pill highlight">Rekomendasi</span>
+        <span class="meta-pill highlight">{$tr('Paling Jos', 'Rekomendasi', 'Recommended')}</span>
       </div>
     </button>
 
@@ -209,17 +210,17 @@
           </div>
         </div>
         {#if selectedProviderId === 'indodax'}
-          <span class="badge-active"><Check size={11} /> Aktif</span>
+          <span class="badge-active"><Check size={11} /> {$tr('Urip', 'Aktif', 'Active')}</span>
         {:else}
-          <span class="badge-choose">Pilih</span>
+          <span class="badge-choose">{$tr('Pilih', 'Pilih', 'Select')}</span>
         {/if}
       </div>
       <p class="card-caption">
-        Bursa kripto berlisensi Bappebti Indonesia dengan kuotasi Rupiah (IDR) asli tanpa pemblokiran ISP.
+        {$tr('Bursa kripto lokal resmi Indonesia nganggo rega Rupiah (IDR) asli, aman gak diblokir ISP.', 'Bursa kripto berlisensi Bappebti Indonesia dengan kuotasi Rupiah (IDR) asli tanpa pemblokiran ISP.', 'Regulated Indonesian crypto exchange with native IDR pairs and zero ISP blocks.')}
       </p>
       <div class="card-meta">
         <span class="meta-pill">IDR Spot</span>
-        <span class="meta-pill highlight">Lokal ID</span>
+        <span class="meta-pill highlight">{$tr('Lokal Indo', 'Lokal ID', 'Local ID')}</span>
       </div>
     </button>
 
@@ -238,13 +239,13 @@
           </div>
         </div>
         {#if selectedProviderId === 'bitunix'}
-          <span class="badge-active"><Check size={11} /> Aktif</span>
+          <span class="badge-active"><Check size={11} /> {$tr('Urip', 'Aktif', 'Active')}</span>
         {:else}
-          <span class="badge-choose">Pilih</span>
+          <span class="badge-choose">{$tr('Pilih', 'Pilih', 'Select')}</span>
         {/if}
       </div>
       <p class="card-caption">
-        Data feed kontrak futures perpetual Bitunix dengan direct REST klines dan orderbook futures.
+        {$tr('Feed kontrak futures perpetual Bitunix langsung teko REST klines lan orderbook futures.', 'Data feed kontrak futures perpetual Bitunix dengan direct REST klines dan orderbook futures.', 'Bitunix USDT-M perpetual futures feed with direct REST klines and orderbook streaming.')}
       </p>
       <div class="card-meta">
         <span class="meta-pill">Futures Perp</span>
@@ -267,13 +268,13 @@
           </div>
         </div>
         {#if selectedProviderId === 'hyperliquid'}
-          <span class="badge-active"><Check size={11} /> Aktif</span>
+          <span class="badge-active"><Check size={11} /> {$tr('Urip', 'Aktif', 'Active')}</span>
         {:else}
-          <span class="badge-choose">Pilih</span>
+          <span class="badge-choose">{$tr('Pilih', 'Pilih', 'Select')}</span>
         {/if}
       </div>
       <p class="card-caption">
-        DEX perpetual terdesentralisasi on-chain dengan orderbook L1 berkecepatan tinggi.
+        {$tr('DEX perpetual on-chain tanpa tengah-tengah nganggo orderbook L1 ngebut pol.', 'DEX perpetual terdesentralisasi on-chain dengan orderbook L1 berkecepatan tinggi.', 'Decentralized on-chain perpetual DEX running a high-throughput L1 orderbook.')}
       </p>
       <div class="card-meta">
         <span class="meta-pill">Decentralized</span>
@@ -296,13 +297,13 @@
           </div>
         </div>
         {#if selectedProviderId === 'coinbase'}
-          <span class="badge-active"><Check size={11} /> Aktif</span>
+          <span class="badge-active"><Check size={11} /> {$tr('Urip', 'Aktif', 'Active')}</span>
         {:else}
-          <span class="badge-choose">Pilih</span>
+          <span class="badge-choose">{$tr('Pilih', 'Pilih', 'Select')}</span>
         {/if}
       </div>
       <p class="card-caption">
-        Standar bursa teregulasi AS dengan orderbook spot institusional.
+        {$tr('Patokan bursa spot resmi Amerika gawe mantau arus duit institusi gede.', 'Standar bursa teregulasi AS dengan orderbook spot institusional.', 'Benchmark US-regulated exchange featuring institutional spot orderflow.')}
       </p>
       <div class="card-meta">
         <span class="meta-pill">Institutional</span>
@@ -315,23 +316,23 @@
   <div class="custom-section">
     <div class="custom-header">
       <div>
-        <h4 class="section-title">Koneksi Node / Proxy Kustom</h4>
+        <h4 class="section-title">{$tr('Sambungan Node / Proxy Kustom', 'Koneksi Node / Proxy Kustom', 'Custom Node / Proxy Connection')}</h4>
         <p class="section-desc">
-          Hubungkan gateway lokal, internal relay proxy, atau private aggregator node Anda.
+          {$tr('Sambungno gateway lokal, relay proxy internal, utawa node pribadimu dewe.', 'Hubungkan gateway lokal, internal relay proxy, atau private aggregator node Anda.', 'Connect your own local gateway, internal relay proxy, or private aggregator node.')}
         </p>
       </div>
       <button
         class="btn-custom-toggle"
         onclick={() => (showCustomForm = !showCustomForm)}
       >
-        {showCustomForm ? 'Tutup Formulir' : '+ Tambah Custom Endpoint'}
+        {showCustomForm ? $tr('Tutupen Form', 'Tutup Formulir', 'Close Form') : $tr('+ Tambah Custom Endpoint', '+ Tambah Custom Endpoint', '+ Add Custom Endpoint')}
       </button>
     </div>
 
     {#if showCustomForm}
       <div class="custom-form-panel">
         <div class="form-field">
-          <label for="custom-name">Nama Provider / Node</label>
+          <label for="custom-name">{$tr('Jeneng Provider / Node', 'Nama Provider / Node', 'Provider / Node Name')}</label>
           <input
             id="custom-name"
             type="text"
@@ -342,18 +343,18 @@
         </div>
 
         <div class="form-field">
-          <label for="custom-rest">REST API Base URL (Kline Historis)</label>
+          <label for="custom-rest">{$tr('REST API Base URL (Data Candle Historis)', 'REST API Base URL (Kline Historis)', 'REST API Base URL (Historical Klines)')}</label>
           <input
             id="custom-rest"
             type="text"
-            placeholder="https://api.myfeed.com atau http://127.0.0.1:8080"
+            placeholder="https://api.myfeed.com / http://127.0.0.1:8080"
             bind:value={customRestUrl}
             class="text-input mono-nums"
           />
         </div>
 
         <div class="form-field">
-          <label for="custom-ws">WebSocket Stream URL (Opsional)</label>
+          <label for="custom-ws">{$tr('WebSocket Stream URL (Opsional)', 'WebSocket Stream URL (Opsional)', 'WebSocket Stream URL (Optional)')}</label>
           <input
             id="custom-ws"
             type="text"
@@ -377,15 +378,15 @@
           >
             {#if isTestingConnection}
               <RefreshCw size={13} class="spin" />
-              <span>Menguji...</span>
+              <span>{$tr('Ngetes...', 'Menguji...', 'Testing...')}</span>
             {:else}
               <PlugZap size={13} />
-              <span>Uji Koneksi (Ping)</span>
+              <span>{$tr('Jajal Sambungan (Ping)', 'Uji Koneksi (Ping)', 'Test Connection (Ping)')}</span>
             {/if}
           </button>
           <button class="btn-save" onclick={handleSaveCustomProvider}>
             <Check size={13} />
-            <span>Simpan & Terapkan</span>
+            <span>{$tr('Simpen & Pasang', 'Simpan & Terapkan', 'Save & Activate')}</span>
           </button>
         </div>
       </div>
@@ -402,18 +403,18 @@
             </div>
             <div class="custom-item-actions">
               {#if selectedProviderId === cp.id}
-                <span class="badge-active"><Check size={11} /> Aktif</span>
+                <span class="badge-active"><Check size={11} /> {$tr('Urip', 'Aktif', 'Active')}</span>
               {:else}
                 <button
                   class="btn-use-custom"
                   onclick={() => handleSwitchProvider(cp.id)}
                 >
-                  Gunakan
+                  {$tr('Gawe Iki', 'Gunakan', 'Use')}
                 </button>
               {/if}
               <button
                 class="btn-trash"
-                title="Hapus Provider Kustom"
+                title={$tr('Busek Provider Kustom', 'Hapus Provider Kustom', 'Delete Custom Provider')}
                 onclick={() => handleDeleteCustomProvider(cp.id)}
               >
                 <Trash2 size={13} />

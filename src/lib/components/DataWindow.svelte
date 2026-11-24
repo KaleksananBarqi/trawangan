@@ -7,6 +7,7 @@
     type DataWindowState,
     type DataWindowSection
   } from '../services/dataWindowService';
+  import { tr } from '../i18n';
 
   interface Props {
     activeSymbol?: string;
@@ -46,13 +47,13 @@
 
     <div class="toolbar-status">
       {#if snapshot.isHovered}
-        <span class="status-pill active mono-nums" title="Membaca data lilin di bawah kursor">
+        <span class="status-pill active mono-nums" title={$tr('Moco data candle nang ngisor kursor', 'Membaca data lilin di bawah kursor', 'Reading candle data under cursor')}>
           <Crosshair size={10} class="pulse-icon" />
-          <span>Kursor</span>
+          <span>{$tr('Kursor', 'Kursor', 'Cursor')}</span>
         </span>
       {:else if snapshot.hasData}
-        <span class="status-pill muted mono-nums" title="Menampilkan data lilin terakhir (kursor di luar kanvas)">
-          <span>Bar Terakhir</span>
+        <span class="status-pill muted mono-nums" title={$tr('Ngetokno data candle terakhir', 'Menampilkan data lilin terakhir (kursor di luar kanvas)', 'Showing last candle data')}>
+          <span>{$tr('Candle Terakhir', 'Bar Terakhir', 'Last Bar')}</span>
         </span>
       {:else}
         <span class="status-pill idle mono-nums">Standby</span>
@@ -67,9 +68,9 @@
         <div class="empty-icon-wrap">
           <Crosshair size={24} class="empty-icon" />
         </div>
-        <p class="empty-title">Data Window Siap</p>
+        <p class="empty-title">{$tr('Data Window Siap, Rek!', 'Data Window Siap', 'Data Window Ready')}</p>
         <p class="empty-desc">
-          Gerakkan kursor crosshair di atas chart untuk memeriksa rincian harga OHLCV dan nilai seluruh plot indikator secara presisi.
+          {$tr('Gerakno kursor crosshair nang dhuwur chart gawe ngintip detail OHLCV karo angka indikator secara presisi.', 'Gerakkan kursor crosshair di atas chart untuk memeriksa rincian harga OHLCV dan nilai seluruh plot indikator secara presisi.', 'Move the crosshair over the chart to inspect exact OHLCV values and all indicator plots.')}
         </p>
       </div>
     {:else}

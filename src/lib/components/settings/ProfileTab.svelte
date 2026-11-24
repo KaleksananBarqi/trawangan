@@ -12,6 +12,7 @@
   import type { AppSettings, UserProfileConfig, SecurityWatermarkConfig, SnapshotScaleMultiplier } from '../../types/market';
   import { resolveSecurityWatermarkText } from '../../services/chartSnapshotService';
   import ToggleSwitch from '../common/ToggleSwitch.svelte';
+  import { tr, trInstant } from '../../i18n';
 
   interface Props {
     settings: AppSettings;
@@ -119,13 +120,13 @@
 
     // Batasan ukuran berkas avatar maksimal 2.5 MB untuk menjaga efisiensi penyimpanan lokal SQLite
     if (file.size > 2.5 * 1024 * 1024) {
-      fileErrorMessage = 'Ukuran citra terlalu besar (maksimal 2.5 MB). Silakan gunakan gambar yang lebih ringkas.';
+      fileErrorMessage = trInstant('Gambar kegeden, Cok! Maksimal 2.5 MB wae.', 'Ukuran citra terlalu besar (maksimal 2.5 MB). Silakan gunakan gambar yang lebih ringkas.', 'Image exceeds 2.5 MB limit. Please pick a smaller image.');
       target.value = '';
       return;
     }
 
     if (!file.type.startsWith('image/')) {
-      fileErrorMessage = 'Format berkas tidak didukung. Harap pilih gambar (PNG, JPG, SVG, WebP).';
+      fileErrorMessage = trInstant('Format file gak cocok. Pilih gambar PNG, JPG, SVG, utawa WebP.', 'Format berkas tidak didukung. Harap pilih gambar (PNG, JPG, SVG, WebP).', 'Unsupported format. Please choose PNG, JPG, SVG, or WebP.');
       target.value = '';
       return;
     }
@@ -139,7 +140,7 @@
       target.value = '';
     };
     reader.onerror = () => {
-      fileErrorMessage = 'Gagal membaca berkas gambar. Silakan coba lagi.';
+      fileErrorMessage = trInstant('Gagal moco file gambar. Jajal maneh.', 'Gagal membaca berkas gambar. Silakan coba lagi.', 'Failed to read image file. Please try again.');
       target.value = '';
     };
     reader.readAsDataURL(file);
@@ -154,10 +155,9 @@
 </script>
 
 <div class="section-group">
-  <h4 class="section-title">Identitas Trader & Atribusi Snapshot</h4>
+  <h4 class="section-title">{$tr('Identitas Trader & Jeneng Snapshot', 'Identitas Trader & Atribusi Snapshot', 'Trader Identity & Snapshot Attribution')}</h4>
   <p class="section-subtitle">
-    Konfigurasikan avatar dan nama pengguna yang disematkan pada Attribution Bar bingkai snapshot grafik.
-    Seluruh data disimpan 100% lokal di browser Anda (*offline-first*) tanpa sinkronisasi cloud pihak ketiga.
+    {$tr('Pasang foto profil karo jeneng akunmu sing bakal mejeng nang Attribution Bar ngisor gambar snapshot chart. Kabeh disimpen 100% lokal nang PC-mu dewe tanpa upload cloud.', 'Konfigurasikan avatar dan nama pengguna yang disematkan pada Attribution Bar bingkai snapshot grafik. Seluruh data disimpan 100% lokal di browser Anda (offline-first) tanpa sinkronisasi cloud pihak ketiga.', 'Configure your avatar and handle shown on the snapshot Attribution Bar. Stored 100% locally on your machine with zero cloud sync.')}
   </p>
 
   <!-- Area Avatar Profil -->
@@ -182,8 +182,8 @@
 
     <div class="avatar-actions">
       <div class="avatar-info-text">
-        <span class="avatar-title">Foto Profil Trader</span>
-        <span class="avatar-desc">Rekomendasi rasio 1:1 (persegi). Tampil bulat di Attribution Bar snapshot.</span>
+        <span class="avatar-title">{$tr('Foto Profil Trader', 'Foto Profil Trader', 'Trader Avatar')}</span>
+        <span class="avatar-desc">{$tr('Paling mbois rasio 1:1 (kotak). Bakal njedhul bunder nang Attribution Bar snapshot.', 'Rekomendasi rasio 1:1 (persegi). Tampil bulat di Attribution Bar snapshot.', 'Recommended 1:1 square ratio. Rendered circular on the snapshot Attribution Bar.')}</span>
       </div>
 
       <div class="action-buttons-row">
@@ -191,10 +191,10 @@
           type="button"
           class="btn-profile-action upload-btn"
           onclick={handleTriggerUpload}
-          title="Unggah Foto Profil dari Komputer"
+          title={$tr('Pilih foto profil teko komputer', 'Unggah Foto Profil dari Komputer', 'Upload avatar from computer')}
         >
           <Upload size={13} />
-          <span>{currentProfile.avatarDataUrl ? 'Ganti Foto' : 'Unggah Foto'}</span>
+          <span>{currentProfile.avatarDataUrl ? $tr('Ganti Foto', 'Ganti Foto', 'Change Photo') : $tr('Pasang Foto', 'Unggah Foto', 'Upload Photo')}</span>
         </button>
 
         {#if currentProfile.avatarDataUrl}
@@ -202,10 +202,10 @@
             type="button"
             class="btn-profile-action delete-btn"
             onclick={handleRemoveAvatar}
-            title="Hapus Foto Profil"
+            title={$tr('Busek Foto Profil', 'Hapus Foto Profil', 'Remove Avatar')}
           >
             <Trash2 size={13} />
-            <span>Hapus</span>
+            <span>{$tr('Busek', 'Hapus', 'Remove')}</span>
           </button>
         {/if}
 
@@ -230,14 +230,14 @@
   <!-- Form Input Nama Pengguna & Social Handle -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Nama Pengguna (Trader / Brand)</span>
-      <span class="setting-desc">Nama atau inisial yang tampil di Attribution Bar</span>
+      <span class="setting-label">{$tr('Jeneng Trader / Brand', 'Nama Pengguna (Trader / Brand)', 'Display Name (Trader / Brand)')}</span>
+      <span class="setting-desc">{$tr('Jeneng utawa julukanmu sing mejeng nang Attribution Bar', 'Nama atau inisial yang tampil di Attribution Bar', 'Name or alias shown on the Attribution Bar')}</span>
     </div>
     <div class="input-container">
       <input
         type="text"
         class="text-input"
-        placeholder="misal: Satoshi Nakamoto"
+        placeholder="e.g. Satoshi Nakamoto"
         value={currentProfile.username}
         oninput={(e) => updateProfile({ username: e.currentTarget.value })}
         maxlength={32}
@@ -248,7 +248,7 @@
   <div class="setting-row">
     <div class="setting-info">
       <span class="setting-label">Social Media Handle</span>
-      <span class="setting-desc">Akun X/Twitter, Telegram, atau channel publik Anda</span>
+      <span class="setting-desc">{$tr('Username X/Twitter, Telegram, utawa channel komunitasmu', 'Akun X/Twitter, Telegram, atau channel publik Anda', 'Your X/Twitter, Telegram, or public channel handle')}</span>
     </div>
     <div class="input-container">
       <div class="handle-input-wrapper">
@@ -270,14 +270,14 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Deskripsi Singkat / Bio Trader</span>
-      <span class="setting-desc">Status, keahlian, atau deskripsi singkat profil Anda</span>
+      <span class="setting-label">{$tr('Bio Singkat / Gaya Trading', 'Deskripsi Singkat / Bio Trader', 'Short Bio / Trading Style')}</span>
+      <span class="setting-desc">{$tr('Tulis gaya analisamu (conto: Price Action & SMC Suroboyo)', 'Status, keahlian, atau deskripsi singkat profil Anda', 'Tagline, specialty, or trading style badge')}</span>
     </div>
     <div class="input-container">
       <input
         type="text"
         class="text-input"
-        placeholder="misal: Crypto Analyst & Swing Trader"
+        placeholder="e.g. Crypto Analyst & Swing Trader"
         value={currentProfile.bio ?? ''}
         oninput={(e) => updateProfile({ bio: e.currentTarget.value })}
         maxlength={40}
@@ -290,10 +290,10 @@
     <div class="preview-section-header">
       <div class="preview-title-group">
         <Sparkles size={13} class="sparkle-icon" />
-        <span class="preview-header-label">Pratinjau Attribution Bar Snapshot</span>
+        <span class="preview-header-label">{$tr('Conto Tampilan Attribution Bar Snapshot', 'Pratinjau Attribution Bar Snapshot', 'Snapshot Attribution Bar Preview')}</span>
       </div>
       <span class="preview-badge-status">
-        {currentProfile.username || currentProfile.handle || currentProfile.avatarDataUrl ? 'Personal Attribution Aktif' : 'Default trawangan Branding'}
+        {currentProfile.username || currentProfile.handle || currentProfile.avatarDataUrl ? $tr('Profil Pribadi Urip', 'Personal Attribution Aktif', 'Personal Attribution Active') : 'Default trawangan Branding'}
       </span>
     </div>
 
@@ -303,7 +303,6 @@
         <!-- Logo Resmi Aplikasi -->
         <div class="app-logo-box">
           <img src="/static/logo.png" alt="trawangan" class="app-logo-img" onerror={(e) => {
-            // Sembunyikan jika gambar belum terpasang di browser
             (e.currentTarget as HTMLElement).style.display = 'none';
           }} />
           <span class="app-logo-fallback"></span>
@@ -362,22 +361,22 @@
   <!-- Seksi Watermark Keamanan Anti-Pencurian (#127) -->
   <div class="watermark-header-group">
     <div class="header-with-badge">
-      <h4 class="section-title">Watermark Keamanan (Anti-Theft)</h4>
+      <h4 class="section-title">{$tr('Watermark Anti-Colong (Anti-Theft)', 'Watermark Keamanan (Anti-Theft)', 'Security Watermark (Anti-Theft)')}</h4>
       <span class="anti-theft-tag mono-nums">
         <ShieldCheck size={11} />
         ANTI-THEFT
       </span>
     </div>
     <p class="section-subtitle">
-      Sematkan tanda air diagonal semi-transparan pada kanvas snapshot untuk melindungi karya analisis teknis Anda dari pembajakan tanpa atribusi.
+      {$tr('Tempelno watermark miring tipis nang tengah kanvas snapshot ben gambar analisamu gak dicolong maling sinyal ngaku-ngaku, Cok!', 'Sematkan tanda air diagonal semi-transparan pada kanvas snapshot untuk melindungi karya analisis teknis Anda dari pembajakan tanpa atribusi.', 'Stamp a diagonal semi-transparent watermark across snapshots to protect your technical charts from uncredited reposts.')}
     </p>
   </div>
 
   <!-- 1. Toggle Switch Aktifkan Watermark Keamanan -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Aktifkan Watermark Keamanan</span>
-      <span class="setting-desc">Sematkan tanda air diagonal pada snapshot dan tangkapan layar grafik</span>
+      <span class="setting-label">{$tr('Uripno Watermark Anti-Colong', 'Aktifkan Watermark Keamanan', 'Enable Security Watermark')}</span>
+      <span class="setting-desc">{$tr('Pasang cap miring nang tengah gambar pas ekspor snapshot', 'Sematkan tanda air diagonal pada snapshot dan tangkapan layar grafik', 'Embed diagonal watermark on exported chart snapshots')}</span>
     </div>
     <ToggleSwitch
       checked={Boolean(currentWatermark.enabled)}
@@ -389,8 +388,8 @@
   <!-- 2. Input Field Teks Kustom -->
   <div class="setting-row {currentWatermark.enabled ? '' : 'is-disabled'}">
     <div class="setting-info">
-      <span class="setting-label">Teks Watermark Kustom</span>
-      <span class="setting-desc">Kosongkan untuk otomatis menggunakan nama pengguna & handle profil</span>
+      <span class="setting-label">{$tr('Tulisan Watermark Kustom', 'Teks Watermark Kustom', 'Custom Watermark Text')}</span>
+      <span class="setting-desc">{$tr('Kosongno wae nek pingin otomatis nganggo jeneng & handle profilmu', 'Kosongkan untuk otomatis menggunakan nama pengguna & handle profil', 'Leave blank to automatically use your profile name & handle')}</span>
     </div>
     <div class="input-container">
       <input
@@ -409,12 +408,12 @@
   <div class="setting-row {currentWatermark.enabled ? '' : 'is-disabled'}">
     <div class="setting-info">
       <div class="label-with-badge">
-        <span class="setting-label">Opasitas Tanda Air</span>
+        <span class="setting-label">{$tr('Ketebalan Watermark', 'Opasitas Tanda Air', 'Watermark Opacity')}</span>
         <span class="opacity-pill mono-nums">
           {Math.round((currentWatermark.opacity ?? 0.10) * 100)}%
         </span>
       </div>
-      <span class="setting-desc">Atur tingkat transparansi (5% sangat samar hingga 30% tegas)</span>
+      <span class="setting-desc">{$tr('Setel sepiro ketoke (5% tipis alus sampek 30% cetho pol)', 'Atur tingkat transparansi (5% sangat samar hingga 30% tegas)', 'Adjust transparency from 5% subtle to 30% bold')}</span>
     </div>
     <div class="slider-container">
       <input
@@ -428,9 +427,9 @@
         oninput={(e) => updateWatermark({ opacity: parseFloat(e.currentTarget.value) })}
       />
       <div class="slider-ticks mono-nums">
-        <span>5% (Samar)</span>
-        <span>10% (Bawaan)</span>
-        <span>30% (Tegas)</span>
+        <span>5% ({$tr('Tipis', 'Samar', 'Subtle')})</span>
+        <span>10% ({$tr('Default', 'Bawaan', 'Default')})</span>
+        <span>30% ({$tr('Cetho', 'Tegas', 'Bold')})</span>
       </div>
     </div>
   </div>
@@ -438,8 +437,8 @@
   <!-- 4. Toggle Switch Tampilkan di Kanvas Kerja Aktif -->
   <div class="setting-row {currentWatermark.enabled ? '' : 'is-disabled'}">
     <div class="setting-info">
-      <span class="setting-label">Tampilkan di Kanvas Kerja Aktif</span>
-      <span class="setting-desc">Munculkan tanda air langsung di kanvas kerja grafik (cocok untuk live stream & presentasi)</span>
+      <span class="setting-label">{$tr('Ketokno Langsung nang Kanvas Live', 'Tampilkan di Kanvas Kerja Aktif', 'Show on Live Chart Canvas')}</span>
+      <span class="setting-desc">{$tr('Munculno watermark langsung nang kanvas pas koen lagi live streaming utawa share screen', 'Munculkan tanda air langsung di kanvas kerja grafik (cocok untuk live stream & presentasi)', 'Display watermark directly on the live chart workspace (great for livestreams)')}</span>
     </div>
     <ToggleSwitch
       checked={Boolean(currentWatermark.showOnLiveCanvas && currentWatermark.enabled)}
@@ -454,10 +453,10 @@
     <div class="preview-section-header">
       <div class="preview-title-group">
         <Sparkles size={13} class="sparkle-icon" />
-        <span class="preview-header-label">Pratinjau Tanda Air Diagonal</span>
+        <span class="preview-header-label">{$tr('Conto Watermark Miring', 'Pratinjau Tanda Air Diagonal', 'Diagonal Watermark Preview')}</span>
       </div>
       <span class="preview-badge-status {currentWatermark.enabled ? 'active' : 'inactive'}">
-        {currentWatermark.enabled ? `Aktif (${Math.round((currentWatermark.opacity ?? 0.10) * 100)}%)` : 'Nonaktif'}
+        {currentWatermark.enabled ? `${$tr('Urip', 'Aktif', 'Active')} (${Math.round((currentWatermark.opacity ?? 0.10) * 100)}%)` : $tr('Mati', 'Nonaktif', 'Off')}
       </span>
     </div>
 
@@ -492,22 +491,22 @@
   <!-- Seksi 3: Preferensi Tangkapan Layar Bawaan (#124, #125) -->
   <div class="snapshot-header-group">
     <div class="header-with-badge">
-      <h4 class="section-title">Preferensi Tangkapan Layar Bawaan</h4>
+      <h4 class="section-title">{$tr('Setelan Default Jepretan Snapshot', 'Preferensi Tangkapan Layar Bawaan', 'Default Snapshot Preferences')}</h4>
       <span class="snapshot-tag mono-nums">
         <Camera size={11} />
         SNAPSHOT
       </span>
     </div>
     <p class="section-subtitle">
-      Konfigurasikan resolusi bawaan dan informasi yang disematkan saat mengambil snapshot grafik cepat atau via dialog ekspor.
+      {$tr('Atur resolusi beninge gambar lan info opo wae sing katut pas njepret chart.', 'Konfigurasikan resolusi bawaan dan informasi yang disematkan saat mengambil snapshot grafik cepat atau via dialog ekspor.', 'Configure default export resolution and metadata badges for chart snapshots.')}
     </p>
   </div>
 
   <!-- 1. Selector Chip Multiplier Resolusi Bawaan: 1x, 2x (HiDPI), 4x (4K), 6x (Super HD) -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Resolusi Snapshot Bawaan (Scale Multiplier)</span>
-      <span class="setting-desc">Tingkat ketajaman kanvas grafik yang dihasilkan (HiDPI hingga Ultra HD 6K)</span>
+      <span class="setting-label">{$tr('Resolusi Bening Snapshot (Scale Multiplier)', 'Resolusi Snapshot Bawaan (Scale Multiplier)', 'Default Snapshot Scale Multiplier')}</span>
+      <span class="setting-desc">{$tr('Tingkat ketajeman gambar sing diekspor (HiDPI sampek Super HD 6x)', 'Tingkat ketajaman kanvas grafik yang dihasilkan (HiDPI hingga Ultra HD 6K)', 'Output pixel density multiplier (from 1x up to crisp 6x Super HD)')}</span>
     </div>
     <div class="multiplier-chips-group">
       {#each scaleMultiplierOptions as opt}
@@ -527,8 +526,8 @@
   <!-- 2. Toggle Switch snapshotIncludeFrame (Bingkai Branded Frame Bawaan) -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Bingkai Branded Frame Bawaan</span>
-      <span class="setting-desc">Sematkan kartu showcase dengan Attribution Bar (identitas trader, logo, harga) atau kanvas murni</span>
+      <span class="setting-label">{$tr('Bingkai Branded Frame Default', 'Bingkai Branded Frame Bawaan', 'Default Branded Snapshot Frame')}</span>
+      <span class="setting-desc">{$tr('Pasang bingkai mbois lengkap karo Attribution Bar (profil, logo, rega) utawa kanvas resik', 'Sematkan kartu showcase dengan Attribution Bar (identitas trader, logo, harga) atau kanvas murni', 'Wrap exported chart in a showcase frame with Attribution Bar or export raw canvas')}</span>
     </div>
     <ToggleSwitch
       checked={currentIncludeFrame}
@@ -540,8 +539,8 @@
   <!-- 3. Toggle Switch snapshotIncludePrice (Sertakan Harga Terakhir) -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Sertakan Harga Terakhir</span>
-      <span class="setting-desc">Tampilkan nilai harga pasar aktif di Attribution Bar snapshot</span>
+      <span class="setting-label">{$tr('Katutno Rega Terakhir', 'Sertakan Harga Terakhir', 'Include Last Price')}</span>
+      <span class="setting-desc">{$tr('Ketokno angka rega market aktif nang Attribution Bar snapshot', 'Tampilkan nilai harga pasar aktif di Attribution Bar snapshot', 'Display active market price on the snapshot Attribution Bar')}</span>
     </div>
     <ToggleSwitch
       checked={currentIncludePrice}
@@ -553,8 +552,8 @@
   <!-- 4. Toggle Switch snapshotIncludeTimestamp (Sertakan Stempel Waktu Lokal) -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Sertakan Stempel Waktu Lokal</span>
-      <span class="setting-desc">Tampilkan informasi tanggal dan jam analisis lokal saat grafik diambil</span>
+      <span class="setting-label">{$tr('Katutno Tanggal & Jam Lokal', 'Sertakan Stempel Waktu Lokal', 'Include Local Timestamp')}</span>
+      <span class="setting-desc">{$tr('Ketokno info tanggal karo jam analisa pas gambar dijepret', 'Tampilkan informasi tanggal dan jam analisis lokal saat grafik diambil', 'Show local capture date and time on the snapshot footer')}</span>
     </div>
     <ToggleSwitch
       checked={currentIncludeTimestamp}

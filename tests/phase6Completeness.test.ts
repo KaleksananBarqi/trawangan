@@ -62,7 +62,7 @@ function createFakeCell(opts: {
       barCount: opts.bars?.length ?? 0,
       width: 1000,
       get barSpacing() { return barSpacing; },
-      setViewport: () => {},
+      setViewport: () => { },
     },
     bars: opts.bars ?? [],
     factoryConfig: JSON.parse(JSON.stringify(rendererConfig)),
@@ -73,19 +73,19 @@ function createFakeCell(opts: {
     getConfig() {
       return JSON.parse(JSON.stringify(rendererConfig));
     },
-    set: () => {},
-    onConfigChanged: () => () => {},
-    scheduler: { invalidate: () => {} },
+    set: () => { },
+    onConfigChanged: () => () => { },
+    scheduler: { invalidate: () => { } },
     factoryResetDocument: (orig: any) => JSON.parse(JSON.stringify(orig)),
   };
 
   const chart: any = {
     orchestrator: opts.historyCompleted !== undefined
       ? {
-          historyCompleted: opts.historyCompleted,
-          switchingMarket: false,
-          rawBars: opts.bars ?? [],
-        }
+        historyCompleted: opts.historyCompleted,
+        switchingMarket: false,
+        rawBars: opts.bars ?? [],
+      }
       : undefined,
     bars: opts.bars ?? [],
     renderer: {
@@ -94,7 +94,7 @@ function createFakeCell(opts: {
       getConfig: () => nativeRenderer.getConfig(),
       getBarSpacing: () => barSpacing,
       setBarSpacing: (v: number) => { barSpacing = v; },
-      setPriceScaleOptions: () => {},
+      setPriceScaleOptions: () => { },
     },
     panes: {
       list: () => [{ id: 'price', kind: 'price', order: 0, indicators: [] }],
@@ -103,16 +103,16 @@ function createFakeCell(opts: {
     drawings: {
       all: () => [],
       toJSON: () => ({ version: 1, drawings: [] }),
-      fromJSON: () => {},
-      setSnapMode: () => {},
-      setStayMode: () => {},
+      fromJSON: () => { },
+      setSnapMode: () => { },
+      setStayMode: () => { },
     },
     getVisibleRange: () => currentVr ? { ...currentVr } : null,
     setVisibleRange(vr: { from: number; to: number }) {
       setVisibleRangeCalls.push({ ...vr });
       currentVr = { ...vr };
     },
-    setPriceStyle: () => {},
+    setPriceStyle: () => { },
     priceStyle: 'candles',
     on(ev: string, fn: Function) {
       let set = listeners.get(ev);
@@ -181,12 +181,12 @@ function createFakeWorkspaceFromCells(cells: any[]) {
         }
       }
     },
-    setLayout: () => {},
-    setTheme: () => {},
-    on: () => () => {},
-    off: () => {},
-    destroy: () => {},
-    sync: { set: () => {} },
+    setLayout: () => { },
+    setTheme: () => { },
+    on: () => () => { },
+    off: () => { },
+    destroy: () => { },
+    sync: { set: () => { } },
   };
 }
 
@@ -410,7 +410,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
 
     const mockChart: WorkspaceChartPort = {
       captureWorkspaceSnapshot: () => ({ indicators: [] }),
-      applyWorkspaceSnapshot: async () => {},
+      applyWorkspaceSnapshot: async () => { },
     };
 
     const fullWorkspace: SavedWorkspace = {
@@ -441,11 +441,11 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       chart: mockChart,
       plan: chartDrawingController,
       activeProviderId: 'binance',
-      onProviderChange: async () => {},
-      onSymbolChange: async () => {},
-      onTimeframeChange: () => {},
-      onLayoutChange: () => {},
-      onSyncIndicators: () => {},
+      onProviderChange: async () => { },
+      onSymbolChange: async () => { },
+      onTimeframeChange: () => { },
+      onLayoutChange: () => { },
+      onSyncIndicators: () => { },
     });
 
     assert.equal(res.success, true);
@@ -466,14 +466,11 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
 
     unsub();
 
-    // Verifikasi FloatingThesisCard & Chart.svelte mendukung isWideMode & isMinimized
-    const cardSrc = fs.readFileSync(path.resolve('src/lib/components/FloatingThesisCard.svelte'), 'utf8');
+    // Verifikasi Chart.svelte tetap menjaga kompatibilitas setThesisCardGeometry namun beralih ke Docked Thesis Preview (ADR-0032)
     const chartSrc = fs.readFileSync(path.resolve('src/lib/components/Chart.svelte'), 'utf8');
-    assert.ok(cardSrc.includes('initialIsWideMode'), 'FloatingThesisCard.svelte harus mendukung prop initialIsWideMode');
-    assert.ok(cardSrc.includes('initialIsMinimized'), 'FloatingThesisCard.svelte harus mendukung prop initialIsMinimized');
-    assert.ok(chartSrc.includes('initialIsWideMode'), 'Chart.svelte harus meneruskan initialIsWideMode ke FloatingThesisCard');
-    assert.ok(chartSrc.includes('initialIsMinimized'), 'Chart.svelte harus meneruskan initialIsMinimized ke FloatingThesisCard');
-    assert.ok(chartSrc.includes('setThesisCardGeometry'), 'Chart.svelte harus sinkron ke chartDrawingController.setThesisCardGeometry');
+    const previewSrc = fs.readFileSync(path.resolve('src/lib/components/trade-plan/TradePlanPreviewView.svelte'), 'utf8');
+    assert.ok(previewSrc.includes('buildThesisPresentationModel'), 'TradePlanPreviewView.svelte harus merender tesis di panel kanan');
+    assert.ok(chartSrc.includes('setThesisCardGeometry'), 'Chart.svelte harus tetap sinkron ke chartDrawingController.setThesisCardGeometry');
   });
 
   test('4. drawingToolbar (snapMode & stayMode): save, restore, fingerprint sensitivity & +page.svelte auto-save tracking', async () => {
@@ -504,7 +501,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
 
     const mockChart: WorkspaceChartPort = {
       captureWorkspaceSnapshot: () => ({ indicators: [] }),
-      applyWorkspaceSnapshot: async () => {},
+      applyWorkspaceSnapshot: async () => { },
     };
 
     const res = await executeWorkspaceLoadPipeline({
@@ -517,11 +514,11 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       chart: mockChart,
       plan: chartDrawingController,
       activeProviderId: 'binance',
-      onProviderChange: async () => {},
-      onSymbolChange: async () => {},
-      onTimeframeChange: () => {},
-      onLayoutChange: () => {},
-      onSyncIndicators: () => {},
+      onProviderChange: async () => { },
+      onSymbolChange: async () => { },
+      onTimeframeChange: () => { },
+      onLayoutChange: () => { },
+      onSyncIndicators: () => { },
     });
 
     assert.equal(res.success, true);
@@ -658,8 +655,8 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
             if (ids.includes(items[i].id)) items.splice(i, 1);
           }
         },
-        setSnapMode: () => {},
-        setStayMode: () => {},
+        setSnapMode: () => { },
+        setStayMode: () => { },
       };
     }
 
@@ -694,7 +691,7 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
 
     const mockChart: WorkspaceChartPort = {
       captureWorkspaceSnapshot: () => ({ indicators: [] }),
-      applyWorkspaceSnapshot: async () => {},
+      applyWorkspaceSnapshot: async () => { },
     };
 
     const staleWorkspacePlan = {
@@ -734,11 +731,11 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       chart: mockChart,
       plan: ctrlA,
       activeProviderId: 'binance',
-      onProviderChange: async () => {},
-      onSymbolChange: async () => {},
-      onTimeframeChange: () => {},
-      onLayoutChange: () => {},
-      onSyncIndicators: () => {},
+      onProviderChange: async () => { },
+      onSymbolChange: async () => { },
+      onTimeframeChange: () => { },
+      onLayoutChange: () => { },
+      onSyncIndicators: () => { },
     });
 
     assert.equal(resA.success, true);
@@ -804,11 +801,11 @@ describe('Phase 6 — Workspace Persistence Completeness Suite', () => {
       chart: mockChart,
       plan: ctrlB,
       activeProviderId: 'binance',
-      onProviderChange: async () => {},
-      onSymbolChange: async () => {},
-      onTimeframeChange: () => {},
-      onLayoutChange: () => {},
-      onSyncIndicators: () => {},
+      onProviderChange: async () => { },
+      onSymbolChange: async () => { },
+      onTimeframeChange: () => { },
+      onLayoutChange: () => { },
+      onSyncIndicators: () => { },
     });
 
     assert.equal(resB.success, true);

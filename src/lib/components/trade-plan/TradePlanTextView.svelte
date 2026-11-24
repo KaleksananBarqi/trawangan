@@ -1,6 +1,7 @@
 <script lang="ts">
   import { AlertCircle, Check, ClipboardPaste, Trash2 } from '@lucide/svelte';
   import type { ParsedTradingPlan } from '../../services/planParserService';
+  import { tr } from '../../i18n';
 
   interface Props {
     activeSymbol: string;
@@ -45,28 +46,28 @@
       type="button"
       class="btn-tool-action {copyFeedback ? 'text-success' : ''}"
       onclick={onPasteFromClipboard}
-      title="Tempel tabel rencana trading dari clipboard"
+      title={$tr('Paste tabel rencana trading teko clipboard', 'Tempel tabel rencana trading dari clipboard', 'Paste trading plan table from clipboard')}
     >
       <ClipboardPaste size={11} />
-      <span>{copyFeedback ? 'Ditempel!' : 'Tempel'}</span>
+      <span>{copyFeedback ? $tr('Wis Kepaste!', 'Ditempel!', 'Pasted!') : $tr('Paste', 'Tempel', 'Paste')}</span>
     </button>
 
     <button
       type="button"
       class="btn-tool-action"
       onclick={onLoadSampleText}
-      title="Muat contoh format Markdown"
+      title={$tr('Isi conto format Markdown', 'Muat contoh format Markdown', 'Load sample Markdown template')}
     >
-      <span>Contoh</span>
+      <span>{$tr('Conto', 'Contoh', 'Sample')}</span>
     </button>
 
     <button
       type="button"
       class="btn-tool-action cyan"
       onclick={onOpenTextInForm}
-      title="Muat teks Markdown ini ke Form interaktif"
+      title={$tr('Bukak teks Markdown iki nang Form interaktif', 'Muat teks Markdown ini ke Form interaktif', 'Load Markdown into interactive Form')}
     >
-      <span>Buka di Form</span>
+      <span>{$tr('Bukak nang Form', 'Buka di Form', 'Open in Form')}</span>
     </button>
 
     {#if textBuffer}
@@ -74,7 +75,7 @@
         type="button"
         class="btn-tool-action btn-clear"
         onclick={onClearTextBuffer}
-        title="Bersihkan isi teks"
+        title={$tr('Resiki kabeh teks', 'Bersihkan isi teks', 'Clear text')}
         aria-label="Bersihkan isi teks"
       >
         <Trash2 size={11} />
@@ -86,7 +87,7 @@
     bind:this={textareaEl}
     value={textBuffer}
     oninput={(e) => onTextChange(e.currentTarget.value)}
-    placeholder="Tempel tabel Markdown atau catatan trading plan di sini..."
+    placeholder={$tr('Paste tabel Markdown utawa catetan trading plan-mu nang kene, Rek...', 'Tempel tabel Markdown atau catatan trading plan di sini...', 'Paste Markdown table or trading plan notes here...')}
     class="markdown-editor mono-nums"
     aria-label="Editor Markdown Trading Plan"
     spellcheck="false"
@@ -94,16 +95,16 @@
 
   <div class="text-preview-summary">
     <div class="preview-status-row">
-      <span class="preview-title">Hasil Parse Live</span>
+      <span class="preview-title">{$tr('Hasil Parse Langsung', 'Hasil Parse Live', 'Live Parse Result')}</span>
       {#if !textBuffer.trim()}
-        <span class="status-pill empty">Menunggu Input</span>
+        <span class="status-pill empty">{$tr('Ngenteni Input', 'Menunggu Input', 'Waiting Input')}</span>
       {:else if textPreviewPlan.validation.valid}
         <span class="status-pill valid">
           <Check size={10} /> Valid
         </span>
       {:else}
         <span class="status-pill invalid">
-          <AlertCircle size={10} /> Perlu Perbaikan
+          <AlertCircle size={10} /> {$tr('Kudu Dibeneri', 'Perlu Perbaikan', 'Needs Fix')}
         </span>
       {/if}
     </div>

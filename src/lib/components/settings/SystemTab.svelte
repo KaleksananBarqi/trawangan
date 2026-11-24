@@ -1,9 +1,13 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
-  import { Check, Copy, Database, Download, Link2, Wifi } from '@lucide/svelte';
-  import { telemetryService, type TelemetryData } from '../../services/telemetryService';
-  import userscriptSource from '../../../../scripts/trawangan-tradingview-bridge.user.js?raw';
+  import { onDestroy, onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { Check, Copy, Database, Download, Link2, Wifi } from "@lucide/svelte";
+  import {
+    telemetryService,
+    type TelemetryData,
+  } from "../../services/telemetryService";
+  import { tr, trInstant } from "../../i18n";
+  import userscriptSource from "../../../../scripts/trawangan-tradingview-bridge.user.js?raw";
 
   interface BridgeStatus {
     active: boolean;
@@ -17,7 +21,7 @@
   let bridgeStatus = $state<BridgeStatus>({
     active: false,
     port: 47831,
-    addr: '127.0.0.1:47831',
+    addr: "127.0.0.1:47831",
     error: null,
   });
   let bridgeChecked = $state(false);
@@ -26,24 +30,30 @@
 
   async function refreshBridgeStatus() {
     try {
-      const status = await invoke<BridgeStatus>('get_bridge_status');
+      const status = await invoke<BridgeStatus>("get_bridge_status");
       bridgeStatus = status;
     } catch {
       // Fallback probe HTTP untuk mode preview browser di luar Tauri runtime
       try {
-        const res = await fetch('http://127.0.0.1:47831/ping', { mode: 'cors' });
+        const res = await fetch("http://127.0.0.1:47831/ping", {
+          mode: "cors",
+        });
         bridgeStatus = {
           active: res.ok,
           port: 47831,
-          addr: '127.0.0.1:47831',
+          addr: "127.0.0.1:47831",
           error: res.ok ? null : `HTTP ${res.status}`,
         };
       } catch {
         bridgeStatus = {
           active: false,
           port: 47831,
-          addr: '127.0.0.1:47831',
-          error: 'Listener tidak aktif',
+          addr: "127.0.0.1:47831",
+          error: trInstant(
+            "Listener mati / durung mlaku",
+            "Listener tidak aktif",
+            "Listener inactive",
+          ),
         };
       }
     } finally {
@@ -60,16 +70,18 @@
         copySuccess = false;
       }, 2000);
     } catch (err) {
-      console.error('[SystemTab] Gagal menyalin userscript:', err);
+      console.error("[SystemTab] Gagal menyalin userscript:", err);
     }
   }
 
   function downloadUserscript() {
-    const blob = new Blob([userscriptSource], { type: 'text/javascript;charset=utf-8' });
+    const blob = new Blob([userscriptSource], {
+      type: "text/javascript;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
+    const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = 'trawangan-tradingview-bridge.user.js';
+    anchor.download = "trawangan-tradingview-bridge.user.js";
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -96,36 +108,81 @@
 </script>
 
 <div class="section-group">
-  <h4 class="section-title">Status Akselerasi WebGL 2.0 & Native Core</h4>
+  <h4 class="section-title">
+    {$tr(
+      "Status Gaspol WebGL 2.0 & Mesin Native",
+      "Status Akselerasi WebGL 2.0 & Native Core",
+      "WebGL 2.0 Acceleration & Native Core Status",
+    )}
+  </h4>
   <p class="section-desc">
-    Informasi telemetri perangkat keras dipindahkan ke sini agar area kerja grafik tetap bersih dan maksimal.
+    {$tr(
+      "Info jeroan performa hardware disinggahno nang kene ben kanvas chart-mu tetep resik maksimal.",
+      "Informasi telemetri perangkat keras dipindahkan ke sini agar area kerja grafik tetap bersih dan maksimal.",
+      "Hardware telemetry lives here so your primary charting canvas stays clean and unobstructed.",
+    )}
   </p>
 
   <div class="telemetry-grid mono-nums">
     <div class="telemetry-card">
-      <span class="card-label">Target Rendering</span>
-      <span class="card-value {telemetry.fps >= 55 ? 'text-bull' : telemetry.fps >= 30 ? 'text-amber' : 'text-bear'}">{telemetry.fps} FPS</span>
+      <span class="card-label"
+        >{$tr(
+          "Kecepatan Render (Target Rendering)",
+          "Target Rendering",
+          "Target Rendering",
+        )}</span
+      >
+      <span
+        class="card-value {telemetry.fps >= 55
+          ? 'text-bull'
+          : telemetry.fps >= 30
+            ? 'text-amber'
+            : 'text-bear'}">{telemetry.fps} FPS</span
+      >
       <span class="card-sub">Actual Canvas Frame Rate</span>
     </div>
 
     <div class="telemetry-card">
-      <span class="card-label">Estimasi RAM Buffer</span>
+      <span class="card-label"
+        >{$tr(
+          "Panganane RAM (RAM Buffer)",
+          "Estimasi RAM Buffer",
+          "Estimated RAM Buffer",
+        )}</span
+      >
       <span class="card-value">{telemetry.memoryMb.toFixed(1)} MB</span>
-      <span class="card-sub">{telemetry.nativeProcessMb ? 'Windows Working Set' : 'JS Heap Memory'}</span>
+      <span class="card-sub"
+        >{telemetry.nativeProcessMb
+          ? "Windows Working Set"
+          : "JS Heap Memory"}</span
+      >
     </div>
 
     <div class="telemetry-card">
       <span class="card-label">Network Latency (Ping)</span>
-      <span class="card-value {telemetry.isOnline && telemetry.latencyMs !== null ? 'text-cyan' : 'text-bear'}">
-        {telemetry.isOnline && telemetry.latencyMs !== null ? `${telemetry.latencyMs} ms` : 'Offline / Timeout'}
+      <span
+        class="card-value {telemetry.isOnline && telemetry.latencyMs !== null
+          ? 'text-cyan'
+          : 'text-bear'}"
+      >
+        {telemetry.isOnline && telemetry.latencyMs !== null
+          ? `${telemetry.latencyMs} ms`
+          : "Offline / Timeout"}
       </span>
       <span class="card-sub">RTT to {telemetry.providerName}</span>
     </div>
 
     <div class="telemetry-card">
       <span class="card-label">Packet Drop Health</span>
-      <span class="card-value {telemetry.packetDrops > 0 ? 'text-amber' : ''}">{telemetry.packetDrops} Gagal / Drop</span>
-      <span class="card-sub">{telemetry.packetDrops === 0 ? 'Zero connection loss' : 'Detected drops'}</span>
+      <span class="card-value {telemetry.packetDrops > 0 ? 'text-amber' : ''}"
+        >{telemetry.packetDrops}
+        {$tr("Drop / Meleset", "Gagal / Drop", "Dropped")}</span
+      >
+      <span class="card-sub"
+        >{telemetry.packetDrops === 0
+          ? "Zero connection loss"
+          : "Detected drops"}</span
+      >
     </div>
   </div>
 
@@ -144,9 +201,15 @@
 <div class="section-group">
   <div class="bridge-header">
     <div>
-      <h4 class="section-title">TradingView Browser Bridge ({bridgeStatus.addr})</h4>
+      <h4 class="section-title">
+        TradingView Browser Bridge ({bridgeStatus.addr})
+      </h4>
       <p class="section-desc">
-        Menangkap tautan chart TradingView dari Firefox/Chrome secara instan via loopback HTTP tanpa dialog izin browser.
+        {$tr(
+          "Nyambut link chart TradingView teko Firefox/Chrome langsung melbu aplikasi liwat loopback HTTP tanpa pop-up izin ribet.",
+          "Menangkap tautan chart TradingView dari Firefox/Chrome secara instan via loopback HTTP tanpa dialog izin browser.",
+          "Intercepts TradingView chart links from Firefox/Chrome directly into the desktop app via local HTTP loopback.",
+        )}
       </p>
     </div>
     <span
@@ -156,7 +219,7 @@
           ? 'badge-inactive'
           : 'badge-checking'}"
     >
-      {bridgeStatus.active ? 'ACTIVE' : bridgeChecked ? 'OFFLINE' : 'CHECKING'}
+      {bridgeStatus.active ? "ACTIVE" : bridgeChecked ? "OFFLINE" : "CHECKING"}
     </span>
   </div>
 
@@ -164,7 +227,16 @@
     <div class="bridge-meta">
       <Link2 size={14} class="text-cyan" />
       <span class="bridge-hint">
-        Pasang Userscript di Tampermonkey atau Violentmonkey. Tambahkan <code>?notrawangan=1</code> pada URL untuk tetap membuka di browser.
+        {$tr(
+          "Pasang Userscript iki nang Tampermonkey utawa Violentmonkey. Tambahno",
+          "Pasang Userscript di Tampermonkey atau Violentmonkey. Tambahkan",
+          "Install the Userscript in Tampermonkey or Violentmonkey. Append",
+        )} <code>?notrawangan=1</code>
+        {$tr(
+          "nang URL nek pingin tetep mbukak nang browser.",
+          "pada URL untuk tetap membuka di browser.",
+          "to any URL to keep opening it in your browser.",
+        )}
       </span>
     </div>
 
@@ -176,16 +248,34 @@
       <button type="button" class="bridge-btn primary" onclick={copyUserscript}>
         {#if copySuccess}
           <Check size={13} />
-          <span>Userscript Tersalin</span>
+          <span
+            >{$tr(
+              "Userscript Wis Kesalin!",
+              "Userscript Tersalin",
+              "Userscript Copied",
+            )}</span
+          >
         {:else}
           <Copy size={13} />
-          <span>Salin Userscript (Tampermonkey / Violentmonkey)</span>
+          <span
+            >{$tr(
+              "Salin Userscript (Tampermonkey / Violentmonkey)",
+              "Salin Userscript (Tampermonkey / Violentmonkey)",
+              "Copy Userscript (Tampermonkey / Violentmonkey)",
+            )}</span
+          >
         {/if}
       </button>
 
       <button type="button" class="bridge-btn" onclick={downloadUserscript}>
         <Download size={13} />
-        <span>Simpan File .user.js</span>
+        <span
+          >{$tr(
+            "Simpen File .user.js",
+            "Simpan File .user.js",
+            "Download .user.js File",
+          )}</span
+        >
       </button>
     </div>
   </div>
@@ -364,7 +454,9 @@
     background-color: rgba(110, 118, 129, 0.12);
     color: var(--text-base, #ffffff);
     cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
   }
 
   .bridge-btn:hover {

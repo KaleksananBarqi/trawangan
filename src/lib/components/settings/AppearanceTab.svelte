@@ -41,6 +41,7 @@
   } from "../../constants/themes";
   import { transitionThemeState } from "../../services/themeEngine";
   import { isDarkColor } from "../../utils/colorUtils";
+  import { tr, trInstant } from "../../i18n";
   import type {
     AppSettings,
     ColorModePreference,
@@ -687,12 +688,12 @@
 </script>
 
 {#snippet themePresetOptions()}
-  <optgroup label="Tema Gelap (Dark)">
+  <optgroup label={$tr("Tema Peteng (Dark)", "Tema Gelap (Dark)", "Dark Themes")}>
     {#each darkPresets as p}
       <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ""}</option>
     {/each}
   </optgroup>
-  <optgroup label="Tema Terang (Light)">
+  <optgroup label={$tr("Tema Padhang (Light)", "Tema Terang (Light)", "Light Themes")}>
     {#each lightPresets as p}
       <option value={p.id}>{p.name} {p.badge ? `(${p.badge})` : ""}</option>
     {/each}
@@ -707,7 +708,7 @@
     <!-- Baris Atas: Mode Warna Cepat + Toggle Sinkronisasi -->
     <div class="hub-top-bar">
       <div class="hub-mode-group">
-        <span class="hub-group-label">Mode Tampilan:</span>
+        <span class="hub-group-label">{$tr("Mode Werna:", "Mode Tampilan:", "Color Mode:")}</span>
         <div
           class="theme-mode-filters"
           role="radiogroup"
@@ -717,28 +718,28 @@
             type="button"
             class="filter-chip {colorModePref === 'system' ? 'active' : ''}"
             onclick={() => handleSetColorMode("system")}
-            title="Ikuti tema sistem operasi secara otomatis"
+            title={$tr("Manut tema OS laptop/PC otomatis", "Ikuti tema sistem operasi secara otomatis", "Follow operating system color scheme")}
           >
             <Monitor size={12} />
-            <span>Ikuti Sistem</span>
+            <span>{$tr("Manut Sistem", "Ikuti Sistem", "System")}</span>
           </button>
           <button
             type="button"
             class="filter-chip {colorModePref === 'dark' ? 'active' : ''}"
             onclick={() => handleSetColorMode("dark")}
-            title="Gunakan Mode Gelap"
+            title={$tr("Gawe Mode Peteng", "Gunakan Mode Gelap", "Use Dark Mode")}
           >
             <Moon size={12} />
-            <span>Mode Gelap</span>
+            <span>{$tr("Mode Peteng", "Mode Gelap", "Dark Mode")}</span>
           </button>
           <button
             type="button"
             class="filter-chip {colorModePref === 'light' ? 'active' : ''}"
             onclick={() => handleSetColorMode("light")}
-            title="Gunakan Mode Terang"
+            title={$tr("Gawe Mode Padhang", "Gunakan Mode Terang", "Use Light Mode")}
           >
             <Sun size={12} />
-            <span>Mode Terang</span>
+            <span>{$tr("Mode Padhang", "Mode Terang", "Light Mode")}</span>
           </button>
         </div>
       </div>
@@ -748,10 +749,10 @@
         <div class="sync-pill-text">
           {#if syncChartWithAppTheme}
             <Link2 size={13} class="sync-icon-linked" />
-            <span>Sinkronkan Tema Chart dengan Aplikasi</span>
+            <span>{$tr("Padakno Tema Chart karo Aplikasi", "Sinkronkan Tema Chart dengan Aplikasi", "Sync Chart Theme with App")}</span>
           {:else}
             <Unlink size={13} class="sync-icon-unlinked" />
-            <span>Sinkronkan Tema Chart dengan Aplikasi (Terpisah)</span>
+            <span>{$tr("Padakno Tema Chart karo Aplikasi (Pisah)", "Sinkronkan Tema Chart dengan Aplikasi (Terpisah)", "Sync Chart Theme with App (Decoupled)")}</span>
           {/if}
         </div>
         <label class="toggle-switch">
@@ -786,7 +787,7 @@
           <div class="domain-title-wrap">
             <Monitor size={15} class="domain-icon" />
             <div>
-              <div class="domain-title">Tema Aplikasi (Menu & Panel UI)</div>
+              <div class="domain-title">{$tr("Tema Aplikasi (Menu & Panel UI)", "Tema Aplikasi (Menu & Panel UI)", "App Shell Theme (Menus & Panels)")}</div>
               <div class="domain-subtitle">
                 Header, Watchlist, Sidebar, Dialog & Pine IDE
               </div>
@@ -796,7 +797,7 @@
             <span
               class="target-focus-badge {targetThemeSelection === 'app' ? 'active' : ''}"
             >
-              {targetThemeSelection === "app" ? "✓ Sedang Diatur" : "Klik untuk Atur"}
+              {targetThemeSelection === "app" ? $tr("✓ Lagi Dioprek", "✓ Sedang Diatur", "✓ Editing") : $tr("Klik gawe Ngatur", "Klik untuk Atur", "Click to Edit")}
             </span>
           {/if}
         </div>
@@ -844,9 +845,9 @@
           <div class="domain-title-wrap">
             <BarChart2 size={15} class="domain-icon" />
             <div>
-              <div class="domain-title">Tema Kanvas Chart (Grafik & Lilin)</div>
+              <div class="domain-title">{$tr("Tema Kanvas Chart (Grafik & Candle)", "Tema Kanvas Chart (Grafik & Lilin)", "Chart Canvas Theme (Candles & Grid)")}</div>
               <div class="domain-subtitle">
-                Latar grafik, candlestick bull/bear, grid & crosshair
+                {$tr("Latar chart, candlestick bull/bear, grid & crosshair", "Latar grafik, candlestick bull/bear, grid & crosshair", "Chart background, bull/bear candles, grid & crosshair")}
               </div>
             </div>
           </div>
@@ -859,16 +860,16 @@
                 handleToggleSyncChart(false);
                 targetThemeSelection = "chart";
               }}
-              title="Pisahkan tema chart agar bisa berbeda dari tema aplikasi"
+              title={$tr("Pisahno tema chart ben isok bedo karo tema aplikasi", "Pisahkan tema chart agar bisa berbeda dari tema aplikasi", "Decouple chart theme from app theme")}
             >
               <Unlink size={11} />
-              <span>Bedakan dari Aplikasi</span>
+              <span>{$tr("Pisahno teko Aplikasi", "Bedakan dari Aplikasi", "Decouple from App")}</span>
             </button>
           {:else}
             <span
               class="target-focus-badge {targetThemeSelection === 'chart' ? 'active' : ''}"
             >
-              {targetThemeSelection === "chart" ? "✓ Sedang Diatur" : "Klik untuk Atur"}
+              {targetThemeSelection === "chart" ? $tr("✓ Lagi Dioprek", "✓ Sedang Diatur", "✓ Editing") : $tr("Klik gawe Ngatur", "Klik untuk Atur", "Click to Edit")}
             </span>
           {/if}
         </div>
@@ -894,7 +895,7 @@
           {#if syncChartWithAppTheme}
             <div class="synced-chart-readout">
               <Link2 size={12} />
-              <span>Mengikuti Tema Aplikasi ({activeAppPresetConfig.name})</span>
+              <span>{$tr("Manut Tema Aplikasi", "Mengikuti Tema Aplikasi", "Following App Theme")} ({activeAppPresetConfig.name})</span>
             </div>
           {:else}
             <select
@@ -914,7 +915,7 @@
     <!-- Baris Tambahan: Watermark Simbol & Opsi Lanjutan Default Gelap/Terang -->
     <div class="hub-bottom-bar">
       <div class="watermark-inline-row">
-        <span class="watermark-inline-label">Watermark Simbol di Kanvas:</span>
+        <span class="watermark-inline-label">{$tr("Watermark Simbol nang Kanvas:", "Watermark Simbol di Kanvas:", "Symbol Watermark on Canvas:")}</span>
         <label class="toggle-switch">
           <input
             type="checkbox"
@@ -933,7 +934,7 @@
         onclick={() => (showAdvancedModeDefaults = !showAdvancedModeDefaults)}
       >
         <Sliders size={11} />
-        <span>Atur Tema Favorit Saat Pindah Gelap/Terang</span>
+        <span>{$tr("Setel Tema Favorit Pas Ganti Peteng/Padhang", "Atur Tema Favorit Saat Pindah Gelap/Terang", "Configure Preferred Dark/Light Mode Presets")}</span>
         {#if showAdvancedModeDefaults}
           <ChevronUp size={12} />
         {:else}
@@ -946,9 +947,9 @@
       <div class="theme-defaults-grid">
         <div class="setting-row default-preset-item">
           <div class="setting-info">
-            <span class="setting-label">Tema Aplikasi Favorit (Mode Gelap)</span>
+            <span class="setting-label">{$tr("Tema Aplikasi Favorit (Mode Peteng)", "Tema Aplikasi Favorit (Mode Gelap)", "Preferred App Theme (Dark Mode)")}</span>
             <span class="setting-desc">
-              Otomatis dipakai untuk menu & panel UI saat Mode Gelap aktif
+              {$tr("Otomatis digawe pas Mode Peteng urip", "Otomatis dipakai untuk menu & panel UI saat Mode Gelap aktif", "Automatically applied to UI shell when Dark Mode is active")}
             </span>
           </div>
           <select
@@ -965,9 +966,9 @@
 
         <div class="setting-row default-preset-item">
           <div class="setting-info">
-            <span class="setting-label">Tema Aplikasi Favorit (Mode Terang)</span>
+            <span class="setting-label">{$tr("Tema Aplikasi Favorit (Mode Padhang)", "Tema Aplikasi Favorit (Mode Terang)", "Preferred App Theme (Light Mode)")}</span>
             <span class="setting-desc">
-              Otomatis dipakai untuk menu & panel UI saat Mode Terang aktif
+              {$tr("Otomatis digawe pas Mode Padhang urip", "Otomatis dipakai untuk menu & panel UI saat Mode Terang aktif", "Automatically applied to UI shell when Light Mode is active")}
             </span>
           </div>
           <select
@@ -985,9 +986,9 @@
         {#if !syncChartWithAppTheme}
           <div class="setting-row default-preset-item">
             <div class="setting-info">
-              <span class="setting-label">Tema Kanvas Favorit (Mode Gelap)</span>
+              <span class="setting-label">{$tr("Tema Kanvas Favorit (Mode Peteng)", "Tema Kanvas Favorit (Mode Gelap)", "Preferred Canvas Theme (Dark Mode)")}</span>
               <span class="setting-desc">
-                Memori tema kanvas chart saat Mode Gelap aktif (Terpisah)
+                {$tr("Simpenan tema kanvas chart pas Mode Peteng urip", "Memori tema kanvas chart saat Mode Gelap aktif (Terpisah)", "Remembered chart canvas theme in Dark Mode")}
               </span>
             </div>
             <select
@@ -1002,9 +1003,9 @@
 
           <div class="setting-row default-preset-item">
             <div class="setting-info">
-              <span class="setting-label">Tema Kanvas Favorit (Mode Terang)</span>
+              <span class="setting-label">{$tr("Tema Kanvas Favorit (Mode Padhang)", "Tema Kanvas Favorit (Mode Terang)", "Preferred Canvas Theme (Light Mode)")}</span>
               <span class="setting-desc">
-                Memori tema kanvas chart saat Mode Terang aktif (Terpisah)
+                {$tr("Simpenan tema kanvas chart pas Mode Padhang urip", "Memori tema kanvas chart saat Mode Terang aktif (Terpisah)", "Remembered chart canvas theme in Light Mode")}
               </span>
             </div>
             <select
@@ -1026,12 +1027,12 @@
   <!-- ═════════════════════════════════════════════════════════════════════════ -->
   <div class="presets-header-row">
     <div>
-      <h4 class="section-title">Galeri Preset Tema & Candlestick</h4>
+      <h4 class="section-title">{$tr("Galeri Preset Tema & Candlestick", "Galeri Preset Tema & Candlestick", "Theme & Candlestick Preset Gallery")}</h4>
       <p class="section-subtitle">
         {#if syncChartWithAppTheme}
-          Klik kartu tema di bawah untuk menerapkan sekaligus ke <b>Aplikasi & Kanvas Chart</b>.
+          {$tr("Klik kartu tema nang ngisor gawe masang barengan nang Aplikasi & Kanvas Chart.", "Klik kartu tema di bawah untuk menerapkan sekaligus ke Aplikasi & Kanvas Chart.", "Click any theme card below to apply it to both the App Shell & Chart Canvas.")}
         {:else}
-          Mode terpisah aktif: klik kartu untuk menerapkan ke <b>{targetThemeSelection === "app" ? "Tema Aplikasi" : "Tema Kanvas Chart"}</b>, atau gunakan tombol langsung pada kartu.
+          {$tr("Mode pisah aktif: klik kartu gawe masang nang target aktif, utawa klik tombol langsung nang kartune.", "Mode terpisah aktif: klik kartu untuk menerapkan ke target aktif, atau gunakan tombol langsung pada kartu.", "Decoupled mode active: click a card to apply to the selected target, or use the direct buttons on each card.")}
         {/if}
       </p>
     </div>
@@ -1043,7 +1044,7 @@
         <input
           type="text"
           class="preset-search-input"
-          placeholder="Cari nama tema Jawa atau karakter..."
+          placeholder={$tr("Golek jeneng tema Jawa utawa werna...", "Cari nama tema Jawa atau karakter...", "Search theme name or mood...")}
           bind:value={themeSearchQuery}
           aria-label="Cari Preset Tema"
         />
@@ -1052,7 +1053,7 @@
             type="button"
             class="preset-search-clear"
             onclick={() => (themeSearchQuery = "")}
-            title="Hapus kata kunci pencarian"
+            title={$tr("Busek golekane", "Hapus kata kunci pencarian", "Clear search")}
             aria-label="Hapus kata kunci pencarian"
           >
             <X size={11} />
@@ -1070,7 +1071,7 @@
           class="filter-chip {filterMode === 'all' ? 'active' : ''}"
           onclick={() => setFilterMode("all")}
         >
-          <span>Semua ({allAvailablePresets.length})</span>
+          <span>{$tr("Kabeh", "Semua", "All")} ({allAvailablePresets.length})</span>
         </button>
         <button
           type="button"
@@ -1078,7 +1079,7 @@
           onclick={() => setFilterMode("dark")}
         >
           <Moon size={11} />
-          <span>Gelap ({darkPresets.length})</span>
+          <span>{$tr("Peteng", "Gelap", "Dark")} ({darkPresets.length})</span>
         </button>
         <button
           type="button"
@@ -1086,7 +1087,7 @@
           onclick={() => setFilterMode("light")}
         >
           <Sun size={11} />
-          <span>Terang ({lightPresets.length})</span>
+          <span>{$tr("Padhang", "Terang", "Light")} ({lightPresets.length})</span>
         </button>
       </div>
     </div>
@@ -1095,7 +1096,7 @@
   {#if filteredPresets.length === 0}
     <div class="presets-empty-state">
       <p>
-        Tidak ada preset tema yang cocok dengan pencarian "{themeSearchQuery}".
+        {$tr(`Gak nemu tema sing cocok karo "${themeSearchQuery}".`, `Tidak ada preset tema yang cocok dengan pencarian "${themeSearchQuery}".`, `No theme presets matched "${themeSearchQuery}".`)}
       </p>
       <button
         type="button"
@@ -1106,7 +1107,7 @@
         }}
       >
         <RotateCcw size={11} />
-        <span>Tampilkan Semua Tema</span>
+        <span>{$tr("Ketokno Kabeh Tema", "Tampilkan Semua Tema", "Show All Themes")}</span>
       </button>
     </div>
   {:else}
@@ -1160,7 +1161,7 @@
               class="swatch-color"
               style="background-color: {preset.tokens.bgDarkest};"
             ></span>
-            <span class="swatch-label">Latar</span>
+            <span class="swatch-label">{$tr("Latar", "Latar", "Bg")}</span>
           </div>
           <div
             class="swatch-item"
@@ -1190,7 +1191,7 @@
               class="swatch-color"
               style="background-color: {preset.tokens.brandPrimary};"
             ></span>
-            <span class="swatch-label">Aksen</span>
+            <span class="swatch-label">{$tr("Aksen", "Aksen", "Accent")}</span>
           </div>
         </div>
 
@@ -1200,7 +1201,7 @@
             <div class="theme-status">
               {#if isSelectedApp}
                 <span class="status-active">
-                  <Check size={12} /> Aktif (Aplikasi & Chart)
+                  <Check size={12} /> {$tr("Urip (Aplikasi & Chart)", "Aktif (Aplikasi & Chart)", "Active (App & Chart)")}
                 </span>
               {:else}
                 <button
@@ -1208,7 +1209,7 @@
                   class="btn-apply-direct"
                   onclick={() => handleSelectBothPreset(preset)}
                 >
-                  Pakai Tema Ini
+                  {$tr("Gawe Tema Iki", "Pakai Tema Ini", "Apply Theme")}
                 </button>
               {/if}
             </div>
@@ -1219,24 +1220,24 @@
                 type="button"
                 class="btn-domain-apply {isSelectedApp ? 'active' : ''}"
                 onclick={() => handleSelectAppPreset(preset)}
-                title="Terapkan tema ini ke antarmuka Aplikasi"
+                title={$tr("Pasang tema iki nang Aplikasi", "Terapkan tema ini ke antarmuka Aplikasi", "Apply to App Shell")}
               >
                 {#if isSelectedApp}
-                  <Check size={10} /> Aplikasi
+                  <Check size={10} /> {$tr("Aplikasi", "Aplikasi", "App")}
                 {:else}
-                  Pakai di Aplikasi
+                  {$tr("Pasang Aplikasi", "Pakai di Aplikasi", "Use on App")}
                 {/if}
               </button>
               <button
                 type="button"
                 class="btn-domain-apply {isSelectedChart ? 'active' : ''}"
                 onclick={() => handleSelectChartPreset(preset)}
-                title="Terapkan tema ini ke Kanvas Chart"
+                title={$tr("Pasang tema iki nang Kanvas Chart", "Terapkan tema ini ke Kanvas Chart", "Apply to Chart Canvas")}
               >
                 {#if isSelectedChart}
                   <Check size={10} /> Chart
                 {:else}
-                  Pakai di Chart
+                  {$tr("Pasang Chart", "Pakai di Chart", "Use on Chart")}
                 {/if}
               </button>
             </div>
@@ -1246,7 +1247,7 @@
             <button
               type="button"
               class="btn-card-action"
-              title="Edit warna tema"
+              title={$tr("Oprek werna tema", "Edit warna tema", "Edit theme colors")}
               onclick={(e) => handleStartEditThemeColors(preset, e)}
             >
               <Palette size={11} />
@@ -1255,7 +1256,7 @@
               <button
                 type="button"
                 class="btn-card-action"
-                title="Ubah nama tema"
+                title={$tr("Ganti jeneng tema", "Ubah nama tema", "Rename theme")}
                 onclick={(e) => handleOpenRename(preset.id, preset.name, e)}
               >
                 <Edit2 size={11} />
@@ -1263,7 +1264,7 @@
               <button
                 type="button"
                 class="btn-card-action"
-                title="Ekspor palet sebagai teks Hex"
+                title={$tr("Salin palet teks Hex", "Ekspor palet sebagai teks Hex", "Copy Hex palette")}
                 onclick={(e) =>
                   handleExportUserThemeText(preset.id, preset.name, e)}
               >
@@ -1272,7 +1273,7 @@
               <button
                 type="button"
                 class="btn-card-action"
-                title="Ekspor tema sebagai JSON"
+                title={$tr("Salin tema JSON", "Ekspor tema sebagai JSON", "Copy theme JSON")}
                 onclick={(e) =>
                   handleExportUserThemeJson(preset.id, preset.name, e)}
               >
@@ -1281,7 +1282,7 @@
               <button
                 type="button"
                 class="btn-card-action btn-card-delete"
-                title="Hapus tema"
+                title={$tr("Busek tema", "Hapus tema", "Delete theme")}
                 onclick={(e) =>
                   handleDeleteUserTheme(preset.id, preset.name, e)}
               >
@@ -1303,45 +1304,45 @@
       <div class="custom-studio-info">
         <div class="studio-title-row">
           <Sparkles size={16} class="studio-icon" />
-          <span class="custom-studio-title">Studio Kustomisasi Tema (Custom Theme Builder)</span>
+          <span class="custom-studio-title">{$tr("Bengkel Oprek Tema (Custom Theme Builder)", "Studio Kustomisasi Tema (Custom Theme Builder)", "Custom Theme Builder Studio")}</span>
           {#if isCustomActive}
-            <span class="custom-active-badge">Live Preview Aktif</span>
+            <span class="custom-active-badge">{$tr("Live Preview Urip", "Live Preview Aktif", "Live Preview Active")}</span>
           {:else}
-            <span class="custom-theme-badge">Basis: {activePreset.name}</span>
+            <span class="custom-theme-badge">{$tr("Dasar", "Basis", "Base")}: {activePreset.name}</span>
           {/if}
           <span class="mode-indicator {isPaletteDark ? 'dark' : 'light'}">
             {#if isPaletteDark}
-              <Moon size={10} /> Mode Gelap
+              <Moon size={10} /> {$tr("Mode Peteng", "Mode Gelap", "Dark Mode")}
             {:else}
-              <Sun size={10} /> Mode Terang
+              <Sun size={10} /> {$tr("Mode Padhang", "Mode Terang", "Light Mode")}
             {/if}
           </span>
         </div>
 
         {#if editingUserThemeId}
           <div class="in-place-edit-banner">
-            <span>Sedang Mengedit Warna: <b>{editingUserThemeName}</b></span>
+            <span>{$tr("Lagi Ngoprek Werna:", "Sedang Mengedit Warna:", "Editing Theme:")} <b>{editingUserThemeName}</b></span>
             <div class="in-place-actions">
               <button
                 type="button"
                 class="btn-studio-action btn-save-as"
                 onclick={handleSaveInPlaceThemeColors}
               >
-                <Save size={13} /> Simpan Perubahan ke Tema Ini
+                <Save size={13} /> {$tr("Simpen Oprekan nang Tema Iki", "Simpan Perubahan ke Tema Ini", "Save Changes to Theme")}
               </button>
               <button
                 type="button"
                 class="btn-studio-action btn-reset"
                 onclick={handleCancelEditThemeColors}
               >
-                <X size={13} /> Batal
+                <X size={13} /> {$tr("Gak Sido", "Batal", "Cancel")}
               </button>
             </div>
           </div>
         {/if}
 
         <span class="custom-studio-desc">
-          Ubah warna lilin candlestick atau warna latar di bawah untuk melihat hasilnya secara langsung, lalu klik <b>"Simpan Sebagai Tema Baru"</b> agar tersimpan di galeri tema Anda.
+          {$tr("Oprek werna candle utawa latar nang ngisor gawe ndelok hasile langsung, terus klik Simpen Dadi Tema Anyar ben mlebu galerimu.", 'Ubah warna lilin candlestick atau warna latar di bawah untuk melihat hasilnya secara langsung, lalu klik "Simpan Sebagai Tema Baru" agar tersimpan di galeri tema Anda.', 'Customize candle or surface colors below with live preview, then click "Save As New Theme" to add it to your gallery.')}
         </span>
       </div>
 
@@ -1355,47 +1356,47 @@
           type="button"
           class="btn-studio-action btn-save-as"
           onclick={handleOpenSaveAs}
-          title="Simpan racikan warna saat ini sebagai preset tema pribadi baru"
+          title={$tr("Simpen racikan werna saiki dadi tema anyar", "Simpan racikan warna saat ini sebagai preset tema pribadi baru", "Save current palette as a new custom theme")}
         >
           <Save size={12} />
-          <span>Simpan Sebagai Tema Baru</span>
+          <span>{$tr("Simpen Dadi Tema Anyar", "Simpan Sebagai Tema Baru", "Save As New Theme")}</span>
         </button>
         <button
           type="button"
           class="btn-studio-action"
           onclick={handleOpenPaste}
-          title="Tempel palet dari JSON atau teks daftar warna"
+          title={$tr("Paste palet teko JSON utawa daftar werna", "Tempel palet dari JSON atau teks daftar warna", "Import / paste palette from JSON or Hex list")}
         >
           <Clipboard size={12} />
-          <span>Impor / Tempel Palet</span>
+          <span>{$tr("Impor / Paste Palet", "Impor / Tempel Palet", "Import / Paste Palette")}</span>
         </button>
         <button
           type="button"
           class="btn-studio-action"
           onclick={handleCopyText}
-          title="Salin ringkasan palet dalam format teks Hex"
+          title={$tr("Salin daftar werna format teks Hex", "Salin ringkasan palet dalam format teks Hex", "Copy palette as Hex text")}
         >
           <FileText size={12} />
-          <span>Salin Hex</span>
+          <span>{$tr("Salin Hex", "Salin Hex", "Copy Hex")}</span>
         </button>
         <button
           type="button"
           class="btn-studio-action"
           onclick={handleCopyJson}
-          title="Salin konfigurasi palet dalam format JSON"
+          title={$tr("Salin palet format JSON", "Salin konfigurasi palet dalam format JSON", "Copy palette as JSON")}
         >
           <Copy size={12} />
-          <span>Salin JSON</span>
+          <span>{$tr("Salin JSON", "Salin JSON", "Copy JSON")}</span>
         </button>
         <button
           type="button"
           class="btn-studio-action btn-reset"
           onclick={handleResetCustomPalette}
           disabled={!isCustomActive}
-          title="Kembalikan semua warna kustom ke setelan bawaan preset aktif"
+          title={$tr("Balikno werna kustom nang setelan awal tema", "Kembalikan semua warna kustom ke setelan bawaan preset aktif", "Reset custom colors to active preset")}
         >
           <RotateCcw size={12} />
-          <span>Reset</span>
+          <span>{$tr("Balikno", "Reset", "Reset")}</span>
         </button>
       </div>
     </div>
@@ -1404,18 +1405,18 @@
     <div class="studio-category">
       <div class="category-header" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
         <div>
-          <span class="category-title">1. Warna Lilin Candlestick (Bullish & Bearish)</span>
+          <span class="category-title">{$tr("1. Werna Candle (Bullish & Bearish)", "1. Warna Lilin Candlestick (Bullish & Bearish)", "1. Candlestick Colors (Bullish & Bearish)")}</span>
           <span class="category-sub">
-            Atur warna badan lilin (Body), sumbu (Wick), dan garis tepi (Border)
+            {$tr("Setel werna awak candle (Body), sumbu (Wick), karo garis pinggir (Border)", "Atur warna badan lilin (Body), sumbu (Wick), dan garis tepi (Border)", "Customize candle body, wick, and border colors")}
           </span>
         </div>
         <button
           type="button"
           class="toggle-btn {settings.hollowCandles ? 'active' : ''}"
           onclick={() => onUpdateSettings({ hollowCandles: !settings.hollowCandles })}
-          title="Kosongkan isian body candle bullish (Hollow Candles)"
+          title={$tr("Bolongi jeroan awak candle bullish (Hollow Candles)", "Kosongkan isian body candle bullish (Hollow Candles)", "Toggle hollow bullish candle bodies")}
         >
-          Hollow Candles: {settings.hollowCandles ? 'Aktif' : 'Nonaktif'}
+          Hollow Candles: {settings.hollowCandles ? $tr('Urip', 'Aktif', 'On') : $tr('Mati', 'Nonaktif', 'Off')}
         </button>
       </div>
 
@@ -1647,9 +1648,9 @@
     <!-- Kategori 2: Warna Fondasi (Latar, Panel, Teks) -->
     <div class="studio-category">
       <div class="category-header">
-        <span class="category-title">2. Warna Fondasi Tema (Latar, Panel & Teks)</span>
+        <span class="category-title">{$tr("2. Werna Dasar Tema (Latar, Panel & Teks)", "2. Warna Fondasi Tema (Latar, Panel & Teks)", "2. Surface & Text Foundation Colors")}</span>
         <span class="category-sub">
-          Mengatur warna dasar kanvas/aplikasi, permukaan panel, dan teks sumbu
+          {$tr("Ngatur werna dasar kanvas/aplikasi, panel, karo tulisan sumbu", "Mengatur warna dasar kanvas/aplikasi, permukaan panel, dan teks sumbu", "Controls canvas/app background, panel surfaces, and scale text")}
         </span>
       </div>
 
@@ -1771,26 +1772,26 @@
     <div class="studio-category studio-bg-override">
       <div class="custom-candle-header">
         <div class="custom-candle-info">
-          <span class="category-title">3. Efek Latar Kanvas Chart Khusus (Solid / Gradien Vertikal)</span>
+          <span class="category-title">{$tr("3. Efek Latar Kanvas Chart Khusus (Solid / Gradien)", "3. Efek Latar Kanvas Chart Khusus (Solid / Gradien Vertikal)", "3. Custom Chart Canvas Backdrop (Solid / Vertical Gradient)")}</span>
           <span class="category-sub">
-            Opsional: Timpa khusus latar belakang kanvas chart dengan gradien atau warna solid tanpa mengubah tema utama.
+            {$tr("Opsional: Timpa khusus latar kanvas chart nganggo gradien utawa werna solid tanpa ngowahi tema utama.", "Opsional: Timpa khusus latar belakang kanvas chart dengan gradien atau warna solid tanpa mengubah tema utama.", "Optional: Override the chart canvas background with a custom solid color or vertical gradient.")}
           </span>
         </div>
         <div class="custom-candle-actions">
           {#if isCustomBgActive}
-            <span class="custom-active-badge">Override Aktif</span>
+            <span class="custom-active-badge">{$tr("Override Urip", "Override Aktif", "Override Active")}</span>
           {:else}
-            <span class="custom-theme-badge">Mengikuti Tema Chart</span>
+            <span class="custom-theme-badge">{$tr("Manut Tema Chart", "Mengikuti Tema Chart", "Following Chart Theme")}</span>
           {/if}
           <button
             type="button"
             class="btn-reset-candle"
             onclick={handleResetCustomBg}
             disabled={!isCustomBgActive}
-            title="Kembalikan latar belakang grafik ke setelan bawaan tema chart"
+            title={$tr("Balikno latar chart manut tema", "Kembalikan latar belakang grafik ke setelan bawaan tema chart", "Reset chart background to theme default")}
           >
             <RotateCcw size={12} />
-            <span>Ikuti Tema</span>
+            <span>{$tr("Manut Tema", "Ikuti Tema", "Follow Theme")}</span>
           </button>
         </div>
       </div>
@@ -1807,7 +1808,7 @@
           aria-checked={bgMode === "theme"}
           onclick={() => handleSetBgMode("theme")}
         >
-          <span>Bawaan Tema Chart</span>
+          <span>{$tr("Default Tema Chart", "Bawaan Tema Chart", "Chart Theme Default")}</span>
         </button>
         <button
           type="button"
@@ -1816,7 +1817,7 @@
           aria-checked={bgMode === "solid"}
           onclick={() => handleSetBgMode("solid")}
         >
-          <span>Warna Solid Khusus</span>
+          <span>{$tr("Werna Solid Khusus", "Warna Solid Khusus", "Custom Solid Color")}</span>
         </button>
         <button
           type="button"
@@ -1825,7 +1826,7 @@
           aria-checked={bgMode === "gradient"}
           onclick={() => handleSetBgMode("gradient")}
         >
-          <span>Gradien Vertikal</span>
+          <span>{$tr("Gradien Mendhuwur-Mengisor", "Gradien Vertikal", "Vertical Gradient")}</span>
         </button>
       </div>
 

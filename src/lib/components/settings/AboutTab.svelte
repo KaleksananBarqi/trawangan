@@ -12,10 +12,12 @@
     Package,
     RotateCcw,
     EyeOff,
-    ChevronDown
+    ChevronDown,
+    ShieldCheck
   } from '@lucide/svelte';
   import { openExternalUrl } from '../../services/urlService';
   import { updateService, formatBytes, type InstallKind, type UpdateState } from '../../services/updateService';
+  import { t, tr } from '../../i18n';
 
   let updateState = $state<UpdateState>(updateService.getSnapshot());
   let unsubUpdate: (() => void) | null = null;
@@ -31,7 +33,7 @@
       flatpak: 'Linux · Flatpak (Store)',
       windows: 'Windows',
       macos: 'macOS',
-      dev: 'Mode Pengembangan',
+      dev: $tr('Mode Oprek Dev', 'Mode Pengembangan', 'Development Mode'),
       'linux-unknown': 'Linux',
       unknown: env.os,
     };
@@ -84,18 +86,18 @@
     <div class="about-hero-details">
       <div class="about-title-row">
         <h3 class="about-app-name">trawangan</h3>
-        <span class="about-version-badge mono-nums">v{updateState.currentVersion} · Stabil</span>
+        <span class="about-version-badge mono-nums">v{updateState.currentVersion} · {$tr('Stabil Pol', 'Stabil', 'Stable')}</span>
         {#if envLabel}
-          <span class="about-env-badge mono-nums" title="Lingkungan paket terdeteksi">{envLabel}</span>
+          <span class="about-env-badge mono-nums" title={$tr('Paket sistem sing kedeteksi', 'Lingkungan paket terdeteksi', 'Detected package environment')}>{envLabel}</span>
         {/if}
       </div>
       <div class="about-javanese-tagline">
         <span class="javanese-script">ꦠꦿꦮꦔꦤ꧀</span>
         <span class="tagline-separator">·</span>
-        <span class="tagline-text">Visi Menembus Kabut Manipulasi Pasar</span>
+        <span class="tagline-text">{$t('about.tagline')}</span>
       </div>
       <p class="about-description">
-        Terminal charting kripto desktop ultra-ringan bertenaga WebGL2 Vela Engine dan runtime Pine Script v6. Didesain khusus untuk analisa teknikal grafis dan pengujian strategi kuantitatif independen: nol eksekusi order broker komersial, bebas distorsi, latensi ultra-rendah, dan integritas privasi database lokal.
+        {$t('about.desc')}
       </p>
 
       <!-- Hero Action Buttons -->
@@ -104,10 +106,10 @@
           type="button"
           class="btn-coffee-saweria"
           onclick={() => openExternalUrl('https://saweria.co/arthex1204')}
-          title="Dukung pengembangan trawangan di Saweria"
+          title={$tr('Traktir kopi dev trawangan nang Saweria rek!', 'Dukung pengembangan trawangan di Saweria', 'Support trawangan development on Saweria')}
         >
           <Coffee size={14} class="saweria-coffee-icon" />
-          <span>Belikan Saya Kopi (Saweria)</span>
+          <span>{$tr('Tukokno Kopi Cak (Saweria)', 'Belikan Saya Kopi (Saweria)', 'Buy Me a Coffee (Saweria)')}</span>
           <ExternalLink size={12} class="external-pill-icon" />
         </button>
 
@@ -116,10 +118,10 @@
           class="btn-check-update"
           onclick={handleCheckUpdate}
           disabled={isBusyUpdating}
-          title="Periksa ketersediaan versi rilis terbaru"
+          title={$tr('Cek ono update rilis anyar opo gak', 'Periksa ketersediaan versi rilis terbaru', 'Check for the latest release version')}
         >
           <RefreshCw size={13} class={updateState.status === 'checking' ? 'spin' : ''} />
-          <span>{updateState.status === 'checking' ? 'Memeriksa...' : 'Periksa Pembaruan'}</span>
+          <span>{updateState.status === 'checking' ? $tr('Nggoleki...', 'Memeriksa...', 'Checking...') : $tr('Cek Update Anyar', 'Periksa Pembaruan', 'Check for Updates')}</span>
         </button>
       </div>
 
@@ -127,7 +129,7 @@
       {#if updateState.updateStrategy === 'store-managed'}
         <div class="update-feedback-banner info mono-nums">
           <Package size={14} />
-          <span>Aplikasi terpasang melalui Flatpak/Store. Pembaruan dikelola oleh Software Center atau <code>flatpak update</code>.</span>
+          <span>{$tr('Aplikasi iki dipasang liwat Flatpak/Store. Update diurus langsung karo Software Center utawa', 'Aplikasi terpasang melalui Flatpak/Store. Pembaruan dikelola oleh Software Center atau', 'Installed via Flatpak/Store. Updates are managed by Software Center or')} <code>flatpak update</code>.</span>
         </div>
       {/if}
 
@@ -139,7 +141,7 @@
           <div class="update-card-header">
             <div class="update-badge-glow">
               <Sparkles size={14} class="sparkle-icon" />
-              <span>PEMBARUAN BARU TERSEDIA</span>
+              <span>{$tr('ONO UPDATE ANYAR REK!', 'PEMBARUAN BARU TERSEDIA', 'NEW UPDATE AVAILABLE')}</span>
             </div>
             <span class="update-tag mono-nums">{info.latestTag}</span>
           </div>
@@ -147,12 +149,12 @@
           <div class="update-card-body">
             <div class="version-comparison-row mono-nums">
               <div class="version-chip current">
-                <span class="chip-label">Saat Ini</span>
+                <span class="chip-label">{$tr('Saiki', 'Saat Ini', 'Current')}</span>
                 <span class="chip-val">v{updateState.currentVersion}</span>
               </div>
               <span class="comparison-arrow">➔</span>
               <div class="version-chip latest">
-                <span class="chip-label">Rilis Baru</span>
+                <span class="chip-label">{$tr('Versi Anyar', 'Rilis Baru', 'Latest')}</span>
                 <span class="chip-val">{info.latestTag}</span>
               </div>
               {#if info.publishedAt}
@@ -164,7 +166,7 @@
             <div class="release-notes-box">
               <div class="notes-header">
                 <Info size={13} />
-                <span>Catatan Pembaruan ({info.releaseName})</span>
+                <span>{$tr('Catetan Oprekan Anyar', 'Catatan Pembaruan', 'Release Notes')} ({info.releaseName})</span>
               </div>
               <pre class="notes-content">{info.releaseNotes}</pre>
             </div>
@@ -175,16 +177,16 @@
                   type="button"
                   class="btn-view-github"
                   onclick={() => openExternalUrl(info.releaseUrl)}
-                  title="Buka catatan rilis lengkap di GitHub"
+                  title={$tr('Bukak catetan rilis komplit nang GitHub', 'Buka catatan rilis lengkap di GitHub', 'View full release notes on GitHub')}
                 >
                   <ExternalLink size={13} />
-                  <span>Lihat Catatan Rilis di GitHub</span>
+                  <span>{$tr('Delok Rilis nang GitHub', 'Lihat Catatan Rilis di GitHub', 'View Release Notes on GitHub')}</span>
                 </button>
               </div>
             {:else if updateState.status === 'downloading'}
               <div class="update-progress-box mono-nums">
                 <div class="progress-meta">
-                  <span>Mengunduh {info.matchedAsset?.name ?? 'pembaruan'}...</span>
+                  <span>{$tr('Ngundhuh', 'Mengunduh', 'Downloading')} {info.matchedAsset?.name ?? $tr('update', 'pembaruan', 'update')}...</span>
                   <span>
                     {Math.round(updateState.downloadProgress?.percent ?? 0)}%
                     {#if updateState.downloadProgress?.totalBytes}
@@ -215,10 +217,10 @@
                 >
                   {#if updateState.status === 'installing'}
                     <RefreshCw size={14} class="spin" />
-                    <span>Memasang Pembaruan...</span>
+                    <span>{$tr('Masang Update...', 'Memasang Pembaruan...', 'Installing Update...')}</span>
                   {:else}
                     <RotateCcw size={14} />
-                    <span>Pasang & Restart Sekarang</span>
+                    <span>{$tr('Pasang & Restart Saiki', 'Pasang & Restart Sekarang', 'Install & Restart Now')}</span>
                   {/if}
                 </button>
 
@@ -227,16 +229,16 @@
                     type="button"
                     class="btn-view-github"
                     onclick={() => updateService.openStagedPackageWithSystemGui()}
-                    title="Buka berkas installer lewat Software Center sistem"
+                    title={$tr('Bukak file installer liwat Software Center sistem', 'Buka berkas installer lewat Software Center sistem', 'Open staged installer with system Software Center')}
                   >
                     <Package size={13} />
-                    <span>Buka Software Center</span>
+                    <span>{$tr('Bukak Software Center', 'Buka Software Center', 'Open Software Center')}</span>
                   </button>
                 {/if}
               </div>
               {#if updateState.updateStrategy === 'linux-package' && updateState.status === 'ready_to_install'}
                 <p class="update-hint-text">
-                  Dialog autentikasi sistem akan muncul untuk memasang paket {info.matchedAsset?.name ?? 'Linux'}, lalu aplikasi akan dibuka ulang otomatis.
+                  {$tr('Bakal njedhul dialog password sistem gawe masang paket', 'Dialog autentikasi sistem akan muncul untuk memasang paket', 'A system authentication prompt will appear to install')} {info.matchedAsset?.name ?? 'Linux'}, {$tr('terus aplikasi langsung restart dewe.', 'lalu aplikasi akan dibuka ulang otomatis.', 'then the app will relaunch automatically.')}
                 </p>
               {/if}
             {:else}
@@ -247,30 +249,30 @@
                     type="button"
                     class="btn-download-update"
                     onclick={() => updateService.downloadUpdate()}
-                    title="Unduh dan verifikasi {info.matchedAsset?.name ?? info.latestTag} langsung di dalam aplikasi"
+                    title="{$tr('Undhuh lan verifikasi langsung nang jero aplikasi:', 'Unduh dan verifikasi langsung di dalam aplikasi:', 'Download and verify directly inside the app:')} {info.matchedAsset?.name ?? info.latestTag}"
                   >
                     <Download size={14} />
-                    <span>Unduh & Pasang Pembaruan</span>
+                    <span>{$tr('Undhuh & Pasang Update', 'Unduh & Pasang Pembaruan', 'Download & Install Update')}</span>
                   </button>
                 {:else if info.matchedAsset}
                   <button
                     type="button"
                     class="btn-download-update"
                     onclick={() => openExternalUrl(info.matchedAsset!.browserDownloadUrl)}
-                    title="Unduh file rilis: {info.matchedAsset.name}"
+                    title="{$tr('Undhuh file rilis:', 'Unduh file rilis:', 'Download release asset:')} {info.matchedAsset.name}"
                   >
                     <Download size={14} />
-                    <span>Unduh {info.matchedAsset.name}</span>
+                    <span>{$tr('Undhuh', 'Unduh', 'Download')} {info.matchedAsset.name}</span>
                   </button>
                 {:else}
                   <button
                     type="button"
                     class="btn-download-update"
                     onclick={() => openExternalUrl(info.releaseUrl)}
-                    title="Buka rilis dan unduh installer"
+                    title={$tr('Bukak rilis lan undhuh installer resmi', 'Buka rilis dan unduh installer', 'Open release page and download installer')}
                   >
                     <Download size={14} />
-                    <span>Unduh Installer Resmi</span>
+                    <span>{$tr('Undhuh Installer Resmi', 'Unduh Installer Resmi', 'Download Official Installer')}</span>
                   </button>
                 {/if}
 
@@ -279,20 +281,20 @@
                     type="button"
                     class="btn-view-github"
                     onclick={() => updateService.dismissCurrentUpdate()}
-                    title="Sembunyikan lencana notifikasi untuk versi ini"
+                    title={$tr('Singidno titik notifikasi gawe versi iki', 'Sembunyikan lencana notifikasi untuk versi ini', 'Dismiss update badge for this version')}
                   >
                     <EyeOff size={13} />
-                    <span>Abaikan Versi Ini</span>
+                    <span>{$tr('Cuekno Versi Iki', 'Abaikan Versi Ini', 'Ignore This Version')}</span>
                   </button>
                 {:else}
                   <button
                     type="button"
                     class="btn-view-github"
                     onclick={() => updateService.clearDismissedUpdate()}
-                    title="Tampilkan kembali lencana notifikasi versi ini"
+                    title={$tr('Ketokno maneh lencana notifikasi versi iki', 'Tampilkan kembali lencana notifikasi versi ini', 'Show update badge again')}
                   >
                     <Sparkles size={13} />
-                    <span>Tampilkan Notifikasi</span>
+                    <span>{$tr('Ketokno Notifikasi', 'Tampilkan Notifikasi', 'Show Notification')}</span>
                   </button>
                 {/if}
 
@@ -300,7 +302,7 @@
                   type="button"
                   class="btn-view-github"
                   onclick={() => openExternalUrl(info.releaseUrl)}
-                  title="Buka catatan rilis lengkap di GitHub"
+                  title={$tr('Bukak catetan rilis nang GitHub', 'Buka catatan rilis lengkap di GitHub', 'Open full release notes on GitHub')}
                 >
                   <ExternalLink size={13} />
                   <span>GitHub</span>
@@ -322,7 +324,7 @@
                   class="manual-assets-toggle"
                   onclick={() => (showManualAssets = !showManualAssets)}
                 >
-                  <span>Unduh Format Lain (Manual) · {info.assets.length} paket</span>
+                  <span>{$tr('Undhuh Format Liyane (Manual)', 'Unduh Format Lain (Manual)', 'Download Other Formats (Manual)')} · {info.assets.length} {$tr('paket', 'paket', 'packages')}</span>
                   <ChevronDown size={13} class={showManualAssets ? 'rotated' : ''} />
                 </button>
                 {#if showManualAssets}
@@ -346,20 +348,20 @@
       {:else if updateState.status === 'latest'}
         <div class="update-feedback-banner success mono-nums">
           <Check size={14} />
-          <span>✓ Anda sudah menggunakan versi rilis terbaru (v{updateState.currentVersion}). Sistem berada pada performa optimal.</span>
+          <span>✓ {$tr(`Sip! Koen wis nggawe versi paling anyar (v${updateState.currentVersion}). Mesin siap gaspol!`, `Anda sudah menggunakan versi rilis terbaru (v${updateState.currentVersion}). Sistem berada pada performa optimal.`, `You are running the latest release (v${updateState.currentVersion}). System is running at peak performance.`)}</span>
           {#if updateState.lastChecked}
-            <span class="check-time">· Dicek pukul {updateState.lastChecked.toLocaleTimeString('id-ID', { hour12: false })}</span>
+            <span class="check-time">· {$tr('Dicek jam', 'Dicek pukul', 'Checked at')} {updateState.lastChecked.toLocaleTimeString('id-ID', { hour12: false })}</span>
           {/if}
         </div>
       {:else if updateState.status === 'error'}
         <div class="update-feedback-banner error mono-nums">
           <AlertCircle size={14} />
-          <span>{updateState.errorMessage || 'Gagal menghubungi server GitHub.'}</span>
+          <span>{updateState.errorMessage || $tr('Gagal nyambung nang server GitHub, Cok.', 'Gagal menghubungi server GitHub.', 'Failed to reach GitHub servers.')}</span>
         </div>
       {:else if updateState.status === 'checking'}
         <div class="update-feedback-banner info mono-nums">
           <RefreshCw size={13} class="spin" />
-          <span>Memeriksa ketersediaan pembaruan dari server GitHub...</span>
+          <span>{$tr('Sik nggoleki info update teko server GitHub...', 'Memeriksa ketersediaan pembaruan dari server GitHub...', 'Checking GitHub servers for updates...')}</span>
         </div>
       {/if}
     </div>
@@ -367,7 +369,7 @@
 
   <!-- Tech Specifications Grid -->
   <div class="section-group">
-    <h4 class="section-title">Spesifikasi Engine & Arsitektur</h4>
+    <h4 class="section-title">{$tr('Jeroan Mesin & Arsitektur', 'Spesifikasi Engine & Arsitektur', 'Engine & Architecture Specs')}</h4>
     <div class="specs-grid">
       <div class="spec-card">
         <span class="spec-key">Core Charting Engine</span>
@@ -386,19 +388,36 @@
         <span class="spec-val">Svelte 5 + Vite (Zero Run-Time VDOM)</span>
       </div>
       <div class="spec-card">
-        <span class="spec-key">Database Lokal</span>
+        <span class="spec-key">{$tr('Database Lokal', 'Database Lokal', 'Local Database')}</span>
         <span class="spec-val">SQLite Local Embedded (rusqlite)</span>
       </div>
       <div class="spec-card">
-        <span class="spec-key">Lisensi Software</span>
-        <span class="spec-val">MIT Open Source License</span>
+        <span class="spec-key">{$tr('Lisensi Software', 'Lisensi Software', 'Software License')}</span>
+        <span class="spec-val">Apache License 2.0 + NOTICE</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mandatory Attribution & Apache 2.0 Notice Card -->
+  <div class="section-group">
+    <h4 class="section-title">{$t('about.licenseTitle')}</h4>
+    <div class="notice-attribution-card">
+      <div class="notice-header-row">
+        <ShieldCheck size={15} class="text-cyan" />
+        <strong>Apache-2.0 Mandatory Attribution Notice (Section 4d)</strong>
+      </div>
+      <p class="notice-body-text">
+        {$t('about.licenseBody')}
+      </p>
+      <div class="notice-credit-box mono-nums">
+        Based on trawangan (https://github.com/KaleksananBarqi/trawangan) · Created by Kaleksanan Barqi Aji Massani (@KaleksananBarqi / @arthex1204)
       </div>
     </div>
   </div>
 
   <!-- Community & Project Links -->
   <div class="section-group">
-    <h4 class="section-title">Tautan Resmi & Komunitas</h4>
+    <h4 class="section-title">{$tr('Link Resmi & Tongkrongan', 'Tautan Resmi & Komunitas', 'Official Links & Community')}</h4>
     <div class="about-links-grid">
       <button
         type="button"
@@ -409,7 +428,7 @@
           <ExternalLink size={14} class="text-cyan" />
           <div class="link-card-text">
             <span class="link-card-title">GitHub Repository</span>
-            <span class="link-card-sub">Kode sumber terbuka, diskusi & kontribusi</span>
+            <span class="link-card-sub">{$tr('Source code bukaan, diskusi & oprek bareng', 'Kode sumber terbuka, diskusi & kontribusi', 'Open-source code, discussions & contributions')}</span>
           </div>
         </div>
         <span class="link-arrow">↗</span>
@@ -423,8 +442,8 @@
         <div class="link-card-left">
           <RefreshCw size={14} class="text-bull" />
           <div class="link-card-text">
-            <span class="link-card-title">Catatan Rilis (Changelog)</span>
-            <span class="link-card-sub">Riwayat versi, fitur baru & perbaikan bug</span>
+            <span class="link-card-title">{$tr('Catetan Rilis (Changelog)', 'Catatan Rilis (Changelog)', 'Release Notes (Changelog)')}</span>
+            <span class="link-card-sub">{$tr('Riwayat versi, fitur anyar & tambalan bug', 'Riwayat versi, fitur baru & perbaikan bug', 'Version history, new features & bug fixes')}</span>
           </div>
         </div>
         <span class="link-arrow">↗</span>
@@ -438,8 +457,8 @@
         <div class="link-card-left">
           <Coffee size={14} class="text-amber" />
           <div class="link-card-text">
-            <span class="link-card-title">Saweria Donasi (@arthex1204)</span>
-            <span class="link-card-sub">Dukungan kopi pengembang untuk kelanjutan proyek</span>
+            <span class="link-card-title">{$tr('Traktir Kopi Saweria (@arthex1204)', 'Saweria Donasi (@arthex1204)', 'Saweria Tip Jar (@arthex1204)')}</span>
+            <span class="link-card-sub">{$tr('Suntikan bensin kopi ben proyek iki tetep gaspol gratis!', 'Dukungan kopi pengembang untuk kelanjutan proyek', 'Support independent development with a coffee')}</span>
           </div>
         </div>
         <span class="link-arrow">↗</span>
@@ -449,12 +468,45 @@
 
   <!-- Meta Footer -->
   <div class="about-footer-meta">
-    <p>trawangan · Dibuat dengan dedikasi untuk trader teknikal & analis independen.</p>
-    <p class="meta-copyright">Copyright © 2026 KaleksananBarqi / arthex1204. All rights reserved.</p>
+    <p>{$tr('trawangan · Digawe tenanan gawe arek-arek trader teknikal & analis mandiri sing wegah dipalak langganan.', 'trawangan · Dibuat dengan dedikasi untuk trader teknikal & analis independen.', 'trawangan · Crafted with dedication for independent technical traders & analysts.')}</p>
+    <p class="meta-copyright">Copyright © 2026 Kaleksanan Barqi Aji Massani (@KaleksananBarqi / @arthex1204). Licensed under Apache-2.0 with Mandatory Attribution NOTICE.</p>
   </div>
 </div>
 
 <style>
+  .notice-attribution-card {
+    padding: 12px 14px;
+    background: var(--bg-surface, #161b22);
+    border: 1px solid rgba(56, 189, 248, 0.32);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .notice-header-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+    color: var(--text-base, #ffffff);
+  }
+
+  .notice-body-text {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-dim, #8b949e);
+  }
+
+  .notice-credit-box {
+    padding: 7px 10px;
+    border-radius: 5px;
+    background: var(--bg-subtle, #0d1117);
+    border: 1px solid var(--border-subtle, #30363d);
+    font-size: 10.5px;
+    color: var(--brand-primary, #FF69B4);
+  }
   .about-pane {
     display: flex;
     flex-direction: column;

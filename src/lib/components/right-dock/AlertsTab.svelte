@@ -26,6 +26,7 @@
     resolveAlertTargetSymbol,
   } from '../../services/alertFormHelper';
   import type { AlertCondition, PriceAlert } from '../../types/market';
+  import { tr, trInstant } from '../../i18n';
 
   interface Props {
     activeSymbol: string;
@@ -368,7 +369,7 @@
       class="filter-pill {alertFilterMode === 'all' ? 'active' : ''}"
       onclick={() => { alertFilterMode = 'all'; clearConfirm(); }}
     >
-      Semua ({alerts.length})
+      {$tr('Kabeh', 'Semua', 'All')} ({alerts.length})
     </button>
     {#each symbolPills as pill (pill.symbol)}
       <button

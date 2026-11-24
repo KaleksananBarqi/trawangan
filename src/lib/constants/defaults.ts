@@ -18,6 +18,11 @@ export const DEFAULT_SYNC_CONFIG: MultiChartSyncConfig = {
  * Pengaturan bawaan aplikasi Trawangan
  */
 export const DEFAULT_APP_SETTINGS: AppSettings = {
+  language: 'jv',
+  hasCompletedOnboarding: false,
+  executionBridgeEnabled: false,
+  executionRiskAccepted: false,
+  activeBrokerId: 'binance',
   timezone: 'Asia/Jakarta',
   soundEnabled: true,
   systemNotificationEnabled: true,
@@ -146,6 +151,28 @@ export function resolveAppSettings(saved?: Partial<AppSettings> | null): AppSett
   return {
     ...DEFAULT_APP_SETTINGS,
     ...sanitizedSaved,
+    language:
+      saved.language === 'jv' || saved.language === 'id' || saved.language === 'en'
+        ? saved.language
+        : 'jv',
+    hasCompletedOnboarding:
+      typeof saved.hasCompletedOnboarding === 'boolean'
+        ? saved.hasCompletedOnboarding
+        : false,
+    executionBridgeEnabled:
+      typeof saved.executionBridgeEnabled === 'boolean'
+        ? saved.executionBridgeEnabled
+        : false,
+    executionRiskAccepted:
+      typeof saved.executionRiskAccepted === 'boolean'
+        ? saved.executionRiskAccepted
+        : false,
+    activeBrokerId:
+      saved.activeBrokerId === 'binance' ||
+      saved.activeBrokerId === 'bitunix' ||
+      saved.activeBrokerId === 'mt5'
+        ? saved.activeBrokerId
+        : 'binance',
     gridMode:
       saved.gridMode === 'normal' || saved.gridMode === 'dimmed' || saved.gridMode === 'hidden'
         ? saved.gridMode

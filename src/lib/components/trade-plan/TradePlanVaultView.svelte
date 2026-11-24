@@ -2,6 +2,7 @@
   import { Bell, Filter, History, Pencil, Play, Trash2 } from '@lucide/svelte';
   import { evaluatePlanMarketStatus } from '../../services/tradingPlanLifecycle';
   import type { SavedTradingPlanRecord } from '../../types/market';
+  import { tr } from '../../i18n';
 
   interface Props {
     activeSymbol: string;
@@ -52,7 +53,7 @@
         class="vault-filter-btn {historyFilterMode === 'all' ? 'active' : ''}"
         onclick={() => onChangeFilter('all')}
       >
-        Semua ({historyRecords.length})
+        {$tr('Kabeh', 'Semua', 'All')} ({historyRecords.length})
       </button>
     </div>
 
@@ -61,30 +62,30 @@
         type="button"
         class="btn-tool-action btn-clear"
         onclick={onClearAllHistory}
-        title="Hapus seluruh riwayat Trade Plan Vault"
+        title={$tr('Busek kabeh riwayat Trade Plan Vault', 'Hapus seluruh riwayat Trade Plan Vault', 'Clear all Trade Plan Vault history')}
       >
         <Trash2 size={11} />
-        <span>Hapus Semua</span>
+        <span>{$tr('Busek Kabeh', 'Hapus Semua', 'Clear All')}</span>
       </button>
     {/if}
   </div>
 
   {#if currentPrice && currentPrice > 0}
     <div class="vault-live-price mono-nums">
-      <span>Harga {activeSymbol}:</span>
+      <span>{$tr('Rega', 'Harga', 'Price')} {activeSymbol}:</span>
       <strong>{formatPrice(currentPrice)}</strong>
     </div>
   {/if}
 
   {#if isLoadingHistory}
-    <div class="vault-empty">Memuat riwayat Trade Plan...</div>
+    <div class="vault-empty">{$tr('Sik njupuk riwayat Trade Plan...', 'Memuat riwayat Trade Plan...', 'Loading Trade Plan Vault...')}</div>
   {:else if filteredHistory.length === 0}
     <div class="vault-empty">
       <History size={20} class="text-dim" />
       <p>
         {historyFilterMode === 'active_symbol'
-          ? `Belum ada riwayat tersimpan untuk ${activeSymbol}.`
-          : 'Belum ada riwayat di Trade Plan Vault.'}
+          ? $tr(`Durung ono riwayat kesimpen gawe ${activeSymbol}.`, `Belum ada riwayat tersimpan untuk ${activeSymbol}.`, `No saved plans for ${activeSymbol} yet.`)
+          : $tr('Trade Plan Vault-mu isih kosong melompong, Rek.', 'Belum ada riwayat di Trade Plan Vault.', 'Trade Plan Vault is empty.')}
       </p>
     </div>
   {:else}
@@ -132,16 +133,16 @@
               type="button"
               class="btn-vault primary"
               onclick={() => onReplot(rec, false)}
-              title="Proyeksikan ulang plan ini ke chart"
+              title={$tr('Pasang maneh plan iki nang chart', 'Proyeksikan ulang plan ini ke chart', 'Re-plot this plan on chart')}
             >
               <Play size={10} />
-              <span>Proyeksikan</span>
+              <span>{$tr('Pasang Chart', 'Proyeksikan', 'Re-Plot')}</span>
             </button>
             <button
               type="button"
               class="btn-vault alert"
               onclick={() => onReplot(rec, true)}
-              title="Proyeksikan ke chart sekaligus pasang alert"
+              title={$tr('Pasang nang chart sisan pasang alert', 'Proyeksikan ke chart sekaligus pasang alert', 'Re-plot and attach alerts')}
             >
               <Bell size={10} />
               <span>+ Alert</span>
@@ -150,16 +151,16 @@
               type="button"
               class="btn-vault"
               onclick={() => onLoadToForm(rec)}
-              title="Buka rencana ini di Form untuk disunting"
+              title={$tr('Bukak plan iki nang Form gawe dioprek', 'Buka rencana ini di Form untuk disunting', 'Open in Form to edit')}
             >
               <Pencil size={10} />
-              <span>Buka di Form</span>
+              <span>{$tr('Bukak Form', 'Buka di Form', 'Open Form')}</span>
             </button>
             <button
               type="button"
               class="btn-vault danger"
               onclick={() => onDelete(rec.id)}
-              title="Hapus dari riwayat"
+              title={$tr('Busek teko riwayat', 'Hapus dari riwayat', 'Delete from history')}
               aria-label="Hapus riwayat {rec.symbol}"
             >
               <Trash2 size={10} />

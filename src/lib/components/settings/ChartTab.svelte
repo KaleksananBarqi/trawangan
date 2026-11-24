@@ -15,6 +15,7 @@
   import { timelineMarksController } from '../../services/timelineMarksController';
   import type { MarketSession } from '../../services/marketSessionService';
   import ToggleSwitch from '../common/ToggleSwitch.svelte';
+  import { tr, trInstant } from '../../i18n';
 
   interface Props {
     settings: AppSettings;
@@ -121,8 +122,8 @@
     if (onSaveChartAsDefault) {
       const ok = await onSaveChartAsDefault();
       saveDefaultFeedback = ok
-        ? '✓ Konfigurasi chart disimpan sebagai default permanen!'
-        : 'Gagal menyimpan konfigurasi chart default.';
+        ? trInstant('✓ Sip! Setelan chart wis disimpen dadi default permanen!', '✓ Konfigurasi chart disimpan sebagai default permanen!', '✓ Chart configuration saved as permanent default!')
+        : trInstant('Gagal nyimpen setelan chart default.', 'Gagal menyimpan konfigurasi chart default.', 'Failed to save default chart configuration.');
       if (saveDefaultFeedbackTimer) {
         clearTimeout(saveDefaultFeedbackTimer);
       }
@@ -136,7 +137,7 @@
   function handleResetChartFactoryClick() {
     if (onResetChartFactory) {
       onResetChartFactory();
-      resetChartFeedback = '✓ Konfigurasi lilin dikembalikan ke default pabrik!';
+      resetChartFeedback = trInstant('✓ Werna candle wis dibalikno nang setelan pabrik!', '✓ Konfigurasi lilin dikembalikan ke default pabrik!', '✓ Candlestick configuration restored to factory defaults!');
       if (resetChartFeedbackTimer) {
         clearTimeout(resetChartFeedbackTimer);
       }
@@ -160,19 +161,19 @@
 </script>
 
 <div class="section-group">
-  <h4 class="section-title">Kebersihan & Tampilan Canvas</h4>
+  <h4 class="section-title">{$tr('Resik-Resik & Tampilan Kanvas Chart', 'Kebersihan & Tampilan Canvas', 'Canvas Cleanliness & Display')}</h4>
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Garis Grid Latar (Grid Lines)</span>
-      <span class="setting-desc">Tampilkan pemandu koordinat harga dan waktu dengan pilihan intensitas garis</span>
+      <span class="setting-label">{$tr('Garis Kotak Latar (Grid Lines)', 'Garis Grid Latar (Grid Lines)', 'Background Grid Lines')}</span>
+      <span class="setting-desc">{$tr('Ketokno garis bantu rega karo waktu nganggo pilihan ketebalan', 'Tampilkan pemandu koordinat harga dan waktu dengan pilihan intensitas garis', 'Display price and time coordinate grid lines with adjustable intensity')}</span>
     </div>
     <div class="grid-mode-selector" role="radiogroup" aria-label="Garis Grid">
       <button
         type="button"
         class="mode-chip {currentGridMode === 'normal' ? 'active' : ''}"
         onclick={() => onUpdateSettings({ gridMode: 'normal', showGrid: true })}
-        title="Garis grid tampil jelas dengan opasitas tema standar"
+        title={$tr('Garis grid ketok jelas standar tema', 'Garis grid tampil jelas dengan opasitas tema standar', 'Standard grid visibility')}
       >
         <span>Normal</span>
       </button>
@@ -180,25 +181,25 @@
         type="button"
         class="mode-chip {currentGridMode === 'dimmed' ? 'active' : ''}"
         onclick={() => onUpdateSettings({ gridMode: 'dimmed', showGrid: true })}
-        title="Garis grid samar dan redup (transparan halus)"
+        title={$tr('Garis grid remeng-remeng alus', 'Garis grid samar dan redup (transparan halus)', 'Subtle dimmed grid lines')}
       >
-        <span>Redup</span>
+        <span>{$tr('Remeng', 'Redup', 'Dimmed')}</span>
       </button>
       <button
         type="button"
         class="mode-chip {currentGridMode === 'hidden' ? 'active' : ''}"
         onclick={() => onUpdateSettings({ gridMode: 'hidden', showGrid: false })}
-        title="Sembunyikan seluruh garis koordinat horizontal dan vertikal"
+        title={$tr('Singidno kabeh garis grid ben kanvas resik pol', 'Sembunyikan seluruh garis koordinat horizontal dan vertikal', 'Hide all horizontal and vertical grid lines')}
       >
-        <span>Sembunyi</span>
+        <span>{$tr('Singidno', 'Sembunyi', 'Hidden')}</span>
       </button>
     </div>
   </div>
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Watermark Simbol Besar</span>
-      <span class="setting-desc">Tampilkan watermark samar di belakang candlestick</span>
+      <span class="setting-label">{$tr('Watermark Simbol Gede', 'Watermark Simbol Besar', 'Large Symbol Watermark')}</span>
+      <span class="setting-desc">{$tr('Ketokno tulisan simbol samar nang mburine candlestick', 'Tampilkan watermark samar di belakang candlestick', 'Show subtle ticker watermark behind candlesticks')}</span>
     </div>
     <ToggleSwitch
       checked={Boolean(settings.showWatermark)}
@@ -209,8 +210,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Histogram Volume Pasar (Native Overlay)</span>
-      <span class="setting-desc">Tampilkan bar volume WebGL2 di dasar panel candlestick harga utama</span>
+      <span class="setting-label">{$tr('Balok Volume Market (Native Overlay)', 'Histogram Volume Pasar (Native Overlay)', 'Market Volume Histogram (Native Overlay)')}</span>
+      <span class="setting-desc">{$tr('Ketokno bar volume WebGL2 nang ngisor kanvas candle utama', 'Tampilkan bar volume WebGL2 di dasar panel candlestick harga utama', 'Render WebGL2 volume bars along the bottom of the main price pane')}</span>
     </div>
     <ToggleSwitch
       checked={settings.showVolume !== false}
@@ -221,8 +222,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Hollow Candles (Body Bullish Transparan)</span>
-      <span class="setting-desc">Kosongkan isian body lilin naik (bullish) dengan garis tepi &amp; sumbu mengikuti warna tema</span>
+      <span class="setting-label">{$tr('Hollow Candles (Candle Munggah Bolong)', 'Hollow Candles (Body Bullish Transparan)', 'Hollow Candles (Transparent Bullish Body)')}</span>
+      <span class="setting-desc">{$tr('Kosongno jeroan awak candle bullish, nyisakno garis pinggir & sumbu', 'Kosongkan isian body lilin naik (bullish) dengan garis tepi & sumbu mengikuti warna tema', 'Render bullish candles with hollow bodies and themed borders/wicks')}</span>
     </div>
     <ToggleSwitch
       checked={Boolean(settings.hollowCandles)}
@@ -233,8 +234,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Opasitas Objek Pane Utama ({Math.round((settings.mainPaneObjectsOpacity ?? 1) * 100)}%)</span>
-      <span class="setting-desc">Redupkan indikator overlay, volume overlay, VPVR, dan gambar pada pane harga utama tanpa memengaruhi lilin atau sub-pane lain</span>
+      <span class="setting-label">{$tr('Transparansi Objek Pane Utama', 'Opasitas Objek Pane Utama', 'Main Pane Objects Opacity')} ({Math.round((settings.mainPaneObjectsOpacity ?? 1) * 100)}%)</span>
+      <span class="setting-desc">{$tr('Remengno indikator overlay, volume, VPVR, karo gambar nang pane utama tanpa ngganggu candle', 'Redupkan indikator overlay, volume overlay, VPVR, dan gambar pada pane harga utama tanpa memengaruhi lilin atau sub-pane lain', 'Dim overlay indicators, volume, VPVR, and drawings on the main pane without affecting candles')}</span>
     </div>
     <div class="opacity-slider-wrap" style="display: flex; align-items: center; gap: 8px; min-width: 150px;">
       <input
@@ -256,7 +257,7 @@
   <div class="setting-row">
     <div class="setting-info">
       <span class="setting-label">Bar Replay Controller</span>
-      <span class="setting-desc">Tampilkan toolbar replay candle historis di atas grafik</span>
+      <span class="setting-desc">{$tr('Ketokno toolbar simulasi puter ulang candle lawas nang ndhuwur chart', 'Tampilkan toolbar replay candle historis di atas grafik', 'Show historical candle replay controls above the chart')}</span>
     </div>
     <ToggleSwitch
       checked={Boolean(settings.showReplayBar)}
@@ -268,12 +269,12 @@
   <!-- Sesi Pasar RTH / ETH (Yahoo Finance Equities & Indices) -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Sesi Perdagangan (RTH / ETH)</span>
+      <span class="setting-label">{$tr('Jam Sesi Bursa (RTH / ETH)', 'Sesi Perdagangan (RTH / ETH)', 'Trading Sessions (RTH / ETH)')}</span>
       <span class="setting-desc">
         {#if isSessionAvailable}
-          Pilih Regular Trading Hours (RTH) atau Extended Hours (ETH) dengan shading Pre-Market & Post-Market.
+          {$tr('Pilih Regular Trading Hours (RTH) utawa Extended Hours (ETH) lengkap karo warna Pre-Market & Post-Market.', 'Pilih Regular Trading Hours (RTH) atau Extended Hours (ETH) dengan shading Pre-Market & Post-Market.', 'Switch between Regular Trading Hours (RTH) and Extended Hours (ETH) with Pre/Post-Market shading.')}
         {:else}
-          Aktif untuk saham & indeks Yahoo Finance. Pasar kripto 24/7 otomatis mengabaikan shading sesi.
+          {$tr('Khusus saham & indeks Yahoo Finance. Market kripto 24/7 otomatis nyuekno shading sesi iki.', 'Aktif untuk saham & indeks Yahoo Finance. Pasar kripto 24/7 otomatis mengabaikan shading sesi.', 'Active for Yahoo Finance equities & indices. 24/7 crypto markets ignore session shading.')}
         {/if}
       </span>
     </div>
@@ -288,7 +289,7 @@
             onUpdateSettings({ marketSession: 'regular' });
           }
         }}
-        title="Regular Trading Hours (RTH): Hanya menampilkan jam bursa reguler"
+        title="Regular Trading Hours (RTH)"
       >
         <span>RTH</span>
       </button>
@@ -302,7 +303,7 @@
             onUpdateSettings({ marketSession: 'extended' });
           }
         }}
-        title="Extended Trading Hours (ETH): Menampilkan Pre-Market (amber) dan Post-Market (biru)"
+        title="Extended Trading Hours (ETH)"
       >
         <span>ETH</span>
       </button>
@@ -312,16 +313,16 @@
 
 <!-- Skala Harga & Label Sumbu Kanan -->
 <div class="section-group">
-  <h4 class="section-title">Skala Harga & Label Sumbu Kanan</h4>
+  <h4 class="section-title">{$tr('Skala Rega & Badge Sumbu Tengen', 'Skala Harga & Label Sumbu Kanan', 'Price Scale & Right Axis Labels')}</h4>
   <p class="section-subtitle">
-    Atur visibilitas garis harga horizontal dan label badge harga pada skala sumbu kanan.
+    {$tr('Setel garis rega mendatar karo label rega nang sumbu tengen chart.', 'Atur visibilitas garis harga horizontal dan label badge harga pada skala sumbu kanan.', 'Configure horizontal price lines and value badges along the right-hand price scale.')}
   </p>
 
   <!-- Garis Harga Terakhir (Current Price Line) -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Garis Harga Terakhir (Current Price Line)</span>
-      <span class="setting-desc">Tampilkan garis horizontal dinamis yang membentang dari harga lilin aktif ke skala kanan</span>
+      <span class="setting-label">{$tr('Garis Rega Saiki (Current Price Line)', 'Garis Harga Terakhir (Current Price Line)', 'Current Price Line')}</span>
+      <span class="setting-desc">{$tr('Ketokno garis mendatar teko rega candle urip sampek skala tengen', 'Tampilkan garis horizontal dinamis yang membentang dari harga lilin aktif ke skala kanan', 'Draw a live horizontal line from the current bar price to the right scale')}</span>
     </div>
     <ToggleSwitch
       checked={settings.showCurrentPriceLine !== false}
@@ -333,8 +334,8 @@
   <!-- Hitung Mundur Penutupan Lilin (Countdown to Bar Close) -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Hitung Mundur Penutupan Lilin</span>
-      <span class="setting-desc">Tampilkan hitung mundur waktu penutupan lilin aktif pada sumbu harga kanan</span>
+      <span class="setting-label">{$tr('Countdown Tutup Candle', 'Hitung Mundur Penutupan Lilin', 'Countdown to Bar Close')}</span>
+      <span class="setting-desc">{$tr('Ketokno sisa waktu sakdurunge candle saiki ganti candle anyar', 'Tampilkan hitung mundur waktu penutupan lilin aktif pada sumbu harga kanan', 'Display remaining time before the active candlestick closes')}</span>
     </div>
     <ToggleSwitch
       checked={Boolean(settings.showPriceScaleCountdown)}
@@ -346,8 +347,8 @@
   <!-- Label Nilai Indikator di Skala Harga -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Label Nilai Indikator di Skala Kanan</span>
-      <span class="setting-desc">Tampilkan badge angka nilai terakhir dari indikator teknikal aktif pada sumbu harga kanan</span>
+      <span class="setting-label">{$tr('Badge Angka Indikator nang Sumbu Tengen', 'Label Nilai Indikator di Skala Kanan', 'Indicator Value Labels on Scale')}</span>
+      <span class="setting-desc">{$tr('Ketokno angka terakhir teko indikator sing lagi dipasang nang sumbu tengen', 'Tampilkan badge angka nilai terakhir dari indikator teknikal aktif pada sumbu harga kanan', 'Show latest value badges for active technical indicators on the price axis')}</span>
     </div>
     <ToggleSwitch
       checked={settings.showIndicatorPriceLabels !== false}
@@ -359,8 +360,8 @@
   <!-- Label Harga Posisi Long/Short & Gambar -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Label Harga Posisi Long/Short & Gambar</span>
-      <span class="setting-desc">Tampilkan badge harga entry, target keuntungan (TP), dan batas rugi (SL) di sumbu kanan</span>
+      <span class="setting-label">{$tr('Badge Rega Posisi Long/Short & Gambar', 'Label Harga Posisi Long/Short & Gambar', 'Drawing & Long/Short Price Labels')}</span>
+      <span class="setting-desc">{$tr('Ketokno badge rega Entry, TP, karo SL nang sumbu tengen', 'Tampilkan badge harga entry, target keuntungan (TP), dan batas rugi (SL) di sumbu kanan', 'Show Entry, TP, and SL price badges for drawings on the right axis')}</span>
     </div>
     <ToggleSwitch
       checked={settings.showDrawingPriceLabels !== false}
@@ -372,8 +373,8 @@
   <!-- Garis Price Alert pada Grafik -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Garis Price Alert di Grafik</span>
-      <span class="setting-desc">Tampilkan garis &amp; label alert pada kanvas (notifikasi latar belakang tetap berjalan saat disembunyikan)</span>
+      <span class="setting-label">{$tr('Garis Price Alert nang Chart', 'Garis Price Alert di Grafik', 'Price Alert Lines on Chart')}</span>
+      <span class="setting-desc">{$tr('Ketokno garis & label alert nang kanvas (meski disingidno, alarm tetep jalan nang mburi layar)', 'Tampilkan garis & label alert pada kanvas (notifikasi latar belakang tetap berjalan saat disembunyikan)', 'Render alert lines on canvas (background alert monitoring stays active when hidden)')}</span>
     </div>
     <ToggleSwitch
       checked={settings.showAlertLines !== false}
@@ -385,16 +386,16 @@
 
 <!-- Penanda Garis Waktu & Peristiwa Pasar (Timeline Marks & Events) -->
 <div class="section-group">
-  <h4 class="section-title">Penanda Garis Waktu & Peristiwa Pasar (Timeline Marks)</h4>
+  <h4 class="section-title">{$tr('Tenger Garis Waktu & Berita Makro (Timeline Marks)', 'Penanda Garis Waktu & Peristiwa Pasar (Timeline Marks)', 'Timeline Marks & Market Events')}</h4>
   <p class="section-subtitle">
-    Tampilkan penanda peristiwa ekonomi makro, eksekusi trading plan, dan catatan jurnal langsung pada sumbu horizontal waktu chart.
+    {$tr('Pasang tenger rilis berita makro, eksekusi plan, karo catetan jurnal nang garis waktu ngisor chart.', 'Tampilkan penanda peristiwa ekonomi makro, eksekusi trading plan, dan catatan jurnal langsung pada sumbu horizontal waktu chart.', 'Display macroeconomic releases, trade plan fills, and journal pins along the time axis.')}
   </p>
 
   <!-- Acara Kalender Makroekonomi -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Acara Kalender Makroekonomi (FOMC, CPI, NFP)</span>
-      <span class="setting-desc">Tampilkan titik penanda rilis ekonomi pada sumbu waktu chart</span>
+      <span class="setting-label">{$tr('Berita Kalender Makroekonomi (FOMC, CPI, NFP)', 'Acara Kalender Makroekonomi (FOMC, CPI, NFP)', 'Macroeconomic Calendar Events (FOMC, CPI, NFP)')}</span>
+      <span class="setting-desc">{$tr('Ketokno bunderan tenger berita ekonomi nang sumbu waktu chart', 'Tampilkan titik penanda rilis ekonomi pada sumbu waktu chart', 'Show economic release markers along the chart timeline')}</span>
     </div>
     <ToggleSwitch
       checked={isMacroMarksVisible}
@@ -406,8 +407,8 @@
   {#if isMacroMarksVisible}
     <div class="setting-row">
       <div class="setting-info">
-        <span class="setting-label">Hanya High Impact di Chart</span>
-        <span class="setting-desc">Sembunyikan penanda event Medium dan Low Impact dari sumbu waktu chart</span>
+        <span class="setting-label">{$tr('Mung Berita High Impact Wae', 'Hanya High Impact di Chart', 'High-Impact Events Only')}</span>
+        <span class="setting-desc">{$tr('Singidno berita ecek-ecek (Medium/Low) ben chart gak rame', 'Sembunyikan penanda event Medium dan Low Impact dari sumbu waktu chart', 'Hide Medium and Low impact markers from the chart timeline')}</span>
       </div>
       <ToggleSwitch
         checked={isMacroHighImpactOnly}
@@ -420,8 +421,8 @@
   <!-- Eksekusi Trading Plan -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Titik Eksekusi Rencana Trading (Entry, TP, SL)</span>
-      <span class="setting-desc">Tampilkan penanda glyph visual pada lilin di mana order plan terisi atau tersentuh</span>
+      <span class="setting-label">{$tr('Tenger Titik Trade Plan (Entry, TP, SL)', 'Titik Eksekusi Rencana Trading (Entry, TP, SL)', 'Trade Plan Touch Markers (Entry, TP, SL)')}</span>
+      <span class="setting-desc">{$tr('Ketokno ikon tenger pas candle nyenggol level Entry, TP, utawa SL plan-mu', 'Tampilkan penanda glyph visual pada lilin di mana order plan terisi atau tersentuh', 'Display glyph markers on bars where trade plan levels were touched')}</span>
     </div>
     <ToggleSwitch
       checked={isTradesMarksVisible}
@@ -433,8 +434,8 @@
   <!-- Catatan Jurnal & Tesis -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Catatan Jurnal & Tesis Trader</span>
-      <span class="setting-desc">Sematkan anotasi personal dan catatan evaluasi pada timestamp candle tertentu</span>
+      <span class="setting-label">{$tr('Catetan Jurnal & Tesis Trader', 'Catatan Jurnal & Tesis Trader', 'Trader Journal & Thesis Pins')}</span>
+      <span class="setting-desc">{$tr('Tempelno catetan evaluasi pribadimu nang candle jam tertentu', 'Sematkan anotasi personal dan catatan evaluasi pada timestamp candle tertentu', 'Pin personal annotations and review notes onto specific bar timestamps')}</span>
     </div>
     <ToggleSwitch
       checked={isJournalMarksVisible}
@@ -446,8 +447,8 @@
   <!-- Tombol Dialog Events Bawaan Vela -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Detail Pengaturan Events (Vela Events Tab)</span>
-      <span class="setting-desc">Buka konfigurasi lanjutan penanda peristiwa pada dialog bawaan chart</span>
+      <span class="setting-label">{$tr('Setelan Lanjutan Events (Vela Events Tab)', 'Detail Pengaturan Events (Vela Events Tab)', 'Advanced Events Settings (Vela Events Tab)')}</span>
+      <span class="setting-desc">{$tr('Bukak setelan lengkap penanda event nang dialog asli Vela', 'Buka konfigurasi lanjutan penanda peristiwa pada dialog bawaan chart', 'Open detailed event marker settings in the native Vela dialog')}</span>
     </div>
     <button
       type="button"
@@ -456,22 +457,22 @@
         onClose();
         onOpenChartSettings?.('Events');
       }}
-      title="Buka dialog pengaturan events bawaan Vela"
+      title={$tr('Bukak dialog setelan events Vela', 'Buka dialog pengaturan events bawaan Vela', 'Open Vela events settings')}
     >
       <SlidersHorizontal size={13} />
-      <span>Buka Events Settings</span>
+      <span>{$tr('Bukak Events Settings', 'Buka Events Settings', 'Open Events Settings')}</span>
     </button>
   </div>
 </div>
 
 <!-- Konfigurasi Lilin & Tampilan VelaChart -->
 <div class="section-group">
-  <h4 class="section-title">Warna Lilin & Tampilan VelaChart</h4>
+  <h4 class="section-title">{$tr('Werna Candle & Oprekan VelaChart', 'Warna Lilin & Tampilan VelaChart', 'Candlestick Colors & VelaChart Settings')}</h4>
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Pengaturan Lilin & Bar (Vela Settings)</span>
-      <span class="setting-desc">Kustomisasi warna candle, borders, wick, spacing, dan animasi via modal VelaChart</span>
+      <span class="setting-label">{$tr('Setelan Candle & Bar (Vela Settings)', 'Pengaturan Lilin & Bar (Vela Settings)', 'Candle & Bar Properties (Vela Settings)')}</span>
+      <span class="setting-desc">{$tr('Oprek werna candle, garis pinggir, sumbu, jarak bar, karo animasi liwat modal VelaChart', 'Kustomisasi warna candle, borders, wick, spacing, dan animasi via modal VelaChart', 'Customize candle colors, borders, wicks, bar spacing, and animations via VelaChart modal')}</span>
     </div>
     <button
       type="button"
@@ -480,17 +481,17 @@
         onClose();
         onOpenChartSettings?.('Symbol');
       }}
-      title="Buka dialog pengaturan lilin Vela"
+      title={$tr('Bukak dialog setelan candle Vela', 'Buka dialog pengaturan lilin Vela', 'Open Vela candle settings')}
     >
       <SlidersHorizontal size={13} />
-      <span>Buka Chart Settings</span>
+      <span>{$tr('Bukak Chart Settings', 'Buka Chart Settings', 'Open Chart Settings')}</span>
     </button>
   </div>
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Simpan Konfigurasi Chart sebagai Default</span>
-      <span class="setting-desc">Jadikan warna lilin, skala, dan tampilan Vela saat ini sebagai preset konfigurasi default permanen</span>
+      <span class="setting-label">{$tr('Simpen Setelan Chart dadi Default', 'Simpan Konfigurasi Chart sebagai Default', 'Save Current Chart Setup as Default')}</span>
+      <span class="setting-desc">{$tr('Dadekno werna candle, skala, karo tampilan Vela saiki dadi patokan default permanen', 'Jadikan warna lilin, skala, dan tampilan Vela saat ini sebagai preset konfigurasi default permanen', 'Save current Vela colors, scales, and layout properties as your permanent default')}</span>
       {#if saveDefaultFeedback}
         <span class="notification-test-feedback mono-nums">{saveDefaultFeedback}</span>
       {/if}
@@ -499,17 +500,17 @@
       type="button"
       class="btn-test-notification"
       onclick={handleSaveChartAsDefaultClick}
-      title="Simpan konfigurasi chart saat ini sebagai default permanen"
+      title={$tr('Simpen setelan chart saiki dadi default permanen', 'Simpan konfigurasi chart saat ini sebagai default permanen', 'Save current chart setup as default')}
     >
       <Save size={12} />
-      <span>Simpan sebagai Default</span>
+      <span>{$tr('Simpen dadi Default', 'Simpan sebagai Default', 'Save as Default')}</span>
     </button>
   </div>
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Reset Konfigurasi Lilin ke Default Pabrik</span>
-      <span class="setting-desc">Hapus preset konfigurasi default yang pernah disimpan dan kembalikan ke warna awal bawaan Vela</span>
+      <span class="setting-label">{$tr('Balikno Setelan Candle nang Awal Pabrik', 'Reset Konfigurasi Lilin ke Default Pabrik', 'Reset Candle Properties to Factory Defaults')}</span>
+      <span class="setting-desc">{$tr('Busek setelan default oprekanmu lan balikno werna asli Vela', 'Hapus preset konfigurasi default yang pernah disimpan dan kembalikan ke warna awal bawaan Vela', 'Clear saved overrides and restore original Vela candlestick defaults')}</span>
       {#if resetChartFeedback}
         <span class="notification-test-feedback mono-nums">{resetChartFeedback}</span>
       {/if}
@@ -518,25 +519,25 @@
       type="button"
       class="btn-reset-font"
       onclick={handleResetChartFactoryClick}
-      title="Kembalikan konfigurasi lilin ke default pabrik"
+      title={$tr('Balikno setelan candle nang pabrik', 'Kembalikan konfigurasi lilin ke default pabrik', 'Restore factory candle defaults')}
     >
       <RotateCcw size={12} />
-      <span>Reset ke Pabrik</span>
+      <span>{$tr('Balikno Pabrik', 'Reset ke Pabrik', 'Factory Reset')}</span>
     </button>
   </div>
 </div>
 
 <div class="section-group">
-  <h4 class="section-title">Sematan Timeframe Favorit</h4>
+  <h4 class="section-title">{$tr(' Pin Timeframe Favorit', 'Sematan Timeframe Favorit', 'Pinned Favorite Timeframes')}</h4>
   <p class="section-subtitle">
-    Pilih timeframe mana saja yang disematkan langsung di bilah navigasi kilat header grafik.
+    {$tr('Pilih timeframe endi wae sing kate dipajang langsung nang bar dhuwur chart.', 'Pilih timeframe mana saja yang disematkan langsung di bilah navigasi kilat header grafik.', 'Choose which timeframe intervals stay pinned in the top chart toolbar.')}
   </p>
 
   <!-- Pilihan Sematan Timeframe Favorit -->
   <div class="setting-box-column">
     <div class="setting-info-header">
-      <span class="setting-label">Timeframe Favorit di Header (Sematkan ⭐)</span>
-      <span class="setting-desc">Pilih timeframe mana saja yang tampil di bilah navigasi kilat</span>
+      <span class="setting-label">{$tr('Timeframe Favorit nang Header (intang ⭐)', 'Timeframe Favorit di Header (Sematkan ⭐)', 'Pinned Header Timeframes (⭐)')}</span>
+      <span class="setting-desc">{$tr('Klik bintang gawe masang utawa nyopot timeframe teko header', 'Pilih timeframe mana saja yang tampil di bilah navigasi kilat', 'Click to pin or unpin intervals on the quick bar')}</span>
     </div>
 
     <div class="tf-favorites-chips-grid">
@@ -545,7 +546,7 @@
         <button
           type="button"
           class="tf-fav-chip {isStarred ? 'starred' : ''}"
-          title="{isStarred ? 'Lepas sematan' : 'Sematkan ke bilah atas'} {tfOpt.label}"
+          title="{isStarred ? $tr('Copot teko header', 'Lepas sematan', 'Unpin') : $tr('Pasang nang header', 'Sematkan ke bilah atas', 'Pin to header')} {tfOpt.label}"
           onclick={() => handleToggleFavFromSettings(tfOpt.id)}
         >
           <Star size={11} fill={isStarred ? '#f59e0b' : 'none'} color={isStarred ? '#f59e0b' : 'currentColor'} />
@@ -559,7 +560,7 @@
           <button
             type="button"
             class="tf-fav-chip {isStarred ? 'starred' : ''}"
-            title="{isStarred ? 'Lepas sematan' : 'Sematkan ke bilah atas'} {ctf}"
+            title="{isStarred ? $tr('Copot teko header', 'Lepas sematan', 'Unpin') : $tr('Pasang nang header', 'Sematkan ke bilah atas', 'Pin to header')} {ctf}"
             onclick={() => handleToggleFavFromSettings(ctf)}
           >
             <Star size={11} fill={isStarred ? '#f59e0b' : 'none'} color={isStarred ? '#f59e0b' : 'currentColor'} />
@@ -571,16 +572,16 @@
 
     <div class="tf-settings-actions">
       <span class="tf-chip-summary">
-        {(settings.favoriteTimeframes || ['1m', '5m', '15m', '1h', '4h', '1D']).length} timeframe disematkan di bilah atas
+        {(settings.favoriteTimeframes || ['1m', '5m', '15m', '1h', '4h', '1D']).length} {$tr('timeframe kepasang nang bar dhuwur', 'timeframe disematkan di bilah atas', 'timeframes pinned to top bar')}
       </span>
       <button
         type="button"
         class="reset-defaults-btn"
-        title="Kembalikan favorit ke 1m, 5m, 15m, 1h, 4h, 1D"
+        title="1m, 5m, 15m, 1h, 4h, 1D"
         onclick={() => onUpdateSettings({ favoriteTimeframes: ['1m', '5m', '15m', '1h', '4h', '1D'] })}
       >
         <RotateCcw size={11} />
-        <span>Reset Standar</span>
+        <span>{$tr('Balikno Standar', 'Reset Standar', 'Reset Defaults')}</span>
       </button>
     </div>
   </div>
@@ -588,16 +589,16 @@
 
 <!-- SEKSI 3: SINKRONISASI MULTI-CHART -->
 <div class="section-group">
-  <h4 class="section-title">Sinkronisasi Multi-Chart Grid</h4>
+  <h4 class="section-title">{$tr('Sinkronisasi Multi-Chart Grid', 'Sinkronisasi Multi-Chart Grid', 'Multi-Chart Grid Synchronization')}</h4>
   <p class="section-subtitle">
-    Atur preferensi sinkronisasi bawaan saat menggunakan tata letak multi-chart (2 Split, 4 Grid, dsb.).
+    {$tr('Setel opo wae sing melu bareng pas koen mbukak mode 2 Split utawa 4 Grid.', 'Atur preferensi sinkronisasi bawaan saat menggunakan tata letak multi-chart (2 Split, 4 Grid, dsb.).', 'Configure default pane synchronization behavior in split/grid multi-chart layouts.')}
   </p>
 
   <!-- Sinkronisasi Multi-Chart Cards Grid -->
   <div class="setting-box-column">
     <div class="setting-info-header">
-      <span class="setting-label">Perilaku Default Sinkronisasi Multi-Chart</span>
-      <span class="setting-desc">Status sinkronisasi awal saat beralih ke tata letak split/grid (2 Split, 4 Grid, dsb.)</span>
+      <span class="setting-label">{$tr('Setelan Awal Sinkronisasi Multi-Chart', 'Perilaku Default Sinkronisasi Multi-Chart', 'Default Multi-Chart Sync Rules')}</span>
+      <span class="setting-desc">{$tr('Otomatis aktif pas pindah nang mode 2 Split, 3 Pane, utawa 4 Grid', 'Status sinkronisasi awal saat beralih ke tata letak split/grid (2 Split, 4 Grid, dsb.)', 'Initial sync state when switching into split or grid layouts')}</span>
     </div>
 
     <div class="multichart-sync-settings-grid">
@@ -606,9 +607,9 @@
         <div class="sync-card-info">
           <div class="sync-card-title">
             <Crosshair size={13} class="sync-icon" />
-            <span>Kursor Crosshair</span>
+            <span>{$tr('Kursor Crosshair', 'Kursor Crosshair', 'Crosshair Cursor')}</span>
           </div>
-          <span class="sync-card-desc">Sinkronkan koordinat kursor mouse serempak antar panel grafik</span>
+          <span class="sync-card-desc">{$tr('Gerakno kursor barengan nang kabeh kotak chart', 'Sinkronkan koordinat kursor mouse serempak antar panel grafik', 'Sync mouse crosshair coordinates across all panes')}</span>
         </div>
         <ToggleSwitch
           checked={settings.syncConfig?.crosshair ?? true}
@@ -622,9 +623,9 @@
         <div class="sync-card-info">
           <div class="sync-card-title">
             <Move size={13} class="sync-icon" />
-            <span>Gerakan Viewport (Waktu)</span>
+            <span>{$tr('Geseran Waktu (Viewport)', 'Gerakan Viewport (Waktu)', 'Time Viewport (Pan/Zoom)')}</span>
           </div>
-          <span class="sync-card-desc">Penyelarasan zoom dan pan horizontal rentang waktu candle</span>
+          <span class="sync-card-desc">{$tr('Zoom lan geser jam candle barengan antar chart', 'Penyelarasan zoom dan pan horizontal rentang waktu candle', 'Align horizontal zoom and time scrolling across panes')}</span>
         </div>
         <ToggleSwitch
           checked={settings.syncConfig?.viewport ?? true}
@@ -638,9 +639,9 @@
         <div class="sync-card-info">
           <div class="sync-card-title">
             <Coins size={13} class="sync-icon" />
-            <span>Simbol Pasar (Pair)</span>
+            <span>{$tr('Koin / Simbol Pair', 'Simbol Pasar (Pair)', 'Market Symbol (Pair)')}</span>
           </div>
-          <span class="sync-card-desc">Ganti simbol di satu chart otomatis mengganti semua chart</span>
+          <span class="sync-card-desc">{$tr('Ganti koin nang siji chart langsung ngganti kabeh chart', 'Ganti simbol di satu chart otomatis mengganti semua chart', 'Changing symbol in one pane updates all panes')}</span>
         </div>
         <ToggleSwitch
           checked={settings.syncConfig?.symbol ?? false}
@@ -654,9 +655,9 @@
         <div class="sync-card-info">
           <div class="sync-card-title">
             <PenTool size={13} class="sync-icon" />
-            <span>Objek Gambar (Drawings)</span>
+            <span>{$tr('Gambar & Garis (Drawings)', 'Objek Gambar (Drawings)', 'Chart Drawings')}</span>
           </div>
-          <span class="sync-card-desc">Garis tren, horizontal line, dan anotasi gambar tersinkron</span>
+          <span class="sync-card-desc">{$tr('Trendline, kotak SNR, lan coretan nyambung nang kabeh timeframe', 'Garis tren, horizontal line, dan anotasi gambar tersinkron', 'Sync trendlines, boxes, and annotations across panes')}</span>
         </div>
         <ToggleSwitch
           checked={settings.syncConfig?.drawings ?? true}
@@ -670,9 +671,9 @@
         <div class="sync-card-info">
           <div class="sync-card-title">
             <Layers size={13} class="sync-icon" />
-            <span>Indikator Teknikal</span>
+            <span>{$tr('Indikator Teknikal', 'Indikator Teknikal', 'Technical Indicators')}</span>
           </div>
-          <span class="sync-card-desc">Duplikasi indikator aktif ke seluruh cell layout baru secara otomatis</span>
+          <span class="sync-card-desc">{$tr('Otomatis nyalin indikator aktif nang kotak chart anyar', 'Duplikasi indikator aktif ke seluruh cell layout baru secara otomatis', 'Automatically clone active indicators into new grid panes')}</span>
         </div>
         <ToggleSwitch
           checked={settings.syncConfig?.indicators ?? true}

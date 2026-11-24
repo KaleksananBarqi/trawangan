@@ -13,9 +13,12 @@
     Send,
     MessageSquare,
     Eye,
-    EyeOff
+    EyeOff,
+    Globe,
+    Play
   } from '@lucide/svelte';
   import { THEME_PRESETS, resolveThemeConfig } from '../../constants/themes';
+  import { t, tr, trInstant, SUPPORTED_LANGUAGES } from '../../i18n';
   import {
     isValidDiscordWebhookUrl,
     isValidTelegramConfig,
@@ -42,9 +45,10 @@
     settings: AppSettings;
     onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
     onNavigateTab?: (tab: string) => void;
+    onReplayTutorial?: () => void;
   }
 
-  let { settings, onUpdateSettings, onNavigateTab }: Props = $props();
+  let { settings, onUpdateSettings, onNavigateTab, onReplayTutorial }: Props = $props();
 
   let testNotificationFeedback = $state<string | null>(null);
   let telegramTestFeedback = $state<{ ok: boolean; text: string } | null>(null);
@@ -81,12 +85,12 @@
   }
 
   async function handleSendTestNotification() {
-    testNotificationFeedback = 'Mengirim notifikasi desktop...';
+    testNotificationFeedback = trInstant('Ngirim notifikasi desktop...', 'Mengirim notifikasi desktop...', 'Sending desktop notification...');
     const ok = await sendTestNotification();
     if (ok) {
-      testNotificationFeedback = '✓ Notifikasi terkirim ke desktop sistem!';
+      testNotificationFeedback = trInstant('✓ Sip! Notifikasi wis mendarat nang desktop!', '✓ Notifikasi terkirim ke desktop sistem!', '✓ Test notification sent to system desktop!');
     } else {
-      testNotificationFeedback = '⚠ Izin notifikasi desktop belum diizinkan.';
+      testNotificationFeedback = trInstant('⚠ Izin notifikasi desktop durung dibukak, Rek.', '⚠ Izin notifikasi desktop belum diizinkan.', '⚠ Desktop notification permission is not granted.');
     }
     setTimeout(() => {
       testNotificationFeedback = null;
@@ -102,13 +106,13 @@
   ) {
     if (getTesting()) return;
     setTesting(true);
-    setFeedback({ ok: true, text: `Mengirim tes ke ${channelLabel}...` });
+    setFeedback({ ok: true, text: trInstant(`Ngirim tes nang ${channelLabel}...`, `Mengirim tes ke ${channelLabel}...`, `Sending test to ${channelLabel}...`) });
     const res = await sender();
     setTesting(false);
     setFeedback(
       res.ok
-        ? { ok: true, text: `✓ Notifikasi tes terkirim ke ${channelLabel}!` }
-        : { ok: false, text: `⚠ Gagal: ${res.error || 'Terjadi kesalahan'}` }
+        ? { ok: true, text: trInstant(`✓ Notifikasi tes melbu nang ${channelLabel}!`, `✓ Notifikasi tes terkirim ke ${channelLabel}!`, `✓ Test notification delivered to ${channelLabel}!`) }
+        : { ok: false, text: `⚠ ${trInstant('Gagal', 'Gagal', 'Failed')}: ${res.error || trInstant('Ono error rek', 'Terjadi kesalahan', 'An error occurred')}` }
     );
     setTimeout(() => {
       setFeedback(null);
@@ -148,12 +152,49 @@
 </script>
 
 <div class="section-group">
-  <h4 class="section-title">Preferensi Regional & Notifikasi</h4>
+  <h4 class="section-title">{$tr('Setelan Wilayah, Basa & Notifikasi', 'Preferensi Regional & Notifikasi', 'Regional & Notification Preferences')}</h4>
+
+  <div class="setting-row">
+    <div class="setting-info">
+      <span class="setting-label">{$t('settings.langLabel')}</span>
+      <span class="setting-desc">{$t('settings.langDesc')}</span>
+    </div>
+    <div class="city-chips-group">
+      {#each SUPPORTED_LANGUAGES as lang (lang.code)}
+        {@const isActiveLang = (settings.language ?? 'jv') === lang.code}
+        <button
+          type="button"
+          class="chip-toggle {isActiveLang ? 'active' : ''}"
+          onclick={() => onUpdateSettings({ language: lang.code })}
+        >
+          <Globe size={11} />
+          <span>{lang.badge} · {lang.label}</span>
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  {#if onReplayTutorial}
+    <div class="setting-row">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.replayTutorialLabel')}</span>
+        <span class="setting-desc">{$t('settings.replayTutorialDesc')}</span>
+      </div>
+      <button
+        type="button"
+        class="toggle-btn active"
+        onclick={() => onReplayTutorial?.()}
+      >
+        <Play size={12} />
+        <span>{$t('settings.replayTutorialBtn')}</span>
+      </button>
+    </div>
+  {/if}
   
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Zona Waktu Chart</span>
-      <span class="setting-desc">Waktu referensi untuk sumbu horizontal candle</span>
+      <span class="setting-label">{$tr('Zona Jam Chart', 'Zona Waktu Chart', 'Chart Timezone')}</span>
+      <span class="setting-desc">{$tr('Patokan jam gawe sumbu waktu candle nang ngisor chart', 'Waktu referensi untuk sumbu horizontal candle', 'Reference timezone for the horizontal candlestick time axis')}</span>
     </div>
     <select
       class="select-input mono-nums"
@@ -176,8 +217,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Jam Bursa Dunia (StatusBar)</span>
-      <span class="setting-desc">Tampilkan jam bursa New York, London, dan Tokyo beserta status sesi pasar di bilah status</span>
+      <span class="setting-label">{$tr('Jam Bursa Donya (StatusBar)', 'Jam Bursa Dunia (StatusBar)', 'World Exchange Clocks (StatusBar)')}</span>
+      <span class="setting-desc">{$tr('Ketokno jam bursa New York, London, karo Tokyo plus status bukak/tutup nang ngisor', 'Tampilkan jam bursa New York, London, dan Tokyo beserta status sesi pasar di bilah status', 'Display New York, London, and Tokyo exchange clocks and market session status in the footer')}</span>
     </div>
     <ToggleSwitch
       checked={settings.showWorldClocks !== false}
@@ -188,8 +229,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Market Sessions di Footer (StatusBar)</span>
-      <span class="setting-desc">Tampilkan pill interaktif Market Sessions dengan timeline 24 jam & countdown di bilah status</span>
+      <span class="setting-label">{$tr('Market Sessions nang Footer (StatusBar)', 'Market Sessions di Footer (StatusBar)', 'Market Sessions Pill in Footer')}</span>
+      <span class="setting-desc">{$tr('Ketokno pill interaktif Market Sessions lengkap karo timeline 24 jam & countdown', 'Tampilkan pill interaktif Market Sessions dengan timeline 24 jam & countdown di bilah status', 'Show interactive 24-hour Market Sessions timeline & countdown pill in the status bar')}</span>
     </div>
     <ToggleSwitch
       checked={!isMarketSessionsFooterHidden}
@@ -201,8 +242,8 @@
   {#if settings.showWorldClocks !== false}
     <div class="setting-sub-row">
       <div class="setting-info">
-        <span class="setting-label-sub">Pilihan Sesi Bursa Aktif</span>
-        <span class="setting-desc">Bawaan: New York, London, Tokyo. Opsional: Jakarta (IDX) & Sydney (ASX)</span>
+        <span class="setting-label-sub">{$tr('Pilihan Kutha Sesi Bursa', 'Pilihan Sesi Bursa Aktif', 'Active Exchange Cities')}</span>
+        <span class="setting-desc">{$tr('Default: New York, London, Tokyo. Tambahan: Jakarta (IDX) & Sydney (ASX)', 'Bawaan: New York, London, Tokyo. Opsional: Jakarta (IDX) & Sydney (ASX)', 'Default: New York, London, Tokyo. Optional: Jakarta (IDX) & Sydney (ASX)')}</span>
       </div>
       <div class="city-chips-group">
         {#each SUPPORTED_WORLD_CITIES as city (city.id)}
@@ -211,7 +252,7 @@
             type="button"
             class="chip-toggle {isEnabled ? 'active' : ''}"
             onclick={() => handleToggleCity(city.timezone)}
-            title="{isEnabled ? 'Klik untuk sembunyikan' : 'Klik untuk tampilkan'} jam {city.label}"
+            title="{isEnabled ? $tr('Klik gawe nyingidno', 'Klik untuk sembunyikan', 'Click to hide') : $tr('Klik gawe ngetokno', 'Klik untuk tampilkan', 'Click to show')} {city.label}"
           >
             <span class="chip-dot"></span>
             <span>{city.label} ({city.shortCode})</span>
@@ -223,8 +264,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Efek Suara Notifikasi (Audio Chime)</span>
-      <span class="setting-desc">Bunyikan nada kristal sintetis saat harga menembus level Alert</span>
+      <span class="setting-label">{$tr('Suoro Bel Alert (Audio Chime)', 'Efek Suara Notifikasi (Audio Chime)', 'Notification Sound Chime')}</span>
+      <span class="setting-desc">{$tr(' Munekno suoro teng-teng bening pas rega nembus garis Alert', 'Bunyikan nada kristal sintetis saat harga menembus level Alert', 'Play a synthesized crystal chime whenever price crosses an Alert level')}</span>
     </div>
     <ToggleSwitch
       checked={Boolean(settings.soundEnabled)}
@@ -236,8 +277,8 @@
   <!-- Notifikasi Desktop Sistem -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Notifikasi Desktop Sistem</span>
-      <span class="setting-desc">Kirim notifikasi native ke pusat notifikasi OS (Linux, Windows, macOS) saat alert terpicu</span>
+      <span class="setting-label">{$tr('Notifikasi Desktop OS', 'Notifikasi Desktop Sistem', 'System Desktop Notifications')}</span>
+      <span class="setting-desc">{$tr('Kirim pop-up notifikasi asli nang pojok layar OS (Linux, Windows, macOS) pas alert jeblug', 'Kirim notifikasi native ke pusat notifikasi OS (Linux, Windows, macOS) saat alert terpicu', 'Send native OS desktop notifications (Linux, Windows, macOS) when alerts trigger')}</span>
       {#if testNotificationFeedback}
         <span class="notification-test-feedback mono-nums">{testNotificationFeedback}</span>
       {/if}
@@ -247,10 +288,10 @@
         type="button"
         class="btn-test-notification"
         onclick={handleSendTestNotification}
-        title="Kirim notifikasi uji coba ke desktop sistem"
+        title={$tr('Jajal kirim notifikasi tes nang desktop', 'Kirim notifikasi uji coba ke desktop sistem', 'Send a test notification to your desktop')}
       >
         <Bell size={12} />
-        <span>Tes Desktop</span>
+        <span>{$tr('Jajal Desktop', 'Tes Desktop', 'Test Desktop')}</span>
       </button>
       <ToggleSwitch
         checked={settings.systemNotificationEnabled !== false}
@@ -263,8 +304,8 @@
   <!-- Notifikasi Bot Telegram -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Notifikasi Bot Telegram</span>
-      <span class="setting-desc">Teruskan Price Alert & Pine Script Alert ke chat atau grup Telegram Anda</span>
+      <span class="setting-label">{$tr('Notifikasi Bot Telegram', 'Notifikasi Bot Telegram', 'Telegram Bot Notifications')}</span>
+      <span class="setting-desc">{$tr('Terusno Price Alert & Pine Script Alert langsung nang chat utawa grup Telegram-mu', 'Teruskan Price Alert & Pine Script Alert ke chat atau grup Telegram Anda', 'Forward Price Alerts & Pine Script Alerts straight to your Telegram chat or group')}</span>
       {#if telegramTestFeedback}
         <span class="notification-test-feedback {telegramTestFeedback.ok ? '' : 'error'} mono-nums">
           {telegramTestFeedback.text}
@@ -277,10 +318,10 @@
         class="btn-test-notification"
         disabled={isTestingTelegram || !isTelegramConfigValid}
         onclick={handleSendTestTelegram}
-        title={isTelegramConfigValid ? 'Kirim pesan tes ke Bot Telegram' : 'Lengkapi Bot Token & Chat ID terlebih dahulu'}
+        title={isTelegramConfigValid ? $tr('Kirim pesen tes nang Bot Telegram', 'Kirim pesan tes ke Bot Telegram', 'Send test message to Telegram Bot') : $tr('Isien dhisik Bot Token karo Chat ID', 'Lengkapi Bot Token & Chat ID terlebih dahulu', 'Fill in Bot Token & Chat ID first')}
       >
         <Send size={12} />
-        <span>{isTestingTelegram ? 'Mengirim...' : 'Tes Telegram'}</span>
+        <span>{isTestingTelegram ? $tr('Ngirim...', 'Mengirim...', 'Sending...') : $tr('Jajal Telegram', 'Tes Telegram', 'Test Telegram')}</span>
       </button>
       <ToggleSwitch
         checked={Boolean(settings.telegramNotificationEnabled)}
@@ -299,7 +340,7 @@
             id="telegram-bot-token"
             type={showTelegramToken ? 'text' : 'password'}
             class="channel-input mono-nums"
-            placeholder="Contoh: 123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ"
+            placeholder={$tr('Conto: 123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ', 'Contoh: 123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ', 'Example: 123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ')}
             value={settings.telegramBotToken || ''}
             oninput={(e) => onUpdateSettings({ telegramBotToken: e.currentTarget.value })}
             onchange={(e) => onUpdateSettings({ telegramBotToken: e.currentTarget.value.trim() })}
@@ -309,7 +350,7 @@
             type="button"
             class="secret-toggle-btn"
             onclick={() => (showTelegramToken = !showTelegramToken)}
-            title={showTelegramToken ? 'Sembunyikan Token' : 'Lihat Token'}
+            title={showTelegramToken ? $tr('Singidno Token', 'Sembunyikan Token', 'Hide Token') : $tr('Delok Token', 'Lihat Token', 'Show Token')}
           >
             {#if showTelegramToken}
               <EyeOff size={13} />
@@ -326,7 +367,7 @@
           id="telegram-chat-id"
           type="text"
           class="channel-input mono-nums"
-          placeholder="Contoh: 123456789 atau -100..."
+          placeholder={$tr('Conto: 123456789 utawa -100...', 'Contoh: 123456789 atau -100...', 'Example: 123456789 or -100...')}
           value={settings.telegramChatId || ''}
           oninput={(e) => onUpdateSettings({ telegramChatId: e.currentTarget.value })}
           onchange={(e) => onUpdateSettings({ telegramChatId: e.currentTarget.value.trim() })}
@@ -339,15 +380,15 @@
   <!-- Notifikasi Webhook Discord -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Notifikasi Webhook Discord</span>
-      <span class="setting-desc">Kirim Rich Embed ke channel Discord Anda saat Price Alert atau Pine Alert terpicu</span>
+      <span class="setting-label">{$tr('Notifikasi Webhook Discord', 'Notifikasi Webhook Discord', 'Discord Webhook Notifications')}</span>
+      <span class="setting-desc">{$tr('Kirim Rich Embed mbois nang channel Discord-mu pas Price Alert utawa Pine Alert muni', 'Kirim Rich Embed ke channel Discord Anda saat Price Alert atau Pine Alert terpicu', 'Post Rich Embeds to your Discord channel when Price Alerts or Pine Alerts fire')}</span>
       {#if discordTestFeedback}
         <span class="notification-test-feedback {discordTestFeedback.ok ? '' : 'error'} mono-nums">
           {discordTestFeedback.text}
         </span>
       {:else if hasDiscordInput && !isDiscordUrlValid}
         <span class="notification-test-feedback error mono-nums">
-          ⚠ URL harus diawali https://discord.com/api/webhooks/
+          ⚠ {$tr('URL kudu diawali https://discord.com/api/webhooks/', 'URL harus diawali https://discord.com/api/webhooks/', 'URL must start with https://discord.com/api/webhooks/')}
         </span>
       {/if}
     </div>
@@ -357,10 +398,10 @@
         class="btn-test-notification"
         disabled={isTestingDiscord || !isDiscordUrlValid}
         onclick={handleSendTestDiscord}
-        title={isDiscordUrlValid ? 'Kirim pesan tes ke Discord Webhook' : 'Masukkan URL Webhook Discord yang valid terlebih dahulu'}
+        title={isDiscordUrlValid ? $tr('Kirim pesen tes nang Discord Webhook', 'Kirim pesan tes ke Discord Webhook', 'Send test message to Discord Webhook') : $tr('Lebokno URL Webhook Discord sing bener dhisik', 'Masukkan URL Webhook Discord yang valid terlebih dahulu', 'Enter a valid Discord Webhook URL first')}
       >
         <MessageSquare size={12} />
-        <span>{isTestingDiscord ? 'Mengirim...' : 'Tes Discord'}</span>
+        <span>{isTestingDiscord ? $tr('Ngirim...', 'Mengirim...', 'Sending...') : $tr('Jajal Discord', 'Tes Discord', 'Test Discord')}</span>
       </button>
       <ToggleSwitch
         checked={Boolean(settings.discordNotificationEnabled)}
@@ -388,7 +429,7 @@
           type="button"
           class="secret-toggle-btn"
           onclick={() => (showDiscordWebhook = !showDiscordWebhook)}
-          title={showDiscordWebhook ? 'Sembunyikan URL' : 'Lihat URL'}
+          title={showDiscordWebhook ? $tr('Singidno URL', 'Sembunyikan URL', 'Hide URL') : $tr('Delok URL', 'Lihat URL', 'Show URL')}
         >
           {#if showDiscordWebhook}
             <EyeOff size={13} />
@@ -402,14 +443,14 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Tema Visual Antarmuka</span>
-      <span class="setting-desc">Skema warna yang saat ini aktif</span>
+      <span class="setting-label">{$tr('Tema Werna Terminal', 'Tema Visual Antarmuka', 'Active Interface Theme')}</span>
+      <span class="setting-desc">{$tr('Racikan werna sing saiki kepasang', 'Skema warna yang saat ini aktif', 'Currently active color scheme')}</span>
     </div>
     <button
       type="button"
       class="toggle-btn active"
       onclick={() => onNavigateTab?.('appearance')}
-      title="Buka tab Tema & Tipografi"
+      title={$tr('Bukak tab Tema & Werna', 'Buka tab Tema & Tipografi', 'Open Themes & Colors tab')}
     >
       <Palette size={13} />
       <span>{resolveThemeConfig(settings.themePreset || 'signature', settings.savedUserThemes)?.name || 'trawangan (Signature)'}</span>
@@ -418,46 +459,46 @@
 
   <!-- Pengaturan Tangkapan Layar & Snapshot (#95 & Save Directory Setting) -->
   <div class="section-divider"></div>
-  <h4 class="section-title">Tangkapan Layar & Snapshot Grafik</h4>
+  <h4 class="section-title">{$tr('Jepretan Layar & Snapshot Chart', 'Tangkapan Layar & Snapshot Grafik', 'Chart Screenshots & Snapshots')}</h4>
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Folder Penyimpanan Snapshot</span>
-      <span class="setting-desc">Lokasi direktori penyimpanan berkas gambar PNG saat snapshot diunduh</span>
+      <span class="setting-label">{$tr('Folder Nyimpen Snapshot', 'Folder Penyimpanan Snapshot', 'Snapshot Save Directory')}</span>
+      <span class="setting-desc">{$tr('Panggon folder nyimpen file gambar PNG pas koen undhuh snapshot', 'Lokasi direktori penyimpanan berkas gambar PNG saat snapshot diunduh', 'Folder path where exported PNG chart snapshots are saved')}</span>
     </div>
     <div class="directory-setting-group">
       <input
         type="text"
         class="directory-input mono-nums"
-        placeholder="Bawaan: Folder Downloads OS"
+        placeholder={$tr('Default: Folder Downloads OS', 'Bawaan: Folder Downloads OS', 'Default: OS Downloads Folder')}
         value={settings.snapshotDirectory || ''}
         onchange={(e) => onUpdateSettings({ snapshotDirectory: e.currentTarget.value.trim() })}
       />
       <button
         type="button"
         class="btn-pick-folder"
-        title="Pilih folder penyimpanan via dialog native sistem operasi"
+        title={$tr('Pilih folder liwat dialog asli sistem operasi', 'Pilih folder penyimpanan via dialog native sistem operasi', 'Pick save folder via native OS dialog')}
         onclick={handlePickSnapshotDirectory}
       >
         <FolderOpen size={13} />
-        <span>Pilih Folder...</span>
+        <span>{$tr('Pilih Folder...', 'Pilih Folder...', 'Choose Folder...')}</span>
       </button>
       <button
         type="button"
         class="btn-open-folder"
-        title="Buka folder penyimpanan di File Manager"
+        title={$tr('Bukak folder nang File Manager', 'Buka folder penyimpanan di File Manager', 'Open folder in File Manager')}
         onclick={() => openSnapshotFolder(settings.snapshotDirectory)}
       >
         <Folder size={13} />
-        <span>Buka Folder</span>
+        <span>{$tr('Bukak Folder', 'Buka Folder', 'Open Folder')}</span>
       </button>
     </div>
   </div>
 
   <div class="setting-sub-row">
     <div class="setting-info">
-      <span class="setting-label-sub">Pilihan Cepat Direktori</span>
-      <span class="setting-desc">Pilih jalur direktori standar atau ketik path folder kustom di atas</span>
+      <span class="setting-label-sub">{$tr('Pilihan Cepet Folder', 'Pilihan Cepat Direktori', 'Quick Folder Presets')}</span>
+      <span class="setting-desc">{$tr('Pilih folder standar utawa ketik path folder karepmu nang dhuwur', 'Pilih jalur direktori standar atau ketik path folder kustom di atas', 'Select a standard folder preset or enter a custom path above')}</span>
     </div>
     <div class="dir-chips-group">
       <button
@@ -466,7 +507,7 @@
         onclick={() => onUpdateSettings({ snapshotDirectory: '' })}
       >
         <span class="chip-dot"></span>
-        <span>Downloads (Bawaan)</span>
+        <span>{$tr('Downloads (Default)', 'Downloads (Bawaan)', 'Downloads (Default)')}</span>
       </button>
       <button
         type="button"
@@ -489,8 +530,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Gaya Ekspor Snapshot Bawaan</span>
-      <span class="setting-desc">Format kartu showcase dengan Attribution Bar atau kanvas murni</span>
+      <span class="setting-label">{$tr('Model Ekspor Snapshot Default', 'Gaya Ekspor Snapshot Bawaan', 'Default Snapshot Export Style')}</span>
+      <span class="setting-desc">{$tr('Kartu mbois lengkap karo Attribution Bar utawa kanvas resik polosan', 'Format kartu showcase dengan Attribution Bar atau kanvas murni', 'Showcase card with Attribution Bar or raw chart canvas')}</span>
     </div>
     <button
       type="button"
@@ -507,8 +548,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Sertakan Harga Terakhir (Attribution Bar)</span>
-      <span class="setting-desc">Tampilkan badge harga pasar aktif di bilah footer snapshot</span>
+      <span class="setting-label">{$tr('Katutno Rega Terakhir (Attribution Bar)', 'Sertakan Harga Terakhir (Attribution Bar)', 'Include Last Price (Attribution Bar)')}</span>
+      <span class="setting-desc">{$tr('Ketokno badge rega market aktif nang baris ngisor snapshot', 'Tampilkan badge harga pasar aktif di bilah footer snapshot', 'Show active market price badge on the snapshot attribution bar')}</span>
     </div>
     <ToggleSwitch
       checked={settings.snapshotIncludePrice !== false}
@@ -519,8 +560,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Sertakan Waktu Analisis</span>
-      <span class="setting-desc">Tampilkan stempel tanggal dan jam lokal saat grafik ditangkap</span>
+      <span class="setting-label">{$tr('Katutno Jam Analisa', 'Sertakan Waktu Analisis', 'Include Analysis Timestamp')}</span>
+      <span class="setting-desc">{$tr('Ketokno tanggal karo jam lokal pas chart dijepret', 'Tampilkan stempel tanggal dan jam lokal saat grafik ditangkap', 'Display local date and time stamp when the chart was captured')}</span>
     </div>
     <ToggleSwitch
       checked={settings.snapshotIncludeTimestamp !== false}
@@ -532,45 +573,45 @@
 
 <!-- Timeframe & Workspace Persistence -->
 <div class="section-group" style="margin-top: 16px;">
-  <h4 class="section-title">Timeframe & Penyimpanan Workspace</h4>
+  <h4 class="section-title">{$tr('Timeframe & Simpenan Workspace', 'Timeframe & Penyimpanan Workspace', 'Timeframe & Workspace Persistence')}</h4>
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Timeframe Default (Aplikasi & Multi-Chart)</span>
-      <span class="setting-desc">Interval lilin bawaan saat aplikasi dibuka dan saat panel baru terbentuk</span>
+      <span class="setting-label">{$tr('Timeframe Default (Aplikasi & Multi-Chart)', 'Timeframe Default (Aplikasi & Multi-Chart)', 'Default Timeframe (App & Multi-Chart)')}</span>
+      <span class="setting-desc">{$tr('Timeframe candle awal pas mbukak aplikasi utawa mbukak panel anyar', 'Interval lilin bawaan saat aplikasi dibuka dan saat panel baru terbentuk', 'Initial candle interval when launching the app or spawning new panes')}</span>
     </div>
     <select
       class="select-input mono-nums"
       value={settings.defaultTimeframe || '15m'}
       onchange={(e) => onUpdateSettings({ defaultTimeframe: e.currentTarget.value as any })}
     >
-      <optgroup label="Menit">
-        <option value="1m">1m (1 Menit)</option>
-        <option value="3m">3m (3 Menit)</option>
-        <option value="5m">5m (5 Menit)</option>
-        <option value="15m">15m (15 Menit - Day Trading)</option>
-        <option value="30m">30m (30 Menit)</option>
-        <option value="45m">45m (45 Menit)</option>
+      <optgroup label={$tr('Menitan', 'Menit', 'Minutes')}>
+        <option value="1m">1m (1 {$tr('Menit', 'Menit', 'Min')})</option>
+        <option value="3m">3m (3 {$tr('Menit', 'Menit', 'Min')})</option>
+        <option value="5m">5m (5 {$tr('Menit', 'Menit', 'Min')})</option>
+        <option value="15m">15m (15 {$tr('Menit - Day Trading', 'Menit - Day Trading', 'Min - Day Trading')})</option>
+        <option value="30m">30m (30 {$tr('Menit', 'Menit', 'Min')})</option>
+        <option value="45m">45m (45 {$tr('Menit', 'Menit', 'Min')})</option>
       </optgroup>
-      <optgroup label="Jam">
-        <option value="1h">1h (1 Jam - Swing MTF)</option>
-        <option value="2h">2h (2 Jam)</option>
-        <option value="4h">4h (4 Jam - HTF Analisis)</option>
-        <option value="6h">6h (6 Jam)</option>
-        <option value="12h">12h (12 Jam)</option>
+      <optgroup label={$tr('Jaman', 'Jam', 'Hours')}>
+        <option value="1h">1h (1 {$tr('Jam - Swing MTF', 'Jam - Swing MTF', 'Hour - Swing MTF')})</option>
+        <option value="2h">2h (2 {$tr('Jam', 'Jam', 'Hours')})</option>
+        <option value="4h">4h (4 {$tr('Jam - HTF Analisa', 'Jam - HTF Analisis', 'Hours - HTF Analysis')})</option>
+        <option value="6h">6h (6 {$tr('Jam', 'Jam', 'Hours')})</option>
+        <option value="12h">12h (12 {$tr('Jam', 'Jam', 'Hours')})</option>
       </optgroup>
-      <optgroup label="Hari & Pekan">
-        <option value="1D">1D (1 Hari - Trend Utama)</option>
-        <option value="1W">1W (1 Pekan)</option>
-        <option value="1M">1M (1 Bulan)</option>
+      <optgroup label={$tr('Dinoan & Mingguan', 'Hari & Pekan', 'Days & Weeks')}>
+        <option value="1D">1D (1 {$tr('Dino - Trend Utama', 'Hari - Trend Utama', 'Day - Primary Trend')})</option>
+        <option value="1W">1W (1 {$tr('Minggu', 'Pekan', 'Week')})</option>
+        <option value="1M">1M (1 {$tr('Wulan', 'Bulan', 'Month')})</option>
       </optgroup>
     </select>
   </div>
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Penyimpanan Otomatis Workspace (Auto-Save)</span>
-      <span class="setting-desc">Simpan otomatis tata letak grid, simbol, dan perubahan workspace saat bekerja</span>
+      <span class="setting-label">{$tr('Simpen Otomatis Workspace (Auto-Save)', 'Penyimpanan Otomatis Workspace (Auto-Save)', 'Auto-Save Workspace')}</span>
+      <span class="setting-desc">{$tr('Simpen otomatis tata letak grid, koin, karo oprekanmu pas lagi nganalisa', 'Simpan otomatis tata letak grid, simbol, dan perubahan workspace saat bekerja', 'Automatically persist grid layout, symbols, and workspace edits while working')}</span>
     </div>
     <ToggleSwitch
       checked={settings.autoSaveWorkspace !== false}
@@ -581,8 +622,8 @@
 
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Muat Workspace Terakhir saat Startup</span>
-      <span class="setting-desc">Otomatis memuat workspace, simbol, indikator, dan tata letak terakhir saat aplikasi dibuka</span>
+      <span class="setting-label">{$tr('Bukak Workspace Terakhir pas Startup', 'Muat Workspace Terakhir saat Startup', 'Restore Last Workspace on Startup')}</span>
+      <span class="setting-desc">{$tr('Langsung mbukak workspace, koin, indikator, karo layout terakhirmu pas aplikasi urip', 'Otomatis memuat workspace, simbol, indikator, dan tata letak terakhir saat aplikasi dibuka', 'Automatically reload your last active workspace, symbols, and indicators on launch')}</span>
     </div>
     <ToggleSwitch
       checked={settings.autoLoadLastWorkspace !== false}

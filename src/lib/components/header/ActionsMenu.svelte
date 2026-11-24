@@ -13,6 +13,7 @@
     ChartCandlestick
   } from '@lucide/svelte';
   import type { MultiChartSyncConfig } from '../../types/market';
+  import { tr } from '../../i18n';
 
   interface Props {
     isReplayActive?: boolean;
@@ -59,13 +60,13 @@
 <div class="actions-menu-group">
   <button
     class="actions-trigger-btn {isReplayActive ? 'has-active' : ''}"
-    title="Aksi & Pengaturan Fitur (Replay, Draw, Sinkronisasi)"
+    title={$tr('Aksi & Setelan Fitur (Replay, Gambar, Sinkronisasi)', 'Aksi & Pengaturan Fitur (Replay, Draw, Sinkronisasi)', 'Actions & Feature Controls (Replay, Draw, Sync)')}
     onclick={() => (showMenu = !showMenu)}
   >
     <SlidersHorizontal size={13} class="trigger-icon" />
-    <span>Actions</span>
+    <span>{$tr('Aksi', 'Actions', 'Actions')}</span>
     {#if isReplayActive}
-      <span class="replay-dot" title="Bar Replay Aktif"></span>
+      <span class="replay-dot" title="Bar Replay Active"></span>
     {/if}
     <ChevronDown size={11} class="dropdown-chevron {showMenu ? 'open' : ''}" />
   </button>
@@ -75,7 +76,7 @@
       <!-- ─── BAGIAN 1: ALAT & FITUR UTAMA ─── -->
       <div class="section-title">
         <Sparkles size={11} />
-        <span>FITUR ANALISIS</span>
+        <span>{$tr('FITUR ANALISA', 'FITUR ANALISIS', 'ANALYSIS TOOLS')}</span>
       </div>
 
       <div class="menu-items">
@@ -90,12 +91,12 @@
             <History size={13} class="item-icon" />
             <div class="item-text">
               <span class="item-title">Bar Replay</span>
-              <span class="item-desc">Backtest simulasi candle</span>
+              <span class="item-desc">{$tr('Latihan backtest puter ulang candle', 'Backtest simulasi candle', 'Historical candle replay')}</span>
             </div>
           </div>
           <div class="item-right-toggle">
             <span class="toggle-pill {isReplayActive ? 'on' : 'off'}">
-              {isReplayActive ? 'AKTIF' : 'OFF'}
+              {isReplayActive ? $tr('URIP', 'AKTIF', 'ON') : 'OFF'}
             </span>
             <span class="item-shortcut mono-nums">Shift+R</span>
           </div>
@@ -111,12 +112,12 @@
           <div class="item-left">
             <PenTool size={13} class="item-icon" />
             <div class="item-text">
-              <span class="item-title">Toolbar Gambar</span>
-              <span class="item-desc">Trendline, Fib, Penggaris</span>
+              <span class="item-title">{$tr('Toolbar Gambar', 'Toolbar Gambar', 'Drawing Toolbar')}</span>
+              <span class="item-desc">{$tr('Trendline, Fib, Penggaris', 'Trendline, Fib, Penggaris', 'Trendline, Fib, Ruler')}</span>
             </div>
           </div>
           <span class="toggle-pill {isDrawingToolbarVisible ? 'on' : 'off'}">
-            {isDrawingToolbarVisible ? 'TAMPIL' : 'SEMBUNYI'}
+            {isDrawingToolbarVisible ? $tr('KETOK', 'TAMPIL', 'SHOWN') : $tr('SINGID', 'SEMBUNYI', 'HIDDEN')}
           </span>
         </button>
       </div>
@@ -126,9 +127,9 @@
       <!-- ─── BAGIAN 2: SINKRONISASI MULTI-CHART ─── -->
       <div class="section-title">
         <Share2 size={11} />
-        <span>SINKRONISASI MULTI-CHART</span>
+        <span>{$tr('SINKRONISASI MULTI-CHART', 'SINKRONISASI MULTI-CHART', 'MULTI-CHART SYNC')}</span>
         {#if currentLayout === '1'}
-          <span class="multi-notice">(Aktif saat multi-chart)</span>
+          <span class="multi-notice">({$tr('Urip pas multi-chart', 'Aktif saat multi-chart', 'Active in multi-chart')})</span>
         {/if}
       </div>
 
@@ -136,7 +137,7 @@
         <!-- Crosshair -->
         <button
           class="sync-item-btn {syncConfig.crosshair ? 'active' : ''}"
-          title="Sinkronisasi Kursor Crosshair"
+          title={$tr('Sinkronisasi Kursor Crosshair', 'Sinkronisasi Kursor Crosshair', 'Sync Crosshair Cursor')}
           onclick={onToggleSyncCrosshair}
         >
           <Crosshair size={12} />
@@ -147,7 +148,7 @@
         <!-- Viewport -->
         <button
           class="sync-item-btn {syncConfig.viewport ? 'active' : ''}"
-          title="Sinkronisasi Gerakan & Rentang Waktu Viewport"
+          title={$tr('Sinkronisasi Geseran & Rentang Waktu', 'Sinkronisasi Gerakan & Rentang Waktu Viewport', 'Sync Viewport & Time Range')}
           onclick={onToggleSyncViewport}
         >
           <Move size={12} />
@@ -158,45 +159,45 @@
         <!-- Symbol -->
         <button
           class="sync-item-btn {syncConfig.symbol ? 'active' : ''}"
-          title="Sinkronisasi Simbol/Ticker Pasangan"
+          title={$tr('Sinkronisasi Simbol / Koin', 'Sinkronisasi Simbol/Ticker Pasangan', 'Sync Symbol / Pair')}
           onclick={onToggleSyncSymbol}
         >
           <Coins size={12} />
-          <span>Simbol</span>
+          <span>{$tr('Koin', 'Simbol', 'Symbol')}</span>
           <span class="sync-pip {syncConfig.symbol ? 'on' : 'off'}"></span>
         </button>
 
         <!-- Drawings -->
         <button
           class="sync-item-btn {syncConfig.drawings ? 'active' : ''}"
-          title="Sinkronisasi Objek Gambar Analisis"
+          title={$tr('Sinkronisasi Gambar Analisa', 'Sinkronisasi Objek Gambar Analisis', 'Sync Chart Drawings')}
           onclick={onToggleSyncDrawings}
         >
           <Share2 size={12} />
-          <span>Gambar</span>
+          <span>{$tr('Gambar', 'Gambar', 'Drawings')}</span>
           <span class="sync-pip {syncConfig.drawings ? 'on' : 'off'}"></span>
         </button>
 
         <!-- Style -->
         <button
           class="sync-item-btn {syncConfig.style ? 'active' : ''}"
-          title="Sinkronisasi Gaya Tampilan Harga ({syncConfig.style ? 'ON' : 'OFF'})"
+          title={$tr('Sinkronisasi Model Candle', 'Sinkronisasi Gaya Tampilan Harga', 'Sync Price Style')}
           onclick={onToggleSyncStyle}
         >
           <ChartCandlestick size={12} />
-          <span>Gaya</span>
+          <span>{$tr('Model', 'Gaya', 'Style')}</span>
           <span class="sync-pip {syncConfig.style ? 'on' : 'off'}"></span>
         </button>
 
         <!-- Indicators -->
         <button
           class="sync-item-btn full-width {syncConfig.indicators ? 'active' : ''}"
-          title="Sinkronisasi Indikator Teknikal ({syncConfig.indicators ? 'ON' : 'OFF'})"
+          title={$tr('Sinkronisasi Indikator Teknikal', 'Sinkronisasi Indikator Teknikal', 'Sync Technical Indicators')}
           onclick={onToggleSyncIndicators}
         >
           <div class="sync-label-with-icon">
             <Layers size={12} />
-            <span>Indikator</span>
+            <span>{$tr('Indikator', 'Indikator', 'Indicators')}</span>
           </div>
           <span class="sync-pip {syncConfig.indicators ? 'on' : 'off'}"></span>
         </button>

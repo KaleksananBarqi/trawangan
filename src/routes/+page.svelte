@@ -20,6 +20,8 @@
   import RightDockRail from '../lib/components/RightDockRail.svelte';
   import ShortcutCheatsheetModal from '../lib/components/ShortcutCheatsheetModal.svelte';
   import DrawByHoldingModal from '../lib/components/DrawByHoldingModal.svelte';
+  import StartupTutorialModal from '../lib/components/StartupTutorialModal.svelte';
+  import { setAppLanguage } from '../lib/i18n';
   import type {
     TradePlanActivationRequest,
     ApplyPlanFromTabOptions,
@@ -198,6 +200,18 @@
     registerUserThemes(appSettings.savedUserThemes || []);
   });
 
+  // Sinkronisasi bahasa reaktif (default 'jv' Jawa Ngoko Arekan)
+  $effect(() => {
+    setAppLanguage(appSettings.language ?? 'jv');
+  });
+
+  // Jika fitur Broker Execution Bridge dimatikan saat tab 'order' sedang terbuka, kembalikan ke 'watchlist'
+  $effect(() => {
+    if (!appSettings.executionBridgeEnabled && shellState.activeRightDockTab === 'order') {
+      workspaceShellService.openRightDockTab('watchlist');
+    }
+  });
+
   function handleCycleColorMode() {
     const patch = transitionThemeState(appSettings, { type: 'CYCLE_COLOR_MODE' }, { systemIsDark });
     handleUpdateSettings(patch);
@@ -222,9 +236,10 @@
   let timeframeQuickBarInitialInput = $state('');
   let isShortcutCheatsheetOpen = $state(false);
   let isDrawByHoldingModalOpen = $state(false);
+  let isStartupTutorialOpen = $state(false);
   let planActivationRequest = $state<TradePlanActivationRequest | null>(null);
   let nextPlanActivationNonce = 0;
-  let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'>('general');
+  let settingsInitialTab = $state<'general' | 'appearance' | 'chart' | 'feed' | 'broker' | 'system' | 'about' | 'help'>('general');
   let isConsoleDrawerOpen = $state(false);
 
   // Docked Structural Shell Reactive States (Unified WorkspaceShell Deep Module)
@@ -566,6 +581,10 @@
 
       isPersistenceBootstrapped = true;
       isPageMounted = true;
+
+      if (!appSettings.hasCompletedOnboarding) {
+        isStartupTutorialOpen = true;
+      }
 
       // Auto-load workspace terakhir saat startup jika preferensi aktif (disertai recovery pending backup bila ada)
       if (appSettings.autoLoadLastWorkspace !== false) {
@@ -2063,6 +2082,9 @@
     onReorderChartTabs={(fromIdx, toIdx) => chartTabsService.reorderTabs(fromIdx, toIdx)}
     livePrice={ticker?.price ?? null}
     liveChange24h={ticker?.change24h ?? null}
+    language={appSettings.language ?? 'jv'}
+    onLanguageChange={(lang) => handleUpdateSettings({ language: lang })}
+    onOpenStartupTutorial={() => (isStartupTutorialOpen = true)}
   />
 
   <!-- Main Viewport Area -->
@@ -2094,7 +2116,7 @@
           onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
           {hasActivePlans}
           {showThesisCards}
-          onToggleThesisCards={() => chartDrawingController.toggleThesisCardsVisible()}
+          onToggleThesisCards={() => openRightPlanTab({ subMode: 'preview' })}
         />
       {/if}
 
@@ -2263,8 +2285,14 @@
           onApplyPlan={handleApplyPlanFromTab}
           onUpdatePlan={handleUpdatePlanFromTab}
           onEditPlan={(planId) => openRightPlanTab({ subMode: 'form', planId })}
-          onOpenPlanTab={(subMode = 'form') => openRightPlanTab({ subMode })}
+          onOpenPlanTab={(subMode = 'preview') => openRightPlanTab({ subMode })}
           onFocusEventTimestamp={(ts) => chartView?.focusTimestamp?.(ts)}
+          activeBrokerId={appSettings.activeBrokerId ?? 'binance'}
+          onSelectBroker={(bId) => handleUpdateSettings({ activeBrokerId: bId })}
+          onOpenBrokerSettings={() => {
+            settingsInitialTab = 'broker';
+            isSettingsModalOpen = true;
+          }}
           onLog={(msg, level) => addSystemLog(msg, level || 'info')}
           onRequestCreateAlert={() => handleRequestCreateAlert(activeSymbol)}
           onRequestEditAlert={(alert) => handleRequestCreateAlert(alert.symbol, alert.targetPrice, alert)}
@@ -2279,6 +2307,7 @@
         activeAlertsCount={allAlerts.filter((a) => a.active && !a.triggered).length}
         activeIndicatorsCount={activeIndicators.length}
         activePlansCount={currentActivePlans.filter((p) => !p.symbol || isSameSymbol(p.symbol, activeSymbol)).length}
+        showOrderTab={Boolean(appSettings.executionBridgeEnabled)}
         onToggleTab={(tab) => {
           if (workspaceMode === 'pine') {
             handleWorkspaceModeChange('terminal');
@@ -2376,6 +2405,7 @@
     onSaveChartAsDefault={() => sessionController?.saveCurrentSettingsAsDefault() ?? false}
     onResetChartFactory={() => sessionController?.resetSettingsToFactory()}
     onOpenGestureGuide={() => (isDrawByHoldingModalOpen = true)}
+    onReplayTutorial={() => (isStartupTutorialOpen = true)}
   />
 
   <!-- Symbol Search Modal (Global via Header / Ctrl+K / Watchlist) -->
@@ -2533,6 +2563,18 @@
   <DrawByHoldingModal
     isOpen={isDrawByHoldingModalOpen}
     onClose={() => (isDrawByHoldingModalOpen = false)}
+  />
+
+  <!-- Interactive First-Run Startup Spotlight Tour (ADR-0032) -->
+  <StartupTutorialModal
+    isOpen={isStartupTutorialOpen}
+    settings={appSettings}
+    onUpdateSettings={handleUpdateSettings}
+    onComplete={() => (isStartupTutorialOpen = false)}
+    onOpenBrokerSettings={() => {
+      settingsInitialTab = 'broker';
+      isSettingsModalOpen = true;
+    }}
   />
 </div>
 

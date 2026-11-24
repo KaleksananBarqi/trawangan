@@ -2,6 +2,7 @@
   import { Camera, Copy, Download, SlidersHorizontal, ChevronDown, Check } from '@lucide/svelte';
   import type { SnapshotScaleMultiplier } from '../../types/market';
   import { calculateCompositeDimensions } from '../../services/chartSnapshotService';
+  import { tr } from '../../i18n';
 
   interface Props {
     onRequestQuickCopySnapshot?: () => void;
@@ -88,7 +89,7 @@
   <button
     type="button"
     class="snapshot-trigger-btn {showMenu ? 'active' : ''}"
-    title="Ambil Tangkapan Layar (Shortcut Ctrl+Shift+S)"
+    title={$tr('Jepret Layar Chart (Ctrl+Shift+S)', 'Ambil Tangkapan Layar (Shortcut Ctrl+Shift+S)', 'Capture Chart Snapshot (Ctrl+Shift+S)')}
     aria-label="Ambil Tangkapan Layar"
     onclick={() => (showMenu = !showMenu)}
   >
@@ -106,7 +107,7 @@
   {#if showMenu}
     <div class="snapshot-dropdown obsidian-panel">
       <div class="dropdown-header">
-        <span class="dropdown-title">TANGKAPAN LAYAR</span>
+        <span class="dropdown-title">{$tr('JEPRETAN LAYAR', 'TANGKAPAN LAYAR', 'CHART SNAPSHOT')}</span>
       </div>
 
       <div class="menu-items">
@@ -116,12 +117,12 @@
           class="menu-item-btn"
           onclick={handleQuickCopy}
           disabled={isProcessing}
-          title="Salin gambar PNG {selectedScale}x langsung ke clipboard sistem"
+          title={$tr(`Salin gambar PNG ${selectedScale}x langsung nang clipboard`, `Salin gambar PNG ${selectedScale}x langsung ke clipboard sistem`, `Copy ${selectedScale}x PNG directly to clipboard`)}
         >
           <div class="item-left">
             <Copy size={13} class="item-icon text-cyan" />
             <div class="item-text">
-              <span class="item-title">Salin Gambar ({selectedScale}x)</span>
+              <span class="item-title">{$tr('Salin Gambar', 'Salin Gambar', 'Copy Image')} ({selectedScale}x)</span>
             </div>
           </div>
           <span class="shortcut-badge mono-nums">Ctrl+Shift+S</span>
@@ -133,12 +134,12 @@
           class="menu-item-btn"
           onclick={handleQuickDownload}
           disabled={isProcessing}
-          title="Unduh file gambar PNG dengan format terstruktur"
+          title={$tr('Undhuh file gambar PNG mbois', 'Unduh file gambar PNG dengan format terstruktur', 'Download structured PNG image file')}
         >
           <div class="item-left">
             <Download size={13} class="item-icon text-muted" />
             <div class="item-text">
-              <span class="item-title">Simpan Gambar ({selectedScale}x)</span>
+              <span class="item-title">{$tr('Simpen Gambar', 'Simpan Gambar', 'Save Image')} ({selectedScale}x)</span>
             </div>
           </div>
         </button>
@@ -146,7 +147,7 @@
         <!-- 3. Resolusi Multiplier (1x, 2x, 4x, 6x) (#125) -->
         <div class="dropdown-divider"></div>
         <div class="dropdown-section-header">
-          <span class="dropdown-title">RESOLUSI MULTIPLIER</span>
+          <span class="dropdown-title">{$tr('RESOLUSI MULTIPLIER', 'RESOLUSI MULTIPLIER', 'SCALE MULTIPLIER')}</span>
           <span class="scale-est-label mono-nums">{getDimensionText(selectedScale)}</span>
         </div>
         <div class="scale-chips-row">
@@ -156,7 +157,7 @@
               class="scale-chip-btn {selectedScale === mult ? 'active' : ''}"
               onclick={() => handleSelectScale(mult)}
               disabled={isProcessing}
-              title="Pilih skala {getDimensionText(mult)}"
+              title="{$tr('Pilih ukuran', 'Pilih skala', 'Select scale')} {getDimensionText(mult)}"
             >
               <span class="scale-chip-num">{mult}x</span>
             </button>
@@ -167,7 +168,7 @@
         {#if isProcessing}
           <div class="processing-status-bar">
             <span class="processing-spinner"></span>
-            <span class="processing-msg">Memproses snapshot {selectedScale}x...</span>
+            <span class="processing-msg">{$tr(`Sik nggarap snapshot ${selectedScale}x...`, `Memproses snapshot ${selectedScale}x...`, `Rendering ${selectedScale}x snapshot...`)}</span>
           </div>
         {/if}
 
@@ -179,12 +180,12 @@
           class="menu-item-btn preview-btn"
           onclick={handleOpenPreview}
           disabled={isProcessing}
-          title="Buka dialog pratinjau snapshot interaktif"
+          title={$tr('Bukak preview & oprek tampilan snapshot', 'Buka dialog pratinjau snapshot interaktif', 'Open interactive snapshot preview dialog')}
         >
           <div class="item-left">
             <SlidersHorizontal size={13} class="item-icon text-brand" />
             <div class="item-text">
-              <span class="item-title">Pratinjau & Kustomisasi...</span>
+              <span class="item-title">{$tr('Preview & Oprek...', 'Pratinjau & Kustomisasi...', 'Preview & Customize...')}</span>
             </div>
           </div>
         </button>

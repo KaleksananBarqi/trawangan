@@ -16,6 +16,7 @@
   } from '@lucide/svelte';
   import type { SavedWorkspace } from '../../types/market';
   import { loadWorkspaces, deleteWorkspace } from '../../services/persistence';
+  import { tr } from '../../i18n';
 
   interface Props {
     currentLayout: string;
@@ -210,7 +211,7 @@
       <div class="section-container">
         <div class="section-title">
           <LayoutGrid size={11} />
-          <span>TATA LETAK MULTI-CHART</span>
+          <span>{$tr('TATA LETAK MULTI-CHART', 'TATA LETAK MULTI-CHART', 'MULTI-CHART LAYOUT')}</span>
         </div>
         <div class="grid-options">
           {#each layouts as l}
@@ -242,17 +243,17 @@
         <div class="section-header-flex">
           <div class="section-title">
             <FolderOpen size={11} />
-            <span>WORKSPACE TERORGANISIR</span>
+            <span>{$tr('WORKSPACE KESIMPEN', 'WORKSPACE TERORGANISIR', 'SAVED WORKSPACES')}</span>
           </div>
           <div class="header-action-btns">
             <button
               type="button"
               class="new-workspace-btn"
-              title="Mulai lembar kerja baru tanpa keterikatan workspace lama"
+              title={$tr('Mulai lembar kerja anyar tanpa nyangkut workspace lawas', 'Mulai lembar kerja baru tanpa keterikatan workspace lama', 'Start a fresh unlinked workspace')}
               onclick={handleNewWorkspaceClick}
             >
               <Plus size={10} />
-              <span>Baru</span>
+              <span>{$tr('Anyar', 'Baru', 'New')}</span>
             </button>
             <button
               type="button"
@@ -271,37 +272,37 @@
           <div class="active-workspace-card">
             <div class="active-workspace-top">
               <div class="active-workspace-meta">
-                <span class="active-tag">AKTIF</span>
+                <span class="active-tag">{$tr('URIP', 'AKTIF', 'ACTIVE')}</span>
                 <span class="active-name" title={activeWorkspace.name}>{activeWorkspace.name}</span>
               </div>
               <button
                 type="button"
                 class="unlink-btn"
                 onclick={handleNewWorkspaceClick}
-                title="Lepas kaitan dari workspace ini agar perubahan tidak menimpanya"
+                title={$tr('Copot sambungan teko workspace iki ben gak ketimpa', 'Lepas kaitan dari workspace ini agar perubahan tidak menimpanya', 'Unlink from this workspace')}
               >
                 <Plus size={10} />
-                <span>Lepas Tautan</span>
+                <span>{$tr('Copot', 'Lepas Tautan', 'Unlink')}</span>
               </button>
             </div>
             <button
               class="quick-overwrite-btn {overwriteFeedback ? 'saved' : ''}"
               onclick={handleOverwriteActive}
-              title="Simpan & Timpa perubahan sekarang ke workspace aktif ini"
+              title={$tr('Simpen & timpa oprekan saiki nang workspace aktif iki', 'Simpan & Timpa perubahan sekarang ke workspace aktif ini', 'Save & overwrite active workspace')}
             >
               {#if overwriteFeedback}
                 <Check size={11} />
-                <span>Tersimpan!</span>
+                <span>{$tr('Wis Kesimpen!', 'Tersimpan!', 'Saved!')}</span>
               {:else}
                 <Save size={11} />
-                <span>Simpan Perubahan</span>
+                <span>{$tr('Simpen Oprekan', 'Simpan Perubahan', 'Save Changes')}</span>
               {/if}
             </button>
           </div>
         {:else}
           <div class="unlinked-workspace-banner">
-            <span class="unlinked-tag">LEMBAR KERJA BARU</span>
-            <span class="unlinked-hint">Perubahan saat ini belum terkait workspace tersimpan.</span>
+            <span class="unlinked-tag">{$tr('LEMBAR KERJA ANYAR', 'LEMBAR KERJA BARU', 'NEW WORKSPACE')}</span>
+            <span class="unlinked-hint">{$tr('Oprekan saiki durung nyangkut workspace kesimpen.', 'Perubahan saat ini belum terkait workspace tersimpan.', 'Current layout is not linked to a saved workspace.')}</span>
           </div>
         {/if}
 
@@ -309,7 +310,7 @@
         <div class="workspace-save-form">
           <input
             type="text"
-            placeholder="Simpan nama workspace baru..."
+            placeholder={$tr('Ketik jeneng workspace anyar...', 'Simpan nama workspace baru...', 'New workspace name...')}
             bind:value={workspaceNameInput}
             class="workspace-input"
             onkeydown={(e) => {
@@ -319,31 +320,31 @@
           <button
             onclick={handleSaveWorkspace}
             class="workspace-save-submit"
-            title="Simpan sebagai Workspace Baru"
+            title={$tr('Simpen dadi Workspace Anyar', 'Simpan sebagai Workspace Baru', 'Save as New Workspace')}
           >
             <Save size={11} />
-            <span>Simpan</span>
+            <span>{$tr('Simpen', 'Simpan', 'Save')}</span>
           </button>
         </div>
 
         {#if duplicateTarget}
           <div class="duplicate-warning">
-            <span class="duplicate-text">"{duplicateTarget.name}" sudah ada.</span>
+            <span class="duplicate-text">"{duplicateTarget.name}" {$tr('wis ono rek.', 'sudah ada.', 'already exists.')}</span>
             <button
               class="duplicate-overwrite-btn"
               onclick={() => handleConfirmOverwriteDuplicate(duplicateTarget)}
-              title="Timpa data workspace ini"
+              title={$tr('Timpa data workspace iki', 'Timpa data workspace ini', 'Overwrite workspace')}
             >
-              Timpa
+              {$tr('Timpa', 'Timpa', 'Overwrite')}
             </button>
           </div>
         {/if}
 
         <!-- Daftar Workspace Tersimpan -->
-        <div class="workspace-list-header">Daftar Tersimpan</div>
+        <div class="workspace-list-header">{$tr('Daftar Kesimpen', 'Daftar Tersimpan', 'Saved List')}</div>
         <div class="workspace-list">
           {#if savedWorkspaces.length === 0}
-            <div class="workspace-empty">Belum ada workspace tersimpan</div>
+            <div class="workspace-empty">{$tr('Durung ono workspace kesimpen', 'Belum ada workspace tersimpan', 'No saved workspaces yet')}</div>
           {/if}
           {#each savedWorkspaces as w (w.id)}
             <div class="workspace-item {activeWorkspace?.id === w.id ? 'is-active' : ''}">

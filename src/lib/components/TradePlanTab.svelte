@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
-  import { Sparkles, FileText, History, Check, Bell, RotateCcw } from '@lucide/svelte';
+  import { Eye, Sparkles, FileText, History, Check, Bell, RotateCcw } from '@lucide/svelte';
+  import { t, tr } from '../i18n';
   import {
     parseTradingPlan,
     formatPlanPrice,
@@ -37,6 +38,7 @@
   import { isSameSymbol } from '../services/instrumentIdentity';
   import { type ActiveTradingPlan } from '../services/tradingPlanLifecycle';
   import type { SavedTradingPlanRecord } from '../types/market';
+  import TradePlanPreviewView from './trade-plan/TradePlanPreviewView.svelte';
   import TradePlanFormView from './trade-plan/TradePlanFormView.svelte';
   import TradePlanTextView from './trade-plan/TradePlanTextView.svelte';
   import TradePlanVaultView from './trade-plan/TradePlanVaultView.svelte';
@@ -379,9 +381,11 @@
         queueMicrotask(() => onConsumeActivation?.(req.nonce));
       } else if (plansSnapshot.length > 0) {
         loadActivePlanIntoDraft(plansSnapshot[0]);
+        subMode = 'preview';
       } else {
         isExplicitNewMode = false;
         resetDraftToNewEmpty(curSym);
+        subMode = 'form';
       }
       return;
     }
@@ -563,6 +567,7 @@
           symbol: finalPlan.symbol || editingPlan.symbol || activeSymbol
         };
         loadActivePlanIntoDraft(updatedPlan);
+        subMode = 'preview';
       } else {
         if (action.isSymbolChangedWhileEditing) {
           // Lepaskan referensi edit plan lama saat menerapkan ke koin berbeda agar plan lama tetap utuh
@@ -576,10 +581,12 @@
         });
         if (res?.plan) {
           loadActivePlanIntoDraft(res.plan);
+          subMode = 'preview';
         } else {
           isDirty = false;
           isAlertToggleDirty = false;
           isExplicitNewMode = false;
+          subMode = 'preview';
         }
       }
 
@@ -660,7 +667,7 @@
     );
     if (res?.plan) {
       loadActivePlanIntoDraft(res.plan);
-      subMode = 'form';
+      subMode = 'preview';
     }
   }
 </script>
@@ -670,12 +677,26 @@
     <button
       type="button"
       role="tab"
+      aria-selected={subMode === 'preview'}
+      class="submode-btn {subMode === 'preview' ? 'active' : ''}"
+      onclick={() => handleSwitchSubMode('preview')}
+    >
+      <Eye size={11} />
+      <span>{$t('plan.tabPreview')}</span>
+      {#if scopedPlans.length > 0}
+        <span class="submode-count mono-nums">{scopedPlans.length}</span>
+      {/if}
+    </button>
+
+    <button
+      type="button"
+      role="tab"
       aria-selected={subMode === 'form'}
       class="submode-btn {subMode === 'form' ? 'active' : ''}"
       onclick={() => handleSwitchSubMode('form')}
     >
       <Sparkles size={11} />
-      <span>Form</span>
+      <span>{$t('plan.tabForm')}</span>
     </button>
 
     <button
@@ -686,7 +707,7 @@
       onclick={() => handleSwitchSubMode('text')}
     >
       <FileText size={11} />
-      <span>Teks</span>
+      <span>{$t('plan.tabText')}</span>
     </button>
 
     <button
@@ -697,14 +718,43 @@
       onclick={() => handleSwitchSubMode('history')}
     >
       <History size={11} />
-      <span>Riwayat</span>
+      <span>{$t('plan.tabHistory')}</span>
       {#if historyRecords.length > 0}
         <span class="submode-count mono-nums">{historyRecords.length}</span>
       {/if}
     </button>
   </div>
 
-  {#if subMode === 'form'}
+  {#if subMode === 'preview'}
+    <TradePlanPreviewView
+      {activeSymbol}
+      {currentPrice}
+      {scopedPlans}
+      selectedPlanId={editingPlanId}
+      previewDraftPlan={isDirty ? activePreviewPlan : null}
+      onSelectPlan={(planId) => {
+        const found = scopedPlans.find((p) => p.id === planId);
+        if (found) {
+          isExplicitNewMode = false;
+          loadActivePlanIntoDraft(found);
+        }
+      }}
+      onEditInForm={(planId) => {
+        if (planId) {
+          const found = scopedPlans.find((p) => p.id === planId);
+          if (found) loadActivePlanIntoDraft(found);
+        }
+        handleSwitchSubMode('form');
+      }}
+      onStartNewPlan={() => {
+        isExplicitNewMode = true;
+        stackAsAdditional = scopedPlans.length > 0;
+        resetDraftToNewEmpty(activeSymbol);
+        subMode = 'form';
+      }}
+      {onRemovePlan}
+    />
+  {:else if subMode === 'form'}
     <TradePlanFormView
       {activeSymbol}
       {availableSymbols}
@@ -833,7 +883,7 @@
     />
   {/if}
 
-  {#if subMode !== 'history'}
+  {#if subMode !== 'history' && subMode !== 'preview'}
     <div class="plan-sticky-footer">
       <label class="alert-toggle-row">
         <input
@@ -845,7 +895,7 @@
           }}
         />
         <Bell size={11} class={autoCreateAlerts ? 'text-cyan' : 'text-dim'} />
-        <span>Alert Otomatis (Entry, SL & TP)</span>
+        <span>{$t('plan.autoAlerts')}</span>
       </label>
 
       <div class="footer-action-row">
@@ -854,10 +904,10 @@
           class="btn-reset"
           disabled={isSubmitting || (!isDirty && !isAlertToggleDirty && Boolean(editingPlanId))}
           onclick={() => (editingPlan ? loadActivePlanIntoDraft(editingPlan) : resetDraftToNewEmpty(activeSymbol))}
-          title="Kembalikan nilai draf"
+          title={$tr('Balikno isian draf awal', 'Kembalikan nilai draf', 'Reset draft values')}
         >
           <RotateCcw size={12} />
-          <span>Reset</span>
+          <span>{$t('common.reset')}</span>
         </button>
 
         <button
@@ -865,15 +915,15 @@
           class="btn-apply {activePreviewPlan.bias === 'bearish' ? 'bear' : 'bull'}"
           disabled={!activePreviewPlan.validation.valid || isSubmitting}
           onclick={handleCommit}
-          title={activePreviewPlan.validation.valid ? 'Terapkan ke Chart (Ctrl+Enter)' : 'Lengkapi level valid terlebih dahulu'}
+          title={activePreviewPlan.validation.valid ? `${$t('plan.applyToChart')} (Ctrl+Enter)` : $tr('Isien dhisik level sing bener!', 'Lengkapi level valid terlebih dahulu', 'Complete valid price levels first')}
         >
           <Check size={13} />
           <span>
             {commitAction.mode === 'update'
-              ? 'Terapkan Perubahan'
+              ? $t('plan.applyChanges')
               : commitAction.isSymbolChangedWhileEditing || commitAction.isDifferentFromActiveChart
-                ? `Terapkan ke ${commitAction.targetSymbol}`
-                : 'Terapkan ke Chart'}
+                ? `${$tr('Pasang nang', 'Terapkan ke', 'Apply to')} ${commitAction.targetSymbol}`
+                : $t('plan.applyToChart')}
           </span>
         </button>
       </div>
@@ -893,7 +943,7 @@
 
   .plan-submode-bar {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 3px;
     padding: 6px 8px;
     background-color: var(--bg-base);

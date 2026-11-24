@@ -10,12 +10,14 @@
     HelpCircle,
     UserShield,
     Check,
-    Type
+    Type,
+    Zap
   } from '@lucide/svelte';
   import { onDestroy } from 'svelte';
   import type { AppSettings } from '../types/market';
   import type { MarketSession } from '../services/marketSessionService';
   import { updateService, shouldShowUpdateBadge, type UpdateState } from '../services/updateService';
+  import { t, tr } from '../i18n';
 
   // Submodul Pengaturan Terfokus (Architecture Deepening - Issue #9)
   import GeneralTab from './settings/GeneralTab.svelte';
@@ -24,6 +26,7 @@
   import ChartTab from './settings/ChartTab.svelte';
   import ProfileTab from './settings/ProfileTab.svelte';
   import FeedTab from './settings/FeedTab.svelte';
+  import BrokerExecutionTab from './settings/BrokerExecutionTab.svelte';
   import SystemTab from './settings/SystemTab.svelte';
   import AboutTab from './settings/AboutTab.svelte';
   import HelpTab from './settings/HelpTab.svelte';
@@ -32,7 +35,7 @@
     isOpen: boolean;
     settings: AppSettings;
     activeProviderId?: string;
-    initialTab?: 'general' | 'appearance' | 'typography' | 'chart' | 'profile' | 'feed' | 'system' | 'about' | 'help';
+    initialTab?: 'general' | 'appearance' | 'typography' | 'chart' | 'profile' | 'feed' | 'broker' | 'system' | 'about' | 'help';
     onClose: () => void;
     onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
     onProviderChange?: (providerId: string) => void;
@@ -40,6 +43,7 @@
     onSaveChartAsDefault?: () => Promise<boolean> | boolean;
     onResetChartFactory?: () => void;
     onOpenGestureGuide?: () => void;
+    onReplayTutorial?: () => void;
     sessionState?: { session: MarketSession; sessionAvailable: boolean };
     onSetSession?: (mode: MarketSession) => void;
   }
@@ -56,11 +60,12 @@
     onSaveChartAsDefault,
     onResetChartFactory,
     onOpenGestureGuide,
+    onReplayTutorial,
     sessionState,
     onSetSession
   }: Props = $props();
 
-  let activeTab = $state<'general' | 'appearance' | 'typography' | 'chart' | 'profile' | 'feed' | 'system' | 'about' | 'help'>('general');
+  let activeTab = $state<'general' | 'appearance' | 'typography' | 'chart' | 'profile' | 'feed' | 'broker' | 'system' | 'about' | 'help'>('general');
   let updateState = $state<UpdateState>(updateService.getSnapshot());
   let unsubUpdate: (() => void) | null = null;
 
@@ -101,9 +106,9 @@
       <div class="modal-header">
         <div class="header-title">
           <span class="accent-icon"><SlidersHorizontal size={16} /></span>
-          <span>Pengaturan & Telemetri Sistem</span>
+          <span>{$t('settings.title')}</span>
         </div>
-        <button class="close-btn" onclick={onClose} title="Tutup Pengaturan">
+        <button class="close-btn" onclick={onClose} title={$t('common.close')}>
           <X size={16} />
         </button>
       </div>
@@ -116,7 +121,7 @@
             onclick={() => (activeTab = 'general')}
           >
             <SlidersHorizontal size={14} />
-            <span>Umum & Audio</span>
+            <span>{$t('settings.navGeneral')}</span>
           </button>
 
           <button
@@ -124,15 +129,16 @@
             onclick={() => (activeTab = 'appearance')}
           >
             <Palette size={14} />
-            <span>Tema & Warna</span>
+            <span>{$t('settings.navAppearance')}</span>
           </button>
 
           <button
             class="nav-tab {activeTab === 'typography' ? 'active' : ''}"
+            title="Tipografi & Teks"
             onclick={() => (activeTab = 'typography')}
           >
             <Type size={14} />
-            <span>Tipografi & Teks</span>
+            <span>{$t('settings.navTypography')}</span>
           </button>
 
           <button
@@ -140,7 +146,7 @@
             onclick={() => (activeTab = 'chart')}
           >
             <Monitor size={14} />
-            <span>Kanvas & Grafik</span>
+            <span>{$t('settings.navChart')}</span>
           </button>
 
           <button
@@ -148,7 +154,7 @@
             onclick={() => (activeTab = 'profile')}
           >
             <UserShield size={14} />
-            <span>Profil & Watermark</span>
+            <span>{$t('settings.navProfile')}</span>
           </button>
 
           <button
@@ -156,15 +162,27 @@
             onclick={() => (activeTab = 'feed')}
           >
             <Radio size={14} />
-            <span>Data Feed</span>
+            <span>{$t('settings.navFeed')}</span>
+          </button>
+
+          <button
+            class="nav-tab {activeTab === 'broker' ? 'active' : ''}"
+            onclick={() => (activeTab = 'broker')}
+          >
+            <Zap size={14} />
+            <span class="nav-tab-label">{$t('settings.navBroker')}</span>
+            {#if settings.executionBridgeEnabled}
+              <span class="tab-update-dot" title={$tr('Urip', 'Aktif', 'Active')}></span>
+            {/if}
           </button>
 
           <button
             class="nav-tab {activeTab === 'system' ? 'active' : ''}"
+            title="Sistem & Telemetri"
             onclick={() => (activeTab = 'system')}
           >
             <Cpu size={14} />
-            <span>Sistem & Telemetri</span>
+            <span>{$t('settings.navSystem')}</span>
           </button>
 
           <button
@@ -172,9 +190,9 @@
             onclick={() => (activeTab = 'about')}
           >
             <Info size={14} />
-            <span>Tentang Aplikasi</span>
+            <span>{$t('settings.navAbout')}</span>
             {#if shouldShowUpdateBadge(updateState)}
-              <span class="tab-update-dot" title="Pembaruan Tersedia"></span>
+              <span class="tab-update-dot" title={$tr('Ono Update Anyar', 'Pembaruan Tersedia', 'Update Available')}></span>
             {/if}
           </button>
 
@@ -183,7 +201,7 @@
             onclick={() => (activeTab = 'help')}
           >
             <HelpCircle size={14} />
-            <span class="nav-tab-label">Bantuan & Shortcut</span>
+            <span class="nav-tab-label">{$t('settings.navHelp')}</span>
             <span class="tab-shortcut-badge mono-nums">F1</span>
           </button>
         </nav>
@@ -195,6 +213,10 @@
               {settings}
               {onUpdateSettings}
               onNavigateTab={(tab) => (activeTab = tab as any)}
+              onReplayTutorial={() => {
+                onClose();
+                onReplayTutorial?.();
+              }}
             />
           {:else if activeTab === 'appearance'}
             <AppearanceTab {settings} {onUpdateSettings} />
@@ -215,6 +237,8 @@
             <ProfileTab {settings} {onUpdateSettings} />
           {:else if activeTab === 'feed'}
             <FeedTab {activeProviderId} {onProviderChange} />
+          {:else if activeTab === 'broker'}
+            <BrokerExecutionTab {settings} {onUpdateSettings} />
           {:else if activeTab === 'system'}
             <SystemTab />
           {:else if activeTab === 'about'}
@@ -228,7 +252,7 @@
       <!-- Modal Footer -->
       <div class="modal-footer">
         <button class="primary-btn" onclick={onClose}>
-          <Check size={14} /> Selesai
+          <Check size={14} /> {$t('common.done')}
         </button>
       </div>
     </div>

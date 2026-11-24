@@ -5,6 +5,26 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.57.0] - 2026-11-24
+
+### 🚀 Ditambahkan (Added)
+- **Arekan Localization Engine (`jv` Default, `id`, `en`) (`ADR-0032`, `src/lib/i18n/`):**
+  - Menambahkan dukungan tiga bahasa penuh dengan **Basa Jawa Ngoko Arekan (`jv`)** sebagai bahasa bawaan di seluruh antarmuka aplikasi (`Header`, `SettingsModal`, `AboutTab`, `RightDockRail`, `TradePlanTab`, `StatusBar`, dan seluruh modal), halaman *landing page* (`docs/index.html`), serta tiga berkas README berautan silang (`README.md`, `README.id.md`, `README.en.md`).
+- **Docked Thesis Preview & Startup Spotlight Tour (`ADR-0032`, `TradePlanPreviewView.svelte`, `StartupTutorialModal.svelte`):**
+  - Memindahkan kartu tesis dari atas kanvas grafik ke sub-tab **`Preview`** di dalam panel kanan `TradePlanTab` (`Preview` | `Form` | `Teks` | `Riwayat`) dan menghapus komponen `FloatingThesisCard.svelte`.
+  - Menambahkan tur interaktif 6 langkah saat aplikasi pertama kali dijalankan (`StartupTutorialModal.svelte`) yang dapat diputar ulang kapan saja dari Header atau Pengaturan.
+- **Opt-In Execution Bridge & Local MT5 Loopback (`ADR-0031`, `broker_bridge.rs`, `BrokerExecutionTab.svelte`, `OrderExecutionTab.svelte`):**
+  - Menambahkan jembatan eksekusi manual **100% opsional (Default OFF)** untuk **Binance** (Spot/Futures), **Bitunix**, dan **Broker CFD MetaTrader 5** melalui generator EA resmi `TrawanganMT5Bridge.mq5` (`127.0.0.1:15555`).
+  - Dilengkapi gerbang keamanan 3 tahap, tutorial pemasangan lengkap per broker, enkripsi lokal berbasis nonce 16-byte per-write (`v2:`), serta tiket order manual (`Tab Order`) yang terpisah tegas dari `TradePlanTab`.
+- **Peta Jalan Mobile Readiness (`ADR-0030`):**
+  - Mendokumentasikan arsitektur *single codebase* Tauri v2 untuk iOS dan Android, isolasi `#[cfg(desktop)]`, dan *Adaptive Touch Shell*.
+
+### 🔄 Diubah (Changed)
+- **Migrasi Lisensi ke Apache License 2.0 + `NOTICE` (`ADR-0032`):**
+  - Mengganti lisensi dari MIT ke **Apache-2.0** dilengkapi berkas `NOTICE` wajib atribusi pembuat asli di repositori, dokumentasi, dan dialog `Tentang Aplikasi / About`.
+- **Pembaruan Screenshot & Landing Page (`docs/`, `static/screenshots/`):**
+  - Menyinkronkan 8 tangkapan layar terbaru ke `docs/assets/screenshots/` serta menyederhanakan *landing page* dan README tanpa nomor versi statis.
+
 ## [0.56.0] - 2026-11-23
 
 ### 🚀 Ditambahkan (Added)

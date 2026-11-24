@@ -7,9 +7,13 @@
     Code,
     Radio,
     Pencil,
-    Sparkles
-  } from '@lucide/svelte';
-  import { SHORTCUT_GLOSSARY, filterShortcuts } from '../../services/commandDispatcher';
+    Sparkles,
+  } from "@lucide/svelte";
+  import {
+    SHORTCUT_GLOSSARY,
+    filterShortcuts,
+  } from "../../services/commandDispatcher";
+  import { tr } from "../../i18n";
 
   interface Props {
     onOpenGestureGuide?: () => void;
@@ -17,7 +21,7 @@
 
   let { onOpenGestureGuide }: Props = $props();
 
-  let helpSearchQuery = $state('');
+  let helpSearchQuery = $state("");
 
   let filteredShortcuts = $derived.by(() => {
     return filterShortcuts(helpSearchQuery);
@@ -31,6 +35,60 @@
     }
     return groups;
   });
+
+  function translateCategoryName(
+    cat: string,
+    trFn: (jv: string, id: string, en: string) => string,
+  ): string {
+    switch (cat) {
+      case "Navigasi & Simbol":
+        return trFn(
+          "Navigasi & Golek Koin",
+          "Navigasi & Simbol",
+          "Navigation & Symbols",
+        );
+      case "Alat Gambar (Drawing Tools)":
+        return trFn(
+          "Alat Gambar (Drawing Tools)",
+          "Alat Gambar (Drawing Tools)",
+          "Drawing Tools",
+        );
+      case "Alat Gambar & Anotasi":
+        return trFn(
+          "Alat Gambar & Corat-Coret",
+          "Alat Gambar & Anotasi",
+          "Drawings & Annotations",
+        );
+      case "Bar Replay (Simulasi)":
+        return trFn(
+          "Bar Replay (Latihan Backtest)",
+          "Bar Replay (Simulasi)",
+          "Bar Replay (Simulation)",
+        );
+      case "Analisis & Indikator":
+        return trFn(
+          "Analisa & Indikator",
+          "Analisis & Indikator",
+          "Analysis & Indicators",
+        );
+      case "Skala & Tampilan Grafik":
+        return trFn(
+          "Skala & Tampilan Chart",
+          "Skala & Tampilan Grafik",
+          "Scale & Chart View",
+        );
+      case "Timeframe Cepat":
+        return trFn(
+          "Pindah Timeframe Kilat",
+          "Timeframe Cepat",
+          "Quick Timeframes",
+        );
+      case "Sistem & Bantuan":
+        return trFn("Sistem & Bantuan", "Sistem & Bantuan", "System & Help");
+      default:
+        return cat;
+    }
+  }
 </script>
 
 <div class="help-pane">
@@ -38,13 +96,29 @@
   <div class="section-group">
     <div class="help-header-flex">
       <div>
-        <h3 class="section-heading">Pusat Bantuan & Panduan Shortcut</h3>
+        <h3 class="section-heading">
+          {$tr(
+            "Markas Bantuan & Contekan Shortcut",
+            "Pusat Bantuan & Panduan Shortcut",
+            "Help Center & Keyboard Shortcuts",
+          )}
+        </h3>
         <p class="section-desc">
-          Gunakan tombol pintas keyboard berikut untuk mempercepat navigasi grafik, eksekusi alat gambar, dan analisis pasar.
+          {$tr(
+            "Apalno tombol shortcut iki ben tanganmu sat-set pas nggambar SNR, mbukak koin, lan nganalisa market.",
+            "Gunakan tombol pintas keyboard berikut untuk mempercepat navigasi grafik, eksekusi alat gambar, dan analisis pasar.",
+            "Master these keyboard shortcuts to speed up chart navigation, drawing execution, and market analysis.",
+          )}
         </p>
       </div>
       <div class="help-f1-badge mono-nums">
-        <span>Shortcut Bantuan:</span> <kbd class="kbd-key">F1</kbd> / <kbd class="kbd-key">?</kbd>
+        <span
+          >{$tr(
+            "Shortcut Bantuan:",
+            "Shortcut Bantuan:",
+            "Help Shortcut:",
+          )}</span
+        > <kbd class="kbd-key">F1</kbd> / <kbd class="kbd-key">?</kbd>
       </div>
     </div>
 
@@ -53,12 +127,16 @@
       <Search size={14} class="search-icon-dim" />
       <input
         type="text"
-        placeholder="Cari tombol shortcut (e.g. replay, alt, kursor, fit)..."
+        placeholder={$tr(
+          "Golek tombol shortcut (conto: replay, alt, kursor, fit)...",
+          "Cari tombol shortcut (e.g. replay, alt, kursor, fit)...",
+          "Search shortcuts (e.g. replay, alt, cursor, fit)...",
+        )}
         bind:value={helpSearchQuery}
         class="shortcut-search-input"
       />
       {#if helpSearchQuery}
-        <button class="clear-search-btn" onclick={() => (helpSearchQuery = '')}>
+        <button class="clear-search-btn" onclick={() => (helpSearchQuery = "")}>
           <X size={12} />
         </button>
       {/if}
@@ -71,15 +149,25 @@
       {#if Object.keys(groupedShortcuts).length === 0}
         <div class="empty-shortcut-state">
           <HelpCircle size={24} class="text-dim" />
-          <span>Tidak ada tombol shortcut yang cocok dengan "{helpSearchQuery}".</span>
+          <span
+            >{$tr(
+              `Gak nemu shortcut sing cocok karo "${helpSearchQuery}", Rek.`,
+              `Tidak ada tombol shortcut yang cocok dengan "${helpSearchQuery}".`,
+              `No keyboard shortcuts matched "${helpSearchQuery}".`,
+            )}</span
+          >
         </div>
       {/if}
 
       {#each Object.entries(groupedShortcuts) as [categoryName, items]}
         <div class="shortcut-category-card">
           <div class="category-header">
-            <span class="category-title">{categoryName}</span>
-            <span class="category-count mono-nums">{items.length} pintasan</span>
+            <span class="category-title"
+              >{translateCategoryName(categoryName, $tr)}</span
+            >
+            <span class="category-count mono-nums"
+              >{items.length} {$tr("shortcut", "pintasan", "shortcuts")}</span
+            >
           </div>
 
           <div class="shortcut-items-table">
@@ -104,17 +192,31 @@
 
   <!-- Panduan Fitur Inti (Quick Guide) -->
   <div class="section-group">
-    <h4 class="section-title">Panduan Ringkas Fitur Utama</h4>
+    <h4 class="section-title">
+      {$tr(
+        "Contekan Kilat Fitur Andalan",
+        "Panduan Ringkas Fitur Utama",
+        "Core Feature Quick Guides",
+      )}
+    </h4>
     <div class="feature-guides-grid">
       <div class="feature-guide-card">
         <div class="guide-card-header">
           <Grid size={14} class="text-cyan" />
-          <span class="guide-card-title">Multi-Chart & Sinkronisasi</span>
+          <span class="guide-card-title"
+            >{$tr(
+              "Multi-Chart & Sinkronisasi",
+              "Multi-Chart & Sinkronisasi",
+              "Multi-Chart & Grid Sync",
+            )}</span
+          >
         </div>
         <p class="guide-card-body">
-          Pilih tata letak multi-chart (1, 2 Horisontal, 2 Vertikal, 4 Grid) lewat menu
-          <strong>Workspace & Layout</strong>. Aktifkan sinkronisasi kursor crosshair, gerakan waktu viewport,
-          simbol, dan objek gambar secara langsung lewat menu <strong>Actions</strong> di header.
+          {$tr(
+            "Pilih tata letak multi-chart (1, 2 Horisontal, 2 Vertikal, 4 Grid) liwat menu Workspace & Layout. Uripno sinkronisasi kursor crosshair, geseran waktu viewport, koin, lan gambar langsung teko menu Actions nang header.",
+            "Pilih tata letak multi-chart (1, 2 Horisontal, 2 Vertikal, 4 Grid) lewat menu Workspace & Layout. Aktifkan sinkronisasi kursor crosshair, gerakan waktu viewport, simbol, dan objek gambar secara langsung lewat menu Actions di header.",
+            "Switch multi-chart layouts (1, 2 Horizontal, 2 Vertical, 4 Grid) via the Workspace & Layout menu. Toggle crosshair, time viewport, symbol, and drawing sync from the header Actions menu.",
+          )}
         </p>
       </div>
 
@@ -124,20 +226,31 @@
           <span class="guide-card-title">Pine Script v6 IDE & Backtester</span>
         </div>
         <p class="guide-card-body">
-          Buka <strong>Pine Script v6 IDE</strong> lewat ikon <span class="mono-nums">&lt;&gt;</span> di <strong>Right Dock Rail</strong>,
-          <strong>Library Indikator</strong> (<strong>Edit di IDE</strong> / <strong>+ Buat Skrip Baru</strong>), ikon <span class="mono-nums">&lt;&gt;</span> pada <strong>Unified Object Tree</strong>,
-          atau pintasan <kbd class="kbd-key mono-nums">Alt+E</kbd> untuk membuat, menyunting, dan mengevaluasi indikator serta strategi kuantitatif di Web Worker independen.
+          {$tr(
+            "Bukak Pine Script v6 IDE liwat ikon <> nang Right Dock Rail, Library Indikator (Edit di IDE / + Buat Skrip Baru), Unified Object Tree, utawa pencet Alt+E gawe ngoprek indikator lan ngetes strategi nang Web Worker lokal.",
+            "Buka Pine Script v6 IDE lewat ikon <> di Right Dock Rail, Library Indikator (Edit di IDE / + Buat Skrip Baru), ikon <> pada Unified Object Tree, atau pintasan Alt+E untuk membuat, menyunting, dan mengevaluasi indikator serta strategi kuantitatif di Web Worker independen.",
+            "Open the Pine Script v6 IDE via the <> icon in the Right Dock Rail, Indicator Library, Unified Object Tree, or press Alt+E to write and backtest custom indicators inside an isolated Web Worker.",
+          )}
         </p>
       </div>
 
       <div class="feature-guide-card">
         <div class="guide-card-header">
           <Radio size={14} class="text-amber" />
-          <span class="guide-card-title">Data Feed Binance & Bitunix</span>
+          <span class="guide-card-title"
+            >{$tr(
+              "Data Feed Multi-Bursa",
+              "Data Feed Binance & Bitunix",
+              "Multi-Exchange Market Feeds",
+            )}</span
+          >
         </div>
         <p class="guide-card-body">
-          Ganti penyedia feed live antara <strong>Binance Futures</strong> dan <strong>Bitunix Futures</strong>
-          di tab <strong>Data Feed</strong>. Trawangan Terminal mendukung format koin perpetual standar dan simbol <span class="mono-nums">.P</span> secara mulus.
+          {$tr(
+            "Gonta-ganti sumber data live antarane Binance, Indodax IDR, Bitunix Futures, Hyperliquid, lan Coinbase nang tab Data Feed Pasar. Kabeh koin spot, perpetual .P, saham IDX, lan XAUUSD langsung jalan mulus!",
+            "Ganti penyedia feed live antara Binance Futures dan Bitunix Futures di tab Data Feed. trawangan Terminal mendukung format koin perpetual standar dan simbol .P secara mulus.",
+            "Switch live market feeds across Binance, Indodax IDR, Bitunix Futures, Hyperliquid, and Coinbase in the Data Feed tab with seamless .P perpetual symbol support.",
+          )}
         </p>
       </div>
 
@@ -147,7 +260,11 @@
           <span class="guide-card-title">Draw by Holding (Gesture Engine)</span>
         </div>
         <p class="guide-card-body">
-          Tahan tombol <kbd class="kbd-key mono-nums">~</kbd> atau aktifkan mode <kbd class="kbd-key mono-nums">Shift+D</kbd> di kanvas grafik untuk menggambar bebas. Goresan otomatis dikenali menjadi Trend Line, Ray, Horizontal Line, Box, Ellipse, Fib, Polyline, Arrow, atau Scribble to Erase.
+          {$tr(
+            "Tahan tombol ~ utawa pencet Shift+D nang kanvas chart gawe nggambar bebas sat-set! Goresanmu otomatis dadi Trend Line, Ray, Horizontal Line, Box, Ellipse, Fib, Polyline, Arrow, utawa coret zig-zag (Scribble to Erase) gawe mbusek.",
+            "Tahan tombol ~ atau aktifkan mode Shift+D di kanvas grafik untuk menggambar bebas. Goresan otomatis dikenali menjadi Trend Line, Ray, Horizontal Line, Box, Ellipse, Fib, Polyline, Arrow, atau Scribble to Erase.",
+            "Hold ~ or toggle Shift+D on the chart canvas to sketch freehand. Strokes automatically snap into Trend Lines, Rays, Horizontal Lines, Boxes, Ellipses, Fibs, Polylines, Arrows, or Scribble-to-Erase.",
+          )}
         </p>
         {#if onOpenGestureGuide}
           <button
@@ -156,7 +273,13 @@
             onclick={() => onOpenGestureGuide?.()}
           >
             <Sparkles size={11} />
-            <span>Buka Panduan Visual...</span>
+            <span
+              >{$tr(
+                "Bukak Panduan Gambar...",
+                "Buka Panduan Visual...",
+                "Open Visual Gesture Guide...",
+              )}</span
+            >
           </button>
         {/if}
       </div>
@@ -396,7 +519,13 @@
     color: #0b0d12;
   }
 
-  .text-cyan { color: #38bdf8; }
-  .text-bull { color: #3fb950; }
-  .text-amber { color: #f59e0b; }
+  .text-cyan {
+    color: #38bdf8;
+  }
+  .text-bull {
+    color: #3fb950;
+  }
+  .text-amber {
+    color: #f59e0b;
+  }
 </style>

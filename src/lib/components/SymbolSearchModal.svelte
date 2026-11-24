@@ -15,6 +15,7 @@
   } from '../services/persistence/uiPreferencesHelper';
   import type { MarketSearchResult } from '../types/market';
   import type { SearchFilterType } from '../services/market/types';
+  import { tr } from '../i18n';
 
   interface Props {
     isOpen: boolean;
@@ -277,7 +278,7 @@
             bind:this={searchInputEl}
             bind:value={query}
             type="text"
-            placeholder="Cari instrumen kripto, makro, IDX, atau komoditas (misal: BTC, BTCUSDT.P, TOTAL, BTC.D)..."
+            placeholder={$tr('Golek koin kripto, makro, saham IDX, utawa emas (conto: BTC, BTCUSDT.P, TOTAL, BTC.D)...', 'Cari instrumen kripto, makro, IDX, atau komoditas (misal: BTC, BTCUSDT.P, TOTAL, BTC.D)...', 'Search crypto, macro, IDX stocks, or commodities (e.g. BTC, BTCUSDT.P, TOTAL, BTC.D)...')}
             class="modal-input mono-nums"
           />
           {#if query}
@@ -313,14 +314,14 @@
             class="category-tab-btn {assetCategory === 'all' ? 'active' : ''}"
             onclick={() => (assetCategory = 'all')}
           >
-            Semua Aset
+            {$tr('Kabeh Aset', 'Semua Aset', 'All Assets')}
           </button>
           <button
             type="button"
             class="category-tab-btn {assetCategory === 'crypto' ? 'active' : ''}"
             onclick={() => (assetCategory = 'crypto')}
           >
-            Kripto
+            {$tr('Kripto', 'Kripto', 'Crypto')}
           </button>
           <button
             type="button"
@@ -332,21 +333,21 @@
               selectedExchange = 'all';
             }}
           >
-            Makro Kripto
+            {$tr('Makro Kripto', 'Makro Kripto', 'Crypto Macro')}
           </button>
           <button
             type="button"
             class="category-tab-btn {assetCategory === 'idx' ? 'active' : ''}"
             onclick={() => (assetCategory = 'idx')}
           >
-            Saham Indo (IDX)
+            {$tr('Saham Indo (IDX)', 'Saham Indo (IDX)', 'IDX Stocks')}
           </button>
           <button
             type="button"
             class="category-tab-btn {assetCategory === 'metals_indices' ? 'active' : ''}"
             onclick={() => (assetCategory = 'metals_indices')}
           >
-            Komoditas & Indeks
+            {$tr('Emas & Indeks', 'Komoditas & Indeks', 'Metals & Indices')}
           </button>
         </div>
 
@@ -357,7 +358,7 @@
               class="filter-tab-btn {filterType === 'all' ? 'active' : ''}"
               onclick={() => (filterType = 'all')}
             >
-              Semua Tipe
+              {$tr('Kabeh Tipe', 'Semua Tipe', 'All Types')}
             </button>
             <button
               type="button"
@@ -598,9 +599,9 @@
         {:else}
           <div class="empty-results-box">
             <Search size={28} class="empty-icon" />
-            <span class="empty-title">Tidak ada instrumen yang cocok</span>
+            <span class="empty-title">{$tr('Gak nemu koin sing cocok, Rek', 'Tidak ada instrumen yang cocok', 'No matching symbols found')}</span>
             <span class="empty-subtitle">
-              Coba cari ticker lain atau gunakan format simbol seperti <code>BTC/IDR</code> atau <code>BTCUSDT.P</code>
+              {$tr('Jajal golek ticker liyane utawa ketik format', 'Coba cari ticker lain atau gunakan format simbol seperti', 'Try another ticker or symbol format such as')} <code>BTC/IDR</code> / <code>BTCUSDT.P</code>
             </span>
           </div>
         {/if}
@@ -610,17 +611,17 @@
       <div class="modal-footer">
         <div class="shortcut-hints">
           <span class="shortcut-item">
-            <kbd>↑</kbd> <kbd>↓</kbd> Navigasi
+            <kbd>↑</kbd> <kbd>↓</kbd> {$tr('Geser', 'Navigasi', 'Navigate')}
           </span>
           <span class="shortcut-item">
-            <kbd>↵ Enter</kbd> Buka di Chart
+            <kbd>↵ Enter</kbd> {$tr('Bukak nang Chart', 'Buka di Chart', 'Open Chart')}
           </span>
           <span class="shortcut-item">
-            <kbd>Esc</kbd> Tutup
+            <kbd>Esc</kbd> {$tr('Tutup', 'Tutup', 'Close')}
           </span>
         </div>
         <div class="footer-tip">
-          <span>Tip: Simbol berakhiran <b>.P</b> memuat data Futures Perpetual</span>
+          <span>{$tr('Tip: Simbol mburi', 'Tip: Simbol berakhiran', 'Tip: Symbols ending in')} <b>.P</b> {$tr('iku Futures Perpetual', 'memuat data Futures Perpetual', 'load Perpetual Futures')}</span>
         </div>
       </div>
     </div>

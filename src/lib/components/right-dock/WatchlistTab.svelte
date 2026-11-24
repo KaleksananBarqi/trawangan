@@ -28,6 +28,7 @@
   import WatchlistSwitcher from '../WatchlistSwitcher.svelte';
   import SymbolLogo from '../common/SymbolLogo.svelte';
   import type { WatchlistRecord } from '../../types/market';
+  import { tr } from '../../i18n';
 
   interface SectionGroup {
     section: WatchlistSectionToken | null;
@@ -291,10 +292,10 @@
 <!-- Feed Status & Header Kolom -->
 <div class="table-head mono-nums">
   <div class="col-symbol-wrapper">
-    <span class="col-symbol">Symbol</span>
+    <span class="col-symbol">{$tr('Koin', 'Symbol', 'Symbol')}</span>
     <span class="active-feed-pill">{activeProviderId.toUpperCase()}</span>
   </div>
-  <span class="col-price">Last Price</span>
+  <span class="col-price">{$tr('Rega Saiki', 'Last Price', 'Last Price')}</span>
   <span class="col-change">24h %</span>
 </div>
 

@@ -8,7 +8,9 @@
     ProviderConfig,
     ColorModePreference,
     PriceStyle,
+    AppLanguage,
   } from '../types/market';
+  import { t, tr } from '../i18n';
   import { updateService, type UpdateState } from '../services/updateService';
   import { marketFeed } from '../services/market';
   import { getNextColorMode } from '../constants/themes';
@@ -61,8 +63,11 @@
     onToggleReplay?: () => void;
     onOpenIndicatorModal: () => void;
     onOpenSettingsModal?: (
-      tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'
+      tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'broker' | 'system' | 'about' | 'help'
     ) => void;
+    language?: AppLanguage;
+    onLanguageChange?: (lang: AppLanguage) => void;
+    onOpenStartupTutorial?: () => void;
     onOpenSymbolSearch?: () => void;
     onRequestQuickCopySnapshot?: () => void;
     onRequestQuickDownloadSnapshot?: () => void;
@@ -155,6 +160,9 @@
     telemetrySnapshot,
     livePrice = null,
     liveChange24h = null,
+    language = 'jv',
+    onLanguageChange,
+    onOpenStartupTutorial,
   }: Props = $props();
 
   function handleCycleColorMode() {
@@ -167,12 +175,16 @@
 
   const colorModeTooltip = $derived.by(() => {
     if (colorModePreference === 'dark') {
-      return 'Mode Gelap (Klik untuk beralih ke Mode Terang)';
+      return $tr('Mode Peteng (Klik gawe pindah nang Mode Padhang)', 'Mode Gelap (Klik untuk beralih ke Mode Terang)', 'Dark Mode (Click for Light Mode)');
     }
     if (colorModePreference === 'light') {
-      return 'Mode Terang (Klik untuk beralih ke Ikuti Sistem)';
+      return $tr('Mode Padhang (Klik gawe Manut Sistem)', 'Mode Terang (Klik untuk beralih ke Ikuti Sistem)', 'Light Mode (Click for System)');
     }
-    return `Ikuti Sistem (${systemIsDark ? 'Gelap' : 'Terang'}) (Klik untuk beralih ke Mode Gelap)`;
+    return $tr(
+      `Manut Sistem (${systemIsDark ? 'Peteng' : 'Padhang'}) (Klik gawe Mode Peteng)`,
+      `Ikuti Sistem (${systemIsDark ? 'Gelap' : 'Terang'}) (Klik untuk beralih ke Mode Gelap)`,
+      `System (${systemIsDark ? 'Dark' : 'Light'}) (Click for Dark Mode)`
+    );
   });
 
   let updateState = $state<UpdateState>(updateService.getSnapshot());
@@ -246,6 +258,9 @@
     {colorModeTooltip}
     onCycleColorMode={handleCycleColorMode}
     {onOpenSettingsModal}
+    {language}
+    {onLanguageChange}
+    {onOpenStartupTutorial}
   />
 
   <div class="chart-sub-header">
@@ -254,7 +269,7 @@
       <button
         type="button"
         class="symbol-badge-btn"
-        title="Klik atau tekan Ctrl+K untuk mencari simbol koin & pair"
+        title={$tr('Klik utawa pencet Ctrl+K gawe golek koin & pair', 'Klik atau tekan Ctrl+K untuk mencari simbol koin & pair', 'Click or press Ctrl+K to search symbols & pairs')}
         onclick={() => onOpenSymbolSearch?.()}
       >
         <SymbolLogo
@@ -272,9 +287,11 @@
         class="watchlist-star-btn {isWatchlisted ? 'active' : ''}"
         aria-pressed={isWatchlisted}
         aria-label={isWatchlisted
-          ? `Hapus ${activeSymbol} dari Watchlist Aktif`
-          : `Tambahkan ${activeSymbol} ke Watchlist Aktif`}
-        title={isWatchlisted ? 'Hapus dari Watchlist Aktif' : 'Tambahkan ke Watchlist Aktif'}
+          ? $tr(`Busek ${activeSymbol} teko Watchlist Aktif`, `Hapus ${activeSymbol} dari Watchlist Aktif`, `Remove ${activeSymbol} from Active Watchlist`)
+          : $tr(`Lebokno ${activeSymbol} nang Watchlist Aktif`, `Tambahkan ${activeSymbol} ke Watchlist Aktif`, `Add ${activeSymbol} to Active Watchlist`)}
+        title={isWatchlisted
+          ? $tr('Busek teko Watchlist Aktif', 'Hapus dari Watchlist Aktif', 'Remove from Active Watchlist')
+          : $tr('Lebokno nang Watchlist Aktif', 'Tambahkan ke Watchlist Aktif', 'Add to Active Watchlist')}
         onclick={() => onToggleActiveWatchlist?.()}
       >
         <Star size={13} fill={isWatchlisted ? 'currentColor' : 'none'} />
@@ -284,7 +301,7 @@
         <button
           type="button"
           class="provider-pill-btn {activeProviderId}"
-          title="Ganti Bursa / Data Feed Aktif"
+          title={$t('header.providerSwitch')}
           onclick={(e) => {
             e.stopPropagation();
             isProviderDropdownOpen = !isProviderDropdownOpen;
@@ -329,11 +346,11 @@
             }}
           >
             <div class="provider-dropdown-header">
-              <span>BURSA / DATA FEED</span>
+              <span>{$tr('BURSA / SUMBER DATA', 'BURSA / DATA FEED', 'EXCHANGE / DATA FEED')}</span>
             </div>
             {#if activeProviderId === 'macro'}
               <div class="provider-macro-note">
-                Indeks makro selalu dirutekan otomatis ke Synthetic Basket lokal saat grafik dibuka.
+                {$tr('Indeks makro mesthi diarahno otomatis nang Synthetic Basket lokal pas chart dibukak.', 'Indeks makro selalu dirutekan otomatis ke Synthetic Basket lokal saat grafik dibuka.', 'Macro indices automatically route to the local Synthetic Basket when opened.')}
               </div>
             {/if}
             <div class="provider-list">
@@ -365,7 +382,7 @@
                   onOpenSettingsModal?.('feed');
                 }}
               >
-                + Pengaturan Feed & Custom Node...
+                {$tr('+ Setelan Feed & Custom Node...', '+ Pengaturan Feed & Custom Node...', '+ Feed Settings & Custom Node...')}
               </button>
             </div>
           </div>
@@ -438,14 +455,14 @@
       <button
         type="button"
         class="action-btn indicator-header-btn {activeIndicators && activeIndicators.length > 0 ? 'has-active' : ''}"
-        title="Buka Perpustakaan Indikator Teknikal (Pine Script v6)"
+        title={$tr('Bukak Katalog Indikator Teknikal (Pine Script v6)', 'Buka Perpustakaan Indikator Teknikal (Pine Script v6)', 'Open Technical Indicator Library (Pine Script v6)')}
         onclick={onOpenIndicatorModal}
       >
         <Layers
           size={13}
           class={activeIndicators && activeIndicators.length > 0 ? 'text-brand' : 'text-cyan-accent'}
         />
-        <span>Indikator</span>
+        <span>{$t('header.indicators')}</span>
         {#if activeIndicators && activeIndicators.length > 0}
           <span class="count-badge mono-nums">{activeIndicators.length}</span>
         {/if}

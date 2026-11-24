@@ -762,12 +762,12 @@
   </div>
 
   {#if hasActivePlans}
-    <!-- Toggle Thesis Cards Floating HUD (#115) -->
+    <!-- Buka Docked Thesis Preview di Panel Kanan (ADR-0032) -->
     <div class="tool-item">
       <button
         type="button"
-        class="tool-btn {showThesisCards ? 'active text-cyan' : 'text-dim'}"
-        title={showThesisCards ? 'Sembunyikan Tesis Posisi di Grafik' : 'Tampilkan Tesis Posisi di Grafik'}
+        class="tool-btn active text-cyan"
+        title="Buka Preview Tesis Trade Plan di Panel Kanan"
         onclick={onToggleThesisCards}
       >
         <FileText size={15} />

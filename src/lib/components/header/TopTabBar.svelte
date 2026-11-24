@@ -10,11 +10,14 @@
     Sparkles,
     Download,
     RefreshCw,
+    HelpCircle,
+    Globe,
   } from '@lucide/svelte';
   import SymbolLogo from '../common/SymbolLogo.svelte';
   import { parseAdaptiveSymbol } from '../../services/market/symbolSearchService';
   import type { ChartTabItem } from '../../services/chartTabsService';
-  import type { ColorModePreference } from '../../types/market';
+  import type { AppLanguage, ColorModePreference } from '../../types/market';
+  import { t, SUPPORTED_LANGUAGES, getNextLanguage } from '../../i18n';
   import {
     shouldShowUpdateBadge,
     getUpdatePillContent,
@@ -34,8 +37,11 @@
     colorModeTooltip?: string;
     onCycleColorMode?: () => void;
     onOpenSettingsModal?: (
-      tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'system' | 'about' | 'help'
+      tab?: 'general' | 'appearance' | 'chart' | 'feed' | 'broker' | 'system' | 'about' | 'help'
     ) => void;
+    language?: AppLanguage;
+    onLanguageChange?: (lang: AppLanguage) => void;
+    onOpenStartupTutorial?: () => void;
   }
 
   let {
@@ -51,6 +57,9 @@
     colorModeTooltip = 'Ganti mode warna tema',
     onCycleColorMode,
     onOpenSettingsModal,
+    language = 'jv',
+    onLanguageChange,
+    onOpenStartupTutorial,
   }: Props = $props();
 
   const canCloseTabs = $derived(tabs.length > 1);
@@ -169,7 +178,7 @@
       onclick={() => onOpenSymbolSearch?.()}
     >
       <Search size={12} class="omni-search-icon" />
-      <span class="omni-placeholder">Search symbol or pair...</span>
+      <span class="omni-placeholder">{$t('header.searchPlaceholder')}</span>
       <kbd class="omni-kbd mono-nums">Ctrl+K</kbd>
     </button>
 
@@ -194,6 +203,28 @@
 
     <button
       type="button"
+      class="top-action-btn lang-pill mono-nums"
+      title={$t('header.langTooltip')}
+      onclick={() => onLanguageChange?.(getNextLanguage(language))}
+    >
+      <Globe size={12} />
+      <span>{language.toUpperCase()}</span>
+    </button>
+
+    {#if onOpenStartupTutorial}
+      <button
+        type="button"
+        class="top-action-btn"
+        title={$t('settings.replayTutorialDesc')}
+        onclick={() => onOpenStartupTutorial?.()}
+      >
+        <HelpCircle size={12} />
+        <span>{$t('header.tutorial')}</span>
+      </button>
+    {/if}
+
+    <button
+      type="button"
       class="top-action-btn icon-only color-mode-btn"
       title={colorModeTooltip}
       aria-label="Ganti mode warna tema"
@@ -211,11 +242,11 @@
     <button
       type="button"
       class="top-action-btn"
-      title="Buka Pengaturan & Panduan Bantuan"
+      title={$t('settings.title')}
       onclick={() => onOpenSettingsModal?.('general')}
     >
       <Settings size={13} />
-      <span>Setting</span>
+      <span>{$t('header.settings')}</span>
     </button>
   </div>
 </div>

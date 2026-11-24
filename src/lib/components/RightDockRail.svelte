@@ -7,11 +7,13 @@
     Sparkles,
     Calendar,
     Code,
+    Zap,
     ChevronRight,
     ChevronLeft
   } from '@lucide/svelte';
   import type { RightDockTab } from '../services/workspaceShellService';
   import type { WorkspaceMode } from '../types/market';
+  import { t } from '../i18n';
 
   interface Props {
     isOpen: boolean;
@@ -20,6 +22,7 @@
     activeAlertsCount?: number;
     activeIndicatorsCount?: number;
     activePlansCount?: number;
+    showOrderTab?: boolean;
     onToggleTab: (tab: RightDockTab) => void;
     onToggleHider: () => void;
     onTogglePineMode?: () => void;
@@ -32,6 +35,7 @@
     activeAlertsCount = 0,
     activeIndicatorsCount = 0,
     activePlansCount = 0,
+    showOrderTab = false,
     onToggleTab,
     onToggleHider,
     onTogglePineMode,
@@ -45,7 +49,7 @@
     <button
       type="button"
       class="dock-btn {isOpen && activeTab === 'watchlist' && workspaceMode !== 'pine' ? 'active' : ''}"
-      title="Watchlist & Ticker Kripto"
+      title={$t('dock.watchlist')}
       onclick={() => onToggleTab('watchlist')}
     >
       <Flame size={16} class="dock-icon" />
@@ -55,7 +59,7 @@
     <button
       type="button"
       class="dock-btn {isOpen && activeTab === 'alerts' && workspaceMode !== 'pine' ? 'active' : ''}"
-      title="Price Alerts ({activeAlertsCount} Aktif)"
+      title="{$t('dock.alerts')} ({activeAlertsCount})"
       onclick={() => onToggleTab('alerts')}
     >
       <Bell size={16} class="dock-icon" />
@@ -68,7 +72,7 @@
     <button
       type="button"
       class="dock-btn {isOpen && activeTab === 'objects' && workspaceMode !== 'pine' ? 'active' : ''}"
-      title="Object Tree & Indikator ({activeIndicatorsCount})"
+      title="{$t('dock.objects')} ({activeIndicatorsCount})"
       onclick={() => onToggleTab('objects')}
     >
       <Layers size={16} class="dock-icon" />
@@ -81,17 +85,17 @@
     <button
       type="button"
       class="dock-btn {isOpen && activeTab === 'datawindow' && workspaceMode !== 'pine' ? 'active' : ''}"
-      title="Data Window Inspector"
+      title={$t('dock.datawindow')}
       onclick={() => onToggleTab('datawindow')}
     >
       <TableProperties size={16} class="dock-icon" />
     </button>
 
-    <!-- 5. Trade Plan (Form, Teks & Riwayat) -->
+    <!-- 5. Trade Plan (Preview, Form, Teks & Vault) -->
     <button
       type="button"
       class="dock-btn {isOpen && activeTab === 'plan' && workspaceMode !== 'pine' ? 'active' : ''}"
-      title="Trade Plan: Form, Teks & Riwayat ({activePlansCount} Aktif)"
+      title="{$t('dock.plan')} ({activePlansCount})"
       onclick={() => onToggleTab('plan')}
     >
       <Sparkles size={16} class="dock-icon" />
@@ -104,11 +108,23 @@
     <button
       type="button"
       class="dock-btn {isOpen && activeTab === 'events' && workspaceMode !== 'pine' ? 'active' : ''}"
-      title="Events & Kalender Makroekonomi"
+      title={$t('dock.events')}
       onclick={() => onToggleTab('events')}
     >
       <Calendar size={16} class="dock-icon" />
     </button>
+
+    <!-- 7. Opt-In Manual Order Ticket (Hanya muncul saat Broker Execution Bridge ON) -->
+    {#if showOrderTab}
+      <button
+        type="button"
+        class="dock-btn order-dock-btn {isOpen && activeTab === 'order' && workspaceMode !== 'pine' ? 'active' : ''}"
+        title={$t('dock.order')}
+        onclick={() => onToggleTab('order')}
+      >
+        <Zap size={16} class="dock-icon" />
+      </button>
+    {/if}
 
     <div class="dock-divider"></div>
 
@@ -116,7 +132,7 @@
     <button
       type="button"
       class="dock-btn {workspaceMode === 'pine' ? 'active pine-active' : ''}"
-      title="Pine Script v6 Editor & Backtester"
+      title={$t('dock.pine')}
       onclick={() => onTogglePineMode?.()}
     >
       <Code size={16} class="dock-icon" />
@@ -128,7 +144,7 @@
     <button
       type="button"
       class="dock-btn hider-btn"
-      title={isOpen || workspaceMode === 'pine' ? 'Sembunyikan Panel' : 'Buka Panel'}
+      title={isOpen || workspaceMode === 'pine' ? $t('dock.hidePanel') : $t('dock.openPanel')}
       onclick={onToggleHider}
     >
       {#if isOpen || workspaceMode === 'pine'}

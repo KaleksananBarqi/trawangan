@@ -15,6 +15,7 @@
     DEFAULT_FONT_SIZE
   } from '../../constants/themes';
   import type { AppSettings, UiDensity } from '../../types/market';
+  import { tr } from '../../i18n';
 
   interface Props {
     settings: AppSettings;
@@ -53,9 +54,9 @@
 <div class="section-group">
   <div class="section-header-row">
     <div>
-      <h4 class="section-title">Tipografi & Skala Teks Antarmuka</h4>
+      <h4 class="section-title">{$tr('Tipografi & Ukuran Huruf Terminal', 'Tipografi & Skala Teks Antarmuka', 'Typography & Interface Text Scale')}</h4>
       <p class="section-subtitle">
-        Atur jenis huruf antarmuka, font angka/kode monospace, serta sesuaikan ukuran teks agar optimal di layar monitor Anda.
+        {$tr('Setel model huruf menu, font angka/kode monospace, karo gede-cilike teks ben pas lan seger nang layarmu.', 'Atur jenis huruf antarmuka, font angka/kode monospace, serta sesuaikan ukuran teks agar optimal di layar monitor Anda.', 'Customize UI font family, monospace price/code font, and text scaling to match your display resolution.')}
       </p>
     </div>
   </div>
@@ -63,8 +64,8 @@
   <!-- Pilihan Font UI Sans -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Font Family Antarmuka (UI Sans)</span>
-      <span class="setting-desc">Font untuk navigasi, menu, dialog modal, dan tombol antarmuka</span>
+      <span class="setting-label">{$tr('Font Menu & Tombol (UI Sans)', 'Font Family Antarmuka (UI Sans)', 'Interface Font Family (UI Sans)')}</span>
+      <span class="setting-desc">{$tr('Huruf gawe navigasi, menu, modal dialog, karo tombol', 'Font untuk navigasi, menu, dialog modal, dan tombol antarmuka', 'Font used across navigation bars, menus, dialogs, and buttons')}</span>
     </div>
     <select
       class="select-input"
@@ -80,8 +81,8 @@
   <!-- Pilihan Font Monospace Angka & Kode -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Font Angka & Kode (Monospace)</span>
-      <span class="setting-desc">Font untuk digit harga chart, orderflow, dan editor Pine Script</span>
+      <span class="setting-label">{$tr('Font Angka Rega & Kode (Monospace)', 'Font Angka & Kode (Monospace)', 'Numeric & Code Font (Monospace)')}</span>
+      <span class="setting-desc">{$tr('Huruf presisi gawe digit rega chart, tabel angka, karo editor Pine Script', 'Font untuk digit harga chart, orderflow, dan editor Pine Script', 'Fixed-width font for price scales, tabular numbers, and Pine Script IDE')}</span>
     </div>
     <select
       class="select-input mono-nums"
@@ -97,33 +98,33 @@
   <!-- Kerapatan Antarmuka (UI Density) -->
   <div class="setting-row">
     <div class="setting-info">
-      <span class="setting-label">Kerapatan Tampilan (UI Density)</span>
-      <span class="setting-desc">Spasi padding tombol, header, dan elemen visual antarmuka</span>
+      <span class="setting-label">{$tr(' Rapat-Longgare Tampilan (UI Density)', 'Kerapatan Tampilan (UI Density)', 'Interface Density')}</span>
+      <span class="setting-desc">{$tr('Jarak padding tombol, header, karo panel terminal', 'Spasi padding tombol, header, dan elemen visual antarmuka', 'Padding and spacing density across toolbars, headers, and panels')}</span>
     </div>
     <div class="density-btn-group" role="radiogroup" aria-label="Kerapatan UI">
       <button
         type="button"
         class="density-btn {settings.uiDensity === 'compact' ? 'active' : ''}"
         onclick={() => handleSetDensity('compact')}
-        title="Spasi padat untuk layar kecil laptop 13-14 inci"
+        title={$tr('Padet gawe layar laptop cilik 13-14 inci', 'Spasi padat untuk layar kecil laptop 13-14 inci', 'Compact spacing for 13-14 inch laptops')}
       >
-        <span>Ringkas (11px)</span>
+        <span>{$tr('Padet (11px)', 'Ringkas (11px)', 'Compact (11px)')}</span>
       </button>
       <button
         type="button"
         class="density-btn {(settings.uiDensity || 'regular') === 'regular' ? 'active' : ''}"
         onclick={() => handleSetDensity('regular')}
-        title="Spasi ideal seimbang untuk monitor standar 1080p"
+        title={$tr('Pas imbang gawe monitor standar 1080p', 'Spasi ideal seimbang untuk monitor standar 1080p', 'Balanced spacing for standard 1080p displays')}
       >
-        <span>Standar (12px)</span>
+        <span>{$tr('Standar (12px)', 'Standar (12px)', 'Regular (12px)')}</span>
       </button>
       <button
         type="button"
         class="density-btn {settings.uiDensity === 'comfortable' ? 'active' : ''}"
         onclick={() => handleSetDensity('comfortable')}
-        title="Spasi lega untuk layar resolusi tinggi 2K / 4K"
+        title={$tr('Ombo lega gawe monitor gede 2K / 4K', 'Spasi lega untuk layar resolusi tinggi 2K / 4K', 'Spacious layout for 2K / 4K high-res monitors')}
       >
-        <span>Lega (13.5px)</span>
+        <span>{$tr('Ombo (13.5px)', 'Lega (13.5px)', 'Comfortable (13.5px)')}</span>
       </button>
     </div>
   </div>
@@ -132,13 +133,13 @@
   <div class="setting-box-column custom-font-section">
     <div class="setting-info-header">
       <div class="setting-title-with-badge">
-        <span class="setting-label">Ukuran Font Presisi (Fine-Tuning Stepper & Slider)</span>
+        <span class="setting-label">{$tr('Ukuran Huruf Presisi (Stepper & Slider)', 'Ukuran Font Presisi (Fine-Tuning Stepper & Slider)', 'Precision Font Size (Stepper & Slider)')}</span>
         <span class="font-current-badge mono-nums">
           {effectiveFontSize}px
         </span>
       </div>
       <span class="setting-desc">
-        Sesuaikan ukuran teks secara presisi dengan slider, stepper, atau input angka bebas agar pas dengan resolusi layar Anda (laptop 13-14", monitor 1080p, 2K, hingga 4K).
+        {$tr('Geser slider utawa ketik langsung ukuran huruf ben enak disawang nang laptop 13-14", monitor 1080p, 2K, sampek 4K.', 'Sesuaikan ukuran teks secara presisi dengan slider, stepper, atau input angka bebas agar pas dengan resolusi layar Anda (laptop 13-14", monitor 1080p, 2K, hingga 4K).', 'Fine-tune text size using the slider, steppers, or direct input to match your screen size (13-14" laptop, 1080p, 2K, or 4K).')}
       </span>
     </div>
 
@@ -148,7 +149,7 @@
         type="button"
         class="font-step-btn"
         onclick={() => handleStepFontSize(-0.5)}
-        title="Perkecil font 0.5px"
+        title={$tr('Cilikno huruf 0.5px', 'Perkecil font 0.5px', 'Decrease font by 0.5px')}
       >
         <Minus size={13} />
       </button>
@@ -165,8 +166,8 @@
         />
         <div class="slider-ticks">
           <span>{MIN_FONT_SIZE}px (Min)</span>
-          <span>12px (Bawaan)</span>
-          <span>{MAX_FONT_SIZE}px (Maks)</span>
+          <span>12px ({$tr('Default', 'Bawaan', 'Default')})</span>
+          <span>{MAX_FONT_SIZE}px ({$tr('Pol', 'Maks', 'Max')})</span>
         </div>
       </div>
 
@@ -174,7 +175,7 @@
         type="button"
         class="font-step-btn"
         onclick={() => handleStepFontSize(0.5)}
-        title="Perbesar font 0.5px"
+        title={$tr('Gedekno huruf 0.5px', 'Perbesar font 0.5px', 'Increase font by 0.5px')}
       >
         <Plus size={13} />
       </button>
@@ -196,16 +197,16 @@
         type="button"
         class="btn-reset-font"
         onclick={() => handleSetFontSize(DEFAULT_FONT_SIZE)}
-        title="Kembalikan ke ukuran standar bawaan 12px"
+        title={$tr('Balikno ukuran awal 12px', 'Kembalikan ke ukuran standar bawaan 12px', 'Reset to default 12px size')}
       >
         <RotateCcw size={12} />
-        <span>Reset</span>
+        <span>{$tr('Balikno', 'Reset', 'Reset')}</span>
       </button>
     </div>
 
     <!-- Shortcut Preset Ukuran Layar Monitor -->
     <div class="font-presets-row">
-      <span class="presets-row-label">Preset Layar Monitor:</span>
+      <span class="presets-row-label">{$tr('Preset Layar Monitor:', 'Preset Layar Monitor:', 'Display Presets:')}</span>
       <div class="font-presets-chips">
         {#each FONT_SIZE_PRESETS as preset}
           {@const currentSize = effectiveFontSize}
@@ -229,7 +230,7 @@
       style="--preview-font-size: {effectiveFontSize}px;"
     >
       <div class="preview-header">
-        <span class="preview-title">Live Preview Tampilan (Skala Nyata)</span>
+        <span class="preview-title">{$tr('Conto Tampilan Langsung (Skala Nyata)', 'Live Preview Tampilan (Skala Nyata)', 'Live Typography Preview (Actual Scale)')}</span>
         <span class="preview-badge mono-nums">
           {effectiveFontSize}px
         </span>

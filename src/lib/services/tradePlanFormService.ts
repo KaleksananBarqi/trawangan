@@ -21,7 +21,7 @@ import {
   type ZonePolarity
 } from './planParserService';
 
-export type TradePlanTabSubMode = 'form' | 'text' | 'history';
+export type TradePlanTabSubMode = 'preview' | 'form' | 'text' | 'history';
 
 export interface TradePlanActivationRequest {
   subMode: TradePlanTabSubMode;
@@ -844,6 +844,32 @@ export function resolveSubModeTransition(input: SubModeTransitionInput): SubMode
 
     return {
       nextSubMode: 'form',
+      shouldRefreshHistory: false,
+      shouldFocusTextArea: false
+    };
+  }
+
+  if (nextSubMode === 'preview') {
+    if (lastEditedSource === 'text' && textBuffer.trim()) {
+      const parsed = parseTradingPlan(textBuffer);
+      const resolvedTextSymbol = parsed.symbol
+        ? resolveCanonicalPlanSymbol(parsed.symbol, currentFormSymbol || activeSymbol)
+        : undefined;
+      const parsedForForm = resolvedTextSymbol
+        ? { ...parsed, symbol: resolvedTextSymbol }
+        : parsed;
+      const converted = planToFormDraft(parsedForForm, currentFormSymbol || activeSymbol);
+      return {
+        nextSubMode: 'preview',
+        nextFormDraft: converted,
+        nextHasCustomRiskPct: hasCustomRiskPercent(parsedForForm),
+        shouldOpenContextZones: converted.contextZones.length > 0,
+        shouldRefreshHistory: false,
+        shouldFocusTextArea: false
+      };
+    }
+    return {
+      nextSubMode: 'preview',
       shouldRefreshHistory: false,
       shouldFocusTextArea: false
     };

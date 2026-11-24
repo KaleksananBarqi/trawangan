@@ -18,6 +18,7 @@
   import type { ActiveTradingPlan, LivePlanEvaluation } from '../../services/tradingPlanLifecycle';
   import TradePlanContextZonesSection from './TradePlanContextZonesSection.svelte';
   import TradePlanNarrativeSection from './TradePlanNarrativeSection.svelte';
+  import { tr } from '../../i18n';
 
   interface Props {
     activeSymbol: string;
@@ -132,12 +133,12 @@
         <span class="active-plan-pill mono-nums">
           <span class="status-dot {editingPlan.bias === 'bearish' ? 'bear' : 'bull'}"></span>
           <span>
-            Edit Plan Aktif ({editingPlan.bias === 'bearish' ? 'SHORT' : 'LONG'} · {editingPlan.targets?.length || 0} TP)
+            {$tr('Oprek Plan Aktif', 'Edit Plan Aktif', 'Edit Active Plan')} ({editingPlan.bias === 'bearish' ? 'SHORT' : 'LONG'} · {editingPlan.targets?.length || 0} TP)
           </span>
         </span>
       {:else}
         <span class="active-plan-pill new-mode">
-          <span>Mode Plan Baru</span>
+          <span>{$tr('Mode Plan Anyar', 'Mode Plan Baru', 'New Plan Mode')}</span>
         </span>
       {/if}
 
@@ -146,16 +147,16 @@
           <button
             type="button"
             class="mini-action-btn"
-            title="Buat rencana trading baru"
+            title={$tr('Gawe rencana trading anyar', 'Buat rencana trading baru', 'Create new trading plan')}
             onclick={onStartNewPlan}
           >
             <Plus size={11} />
-            <span>Plan Baru</span>
+            <span>{$tr('Plan Anyar', 'Plan Baru', 'New Plan')}</span>
           </button>
           <button
             type="button"
             class="mini-action-btn danger"
-            title="Hapus plan aktif ini dari chart"
+            title={$tr('Busek plan aktif iki teko chart', 'Hapus plan aktif ini dari chart', 'Delete active plan from chart')}
             aria-label="Hapus plan aktif ini dari chart"
             onclick={() => onRemovePlan?.(editingPlanId!)}
           >
@@ -165,10 +166,10 @@
           <button
             type="button"
             class="mini-action-btn"
-            title="Kembali mengedit plan yang aktif di chart"
+            title={$tr('Mbalik ngoprek plan sing urip nang chart', 'Kembali mengedit plan yang aktif di chart', 'Return to editing active plan')}
             onclick={onReturnToActivePlan}
           >
-            <span>Edit Plan Aktif ({scopedPlans.length})</span>
+            <span>{$tr('Oprek Plan Aktif', 'Edit Plan Aktif', 'Edit Active Plan')} ({scopedPlans.length})</span>
           </button>
         {/if}
       </div>
@@ -237,7 +238,7 @@
   <div class="form-card">
     <div class="form-row-2col">
       <div class="field-group">
-        <span class="field-label">Bias Arah</span>
+        <span class="field-label">{$tr('Arah Bias', 'Bias Arah', 'Bias Direction')}</span>
         <div class="segmented-toggle" role="group" aria-label="Pilih Bias Arah">
           <button
             type="button"
@@ -331,7 +332,7 @@
   <!-- Seksi Entry & Stop Loss -->
   <div class="form-card">
     <div class="section-header-inline">
-      <span class="section-heading">Entry & Manajemen Risiko</span>
+      <span class="section-heading">{$tr('Entry & Manajemen Risiko', 'Entry & Manajemen Risiko', 'Entry & Risk Management')}</span>
       <div class="mini-segmented" role="group" aria-label="Mode Entry">
         <button
           type="button"
@@ -352,14 +353,14 @@
 
     {#if formDraft.entryMode === 'single'}
       <div class="field-group">
-        <label class="field-label" for="tp-entry-single">Harga Entry</label>
+        <label class="field-label" for="tp-entry-single">{$tr('Rega Entry', 'Harga Entry', 'Entry Price')}</label>
         <input
           id="tp-entry-single"
           type="text"
           inputmode="decimal"
           class="form-input mono-nums"
           value={formDraft.entry}
-          placeholder="Contoh: 81200.0"
+          placeholder={$tr('Conto: 81200.0', 'Contoh: 81200.0', 'Example: 81200.0')}
           oninput={(e) => onPatchDraft({ entry: e.currentTarget.value })}
         />
       </div>
@@ -467,7 +468,7 @@
     </div>
 
     <div class="risk-unit-strip mono-nums">
-      <span>Jarak Risiko (1R):</span>
+      <span>{$tr('Jarak Risiko (1R):', 'Jarak Risiko (1R):', 'Risk Unit (1R):')}</span>
       <strong class="text-cyan">
         {formPreviewPlan.riskAmount > 0 ? formatPrice(formPreviewPlan.riskAmount) : '--'}
       </strong>
@@ -487,7 +488,7 @@
         onclick={onAddTarget}
       >
         <Plus size={11} />
-        <span>Tambah TP</span>
+        <span>{$tr('Tambah TP', 'Tambah TP', 'Add TP')}</span>
       </button>
     </div>
 

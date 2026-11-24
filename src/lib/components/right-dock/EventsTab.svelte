@@ -16,6 +16,7 @@
     type MacroCalendarEvent,
     type MacroImpact,
   } from '../../services/timelineMarksController';
+  import { tr } from '../../i18n';
 
   interface Props {
     activeSymbol?: string;
@@ -215,7 +216,7 @@
   <!-- Events Schedule List -->
   <div class="events-body">
     {#if scheduleGroups.length === 0}
-      <div class="empty-state">Tidak ada event yang cocok dengan filter saat ini.</div>
+      <div class="empty-state">{$tr('Gak ono berita makro sing cocok karo filter-mu.', 'Tidak ada event yang cocok dengan filter saat ini.', 'No events match the current filter.')}</div>
     {:else}
       {#each scheduleGroups as group (group.key)}
         {@const collapsed = isGroupCollapsed(group.key, group.defaultCollapsed)}

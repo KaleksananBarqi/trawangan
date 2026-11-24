@@ -12,9 +12,33 @@ _Avoid_: Trawangan, TRAWANGAN, Exchange, Broker, Trading Platform
 Filosofi inti produk yang diambil dari bahasa Jawa (ꦠꦿꦮꦔꦤ꧀), merujuk pada kapabilitas trader untuk melihat menembus kabut manipulasi dan kebisingan pasar melalui visualisasi data presisi.
 _Avoid_: Spekulasi, Tebak-tebakan
 
-**Pure Charting Scope**:
-Batasan produk pada fase awal yang memprioritaskan fitur analisis grafik, indikator, drawing, dan backtesting Pine Script, tanpa integrasi eksekusi order trading atau penempatan modal secara langsung.
-_Avoid_: Automated trading bot, Brokerage connectivity, Order execution
+**Pure Charting Scope** *(SUPERSEDED / Digantikan oleh **Opt-In Execution Bridge**)*:
+[Digantikan] Dahulu merupakan batasan produk fase awal yang melarang seluruh koneksi akun broker dan eksekusi order. Saat ini `trawangan` tetap memakai mode murni charting secara default, namun mengizinkan aktivasi **Opt-In Execution Bridge** setelah pengguna membuka gerbang pengaturan kredensial secara eksplisit.
+_Avoid_: Always-on trading bot, Forced brokerage login, Paywalled execution
+
+**Opt-In Execution Bridge**:
+Subsistem koneksi dan eksekusi order opsional ke bursa/broker (Binance, Bitunix, dan jembatan lokal MT5/CFD) yang secara bawaan nonaktif total (*zero UI footprint*), hanya aktif setelah pengguna menyelesaikan gerbang konfigurasi kredensial 3 langkah, dan terpisah secara tegas dari **Trading Plan Lifecycle** agar setiap penempatan order tetap berupa aksi manual eksplisit dari pengguna.
+_Avoid_: Plan-linked auto-execution, Default trading terminal, Cloud trade relay, Auto-trading bot
+
+**Manual Order Ticket**:
+Panel penempatan order mandiri (*Market / Limit / Stop*, ukuran Lot/Quantity, Leverage, SL/TP, serta manajemen posisi dan order aktif) yang hanya muncul ketika **Opt-In Execution Bridge** diaktifkan dan tidak pernah mengeksekusi transaksi secara otomatis dari gambar rencana perdagangan di kanvas.
+_Avoid_: Auto-trade plan button, One-click plan execution, Embedded plan order trigger
+
+**Local MT5 Socket Bridge**:
+Jembatan komunikasi lokal (*localhost* `127.0.0.1`) berbasis skrip *Expert Advisor* (`TrawanganMT5Bridge.mq5`) yang menghubungkan `trawangan` langsung ke terminal desktop MetaTrader 5 untuk eksekusi manual pada broker CFD tanpa server perantara cloud.
+_Avoid_: Third-party paid cloud relay, Proprietary CFD lock-in
+
+**Docked Thesis Preview**:
+Sub-mode pratinjau visual kartu tesis rencana perdagangan yang terintegrasi permanen di dalam tab `Plan` pada panel dock kanan, menggantikan kartu tesis melayang di atas kanvas grafik agar area candlestick bebas dari halangan visual.
+_Avoid_: FloatingThesisCard, Canvas thesis overlay, Popup thesis modal
+
+**Arekan Localization Engine**:
+Sistem lokalisasi tiga bahasa (`jv` Jawa Ngoko Arekan sebagai bahasa utama/default, `id` Bahasa Indonesia, dan `en` Bahasa Inggris) yang menerjemahkan antarmuka terminal, tutorial onboarding, README, serta landing page dengan tetap mempertahankan istilah teknis pasar standar internasional.
+_Avoid_: Krama Inggil formal Javanese, Single-language UI, Forced machine translation of trading terms
+
+**Startup Spotlight Tour**:
+Alur orientasi interaktif saat peluncuran awal (*first-run onboarding*) yang memandu pengguna memilih bahasa dan tema, lalu menyoroti area kerja esensial terminal secara bertahap dengan kemampuan diputar ulang kapan saja dari menu bantuan.
+_Avoid_: Static text manual, Unskippable video intro, External docs redirect
 
 **Theme Preset**:
 Paket konfigurasi visual yang mengatur skema warna kanvas, garis grid, tipografi, serta warna badan, batas, dan sumbu candlestick.
@@ -177,8 +201,8 @@ Lapisan latar visual kanvas grafik (warna solid kustom maupun gradien vertikal) 
 _Avoid_: Hardcoded theme background only, Fixed chart canvas fill
 
 **Themed Thesis Overlay**:
-Komponen visual kartu tesis rencana perdagangan (`FloatingThesisCard` dan panel samping snapshot) yang secara reaktif menurunkan warna latar permukaan, batas, dan kontras tipografi dari latar **Chart Canvas Theme** aktif, menjamin keterbacaan penuh tanpa tabrakan warna meskipun tema aplikasi dan kanvas dipisahkan.
-_Avoid_: Hardcoded obsidian card, Desynced plan theme, App-bound thesis card, Foreground-filled card
+Komponen visual kartu tesis rencana perdagangan pada **Docked Thesis Preview** di tab `Plan` dan panel samping snapshot yang secara reaktif menurunkan warna latar permukaan, batas, dan kontras tipografi dari latar **Chart Canvas Theme** aktif, menjamin keterbacaan penuh tanpa tabrakan warna meskipun tema aplikasi dan kanvas dipisahkan.
+_Avoid_: FloatingThesisCard, Hardcoded obsidian card, Desynced plan theme, App-bound thesis card, Foreground-filled card
 
 **Quick Snapshot Action**:
 Aksi satu klik atau pintasan keyboard (`Ctrl+Shift+S`) untuk menyalin grafik ke clipboard sistem atau menyimpannya langsung sebagai file PNG dengan umpan balik visual notifikasi toast.

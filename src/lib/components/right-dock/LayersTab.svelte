@@ -24,6 +24,7 @@
   import { dedupeByKey } from '../../utils/dedupeByKey';
   import type { ActiveTradingPlan } from '../../services/tradingPlanLifecycle';
   import type { TradePlanTabSubMode } from '../../services/tradePlanFormService';
+  import { tr } from '../../i18n';
 
   interface Props {
     activeSymbol: string;
@@ -175,7 +176,7 @@
             <ChevronRight size={13} />
           {/if}
         </span>
-        <span>Indikator</span>
+        <span>{$tr('Indikator', 'Indikator', 'Indicators')}</span>
         <span class="group-count mono-nums">{totalIndicatorsCount}</span>
       </button>
     </div>
@@ -259,7 +260,7 @@
 
         {#if uniqueIndicators.length === 0 && !showVolume}
           <div class="empty-subgroup">
-            <span>Tidak ada indikator aktif</span>
+            <span>{$tr('Gak ono indikator sing urip', 'Tidak ada indikator aktif', 'No active indicators')}</span>
           </div>
         {/if}
       </div>
@@ -322,15 +323,11 @@
 
               <button
                 type="button"
-                class="icon-action-btn {showThesisCards ? 'visible' : 'hidden'}"
-                title={showThesisCards ? 'Sembunyikan Kartu Tesis di Grafik' : 'Tampilkan Kartu Tesis di Grafik'}
-                onclick={() => onToggleThesisCards?.()}
+                class="icon-action-btn visible"
+                title="Buka Preview Tesis di Tab Plan"
+                onclick={() => onOpenPlanTab?.('preview')}
               >
-                {#if showThesisCards}
-                  <Eye size={12} />
-                {:else}
-                  <EyeOff size={12} />
-                {/if}
+                <Eye size={12} />
               </button>
 
               <button
@@ -347,13 +344,13 @@
 
         {#if scopedPlans.length === 0}
           <div class="empty-subgroup">
-            <span>Tidak ada trading plan aktif</span>
+            <span>{$tr('Durung ono trading plan aktif', 'Tidak ada trading plan aktif', 'No active trading plan')}</span>
             <button
               class="empty-action-link"
               type="button"
               onclick={() => onOpenPlanTab?.('form')}
             >
-              + Buat Trade Plan
+              {$tr('+ Gawe Trade Plan', '+ Buat Trade Plan', '+ Create Trade Plan')}
             </button>
           </div>
         {/if}
@@ -377,7 +374,7 @@
             <ChevronRight size={13} />
           {/if}
         </span>
-        <span>Objek Gambar</span>
+        <span>{$tr('Coretan Gambar', 'Objek Gambar', 'Drawings')}</span>
         <span class="group-count mono-nums">{uniqueDrawings.length}</span>
       </button>
 

@@ -32,6 +32,7 @@
     toggleFavoriteIndicatorId,
   } from "../services/persistence/uiPreferencesHelper";
   import type { PineScriptRecord } from "../types/market";
+  import { tr } from "../i18n";
 
   interface Props {
     isOpen: boolean;
@@ -231,9 +232,9 @@
             <Layers size={16} class="text-bull" />
           </div>
           <div class="header-text">
-            <h3>Katalog Terpadu Indikator & Scripting Library</h3>
+            <h3>{$tr("Katalog Indikator & Pustaka Pine Script", "Katalog Terpadu Indikator & Scripting Library", "Unified Indicators & Scripting Library")}</h3>
             <span class="sub-text"
-              >76 Studi Native WebGL2 Instan & Pustaka Algoritma Pine Script v6</span
+              >{$tr("76 Studi Native WebGL2 Kilat & Pustaka Algoritma Pine Script v6", "76 Studi Native WebGL2 Instan & Pustaka Algoritma Pine Script v6", "76 Instant WebGL2 Native Studies & Pine Script v6 Library")}</span
             >
           </div>
         </div>
@@ -248,7 +249,7 @@
           <Search size={14} class="search-icon" />
           <input
             type="text"
-            placeholder="Cari indikator berdasarkan nama, singkatan (e.g. RSI, VRVP, ATR, SMA, MACD, VPVR)..."
+            placeholder={$tr("Golek indikator (conto: RSI, VRVP, ATR, SMA, MACD, VPVR)...", "Cari indikator berdasarkan nama, singkatan (e.g. RSI, VRVP, ATR, SMA, MACD, VPVR)...", "Search indicators by name or ticker (e.g. RSI, VRVP, ATR, SMA, MACD)...")}
             bind:value={searchQuery}
             class="search-input mono-nums"
           />
@@ -586,8 +587,8 @@
             > di Pine Editor untuk kompilasi skrip</span
           >
         </div>
-        <div class="footer-buttons">
-          <button class="btn-footer-close" onclick={onClose}> Selesai </button>
+          <div class="footer-buttons">
+          <button class="btn-footer-close" onclick={onClose}> {$tr("Beres, Tutup", "Selesai", "Done")} </button>
         </div>
       </footer>
     </div>

@@ -21,6 +21,7 @@
     resolveAlertTargetSymbol,
     shouldInitializeAlertModalSession,
   } from '../services/alertFormHelper';
+  import { tr } from '../i18n';
 
   interface Props {
     isOpen: boolean;
@@ -337,7 +338,7 @@
               <Bell size={14} />
             {/if}
           </span>
-          <h3>{editingAlert ? 'Sunting Price Alert' : 'Buat Price Alert'}</h3>
+          <h3>{editingAlert ? $tr('Oprek Price Alert', 'Sunting Price Alert', 'Edit Price Alert') : $tr('Pasang Price Alert', 'Buat Price Alert', 'Create Price Alert')}</h3>
           <span class="symbol-pill mono-nums">{canonicalSymbol}</span>
         </div>
         <button type="button" class="close-btn" onclick={onClose} title="Tutup (Esc)">
@@ -568,15 +569,15 @@
           {/if}
           <div class="footer-right">
             <button type="button" class="btn-cancel" onclick={onClose}>
-              Batal
+              {$tr('Gak Sido', 'Batal', 'Cancel')}
             </button>
             <button type="submit" class="btn-submit {editingAlert ? 'btn-update' : ''}">
               {#if editingAlert}
                 <Edit3 size={13} />
-                <span>Simpan Perubahan</span>
+                <span>{$tr('Simpen Oprekan', 'Simpan Perubahan', 'Save Changes')}</span>
               {:else}
                 <Zap size={13} />
-                <span>Pasang Alert {canonicalSymbol}</span>
+                <span>{$tr('Pasang Alert', 'Pasang Alert', 'Create Alert')} {canonicalSymbol}</span>
               {/if}
             </button>
           </div>

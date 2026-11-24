@@ -1,8 +1,9 @@
 [package]
 name = "tauri-app"
-version = "0.56.0"
+version = "0.57.0"
 description = "A Tauri App"
-authors = ["you"]
+authors = ["Kaleksanan Barqi Aji Massani"]
+license = "Apache-2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -29,6 +29,7 @@
   import { formatLocalClockTime } from '../services/worldClockService';
   import NextEventPill from './statusbar/NextEventPill.svelte';
   import MarketSessionsPill from './statusbar/MarketSessionsPill.svelte';
+  import { tr } from '../i18n';
 
   interface Props {
     isConsoleOpen: boolean;
@@ -242,11 +243,11 @@
     <button
       type="button"
       class="coffee-btn"
-      title="Dukung pengembang: Belikan saya kopi di Saweria (https://saweria.co/arthex1204)"
+      title={$tr('Traktir kopi dev trawangan nang Saweria (https://saweria.co/arthex1204)', 'Dukung pengembang: Belikan saya kopi di Saweria (https://saweria.co/arthex1204)', 'Support development: Buy me a coffee on Saweria (https://saweria.co/arthex1204)')}
       onclick={() => openExternalUrl('https://saweria.co/arthex1204')}
     >
       <Coffee size={11} class="coffee-icon" />
-      <span>Buy Me Coffee</span>
+      <span>{$tr('Tukokno Kopi Cak', 'Buy Me Coffee', 'Buy Me a Coffee')}</span>
     </button>
 
     <div class="divider"></div>
@@ -254,7 +255,7 @@
     <!-- Terminal Log Button -->
     <button
       class="terminal-log-btn {isConsoleOpen ? 'active' : ''}"
-      title="Buka / Tutup Terminal Logs [Ctrl+`]"
+      title={$tr('Bukak / Tutup Terminal Logs [Ctrl+`]', 'Buka / Tutup Terminal Logs [Ctrl+`]', 'Toggle Terminal Logs [Ctrl+`]')}
       onclick={onToggleConsole}
     >
       <Terminal size={12} />

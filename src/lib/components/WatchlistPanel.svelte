@@ -6,6 +6,7 @@
   import AlertsTab from "./right-dock/AlertsTab.svelte";
   import LayersTab from "./right-dock/LayersTab.svelte";
   import EventsTab from "./right-dock/EventsTab.svelte";
+  import OrderExecutionTab from "./right-dock/OrderExecutionTab.svelte";
   import DataWindow from "./DataWindow.svelte";
   import { watchlistRegistry } from "../services/watchlistRegistryService";
   import {
@@ -24,7 +25,7 @@
     UpdatePlanFromTabOptions,
   } from "../services/tradePlanFormService";
   import type { ActiveTradingPlan } from "../services/tradingPlanLifecycle";
-  import type { PriceAlert, WatchlistRecord } from "../types/market";
+  import type { BrokerId, PriceAlert, WatchlistRecord } from "../types/market";
 
   interface Props {
     isOpen: boolean;
@@ -81,6 +82,9 @@
     onEditPlan?: (planId: string) => void;
     onOpenPlanTab?: (subMode?: TradePlanTabSubMode) => void;
     onFocusEventTimestamp?: (timestampMs: number) => void;
+    activeBrokerId?: BrokerId;
+    onSelectBroker?: (brokerId: BrokerId) => void;
+    onOpenBrokerSettings?: () => void;
     onLog?: (msg: string, level?: "info" | "success" | "warn") => void;
   }
 
@@ -126,6 +130,9 @@
     onEditPlan,
     onOpenPlanTab,
     onFocusEventTimestamp,
+    activeBrokerId = "binance",
+    onSelectBroker,
+    onOpenBrokerSettings,
     onLog,
   }: Props = $props();
 
@@ -438,6 +445,15 @@
       <DataWindow {activeSymbol} />
     {:else if activeTab === "events"}
       <EventsTab {activeSymbol} {timezone} {onFocusEventTimestamp} />
+    {:else if activeTab === "order"}
+      <OrderExecutionTab
+        {activeSymbol}
+        {currentPrice}
+        {activeBrokerId}
+        {onSelectBroker}
+        {onOpenBrokerSettings}
+        {onLog}
+      />
     {/if}
 
     <!-- Trade Plan tetap ter-mount agar draft form dan teks tidak hilang saat pindah tab -->

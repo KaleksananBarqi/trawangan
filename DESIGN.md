@@ -4,7 +4,7 @@
 > Dokumen ini menetapkan arah visual, token desain, hierarki permukaan, serta pagar batas anti-slop untuk seluruh antarmuka **trawangan**, baik pada aplikasi desktop native berbasis Tauri v2 (`src/`) maupun etalase web dan dokumentasi (`docs/`). Filosofi desainnya bertumpu pada keheningan visual: latar hitam arang matte (`#0F0F0F` / `#0E0E10`), candlestick Putih Tulang (`#F7F7F7`) vs Merah Muda Tajam (`#FF69B4`), pemisahan blok permukaan **Neo-Quant Tonal Shell (ADR-0029)** tanpa border kotak-dalam-kotak, dan disiplin satu aksen terfokus tanpa noise dekoratif.
 
 **Atribut Arah & Dial (/antislop Reference Fields):**
-- **Product Identity:** `trawangan` (selalu ditulis huruf kecil), terminal charting desktop multi-aset murni (**Pure Charting Scope**, tanpa fitur eksekusi order maupun dompet).
+- **Product Identity:** `trawangan` (selalu ditulis huruf kecil), terminal charting desktop multi-aset murni (**Pure Charting Scope** secara default, dengan **Opt-In Execution Bridge** opsional yang mati secara bawaan sesuai `ADR-0031`).
 - **Default Preset Direction:** Signature Cyber-Monochrome (`#0F0F0F` + `#F7F7F7` Bull + `#FF69B4` Bear/Brand Accent).
 - **Dial (Web Showcase / Landing & Docs):** `Dial: ENERGY 2 / RHYTHM 2 / MOTION 1`
 - **Dial (Desktop Charting Cockpit):** `Dial: ENERGY 2 / RHYTHM 1 / MOTION 1`
@@ -368,7 +368,7 @@ Pemeriksaan kode sumber mengidentifikasi beberapa sisa gaya lama yang **tidak bo
 ### Strict Don'ts (Anti-Slop & Domain Guardrails)
 
 - **DON'T** gunakan karakter em dash (U+2014) di teks UI, heading, deskripsi, komentar UX, maupun copy landing page (`R-02`). Ganti dengan koma, titik dua, titik, atau tanda kurung.
-- **DON'T** sisipkan fitur eksekusi order (`Buy`, `Sell`, `Place Order`), sambungan dompet Web3/API key trading, atau klaim sebagai platform brokerage (`ADR-0001`: **Pure Charting Scope**).
+- **DON'T** sisipkan fitur eksekusi order otomatis atau tercampur dengan Trade Plan (`ADR-0001`: **Pure Charting Scope** secara default; eksekusi manual hanya melalui **Opt-In Execution Bridge** opsional sesuai `ADR-0031` yang mati secara bawaan dan terpisah tegas).
 - **DON'T** kembalikan warna default candlestick ke hijau neon & merah standar di tema *Signature*, atau gunakan skema gradasi biru-ungu / ungu-hitam generik AI (`R-01`).
 - **DON'T** tampilkan statistik pengguna palsu (`10K+ Users`, `99.9% Uptime`), testimoni rekaan, avatar AI, atau skor rating fiktif (`R-17`, `R-18`, `R-36`, `R-38`).
 - **DON'T** pakai kata buzzword AI (`Revolutionary`, `Seamless`, `Next Generation`, `AI Powered`, `Ultimate`) maupun tombol CTA hambar (`Get Started`, `Learn More`, `Try Now`) (`R-15`, `R-16`). Ganti dengan bahasa teknis konkret dan aksi spesifik (`Unduh trawangan v0.45`, `+ Tambah ke Chart`, `Simpan Plan [Ctrl+Enter]`).
@@ -434,7 +434,7 @@ Bagian ini merangkum referensi cepat token serta templat brief visual untuk kons
 ### Prompt Template (Design Brief Snippet)
 
 ```text
-Konteks Desain: Antarmuka untuk terminal charting desktop open-source trawangan (Pure Charting Scope, tanpa fitur eksekusi order atau wallet).
+Konteks Desain: Antarmuka untuk terminal charting desktop open-source trawangan (Pure Charting Scope secara default; Opt-In Execution Bridge opsional mati secara bawaan sesuai ADR-0031).
 Arah Visual (DESIGN.md & ADR-0029):
 - Tema Signature Cyber-Monochrome + Neo-Quant Tonal Shell: lapisan shell --bg-shell (#08080A) dengan celah tonal 2px antar-panel full-bleed (0px), kanvas gelap matte #0F0F0F (app) atau #0E0E10 (web), permukaan panel #171717 / #151518 tanpa garis border 1px keras pada setiap tombol/baris pengaturan.
 - Penekanan polaritas & aksen: White Bull (#F7F7F7) dan Hot Pink Bear / Primary Accent (#FF69B4) dengan teks #0F0F0F di atas tombol pink; item aktif memakai latar --bg-elevated + bilah aksen kiri 2.5px; status biner memakai Modern Toggle Switch.
