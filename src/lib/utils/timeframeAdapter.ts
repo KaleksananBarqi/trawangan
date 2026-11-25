@@ -227,3 +227,28 @@ export function describeTimeframe(tf: string): string {
   return `Interval ${norm}`;
 }
 
+
+const TIMEFRAME_UNIT_MINUTES: Record<string, number> = {
+  m: 1,
+  h: 60,
+  D: 60 * 24,
+  W: 60 * 24 * 7,
+  M: 60 * 24 * 30,
+};
+
+/**
+ * Konversi timeframe ke durasi dalam menit untuk keperluan pengurutan.
+ * Case-sensitive: `m` = menit, `M` = bulan. Format tak dikenal -> Infinity.
+ */
+export function timeframeToMinutes(tf: string): number {
+  const match = /^(\d+)([mhDWM])$/.exec(tf);
+  if (!match) return Number.POSITIVE_INFINITY;
+  return parseInt(match[1], 10) * TIMEFRAME_UNIT_MINUTES[match[2]];
+}
+
+/**
+ * Urutkan timeframe naik berdasarkan durasi (tidak memutasi input).
+ */
+export function sortTimeframes<T extends string>(tfs: readonly T[]): T[] {
+  return [...tfs].sort((a, b) => timeframeToMinutes(a) - timeframeToMinutes(b));
+}

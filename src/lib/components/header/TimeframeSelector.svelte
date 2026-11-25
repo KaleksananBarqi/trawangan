@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Plus, Clock, X, Star, Trash2, RotateCcw } from '@lucide/svelte';
   import type { Timeframe } from '../../types/market';
+  import { sortTimeframes } from '../../utils/timeframeAdapter';
 
   interface Props {
     activeTimeframe: Timeframe;
@@ -19,6 +20,8 @@
     onFavoriteTimeframesChange,
     onCustomTimeframesChange
   }: Props = $props();
+
+  const sortedFavoriteTimeframes = $derived(sortTimeframes(favoriteTimeframes));
 
   const STANDARD_TIMEFRAME_GROUPS = [
     {
@@ -116,7 +119,7 @@
 
 <div class="timeframe-section">
   <div class="timeframe-bar">
-    {#each favoriteTimeframes as tf}
+    {#each sortedFavoriteTimeframes as tf}
       <button
         class="tf-btn mono-nums {activeTimeframe === tf ? 'active' : ''}"
         title="Ganti timeframe ke {tf}"
