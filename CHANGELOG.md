@@ -5,6 +5,14 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.58.1] - 2026-11-25
+
+### 🐛 Diperbaiki (Fixed)
+- **Pengurutan Durasi Timeframe Favorit di Bilah Atas & Pintasan Keyboard (`TimeframeSelector.svelte`, `timeframeAdapter.ts`, `+page.svelte`, #229, #230, #231):**
+  - Menambahkan `timeframeToMinutes()`, `sortTimeframes()`, dan `getNextFavoriteTimeframe()` agar daftar timeframe favorit (termasuk timeframe kustom dan pembedaan case-sensitive `m` menit vs `M` bulan) selalu tampil dan dinavigasi melalui pintasan keyboard secara berurutan naik berdasarkan durasi tanpa memerlukan migrasi data tersimpan.
+- **Pemetaan Tata Letak Multi-Chart 2 Horisontal & 2 Vertikal (`workspaceLayoutMeta.ts`, `WorkspaceLayoutMenu.svelte`, `SnapshotPreviewModal.svelte`, `chartSnapshotService.ts`, `+page.svelte`, #232):**
+  - Memperbaiki pemetaan opsi tata letak 2 panel yang sebelumnya tertukar terhadap orientasi grid Vela (`2 Horisontal · Atas & Bawah` → `'2v'`, `2 Vertikal · Kiri & Kanan` → `'2h'`) serta memusatkan metadata dan label tata letak *Branded Snapshot Frame* melalui `workspaceLayoutMeta.ts` tanpa mematahkan *Workspace State v2* tersimpan.
+
 ## [0.58.0] - 2026-11-25
 
 ### 🚀 Ditambahkan (Added)
