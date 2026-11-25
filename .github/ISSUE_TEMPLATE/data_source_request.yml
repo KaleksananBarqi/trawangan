@@ -1,0 +1,63 @@
+name: Data Source / Exchange Request
+description: Request a new exchange, market data provider, or asset class feed
+title: "[Data Source]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Want to chart another exchange or market data provider in **trawangan**? You can write in **English** or **Bahasa Indonesia**.
+        `trawangan` prioritizes free, public, zero-paywall market data feeds (no paid subscription or mandatory API key required for charting).
+
+  - type: input
+    id: provider
+    attributes:
+      label: Exchange or Data Provider Name
+      placeholder: e.g., Bybit, OKX, Tokocrypto, Kraken, TradingView-free feed...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: market_type
+    attributes:
+      label: Market / Asset Type
+      options:
+        - Crypto Spot
+        - Crypto Perpetual / Futures
+        - Equities / Stocks
+        - Forex / CFD
+        - Commodities / Indices
+        - Macro / On-Chain Metric
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: api_docs
+    attributes:
+      label: Public API Documentation URL
+      description: Link to the official REST / WebSocket market data documentation.
+      placeholder: https://...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: api_access
+    attributes:
+      label: Free & Public Market Data Availability
+      description: Do klines/candlesticks and WebSocket streams work without a paid plan or mandatory API key?
+      options:
+        - Yes — completely public & free
+        - Partial — free tier with rate limits or free API key
+        - No — requires paid subscription
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Additional Context
+      description: Example symbols/pairs, supported timeframes, and why this data source would be valuable.
+    validations:
+      required: true

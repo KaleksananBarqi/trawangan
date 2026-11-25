@@ -1,0 +1,46 @@
+name: Feature Request
+description: Propose a new feature or enhancement to trawangan
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to make **trawangan** better? Feel free to write in **English** or **Bahasa Indonesia**.
+        Please make sure your proposal aligns with our core **Zero-Paywall** and **Charting-First** principles.
+        *(For requesting a new exchange or market data feed, please use the **Data Source / Exchange Request** form instead.)*
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Use Case
+      description: What workflow friction or missing capability are you trying to solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe how you envision this feature working inside trawangan.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Optional — any workarounds or alternative designs you considered.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: guardrails
+    attributes:
+      label: Project Alignment
+      description: Confirm that your proposal fits trawangan's architectural guardrails.
+      options:
+        - label: This feature can work without paywalls, paid tiers, or mandatory telemetry.
+          required: true
+        - label: If related to trading execution, it preserves Charting-First defaults (execution remains opt-in and decoupled from Trade Plans).
+          required: true

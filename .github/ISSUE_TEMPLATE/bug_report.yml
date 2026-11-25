@@ -1,0 +1,86 @@
+name: Bug Report
+description: Report a crash, visual glitch, or unexpected behavior in trawangan
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+        You can write this report in **English** or **Bahasa Indonesia**.
+        > **Security Note:** If this is a security vulnerability (e.g., API key leakage, RCE, or local bridge exploit), please **do not** submit it here. Report it privately via [GitHub Security Advisories](https://github.com/KaleksananBarqi/trawangan/security/advisories/new).
+
+  - type: input
+    id: version
+    attributes:
+      label: trawangan Version
+      description: Which version are you running? (Check Settings -> About or Window Title)
+      placeholder: e.g., v0.58.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux (AppImage / .deb / .rpm)
+        - Windows (.exe / .msi)
+        - macOS (.dmg)
+        - Built from source (npm run tauri dev)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      options:
+        - Chart Canvas / WebGL2
+        - Watchlist / Symbol Search
+        - Trade Plan / Thesis Preview
+        - Pine Script v6 IDE
+        - Price Alerts / Bar Replay
+        - Opt-In Execution Bridge (Binance / Bitunix / MT5)
+        - Data Feed / Exchange
+        - Themes / Localization / UI
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly and concisely.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce the issue?
+      placeholder: |
+        1. Open symbol BTCUSDT on Binance
+        2. Switch timeframe to 4H
+        3. Press ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Screenshots, Console Logs, or Error Output
+      description: Optional — attach screenshots or paste relevant error logs.
+      render: text
+    validations:
+      required: false

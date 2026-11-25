@@ -1,0 +1,54 @@
+name: Accessibility Barrier Report
+description: Report an accessibility barrier (keyboard navigation, contrast, screen reader, typography, etc.)
+title: "[Accessibility]: "
+labels: ["accessibility", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping make **trawangan** more accessible! You can write in **English** or **Bahasa Indonesia**.
+        See [`ACCESSIBILITY.md`](https://github.com/KaleksananBarqi/trawangan/blob/main/ACCESSIBILITY.md) for current accessibility support and known limitations.
+
+  - type: input
+    id: version
+    attributes:
+      label: trawangan Version
+      placeholder: e.g., v0.58.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux
+        - Windows
+        - macOS
+    validations:
+      required: true
+
+  - type: input
+    id: assistive_tech
+    attributes:
+      label: Assistive Technology, Theme, or Input Method
+      description: Optional — e.g., Keyboard-only, NVDA, Orca, VoiceOver, or specific theme preset.
+      placeholder: e.g., Keyboard-only / Orca / Theme Warta Abang
+    validations:
+      required: false
+
+  - type: textarea
+    id: barrier
+    attributes:
+      label: Describe the Accessibility Barrier
+      description: Where in the app did you encounter the barrier, and what made it difficult or impossible to use?
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: Optional — how could we make this interaction better?
+    validations:
+      required: false

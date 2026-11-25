@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a Security Vulnerability
+    url: https://github.com/KaleksananBarqi/trawangan/security/advisories/new
+    about: Do not open a public issue for security vulnerabilities. Report them privately via GitHub Security Advisories.
+  - name: 📖 Documentation & Keyboard Shortcuts
+    url: https://github.com/KaleksananBarqi/trawangan#readme
+    about: Check the README (Jawa Arekan / ID / EN) and docs/adr/ before opening a new issue.
