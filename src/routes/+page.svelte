@@ -140,6 +140,7 @@
     withAlpha,
     deriveSurfaceColor
   } from '../lib/utils/colorUtils';
+  import { getNextFavoriteTimeframe } from '../lib/utils/timeframeAdapter';
 
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
   import { updateService } from '../lib/services/updateService';
@@ -749,14 +750,13 @@
     };
 
     const cycleFavoriteTimeframe = (direction: 1 | -1) => {
-      const favs = appSettings.favoriteTimeframes?.length
-        ? appSettings.favoriteTimeframes
-        : (['1m', '5m', '15m', '1h', '4h', '1D'] as Timeframe[]);
-      if (favs.length === 0) return;
-      const idx = favs.indexOf(activeTimeframe);
-      const baseIdx = idx < 0 ? 0 : idx;
-      const targetTf = favs[(baseIdx + direction + favs.length) % favs.length];
-      if (targetTf && targetTf !== activeTimeframe) {
+      // Gunakan urutan durasi yang sama dengan bilah atas agar pintasan keyboard tidak melompat acak
+      const targetTf = getNextFavoriteTimeframe(
+        appSettings.favoriteTimeframes,
+        activeTimeframe,
+        direction
+      );
+      if (targetTf) {
         handleTimeframeChange(targetTf);
       }
     };
