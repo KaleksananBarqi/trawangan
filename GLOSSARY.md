@@ -344,5 +344,10 @@ _Avoid_: Raw drawing key string, Unscoped symbol key, Timeframe-only drawing key
 Bahasa visual antarmuka desktop `trawangan` yang memisahkan modul kerja secara murni melalui kontras blok permukaan tonal dan celah presisi tanpa garis batas keras di setiap komponen, dipadukan dengan sudut modern tegas dan penanda aktif bilah aksen kiri.
 _Avoid_: Box-in-box borders, 1px hairline everywhere, Retro wireframe UI, Heavy glassmorphism shell
 
+**Upstream Attribution Ledger**:
+Registri terpusat dan terketik (`src/lib/constants/attributions.ts`) yang mencatat seluruh engine inti, pustaka open-source, kurator aset visual, tipografi terbuka, serta sumber data publik yang digunakan oleh `trawangan` beserta lisensi dan tautan proyek aslinya untuk ditampilkan secara konsisten di menu Tentang Aplikasi, berkas `NOTICE`, dokumentasi README, dan landing page.
+_Avoid_: Hardcoded scattered credits, Unattributed third-party assets, Hidden upstream notices
+
+
 
 

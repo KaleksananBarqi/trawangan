@@ -169,7 +169,47 @@ npm run tauri build
 ## Keputusan Arsitektur (ADR)
 
 Kabeh putusan arsitektur lan desain domain `trawangan` kacatet lengkap nang folder `docs/adr/`:
-- [ADR 0001: Brand Identity & Signature Theme](docs/adr/0001-brand-identity-and-theming-system.md) · [ADR 0002: Landing Page & Distribution](docs/adr/0002-distribution-and-landing-page-strategy.md) · [ADR 0003: Core Architecture Guardrails](docs/adr/0003-core-architecture-and-lightweight-guardrails.md) · [ADR 0004: Docked Structural Shell](docs/adr/0004-docked-structural-shell-and-side-by-side-ide.md) · [ADR 0007: Unified Object Tree](docs/adr/0007-unified-object-tree-and-browser-deep-link-bridge.md) · [ADR 0014: Deterministic Trading Plan](docs/adr/0014-deterministic-trading-plan-ingestion-and-multi-target-positions.md) · [ADR 0019: Thesis Surface & Trade Plan Vault](docs/adr/0019-chart-mode-preset-memory-chart-dominant-thesis-trade-plan-vault-and-auto-alerts.md) · [ADR 0021: Yahoo Finance Multi-Asset](docs/adr/0021-yahoo-finance-provider-and-dynamic-feeder-routing.md) · [ADR 0024: Crypto Macro Index](docs/adr/0024-crypto-macro-index-and-synthetic-basket-feeder.md) · [ADR 0030: Tauri v2 Mobile Readiness (iOS & Android)](docs/adr/0030-tauri-v2-mobile-readiness-and-adaptive-touch-shell.md) · [ADR 0031: Opt-In Execution Bridge & Manual Order Ticket](docs/adr/0031-opt-in-execution-bridge-and-decoupled-manual-order-ticket.md) · [ADR 0032: Docked Thesis Preview, Arekan i18n, Onboarding & Apache-2.0](docs/adr/0032-docked-thesis-preview-arekan-i18n-onboarding-and-apache2-license.md)
+- [ADR 0001: Brand Identity & Signature Theme](docs/adr/0001-brand-identity-and-theming-system.md) · [ADR 0002: Landing Page & Distribution](docs/adr/0002-distribution-and-landing-page-strategy.md) · [ADR 0003: Core Architecture Guardrails](docs/adr/0003-core-architecture-and-lightweight-guardrails.md) · [ADR 0004: Docked Structural Shell](docs/adr/0004-docked-structural-shell-and-side-by-side-ide.md) · [ADR 0007: Unified Object Tree](docs/adr/0007-unified-object-tree-and-browser-deep-link-bridge.md) · [ADR 0014: Deterministic Trading Plan](docs/adr/0014-deterministic-trading-plan-ingestion-and-multi-target-positions.md) · [ADR 0019: Thesis Surface & Trade Plan Vault](docs/adr/0019-chart-mode-preset-memory-chart-dominant-thesis-trade-plan-vault-and-auto-alerts.md) · [ADR 0021: Yahoo Finance Multi-Asset](docs/adr/0021-yahoo-finance-provider-and-dynamic-feeder-routing.md) · [ADR 0024: Crypto Macro Index](docs/adr/0024-crypto-macro-index-and-synthetic-basket-feeder.md) · [ADR 0030: Tauri v2 Mobile Readiness (iOS & Android)](docs/adr/0030-tauri-v2-mobile-readiness-and-adaptive-touch-shell.md) · [ADR 0031: Opt-In Execution Bridge & Manual Order Ticket](docs/adr/0031-opt-in-execution-bridge-and-decoupled-manual-order-ticket.md) · [ADR 0032: Docked Thesis Preview, Arekan i18n, Onboarding & Apache-2.0](docs/adr/0032-docked-thesis-preview-arekan-i18n-onboarding-and-apache2-license.md) · [ADR 0033: Upstream Engine & Asset Attribution Governance](docs/adr/0033-upstream-engine-and-asset-attribution-governance.md)
+
+---
+
+## Kredit, Atribusi Engine, Pustaka & Aset Open-Source
+
+`trawangan` dibangun nganggo dedikasi teko akeh proyek open-source, kurator aset visual, pencipta huruf terbuka, lan penyedia data publik. Maturnuwun sak gedhe-gedhene gawe kabeh kreator lan kontributor ing ngisor iki:
+
+### 1. Core Engines, Scripting & Runtime Native
+| Komponen / Paket | Pembuat / Maintainer | Lisensi | Peran nang `trawangan` |
+| :--- | :--- | :---: | :--- |
+| **[Vela](https://velacharts.dev)** (`@luxalgo/vela`) | **LuxAlgo** ([GitHub](https://github.com/luxalgo/vela)) | `Apache-2.0 + NOTICE` | Kanvas charting WebGL2 120 FPS, multi-chart workspace, alat gambar teknikal, lan overlay native |
+| **[PineTS](https://github.com/LuxAlgo/PineTS)** (`pinets`, `@luxalgo/vela-pinets`) | **LuxAlgo** ([Vela-PineTS](https://github.com/LuxAlgo/Vela-pinets)) | `AGPL-3.0-only` | Transpiler AST lan runtime Pine Script v6 sing mlaku nang Web Worker lokal |
+| **[Acorn](https://github.com/acornjs/acorn)** & **[Astring](https://github.com/davidbonnet/astring)** | Marijn Haverbeke, Ingvar Stepanyan, David Bonnet | `MIT` | Parser AST JavaScript, walker, lan code generator pendukung PineTS |
+| **[Tauri v2](https://v2.tauri.app/)** & Official Plugins | The Tauri Programme (Commons Conservancy) | `Apache-2.0 / MIT` | Host desktop native lintas OS super entheng (~45 MB RAM) tanpa Electron |
+| **[Rust Core](https://www.rust-lang.org/)** & Crates (`tokio`, `reqwest`, `serde`, `sha2`, `chrono`, `rfd`) | The Rust Project Developers & Crate Authors | `MIT / Apache-2.0` | Runtime asinkron, koneksi HTTP/WebSocket langsung, enkripsi HMAC/SHA256, dialog OS |
+| **[SQLite](https://sqlite.org/)** & **[Rusqlite](https://github.com/rusqlite/rusqlite)** | D. Richard Hipp & Rusqlite Developers | `Public Domain / MIT` | Database lokal 100% offline gawe cache candle, workspace, lan Trade Plan Vault |
+| **[Svelte 5](https://svelte.dev/)**, **[SvelteKit](https://svelte.dev/docs/kit)** & **[Vite](https://vite.dev/)** | Rich Harris, Evan You & Contributors | `MIT` | UI compiler reaktif zero-VDOM berbasis Runes lan build toolchain |
+| **[CodeMirror 6](https://codemirror.net/)** | Marijn Haverbeke & Contributors | `MIT` | Editor kode modular gawe Side-by-Side Pine Script v6 IDE |
+
+### 2. Aset Visual, Ikonografi, Logo Multi-Aset & Tipografi
+| Aset / Pustaka | Pembuat / Kurator | Lisensi | Cakupan nang `trawangan` |
+| :--- | :--- | :---: | :--- |
+| **[Lucide Icons](https://lucide.dev/)** (`@lucide/svelte`) | Lucide Contributors (fork Feather Icons) | `ISC / MIT` | Ikonografi antarmuka terminal, toolbar gambar, dock, lan modal setelan |
+| **[Web3Icons](https://github.com/0xa3k5/web3icons)** (`@0xa3k5/web3icons`) | 0xa3k5 & Contributors | `MIT` | Ikon SVG koin & token kripto utama (`static/icons/coins/` + CDN) |
+| **[Cryptocurrency Icons](https://github.com/spothq/cryptocurrency-icons)** | SpotHQ & Contributors | `MIT / CC0-1.0` | Ikon SVG token kripto cadangan tingkat loro |
+| **[Circle Flags](https://github.com/HatScripts/circle-flags)** | HatScripts & Contributors | `MIT` | Bendera negara & mata uang fiat bundar (`static/icons/flags/`, `IDR`/`USD`/`EUR`) |
+| **[Global Stock Logos](https://github.com/MrChartist/global-stock-logos)** | MrChartist | `Open Curated (Fair Use)` | Logo SVG perusahaan saham global & AS (`static/icons/stocks/`) |
+| **[Ticker Logos](https://github.com/davidepalazzo/ticker-logos)**, **[NVSTly Icons](https://github.com/nvstly/icons)**, **[ShaadyEmad Ticker Logos](https://github.com/ShaadyEmad/ticker-logos)** & **IDX Issuer Favicons (`IDX_COMPANY_DOMAINS`)** | Davide Palazzo, NVSTly, Shaady Emad & Emiten IDX | `MIT / Open Curated / Fair Use` | Logo cadangan saham AS, ETF, koin kripto, lan favicon domain resmi emiten IDX |
+| **[Plus Jakarta Sans](https://github.com/tokotype/PlusJakartaSans)** | Gumpita Rahayu / Tokotype | `OFL-1.1` | Huruf geometris wordmark lowercase `trawangan` lan antarmuka UI |
+| **[JetBrains Mono](https://www.jetbrains.com/lp/mono/)** | JetBrains s.r.o. (Philipp Nurullin & Konstantin Bulenkov) | `OFL-1.1` | Huruf monospasi tabular gawe sumbu rega, R-multiple, telemetri, lan kode Pine |
+| **Aset Orisinal `trawangan`** | Kaleksanan Barqi Aji Massani | `Apache-2.0` | Ikon komoditas (`GOLD`, `SILVER`, `OIL`, `NATGAS`, `COPPER`), ikon makro (`TOTAL`..`USDT.D`), logo monogram, 37 preset tema, & audio Web Audio API |
+
+### 3. Sumber Data Pasar, Makro & Kalender Publik
+- **Bursa Kripto (Direct REST/WebSocket):** Binance, Indodax, Bitunix, Hyperliquid, lan Coinbase Exchange.
+- **Kalibrasi Indeks Makro Lokal (`Crypto Macro Index`):** [CoinGecko Public API](https://www.coingecko.com/) lan [DefiLlama Stablecoins API](https://defillama.com/).
+- **Saham IDX, Komoditas COMEX & Indeks AS:** Yahoo Finance (`DELAYED 15M`).
+- **Kalender Makroekonomi Mingguan:** Fair Economy / ForexFactory Public Calendar Feed.
+
+> [!NOTE]
+> **Sanggahan Merek Dagang (Nominative Fair Use):** Kabeh jeneng bursa, ticker saham, logo token kripto, lan logo perusahaan emiten (kalebu saham IDX lan AS) tetep dadi hak cipta lan merek dagang pemilik asline masing-masing, lan mung digawe kanggo identifikasi instrumen analisis.
 
 ---
 

@@ -140,6 +140,46 @@ npm run tauri build
 
 ---
 
+## Credits, Open-Source Engines & Asset Attributions
+
+`trawangan` stands on the shoulders of the following open-source engines, visual asset curators, open typefaces, and public data feeds. Attribution governance is formally recorded in [ADR-0033](docs/adr/0033-upstream-engine-and-asset-attribution-governance.md):
+
+### 1. Core Engines, Scripting & Native Runtime
+| Component / Package | Author / Maintainer | License | Role in `trawangan` |
+| :--- | :--- | :---: | :--- |
+| **[Vela](https://velacharts.dev)** (`@luxalgo/vela`) | **LuxAlgo** ([GitHub](https://github.com/luxalgo/vela)) | `Apache-2.0 + NOTICE` | 120 FPS WebGL2 financial charting canvas, multi-chart workspace, drawing tools, and native overlays |
+| **[PineTS](https://github.com/LuxAlgo/PineTS)** (`pinets`, `@luxalgo/vela-pinets`) | **LuxAlgo** ([Vela-PineTS](https://github.com/LuxAlgo/Vela-pinets)) | `AGPL-3.0-only` | Pine Script v6 AST transpiler and runtime executed locally inside an isolated Web Worker |
+| **[Acorn](https://github.com/acornjs/acorn)** & **[Astring](https://github.com/davidbonnet/astring)** | Marijn Haverbeke, Ingvar Stepanyan, David Bonnet | `MIT` | JavaScript AST parser, walker, and code generator supporting PineTS transpilation |
+| **[Tauri v2](https://v2.tauri.app/)** & Official Plugins | The Tauri Programme (Commons Conservancy) | `Apache-2.0 / MIT` | Ultra-lightweight cross-platform native desktop host (~45 MB RAM) without Electron bloat |
+| **[Rust Core](https://www.rust-lang.org/)** & Crates (`tokio`, `reqwest`, `serde`, `sha2`, `chrono`, `rfd`) | The Rust Project Developers & Crate Authors | `MIT / Apache-2.0` | Memory-safe async runtime, direct HTTP/WebSocket networking, HMAC/SHA256 signing, OS file dialogs |
+| **[SQLite](https://sqlite.org/)** & **[Rusqlite](https://github.com/rusqlite/rusqlite)** | D. Richard Hipp & Rusqlite Developers | `Public Domain / MIT` | 100% offline embedded database for historical candle caches, workspaces, and Trade Plan Vault |
+| **[Svelte 5](https://svelte.dev/)**, **[SvelteKit](https://svelte.dev/docs/kit)** & **[Vite](https://vite.dev/)** | Rich Harris, Evan You & Contributors | `MIT` | Zero-VDOM reactive UI compiler (Runes) and modern frontend build toolchain |
+| **[CodeMirror 6](https://codemirror.net/)** | Marijn Haverbeke & Contributors | `MIT` | Extensible code editor powering the Side-by-Side Pine Script v6 IDE |
+
+### 2. Visual Assets, Iconography, Multi-Asset Logos & Typography
+| Asset / Library | Author / Curator | License | Coverage in `trawangan` |
+| :--- | :--- | :---: | :--- |
+| **[Lucide Icons](https://lucide.dev/)** (`@lucide/svelte`) | Lucide Contributors (fork of Feather Icons) | `ISC / MIT` | Clean vector iconography across drawing toolbars, docks, headers, and settings modals |
+| **[Web3Icons](https://github.com/0xa3k5/web3icons)** (`@0xa3k5/web3icons`) | 0xa3k5 & Contributors | `MIT` | Primary curated SVG cryptocurrency & token icon set (`static/icons/coins/` + CDN) |
+| **[Cryptocurrency Icons](https://github.com/spothq/cryptocurrency-icons)** | SpotHQ & Contributors | `MIT / CC0-1.0` | Secondary SVG cryptocurrency icon fallback set |
+| **[Circle Flags](https://github.com/HatScripts/circle-flags)** | HatScripts & Contributors | `MIT` | Circular SVG country & fiat currency flags (`static/icons/flags/`, `IDR`/`USD`/`EUR`) |
+| **[Global Stock Logos](https://github.com/MrChartist/global-stock-logos)** | MrChartist | `Open Curated (Fair Use)` | Vector SVG corporate logos for global & US equities (`static/icons/stocks/`) |
+| **[Ticker Logos](https://github.com/davidepalazzo/ticker-logos)**, **[NVSTly Icons](https://github.com/nvstly/icons)**, **[ShaadyEmad Ticker Logos](https://github.com/ShaadyEmad/ticker-logos)** & **IDX Issuer Favicons (`IDX_COMPANY_DOMAINS`)** | Davide Palazzo, NVSTly, Shaady Emad & IDX Issuers | `MIT / Open Curated / Fair Use` | Multi-tier fallback icons for US equities, ETFs, crypto tokens, and official IDX issuer domain favicons |
+| **[Plus Jakarta Sans](https://github.com/tokotype/PlusJakartaSans)** | Gumpita Rahayu / Tokotype | `OFL-1.1` | Primary geometric humanist typeface for the lowercase `trawangan` wordmark and UI |
+| **[JetBrains Mono](https://www.jetbrains.com/lp/mono/)** | JetBrains s.r.o. (Philipp Nurullin & Konstantin Bulenkov) | `OFL-1.1` | Tabular monospace typeface for price axes, R-multiples, telemetry, and Pine Script code |
+| **`trawangan` Original Assets** | Kaleksanan Barqi Aji Massani | `Apache-2.0` | Commodity SVGs (`GOLD`, `SILVER`, `OIL`, `NATGAS`, `COPPER`), macro SVGs (`TOTAL`..`USDT.D`), brand mark, 37 theme presets, & Web Audio synthesizer |
+
+### 3. Public Market Data, Macro Calibration & Economic Calendar Sources
+- **Crypto Exchanges (Direct REST/WebSocket):** Binance, Indodax, Bitunix, Hyperliquid, and Coinbase Exchange.
+- **Local Macro Index Calibration (`Crypto Macro Index`):** [CoinGecko Public API](https://www.coingecko.com/) and [DefiLlama Stablecoins API](https://defillama.com/).
+- **IDX Stocks, COMEX Commodities & US Indices:** Yahoo Finance (`DELAYED 15M`).
+- **Weekly Macroeconomic Calendar:** Fair Economy / ForexFactory Public Calendar Feed.
+
+> [!NOTE]
+> **Trademark & Nominative Fair-Use Disclaimer:** All exchange names, equity tickers, cryptocurrency logos, and corporate issuer marks (including IDX and US equities) remain the trademarks and copyrights of their respective owners and are used strictly for nominative instrument identification.
+
+---
+
 ## License & Mandatory Attribution (Apache 2.0 + `NOTICE`)
 
 Distributed under the **Apache License, Version 2.0** (see [LICENSE](LICENSE) and [NOTICE](NOTICE)).

@@ -17,7 +17,13 @@
   } from '@lucide/svelte';
   import { openExternalUrl } from '../../services/urlService';
   import { updateService, formatBytes, type InstallKind, type UpdateState } from '../../services/updateService';
-  import { t, tr } from '../../i18n';
+  import { currentLanguage, t, tr } from '../../i18n';
+  import {
+    ATTRIBUTION_CATEGORIES,
+    TRADEMARK_DISCLAIMER,
+    getAttributionsByCategory,
+    resolveLocalizedAttributionText
+  } from '../../constants/attributions';
 
   let updateState = $state<UpdateState>(updateService.getSnapshot());
   let unsubUpdate: (() => void) | null = null;
@@ -415,6 +421,80 @@
     </div>
   </div>
 
+  <!-- Upstream Engine, Library & Visual Asset Attribution Ledger (ADR-0033) -->
+  <div class="section-group">
+    <div class="ledger-header-block">
+      <h4 class="section-title">
+        {$tr(
+          'Atribusi Engine, Pustaka & Aset Open-Source',
+          'Atribusi Engine, Pustaka & Aset Open-Source',
+          'Open-Source Engine, Library & Asset Attributions'
+        )}
+      </h4>
+      <p class="ledger-subtitle">
+        {$tr(
+          'trawangan dibangun ing ndhuwur ekosistem open-source lan aset publik iki. Klik kartu gawe mbukak proyek asline.',
+          'trawangan dibangun di atas ekosistem open-source dan aset publik berikut. Klik kartu untuk membuka repositori aslinya.',
+          'trawangan is built upon these open-source engines, libraries, and public assets. Click any card to visit its upstream project.'
+        )}
+      </p>
+    </div>
+
+    <div class="ledger-categories">
+      {#each ATTRIBUTION_CATEGORIES as cat (cat.id)}
+        {@const entries = getAttributionsByCategory(cat.id)}
+        <div class="ledger-category-block">
+          <div class="ledger-category-header">
+            <div class="ledger-category-title-wrap">
+              <span class="ledger-category-title">
+                {resolveLocalizedAttributionText(cat.title, $currentLanguage)}
+              </span>
+              <span class="ledger-category-sub">
+                {resolveLocalizedAttributionText(cat.subtitle, $currentLanguage)}
+              </span>
+            </div>
+            <span class="ledger-count-badge mono-nums">{entries.length}</span>
+          </div>
+
+          <div class="ledger-cards-grid">
+            {#each entries as item (item.id)}
+              <button
+                type="button"
+                class="ledger-entry-card"
+                onclick={() => openExternalUrl(item.url)}
+                title={`${item.name} · ${item.license} (${item.url})`}
+              >
+                <div class="ledger-entry-top">
+                  <div class="ledger-entry-name-col">
+                    <span class="ledger-entry-name">{item.name}</span>
+                    <span class="ledger-entry-scope mono-nums">{item.packageOrScope}</span>
+                  </div>
+                  <span class="ledger-license-badge mono-nums">{item.license}</span>
+                </div>
+                <p class="ledger-entry-role">
+                  {resolveLocalizedAttributionText(item.role, $currentLanguage)}
+                </p>
+                <div class="ledger-entry-footer">
+                  <span class="ledger-entry-author">{item.author}</span>
+                  <span class="ledger-entry-link">
+                    <ExternalLink size={11} />
+                  </span>
+                </div>
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/each}
+    </div>
+
+    <div class="trademark-disclaimer-card">
+      <Info size={14} class="text-amber disclaimer-icon" />
+      <p class="trademark-disclaimer-text">
+        {resolveLocalizedAttributionText(TRADEMARK_DISCLAIMER, $currentLanguage)}
+      </p>
+    </div>
+  </div>
+
   <!-- Community & Project Links -->
   <div class="section-group">
     <h4 class="section-title">{$tr('Link Resmi & Tongkrongan', 'Tautan Resmi & Komunitas', 'Official Links & Community')}</h4>
@@ -506,6 +586,184 @@
     border: 1px solid var(--border-subtle, #30363d);
     font-size: 10.5px;
     color: var(--brand-primary, #FF69B4);
+  }
+
+  .ledger-header-block {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .ledger-subtitle {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--text-dim, #808080);
+  }
+
+  .ledger-categories {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .ledger-category-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .ledger-category-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 2px;
+  }
+
+  .ledger-category-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .ledger-category-title {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main, #f7f7f7);
+  }
+
+  .ledger-category-sub {
+    font-size: 10px;
+    color: var(--text-dim, #808080);
+  }
+
+  .ledger-count-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: var(--radius-sm, 5px);
+    background: var(--bg-elevated, #1e1e1e);
+    color: var(--brand-primary, #ff69b4);
+  }
+
+  .ledger-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .ledger-entry-card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 10px 12px;
+    background: var(--bg-panel, #171717);
+    border: none;
+    border-radius: var(--radius-md, 6px);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.14s ease, transform 0.14s ease;
+  }
+
+  .ledger-entry-card:hover {
+    background: var(--bg-elevated, #1e1e1e);
+  }
+
+  .ledger-entry-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .ledger-entry-name-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .ledger-entry-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main, #f7f7f7);
+  }
+
+  .ledger-entry-scope {
+    font-size: 9.5px;
+    color: var(--brand-cyan, #38bdf8);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ledger-license-badge {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: var(--radius-xs, 4px);
+    background: var(--bg-elevated, #1e1e1e);
+    color: var(--text-muted, #a3a3a3);
+  }
+
+  .ledger-entry-role {
+    margin: 0;
+    font-size: 10.5px;
+    line-height: 1.45;
+    color: var(--text-muted, #a3a3a3);
+  }
+
+  .ledger-entry-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 2px;
+  }
+
+  .ledger-entry-author {
+    font-size: 9.5px;
+    color: var(--text-dim, #808080);
+  }
+
+  .ledger-entry-link {
+    color: var(--text-dim, #808080);
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .ledger-entry-card:hover .ledger-entry-link {
+    color: var(--brand-primary, #ff69b4);
+  }
+
+  .trademark-disclaimer-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--bg-panel, #171717);
+    border-radius: var(--radius-md, 6px);
+  }
+
+  :global(.disclaimer-icon) {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .trademark-disclaimer-text {
+    margin: 0;
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--text-dim, #808080);
+  }
+
+  @media (max-width: 680px) {
+    .ledger-cards-grid {
+      grid-template-columns: 1fr;
+    }
   }
   .about-pane {
     display: flex;

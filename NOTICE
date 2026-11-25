@@ -1,3 +1,7 @@
+================================================================================
+PART I - TRAWANGAN MANDATORY ATTRIBUTION NOTICE
+================================================================================
+
 trawangan (ꦠꦿꦮꦔꦤ꧀): Native Multi-Asset & Crypto Charting Terminal
 Copyright 2026 Kaleksanan Barqi Aji Massani (@KaleksananBarqi / @arthex1204)
 
@@ -12,3 +16,114 @@ Any redistribution, fork, modification, or derivative work of this software (in 
    "Based on trawangan (https://github.com/KaleksananBarqi/trawangan), Created by Kaleksanan Barqi Aji Massani"
 
 Pursuant to Section 6 of the Apache License, Version 2.0, this license does NOT grant permission to use the "trawangan" brand name, monogram logo, or official visual marks to endorse or promote derivative works without prior written permission from the original author.
+
+
+================================================================================
+PART II - UPSTREAM CHARTING ENGINE NOTICE (LUXALGO VELA - APACHE 2.0)
+================================================================================
+
+Vela (@luxalgo/vela)
+Copyright (c) 2026 LuxAlgo
+https://velacharts.dev
+https://github.com/luxalgo/vela
+
+This product includes the Vela charting library, developed by LuxAlgo.
+
+ATTRIBUTION REQUIREMENT (Copied from @luxalgo/vela/NOTICE per Apache-2.0 Section 4(d)):
+
+Any product, website, or application that displays charts rendered by this
+software must show a visible attribution to the Vela project on every page or
+screen where such a chart is displayed.
+
+The library satisfies this requirement automatically: it renders an attribution
+mark (the project logomark linking to the Vela project page) on the chart
+itself, enabled by default. You may restyle or reposition this mark to fit your
+design.
+
+You may disable the built-in mark (renderer feature `attribution`) ONLY if you
+display an equivalent visible attribution - the name "Vela" together with a
+link to the project page above - elsewhere on the same page or screen, in a
+place available to your users.
+
+Removing, hiding, or obscuring the attribution without providing the
+equivalent notice described above is not permitted.
+
+This file constitutes the NOTICE file described in Section 4(d) of the Apache
+License, Version 2.0: redistributions of this software, in source or binary
+form, must include a readable copy of these attribution notices.
+
+
+================================================================================
+PART III - THIRD-PARTY SCRIPTING ENGINES, LIBRARIES, ASSETS & OPEN DATA
+================================================================================
+
+trawangan is built upon and gratefully acknowledges the following open-source
+engines, frameworks, visual asset repositories, open fonts, and public data feeds:
+
+1. SCRIPTING ENGINE & AST PARSER
+   - PineTS (`pinets`) & Vela-PineTS (`@luxalgo/vela-pinets`)
+     Author: LuxAlgo (https://github.com/LuxAlgo/PineTS | https://github.com/LuxAlgo/Vela-pinets)
+     License: GNU Affero General Public License v3.0 (AGPL-3.0-only)
+   - Acorn (`acorn`, `acorn-walk`) & Astring (`astring`)
+     Authors: Marijn Haverbeke, Ingvar Stepanyan & David Bonnet
+     License: MIT License
+
+2. DESKTOP RUNTIME, EMBEDDED DATABASE & UI FRAMEWORKS
+   - Tauri v2 & Official Plugins (`tauri`, `@tauri-apps/api`, `opener`, `notification`,
+     `updater`, `process`, `single-instance`)
+     Author: The Tauri Programme within The Commons Conservancy (https://v2.tauri.app)
+     License: Apache-2.0 OR MIT
+   - Rust Core & Ecosystem Crates (`tokio`, `reqwest`, `serde`, `serde_json`, `sha2`,
+     `hex`, `chrono`, `dirs`, `base64`, `rfd`)
+     Authors: The Rust Project Developers & Crate Maintainers (https://www.rust-lang.org)
+     License: MIT / Apache-2.0
+   - SQLite & Rusqlite (`rusqlite` bundled SQLite3)
+     Authors: D. Richard Hipp (SQLite Consortium) & Rusqlite Developers (https://github.com/rusqlite/rusqlite)
+     License: Public Domain (SQLite) / MIT (rusqlite)
+   - Svelte 5, SvelteKit & Vite (`svelte`, `@sveltejs/kit`, `vite`, `@sveltejs/adapter-static`)
+     Authors: Rich Harris, Evan You & Contributors (https://svelte.dev | https://vite.dev)
+     License: MIT
+   - CodeMirror 6 (`codemirror`, `@codemirror/view`, `@codemirror/state`, `@codemirror/language`,
+     `@codemirror/commands`)
+     Author: Marijn Haverbeke & Contributors (https://codemirror.net)
+     License: MIT
+
+3. VISUAL ASSETS, ICONOGRAPHY & LOGOS
+   - Lucide Icons (`@lucide/svelte`, `lucide-svelte`)
+     Author: Lucide Contributors (fork of Feather Icons by Cole Bemis, https://lucide.dev)
+     License: ISC / MIT
+   - Web3Icons (`@0xa3k5/web3icons`, https://github.com/0xa3k5/web3icons)
+     License: MIT
+   - Cryptocurrency Icons (`spothq/cryptocurrency-icons`, https://github.com/spothq/cryptocurrency-icons)
+     License: MIT / CC0-1.0
+   - Circle Flags (`HatScripts/circle-flags`, https://github.com/HatScripts/circle-flags)
+     License: MIT
+   - Global Stock Logos (`MrChartist/global-stock-logos`, https://github.com/MrChartist/global-stock-logos)
+     Curated open ticker vector repository (trademarks belong to respective issuers)
+   - Ticker Logos & Financial Icons (`davidepalazzo/ticker-logos`, `nvstly/icons`, `ShaadyEmad/ticker-logos`)
+     License: MIT / Open Curated Repositories (trademarks belong to respective issuers)
+   - Official Indonesian Equity (IDX) Issuer Favicons
+     Fetched via public domain metadata solely for nominative equity identification.
+   - trawangan Original Vectors & 37 Cultural Theme Presets (`static/icons/commodities/`,
+     `static/icons/indices/`, `logo-icon.svg`, `themes.ts`)
+     Author: Kaleksanan Barqi Aji Massani
+     License: Apache-2.0
+
+4. TYPOGRAPHY & AUDIO SYNTHESIS
+   - Plus Jakarta Sans by Gumpita Rahayu / Tokotype (https://github.com/tokotype/PlusJakartaSans)
+     License: SIL Open Font License 1.1 (OFL-1.1)
+   - JetBrains Mono by JetBrains s.r.o. (https://www.jetbrains.com/lp/mono/)
+     License: SIL Open Font License 1.1 (OFL-1.1)
+   - Web Audio API Procedural Chime Synthesizer (`soundService.ts`)
+     License: Apache-2.0 / W3C Web Audio API Standard
+
+5. PUBLIC MARKET DATA, MACRO CALIBRATION & ECONOMIC CALENDAR SOURCES
+   - Crypto Exchanges (Direct REST/WebSocket): Binance, Indodax, Bitunix, Hyperliquid, Coinbase Exchange
+   - Macro Basket Calibration: CoinGecko Public API & DefiLlama Stablecoins API (https://defillama.com)
+   - Equities, Commodities & Global Indices: Yahoo Finance (Delayed ~15m)
+   - Macroeconomic Calendar: Fair Economy / ForexFactory Weekly Calendar Feed
+
+TRADEMARK & NOMINATIVE FAIR-USE DISCLAIMER:
+All third-party exchange names, corporate equity tickers, cryptocurrency symbols/logos,
+and brand marks displayed within trawangan belong exclusively to their respective owners
+and are used strictly for nominative identification in financial technical analysis.

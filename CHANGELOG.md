@@ -5,6 +5,20 @@ Format penulisan mengacu pada standar [Keep a Changelog](https://keepachangelog.
 
 ---
 
+## [0.58.0] - 2026-11-25
+
+### 🚀 Ditambahkan (Added)
+- **Upstream Attribution Ledger & Tata Kelola Atribusi (`ADR-0033`, `src/lib/constants/attributions.ts`, `GLOSSARY.md`):**
+  - Menambahkan registri atribusi terpusat bertipe ketat (`UPSTREAM_ATTRIBUTION_LEDGER`) yang memetakan 21 entri lintas 4 kategori (`engines`, `assets`, `typography`, `data_sources`) untuk seluruh engine (`@luxalgo/vela`, `pinets` & `@luxalgo/vela-pinets`, `acorn`/`astring`, Tauri v2, Rust Core & ekosistem crate, SQLite/`rusqlite`, Svelte 5 & Vite, CodeMirror 6), kurator aset visual (`Lucide Icons`, `Web3Icons`, `SpotHQ Cryptocurrency Icons`, `HatScripts Circle Flags`, `MrChartist Global Stock Logos`, `Ticker Logos`, `NVSTly Icons`, `ShaadyEmad Ticker Logos`, favicon domain resmi emiten IDX `IDX_COMPANY_DOMAINS`, serta vektor/37 preset tema orisinal `trawangan`), tipografi terbuka (`Plus Jakarta Sans` & `JetBrains Mono` OFL-1.1) & `Web Audio API Synthesizer`, serta sumber data publik (`Binance`, `Indodax`, `Bitunix`, `Hyperliquid`, `Coinbase Exchange`, `CoinGecko`, `DefiLlama`, `Yahoo Finance`, `Fair Economy / ForexFactory`) beserta `TRADEMARK_DISCLAIMER`.
+- **Panel Atribusi Interaktif di Menu Tentang Aplikasi (`AboutTab.svelte`):**
+  - Merender seluruh kartu `UPSTREAM_ATTRIBUTION_LEDGER` dengan gaya *Neo-Quant Tonal Shell* (`ADR-0029`), lencana lisensi, tautan proyek upstream interaktif, dukungan 3 bahasa (`jv`, `id`, `en`), dan kotak Sanggahan Merek Dagang (*Nominative Fair Use*).
+- **Seksi Atribusi Landing Page & Tabel Kredit README 3 Bahasa (`docs/index.html`, `docs/style.css`, `docs/app.js`, `README.md`, `README.id.md`, `README.en.md`):**
+  - Menambahkan navigasi dan seksi `#atribusi` terlokalisasi 3 bahasa (`JV | ID | EN`) di landing page serta tabel kredit lengkap dan tautan `ADR-0033` di ketiga berkas README resmi.
+
+### 🔄 Diubah (Changed)
+- **Kepatuhan Penuh Berkas `NOTICE` Upstream (`NOTICE`, `ADR-0033`):**
+  - Memperluas berkas `NOTICE` di root repositori menjadi 3 bagian resmi yang mencakup *Mandatory Attribution Notice* `trawangan`, salinan lengkap `NOTICE` wajib dari **LuxAlgo Vela (`@luxalgo/vela`, Apache-2.0 Section 4d)**, serta pengungkapan lisensi **PineTS (`AGPL-3.0-only`)** dan seluruh pustaka, aset visual, font `OFL-1.1`, dan sumber data publik.
+
 ## [0.57.0] - 2026-11-24
 
 ### 🚀 Ditambahkan (Added)
