@@ -368,7 +368,7 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
           symbol: 'MULTI-CHART GRID',
           timeframe: '2-SPLIT VERTICAL',
           providerId: 'binance',
-          layout: '2v',
+          layout: '2h',
           scope: 'all',
           lastPrice: 65432.1,
         },
@@ -380,12 +380,39 @@ test('Ticket 3 (#95): Interactive Snapshot Preview Modal, Multi-Chart Scope, & A
     const drawCalls = targetCanvas.getDrawCalls();
     assert.ok(
       drawCalls.some((c: string) => c.includes('fillText(MULTI-CHART GRID · 2-SPLIT VERTICAL · BINANCE)')),
-      'Harus menampilkan label multi-chart grid dengan layout dan provider'
+      'Harus menampilkan label multi-chart grid 2-SPLIT VERTICAL untuk layout 2h (Kiri & Kanan)'
     );
     assert.strictEqual(
       drawCalls.some((c: string) => c.includes('fillText(65,432.10)')),
       false,
       'Harga single chart tidak boleh digambar pada multi-chart layout'
+    );
+
+    // Pastikan layout 2v (Atas & Bawah) dirender sebagai 2-SPLIT HORIZONTAL
+    const horizontalTargetCanvas = createMockCanvas(3296, 2016);
+    const compHorizontal = compositeSnapshot(
+      srcCanvas,
+      {
+        mode: 'branded',
+        scale: 2,
+        includePrice: true,
+        metadata: {
+          symbol: 'MULTI-CHART GRID',
+          timeframe: '2-SPLIT HORIZONTAL',
+          providerId: 'binance',
+          layout: '2v',
+          scope: 'all',
+          lastPrice: 65432.1,
+        },
+      },
+      horizontalTargetCanvas
+    );
+
+    assert.ok(compHorizontal);
+    const horizontalDrawCalls = horizontalTargetCanvas.getDrawCalls();
+    assert.ok(
+      horizontalDrawCalls.some((c: string) => c.includes('fillText(MULTI-CHART GRID · 2-SPLIT HORIZONTAL · BINANCE)')),
+      'Harus menampilkan label multi-chart grid 2-SPLIT HORIZONTAL untuk layout 2v (Atas & Bawah)'
     );
   });
 

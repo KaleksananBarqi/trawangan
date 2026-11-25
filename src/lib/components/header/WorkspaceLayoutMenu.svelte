@@ -17,6 +17,10 @@
   import type { SavedWorkspace } from '../../types/market';
   import { loadWorkspaces, deleteWorkspace } from '../../services/persistence';
   import { tr } from '../../i18n';
+  import {
+    MULTI_CHART_LAYOUT_OPTIONS,
+    type WorkspaceLayoutIconKey,
+  } from '../../utils/workspaceLayoutMeta';
 
   interface Props {
     currentLayout: string;
@@ -48,12 +52,18 @@
   let overwriteFeedback = $state(false);
   let itemOverwriteFeedbackId = $state<string | null>(null);
 
-  const layouts = [
-    { id: '1', label: '1 Chart', desc: 'Single viewport', icon: Square },
-    { id: '2h', label: '2 Horisontal', desc: 'Atas & Bawah', icon: Rows2 },
-    { id: '2v', label: '2 Vertikal', desc: 'Kiri & Kanan', icon: Columns2 },
-    { id: '4', label: '4 Grid', desc: 'Quad viewport', icon: Grid2X2 },
-  ];
+  // Peta kunci ikon tata letak ke komponen ikon Lucide yang sesuai
+  const layoutIcons: Record<WorkspaceLayoutIconKey, typeof Square> = {
+    single: Square,
+    rows: Rows2,
+    cols: Columns2,
+    grid: Grid2X2,
+  };
+
+  const layouts = MULTI_CHART_LAYOUT_OPTIONS.map((option) => ({
+    ...option,
+    icon: layoutIcons[option.iconKey],
+  }));
 
   let currentLayoutLabel = $derived.by(() => {
     const found = layouts.find((l) => l.id === currentLayout);

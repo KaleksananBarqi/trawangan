@@ -43,6 +43,7 @@
     type SnapshotMetadata
   } from '../services/chartSnapshotService';
   import { tr } from '../i18n';
+  import { formatMultiChartLayoutLabel } from '../utils/workspaceLayoutMeta';
 
   interface Props {
     isOpen: boolean;
@@ -253,10 +254,7 @@
     if (!sourceCanvas) return null;
 
     const isMulti = snapshotScope === 'all';
-    const layoutLabel = currentLayout === '2v' ? '2-SPLIT VERTICAL'
-      : currentLayout === '2h' ? '2-SPLIT HORIZONTAL'
-      : currentLayout === '4' ? '4-GRID'
-      : `LAYOUT ${currentLayout.toUpperCase()}`;
+    const layoutLabel = formatMultiChartLayoutLabel(currentLayout);
 
     const metadata: SnapshotMetadata = isMulti ? {
       symbol: 'MULTI-CHART GRID',

@@ -73,6 +73,7 @@
   } from '../lib/services/workspaceLifecycle';
   import { isSectionToken, isSymbolInWatchlist, toggleSymbolInWatchlist } from '../lib/services/watchlistUtils';
   import { watchlistRegistry } from '../lib/services/watchlistRegistryService';
+  import { formatMultiChartLayoutLabel } from '../lib/utils/workspaceLayoutMeta';
   import type {
     TickerInfo,
     Timeframe,
@@ -1834,10 +1835,7 @@
   // ─── Layanan Tangkapan Layar Grafik (Offline Branded Snapshot) (#94) ───
   function getActiveSnapshotMetadata(scope: 'active' | 'all' = 'active'): SnapshotMetadata {
     if (scope === 'all') {
-      const layoutLabel = currentLayout === '2v' ? '2-SPLIT VERTICAL'
-        : currentLayout === '2h' ? '2-SPLIT HORIZONTAL'
-        : currentLayout === '4' ? '4-GRID'
-        : `LAYOUT ${currentLayout.toUpperCase()}`;
+      const layoutLabel = formatMultiChartLayoutLabel(currentLayout);
 
       return {
         symbol: 'MULTI-CHART GRID',

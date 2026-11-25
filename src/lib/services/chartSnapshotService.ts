@@ -14,6 +14,7 @@ import type {
 } from '../types/market';
 import type { ParsedTradingPlan } from './planParserService';
 import { isDarkColor } from '../utils/colorUtils';
+import { formatMultiChartLayoutLabel } from '../utils/workspaceLayoutMeta';
 import {
   measureThesisOverlayLayout,
   renderThesisOverlayOnCanvas
@@ -1312,7 +1313,7 @@ export function compositeSnapshot(
   let instrumentText: string;
   if (meta.scope === 'all' || meta.symbol.toUpperCase() === 'MULTI-CHART GRID') {
     const layoutLabel = meta.layout
-      ? (meta.layout === '2v' ? '2-SPLIT VERTICAL' : meta.layout === '2h' ? '2-SPLIT HORIZONTAL' : meta.layout === '4' ? '4-GRID' : `LAYOUT ${meta.layout.toUpperCase()}`)
+      ? formatMultiChartLayoutLabel(meta.layout)
       : (meta.timeframe || 'GRID');
     instrumentText = `MULTI-CHART GRID · ${layoutLabel} · ${meta.providerId.toUpperCase()}`;
   } else {
