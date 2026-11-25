@@ -7,6 +7,7 @@ import {
   isMonthlyTimeframe,
   timeframeToMinutes,
   sortTimeframes,
+  getNextFavoriteTimeframe,
 } from '../src/lib/utils/timeframeAdapter';
 
 describe('Timeframe Adapter & TradingView Standardization', () => {
@@ -69,5 +70,62 @@ describe('Timeframe ordering', () => {
     ]);
     assert.equal(input[7], '30m');
     assert.deepEqual(sortTimeframes(['2h', '90m', '7m', '1M']), ['7m', '90m', '2h', '1M']);
+  });
+});
+
+describe('getNextFavoriteTimeframe', () => {
+  const unsortedFavorites = ['1m', '5m', '15m', '1h', '4h', '1D', '1W', '30m', '45m'];
+
+  it('berpindah maju dan mundur mengikuti urutan durasi pada daftar favorit acak', () => {
+    // Urutan durasi: 1m -> 5m -> 15m -> 30m -> 45m -> 1h -> 4h -> 1D -> 1W
+    assert.equal(getNextFavoriteTimeframe(unsortedFavorites, '15m', 1), '30m');
+    assert.equal(getNextFavoriteTimeframe(unsortedFavorites, '30m', 1), '45m');
+    assert.equal(getNextFavoriteTimeframe(unsortedFavorites, '45m', 1), '1h');
+    assert.equal(getNextFavoriteTimeframe(unsortedFavorites, '1h', -1), '45m');
+    assert.equal(getNextFavoriteTimeframe(unsortedFavorites, '45m', -1), '30m');
+    assert.equal(getNextFavoriteTimeframe(unsortedFavorites, '30m', -1), '15m');
+  });
+
+  it('melakukan wrap-around di ujung awal dan ujung akhir daftar terurut', () => {
+    assert.equal(getNextFavoriteTimeframe(unsortedFavorites, '1W', 1), '1m');
+    assert.equal(getNextFavoriteTimeframe(unsortedFavorites, '1m', -1), '1W');
+  });
+
+  it('mengurutkan timeframe kustom (7m, 90m, 2h) dengan benar berdasarkan durasi', () => {
+    const customFavs = ['2h', '90m', '7m', '15m'];
+    // Urutan durasi: 7m -> 15m -> 90m -> 2h
+    assert.equal(getNextFavoriteTimeframe(customFavs, '7m', 1), '15m');
+    assert.equal(getNextFavoriteTimeframe(customFavs, '15m', 1), '90m');
+    assert.equal(getNextFavoriteTimeframe(customFavs, '90m', 1), '2h');
+    assert.equal(getNextFavoriteTimeframe(customFavs, '2h', -1), '90m');
+  });
+
+  it('membedakan satuan m (menit) dan M (bulan) secara case-sensitive', () => {
+    const favs = ['1M', '15m', '1D', '5m', '1W'];
+    // Urutan durasi: 5m -> 15m -> 1D -> 1W -> 1M
+    assert.equal(getNextFavoriteTimeframe(favs, '1W', 1), '1M');
+    assert.equal(getNextFavoriteTimeframe(favs, '1M', 1), '5m');
+    assert.equal(getNextFavoriteTimeframe(favs, '5m', -1), '1M');
+    assert.equal(getNextFavoriteTimeframe(favs, '1M', -1), '1W');
+  });
+
+  it('menangani activeTimeframe yang bukan bagian dari favorit dengan baseIdx = 0', () => {
+    const favs = ['4h', '5m', '1h'];
+    // Urutan durasi: 5m (idx 0), 1h (idx 1), 4h (idx 2)
+    assert.equal(getNextFavoriteTimeframe(favs, '3m', 1), '1h');
+    assert.equal(getNextFavoriteTimeframe(favs, '3m', -1), '4h');
+  });
+
+  it('mengembalikan null untuk daftar favorit berisi satu item yang sama dengan activeTimeframe', () => {
+    assert.equal(getNextFavoriteTimeframe(['15m'], '15m', 1), null);
+    assert.equal(getNextFavoriteTimeframe(['15m'], '15m', -1), null);
+  });
+
+  it('menggunakan daftar default ketika favoriteTimeframes kosong atau undefined', () => {
+    // Default: ['1m', '5m', '15m', '1h', '4h', '1D']
+    assert.equal(getNextFavoriteTimeframe([], '15m', 1), '1h');
+    assert.equal(getNextFavoriteTimeframe([], '1m', -1), '1D');
+    assert.equal(getNextFavoriteTimeframe(undefined, '4h', 1), '1D');
+    assert.equal(getNextFavoriteTimeframe(undefined, '1D', 1), '1m');
   });
 });
