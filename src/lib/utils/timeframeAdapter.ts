@@ -7,6 +7,8 @@
  * - Bursa REST Klines Interval (Binance/Bitunix): '1m', '15m', '1h', '4h', '1d', '1w', '1M'
  */
 
+import type { Timeframe } from '../types/market';
+
 /**
  * Konversi timeframe UI / TradingView ke format yang dipahami Vela Workspace
  */
@@ -251,4 +253,32 @@ export function timeframeToMinutes(tf: string): number {
  */
 export function sortTimeframes<T extends string>(tfs: readonly T[]): T[] {
   return [...tfs].sort((a, b) => timeframeToMinutes(a) - timeframeToMinutes(b));
+}
+
+const DEFAULT_FAVORITE_TIMEFRAMES: readonly Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
+
+/**
+ * Menentukan timeframe favorit berikutnya berdasarkan urutan durasi naik
+ * agar navigasi pintasan keyboard selaras dengan urutan bilah atas.
+ * Mengembalikan `null` jika daftar kosong atau target sama dengan `activeTimeframe`.
+ */
+export function getNextFavoriteTimeframe(
+  favoriteTimeframes: readonly Timeframe[] | undefined,
+  activeTimeframe: Timeframe,
+  direction: 1 | -1
+): Timeframe | null {
+  const source = favoriteTimeframes?.length ? favoriteTimeframes : DEFAULT_FAVORITE_TIMEFRAMES;
+  const sorted = sortTimeframes(source);
+  if (sorted.length === 0) return null;
+
+  const idx = sorted.indexOf(activeTimeframe);
+  // Jika activeTimeframe tidak ada di daftar favorit, mulai siklus dari indeks pertama
+  const baseIdx = idx < 0 ? 0 : idx;
+  const targetTf = sorted[(baseIdx + direction + sorted.length) % sorted.length];
+
+  if (!targetTf || targetTf === activeTimeframe) {
+    return null;
+  }
+
+  return targetTf;
 }

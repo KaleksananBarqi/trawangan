@@ -73,6 +73,7 @@
   } from '../lib/services/workspaceLifecycle';
   import { isSectionToken, isSymbolInWatchlist, toggleSymbolInWatchlist } from '../lib/services/watchlistUtils';
   import { watchlistRegistry } from '../lib/services/watchlistRegistryService';
+  import { formatMultiChartLayoutLabel } from '../lib/utils/workspaceLayoutMeta';
   import type {
     TickerInfo,
     Timeframe,
@@ -140,6 +141,7 @@
     withAlpha,
     deriveSurfaceColor
   } from '../lib/utils/colorUtils';
+  import { getNextFavoriteTimeframe } from '../lib/utils/timeframeAdapter';
 
   import { Terminal, X, TrendingUp, Sparkles, Layers } from '@lucide/svelte';
   import { updateService } from '../lib/services/updateService';
@@ -749,14 +751,13 @@
     };
 
     const cycleFavoriteTimeframe = (direction: 1 | -1) => {
-      const favs = appSettings.favoriteTimeframes?.length
-        ? appSettings.favoriteTimeframes
-        : (['1m', '5m', '15m', '1h', '4h', '1D'] as Timeframe[]);
-      if (favs.length === 0) return;
-      const idx = favs.indexOf(activeTimeframe);
-      const baseIdx = idx < 0 ? 0 : idx;
-      const targetTf = favs[(baseIdx + direction + favs.length) % favs.length];
-      if (targetTf && targetTf !== activeTimeframe) {
+      // Gunakan urutan durasi yang sama dengan bilah atas agar pintasan keyboard tidak melompat acak
+      const targetTf = getNextFavoriteTimeframe(
+        appSettings.favoriteTimeframes,
+        activeTimeframe,
+        direction
+      );
+      if (targetTf) {
         handleTimeframeChange(targetTf);
       }
     };
@@ -1834,10 +1835,7 @@
   // ─── Layanan Tangkapan Layar Grafik (Offline Branded Snapshot) (#94) ───
   function getActiveSnapshotMetadata(scope: 'active' | 'all' = 'active'): SnapshotMetadata {
     if (scope === 'all') {
-      const layoutLabel = currentLayout === '2v' ? '2-SPLIT VERTICAL'
-        : currentLayout === '2h' ? '2-SPLIT HORIZONTAL'
-        : currentLayout === '4' ? '4-GRID'
-        : `LAYOUT ${currentLayout.toUpperCase()}`;
+      const layoutLabel = formatMultiChartLayoutLabel(currentLayout);
 
       return {
         symbol: 'MULTI-CHART GRID',
